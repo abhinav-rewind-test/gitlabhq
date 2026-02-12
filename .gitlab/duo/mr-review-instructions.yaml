@@ -8,6 +8,8 @@
 # - Developer Guide: https://docs.gitlab.com/operator/developer/guide/
 # - Contributing Guide: https://docs.gitlab.com/development/contributing/
 # - Documentation Guide: https://docs.gitlab.com/development/documentation/styleguide/
+# - Field Standardisation in Observability: https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/observability_field_standardisation/
+
 
 # This file defines custom review criteria that will be applied to specific files
 # during merge request reviews. Instructions are grouped by name and can target
@@ -94,7 +96,7 @@ instructions:
             - Group fixed-width columns together in descending size order (8-byte types first, then 4-byte, etc.)
             - Place variable-width columns (text, varchar, arrays, json, jsonb) at the end
           - Ask: "Have you ordered the columns to minimize space usage by grouping fixed-width columns together and placing variable-width columns at the end?"
-          - Remind: "Proper column ordering can significantly reduce storage requirements at scale. See: https://docs.gitlab.com/ee/development/database/ordering_table_columns.html"
+          - Remind: "Proper column ordering can significantly reduce storage requirements at scale. See: https://docs.gitlab.com/development/database/ordering_table_columns/"
       14. For migrations that drop or replace an index:
           - Remind: "Before removing an index, verify queries can use other existing indexes efficiently. Confirm the index is unused on GitLab.com and Self-Managed."
           - Suggest: "For investigating index usage you can start by gathering all the metadata available for the index. For GitLab.com, you can view index usage data in [Grafana](https://dashboards.gitlab.net/goto/TsYVxcBHR?orgId=1)"
@@ -190,3 +192,15 @@ instructions:
       - "db/schema_migrations/**/*"
     instructions: |
       1. These files are auto-generated and do not require a newline at the end of the file - do not flag missing newlines
+
+  - name: Log Field Standards
+    fileFilters:
+      - "**/*.rb"
+    instructions: |
+      Backend engineers should be complying with the new field standardisation in observability best practices
+      1. For any log lines that have been altered:
+        - Ask: "If you are adding or modifying fields, please ensure that the field is defined within the LabKit Ruby Fields module engineers should follow Field Standardisation Guidelines - https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/observability_field_standardisation/
+        - Remind: "Common logging fields should be defined within the LabKit Ruby fields module - https://gitlab.com/gitlab-org/ruby/gems/labkit-ruby/-/blob/master/lib/labkit/fields.rb?ref_type=heads and imported from there."
+      2. For any new fields being added to log messages:
+        - Check to ensure that these fields are not dynamically generated
+        - Remind: "We're aiming to standardise the fields that we emit across all of our services at GitLab through this approach"

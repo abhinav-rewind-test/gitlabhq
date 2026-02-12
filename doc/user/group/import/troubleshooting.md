@@ -36,6 +36,34 @@ entities.where(status: [-1]).pluck(:destination_name, :destination_namespace, :s
 You can also see all migrated entities with any failures related to them using an
 [API endpoint](../../../api/bulk_imports.md#list-all-group-or-project-migration-entities).
 
+## Migrations are slow or timing out
+
+If you're experiencing very slow migrations or [timeouts](../../../administration/instance_limits.md#direct-transfer-migration)
+during migrations, use these strategies to reduce migration duration.
+
+### Add Sidekiq workers to the destination instance
+
+If migrating to a GitLab Self-Managed instance, to speed up migrations, you can add Sidekiq workers to the destination
+instance. When increasing the number of Sidekiq workers, you must take into account that:
+
+- A single direct transfer migration migrates five groups or projects at a time, regardless of the number of Sidekiq
+  workers available on the destination instance.
+- The destination instance must have the capacity to handle more concurrent jobs. If so, adding more Sidekiq workers can
+  reduce the time it takes to import each group or project.
+
+For more information about how to add Sidekiq workers to the destination instance, see
+[Sidekiq configuration for imports](../../../administration/sidekiq/configuration_for_imports.md).
+
+### Start separate migrations
+
+You can experience delays and potential timeouts if the source instance doesn't have the resources to export five
+groups in parallel. When the source instance is under-resourced, the destination instance must wait for exported data to
+become available.
+
+To reduce delays caused by parallel exports, start a separate migration for each group instead of
+all groups and projects at the same time. Because the GitLab UI can only migrate top-level groups, you might need to
+use the API to migrate projects in their subgroups.
+
 ## Stale imports
 
 Migrations might stall or finish with a `timeout` status due to issues on the source or destination instance.
@@ -203,3 +231,22 @@ To resolve this issue:
 - Check that your Ingress is configured to route traffic through
   GitLab Workhorse on port `8181` rather than directly to Puma.
 - Consider enabling [proxy downloads](../../../administration/object_storage.md#proxy-download) for object storage.
+
+## Milestone titles appended with `(imported-xx-datetime)`
+
+When importing a group, if any group and project milestone titles [clash with existing titles](../../../user/project/milestones/_index.md#milestone-title-rules) in the destination namespace, the imported milestones have
+a unique suffix appended to their title. For example, `18.0 (imported-3d-1770206299)`.
+
+To identify these milestones, search the `log/importer.log` file on the destination instance for the following:
+
+```plaintext
+Updating milestone title - source title used by existing group or project milestone
+```
+
+The log entry includes:
+
+- `importable_id`: The ID of the group being imported.
+- `milestone_title`: The title of the milestone being renamed.
+- `existing_group_id` or `existing_project_id`: The ID of the group or project that contains the existing milestone.
+
+With this information, you can locate the milestone and update the title to something you prefer.

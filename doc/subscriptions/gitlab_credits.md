@@ -9,7 +9,7 @@ title: GitLab Credits and usage billing
 {{< details >}}
 
 - Tier: Premium, Ultimate
-- Offering: GitLab.com, GitLab Self-Managed
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
 {{< /details >}}
 
@@ -103,6 +103,19 @@ GitLab Credits are consumed in the following order:
 1. On-Demand credits are used after all other available credits
    (included credits and Monthly Commitment Pool, if applicable) are depleted and usage billing terms are signed.
 
+## Temporary evaluation credits
+
+If you have not purchased the Monthly Commitment Pool or accepted the usage billing terms for On-Demand credits,
+you can request a free temporary pool of credits to evaluate GitLab Duo Agent Platform features.
+
+Credits are allocated based on the number of users you request for the evaluation,
+and added to a shared pool for those users.
+Credits are valid for 30 days, and cannot be used after they expire.
+
+To request credits, [contact the Sales team](https://about.gitlab.com/sales/).
+
+If you're on the Free tier and want to try credits, you can start an [Ultimate trial](free_trials.md).
+
 ## Buy GitLab Credits
 
 You can buy GitLab Credits for your Monthly Commitment Pool in Customers Portal.
@@ -173,29 +186,34 @@ For subsidized models with basic integration:
 
 | Model | Requests with one credit |
 |-------|------------------------|
-| gpt-5-mini | 8.0 |
-| gemini-2.5-flash | 8.0 |
-| codestral-2501 | 8.0 |
-| claude-3-haiku | 8.0 |
-| gemini-2.0-flash-lite | 8.0 |
+| `claude-3-haiku` | 8.0 |
+| `codestral-2501` | 8.0 |
+| `gemini-2.0-flash-lite` | 8.0 |
+| `gemini-2.5-flash` | 8.0 |
+| `gpt-5-mini` | 8.0 |
 
 For premium models with optimized integration:
 
 | Model | Requests with one credit |
 |-------|------------------------|
-| claude-4.5-haiku (default Agentic Chat model) | 6.7 |
-| gpt-5-codex | 3.3|
-| gpt-5 | 3.3 |
-| gpt-5.2 | 2.5 |
-| claude-3.7-sonnet | 2.0 |
-| claude-3.5-sonnet | 2.0 |
-| claude-sonnet-4 <=200k tokens (default model) | 2.0 |
-| claude-sonnet-4 >200k tokens | 1.1 |
-| claude-sonnet-4.5 <=200k tokens | 2.0 |
-| claude-sonnet-4.5 >200k tokens | 1.1 |
-| claude-opus-4.5 | 1.2 |
-| claude-opus-4.6 <=200k tokens | 1.7 |
-| claude-opus-4.6 >200k tokens | 2.9 |
+| `claude-4.5-haiku` (default Agentic Chat model) | 6.7 |
+| `gpt-5-codex` | 3.3|
+| `gpt-5` | 3.3 |
+| `gpt-5.2` | 2.5 |
+| `claude-3.5-sonnet` | 2.0 |
+| `claude-3.7-sonnet` | 2.0 |
+| `claude-sonnet-4` <sup>1</sup> (default model) | 2.0 |
+| `claude-sonnet-4.5` <sup>1</sup> | 2.0 |
+| `claude-opus-4.5` | 1.2 |
+| `claude-opus-4.6` <sup>1</sup> | 1.2 |
+| `claude-sonnet-4` <sup>2</sup> | 1.1 |
+| `claude-sonnet-4.5` <sup>2</sup> | 1.1 |
+| `claude-opus-4.6` <sup>2</sup> | 0.7 |
+
+**Footnotes**:
+
+1. Prompts with up to 200,000 tokens.
+1. Prompts with more than 200,000 tokens.
 
 ### Features
 

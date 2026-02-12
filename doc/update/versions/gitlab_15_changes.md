@@ -55,11 +55,11 @@ In GitLab 15.11, PostgreSQL will automatically be upgraded to 13.x except for th
 
 - You are running the database in high availability using Patroni.
 - Your database nodes are part of a GitLab Geo configuration.
-- You have specifically [opted out](https://docs.gitlab.com/omnibus/settings/database.html#opt-out-of-automatic-postgresql-upgrades) from automatically upgrading PostgreSQL.
+- You have specifically [opted out](https://docs.gitlab.com/omnibus/settings/database/#opt-out-of-automatic-postgresql-upgrades) from automatically upgrading PostgreSQL.
 - You have `postgresql['version'] = 12` in your `/etc/gitlab/gitlab.rb`.
 
 Fault-tolerant and Geo installations support manual upgrades to PostgreSQL 13,
-see [Packaged PostgreSQL deployed in an HA/Geo Cluster](https://docs.gitlab.com/omnibus/settings/database.html#packaged-postgresql-deployed-in-an-hageo-cluster).
+see [Packaged PostgreSQL deployed in an HA/Geo Cluster](https://docs.gitlab.com/omnibus/settings/database/#packaged-postgresql-deployed-in-an-hageo-cluster).
 
 ### Geo installations
 
@@ -451,7 +451,7 @@ if you can't upgrade to 15.11.12 and later.
   respect the typical rules of shell variable expansion. There was also the potential
   that secrets or sensitive information could leak if the file variable and its
   contents printed. For example, if they were printed in an echo output. For more information,
-  see [Understanding the file type variable expansion change in GitLab 15.7](https://about.gitlab.com/blog/2023/02/13/impact-of-the-file-type-variable-change-15-7/).
+  see [Understanding the file type variable expansion change in GitLab 15.7](https://about.gitlab.com/blog/impact-of-the-file-type-variable-change-15-7/).
 - The `no_proxy` [custom environment variable](https://docs.gitlab.com/omnibus/settings/environment-variables.md) in the Linux package (Omnibus)
   might not work properly due to a bug in the [version of cURL](https://github.com/curl/curl/issues/10122) included with GitLab 15.4.6.
   This issue causes all wildcard domains (like `.example.com`) to be ignored except for the last one listed in the `no_proxy` variable.
@@ -630,7 +630,7 @@ if you can't upgrade to 15.11.12 and later.
 
 In GitLab 15.6, the [PostgreSQL versions shipped with `omnibus-gitlab` packages](../../administration/package_information/postgresql_versions.md)
 have been upgraded to 12.12 and 13.8. Unless
-[explicitly opted out](https://docs.gitlab.com/omnibus/settings/database.html#automatic-restart-when-the-postgresql-version-changes),
+[explicitly opted out](https://docs.gitlab.com/omnibus/settings/database/#automatic-restart-when-the-postgresql-version-changes),
 this can cause an automatic restart of the PostgreSQL service, and can
 potentially cause downtime.
 
@@ -1072,14 +1072,14 @@ A [license caching issue](https://gitlab.com/gitlab-org/gitlab/-/issues/376706) 
   - Use `gitaly['custom_hooks_dir']` in `gitlab.rb` for Linux package instances. This replaces `gitlab_shell['custom_hooks_dir']`.
 - PostgreSQL 13.6 is being shipped as the default version for fresh installs and
   12.10 for upgrades. You can manually upgrade to PostgreSQL 13.6 following the
-  [upgrade docs](https://docs.gitlab.com/omnibus/settings/database.html#upgrade-packaged-postgresql-server) with:
+  [upgrade docs](https://docs.gitlab.com/omnibus/settings/database/#upgrade-packaged-postgresql-server) with:
 
   ```shell
   sudo gitlab-ctl pg-upgrade -V 13
   ```
 
   Until PostgreSQL 12 is removed, you may
-  [pin the PostgreSQL version](https://docs.gitlab.com/omnibus/settings/database.html#pin-the-packaged-postgresql-version-fresh-installs-only)
+  [pin the PostgreSQL version](https://docs.gitlab.com/omnibus/settings/database/#pin-the-packaged-postgresql-version-fresh-installs-only)
   if needed for compatibility or test environment reasons.
 
   [Fault tolerant and Geo installations require additional steps and planning](../../administration/postgresql/replication_and_failover.md#upgrading-postgresql-major-version-in-a-patroni-cluster).
@@ -1098,7 +1098,7 @@ A [license caching issue](https://gitlab.com/gitlab-org/gitlab/-/issues/376706) 
   ```
 
   If PostgreSQL is not restarted, you might face
-  [errors related to loading libraries](https://docs.gitlab.com/omnibus/settings/database.html#could-not-load-library-plpgsqlso).
+  [errors related to loading libraries](https://docs.gitlab.com/omnibus/settings/database/#could-not-load-library-plpgsqlso).
 
 - Starting with GitLab 15.0, `postgresql` and `geo-postgresql` services are
   automatically restarted when the PostgreSQL version changes. Restarting
@@ -1130,7 +1130,7 @@ A [license caching issue](https://gitlab.com/gitlab-org/gitlab/-/issues/376706) 
   {{< alert type="note" >}}
 
   It is mandatory to restart PostgreSQL when underlying version changes, to avoid
-  errors like the [one related to loading necessary libraries](https://docs.gitlab.com/omnibus/settings/database.html#could-not-load-library-plpgsqlso)
+  errors like the [one related to loading necessary libraries](https://docs.gitlab.com/omnibus/settings/database/#could-not-load-library-plpgsqlso)
   that can cause downtime. So, if you skip the automatic restarts using the previous
   method, ensure that you restart the services manually before upgrading to GitLab
   15.0.

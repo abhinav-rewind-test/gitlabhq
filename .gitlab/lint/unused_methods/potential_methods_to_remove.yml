@@ -249,16 +249,13 @@ app/models/issue.rb:
 app/models/jira_import_state.rb:
 - non_initial?
 app/models/merge_request.rb:
-- head_pipeline_active?
 - diff_base_commit
 - diff_start_commit
-- reopenable?
 - can_be_closed?
 - find_assignee
 app/models/merge_request_diff.rb:
 - migrate_files_to_database!
 app/models/namespace.rb:
-- send_update_instructions
 - any_project_with_pages_deployed?
 - saved_change_to_parent?
 - saved_change_to_path_or_parent?
@@ -268,7 +265,6 @@ app/models/project.rb:
 - import_scheduled?
 - updating_remote_mirror?
 - issue_exists?
-- latest_successful_pipeline_for
 - enable_ci
 - valid_runners_token?
 - storage_upgradable?
@@ -290,15 +286,10 @@ app/models/todo.rb:
 - for_ssh_key?
 - self_assigned?
 app/models/user.rb:
-- inactive_message
-- will_save_change_to_login?
-- reset_password_by_token
-- unlock_access_by_token
+- legacy_otp_secret
 ee/app/models/ai/duo_code_review.rb:
 - classic?
 ee/app/models/concerns/ai/user_authorizable.rb:
 - any_group_with_ai_available?
 app/models/ci/stage.rb:
 - update_legacy_status
-app/models/work_items/types_framework/custom/type.rb:
-- icon_name_with_prefix

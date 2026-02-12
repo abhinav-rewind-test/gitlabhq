@@ -21,8 +21,8 @@ See [the general developer security guidelines](https://gitlab.com/gitlab-org/re
 - [ ] For the MR targeting `master`:
   - [ ] Assign to a reviewer and maintainer, per our [Code Review process].
   - [ ] Ensure it's approved according to our [Approval Guidelines].
-  - [ ] Ensure it's approved by an AppSec engineer.
-    - Please see the security [Code reviews and Approvals] documentation for details on which AppSec team member to ping for approval.
+  - [ ] Ensure it's approved by a PSIRT engineer.
+    - Please see the security [Code reviews and Approvals] documentation for details on which PSIRT team member to ping for approval.
 - [ ] For a backport MR targeting a versioned stable branch (`X-Y-stable-ee`).
   - [ ] Ensure it's approved by the same maintainer that reviewed and approved the merge request targeting the default branch.
 - [ ] Ensure this merge request and the related security issue have a `~severity::x` label
@@ -47,6 +47,6 @@ See [the general developer security guidelines](https://gitlab.com/gitlab-org/re
 [Code reviews and Approvals]: https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/security/engineer.md#code-reviews-and-approvals
 [Approval Guidelines]: https://docs.gitlab.com/development/code_review/#approval-guidelines
 [Canonical repository]: https://gitlab.com/gitlab-org/gitlab
-[`e2e:test-on-omnibus-ee` job]: https://docs.gitlab.com/ee/development/testing_guide/end_to_end/#using-the-test-on-omnibus-job
+[`e2e:test-on-omnibus-ee` job]: https://docs.gitlab.com/development/testing_guide/end_to_end/#using-the-test-on-omnibus-job
 [Release Manager]: https://about.gitlab.com/community/release-managers/
 [security implementation issue]: https://gitlab.com/gitlab-org/release/docs/blob/master/general/security/engineer.md#security-implementation-issue

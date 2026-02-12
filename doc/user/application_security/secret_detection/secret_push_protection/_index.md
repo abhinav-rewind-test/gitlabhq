@@ -99,7 +99,7 @@ Secret push protection is allowed on the instance. To use this feature, you must
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - On GitLab Dedicated and GitLab Self-Managed, you must allow secret push protection on the instance.
 
 To enable secret push protection in a project:
@@ -132,6 +132,7 @@ Secret push protection does not check a file in a commit when:
 - The file was renamed, deleted, or moved without changes to the content.
 - The content of the file is identical to the content of another file in the source code.
 - The file is contained in the initial push that created the repository.
+- The push contains more than 350,000 changed lines in total.
 
 ### Diff scanning
 
@@ -150,9 +151,9 @@ If a secret is already present in a file and not part of the changes, it is not 
 
 ## Push size threshold
 
-Secret push protection is skipped when a push changes more than 3,150 paths. The threshold applies
-only to files that secret push protection scans (after excluding paths defined in [exclusions](../exclusions.md)).
-This threshold prevents push timeouts when you push large changesets.
+Secret push protection is skipped when a push changes more than 3,150 paths or 350,000 lines.
+The thresholds apply only to files that secret push protection scans (after excluding paths defined in
+[exclusions](../exclusions.md)). These thresholds prevent push timeouts when you push large changesets.
 
 ## Understanding the results
 

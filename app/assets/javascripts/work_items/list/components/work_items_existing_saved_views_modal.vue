@@ -6,8 +6,13 @@ import {
   GlIcon,
   GlTooltipDirective,
   GlLoadingIcon,
+  GlLink,
+  GlAlert,
 } from '@gitlab/ui';
 import { s__ } from '~/locale';
+import { ROUTES } from '~/work_items/constants';
+import { subscribeToSavedView } from 'ee_else_ce/work_items/list/utils';
+import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import getNamespaceSavedViewsQuery from '../graphql/work_item_saved_views_namespace.query.graphql';
 
@@ -19,6 +24,8 @@ export default {
     GlButton,
     GlIcon,
     GlLoadingIcon,
+    GlLink,
+    GlAlert,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -33,6 +40,10 @@ export default {
     notFound: s__('WorkItem|No results found'),
     notFoundDescription: s__('WorkItem|Edit your search and try again.'),
     privateTooltip: s__('WorkItem|Private: only you can see and edit this view.'),
+    subscriptionLimitWarningMessage: s__(
+      'WorkItem|You have reached the maximum number of views in your list. If you add a view, the last view in your list will be removed.',
+    ),
+    learnMoreAboutViewLimits: s__('WorkItem|Learn more about view limits.'),
   },
   model: {
     prop: 'show',
@@ -47,12 +58,20 @@ export default {
       type: String,
       required: true,
     },
+    showSubscriptionLimitWarning: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
+  // TODO: Add 'view-subscribed' emit once subscribe functionality is implemented
+  // See: https://gitlab.com/gitlab-org/gitlab/-/work_items/588295
   emits: ['hide', 'show-new-view-modal'],
   data() {
     return {
       searchInput: '',
       savedViews: [],
+      error: undefined,
     };
   },
   apollo: {
@@ -87,8 +106,8 @@ export default {
         return this.savedViews;
       }
 
-      return this.savedViews.filter(({ title, description }) =>
-        [title, description].some((field) =>
+      return this.savedViews.filter(({ name, description }) =>
+        [name, description].some((field) =>
           field?.toLowerCase().includes(this.searchInput.trim().toLowerCase()),
         ),
       );
@@ -106,9 +125,39 @@ export default {
       this.$emit('hide', false);
       this.$emit('show-new-view-modal');
     },
+    async redirectToView(view) {
+      const viewId = getIdFromGraphQLId(view.id).toString();
+
+      if (!view.subscribed) {
+        const mutationKey = 'workItemSavedViewSubscribe';
+        try {
+          const { data } = await subscribeToSavedView({
+            view,
+            cache: this.$apollo,
+            fullPath: this.fullPath,
+          });
+
+          if (data[mutationKey].errors?.length) {
+            this.error = s__(
+              'WorkItem|An error occurred while subscribing to the view. Please try again.',
+            );
+            return;
+          }
+        } catch (e) {
+          this.error = s__(
+            'WorkItem|An error occurred while subscribing to the view. Please try again.',
+          );
+          return;
+        }
+      }
+
+      this.$router.push({ name: ROUTES.savedView, params: { view_id: viewId }, query: undefined });
+      this.hideModal();
+    },
   },
 };
 </script>
+
 <template>
   <gl-modal
     modal-id="add-existing-view-modal"
@@ -122,14 +171,26 @@ export default {
     @shown="focusSearchInput"
     @hide="hideModal"
   >
+    <div
+      v-if="showSubscriptionLimitWarning"
+      class="gl-mb-4 gl-flex gl-gap-3 gl-rounded-base gl-bg-orange-50 gl-p-3"
+    >
+      <gl-icon name="warning" :size="16" class="gl-mt-1 gl-shrink-0 gl-text-orange-500" />
+      <span class="gl-text-sm">
+        {{ $options.i18n.subscriptionLimitWarningMessage }}
+        <gl-link href="#" target="_blank">
+          {{ $options.i18n.learnMoreAboutViewLimits }}
+        </gl-link>
+      </span>
+    </div>
     <gl-search-box-by-type
       ref="savedViewSearch"
       v-model="searchInput"
       :disabled="!hasSavedViews"
+      autofocus
       :placeholder="$options.i18n.searchPlaceholder"
     />
     <gl-loading-icon v-if="isLoading" class="gl-mt-5" size="lg" />
-
     <template v-if="!hasSavedViews">
       <div class="gl-mt-4 gl-pb-7 gl-text-center">
         <h3 class="gl-mb-2 gl-text-lg gl-text-default">
@@ -157,12 +218,17 @@ export default {
     </template>
 
     <template v-else>
+      <div v-if="error" class="gl-mt-5">
+        <gl-alert variant="danger" @dismiss="error = undefined">
+          {{ error }}
+        </gl-alert>
+      </div>
       <ul class="gl-mb-3 gl-mt-[6px] gl-max-h-[25rem] gl-overflow-scroll gl-p-0 gl-px-1">
         <li v-for="view in filteredViews" :key="view.id" class="gl-my-1">
           <button
-            class="saved-view-item gl-flex gl-w-full gl-cursor-pointer gl-rounded-base gl-border-none gl-px-4 gl-py-3 hover:gl-bg-gray-50 focus:gl-bg-gray-50"
+            class="saved-view-item gl-flex gl-min-h-[36px] gl-w-full gl-cursor-pointer gl-rounded-base gl-border-none gl-px-4 gl-py-3 hover:gl-bg-gray-50 focus:gl-bg-gray-50"
             data-testid="saved-view-item"
-            @click="hideModal"
+            @click="redirectToView(view)"
           >
             <gl-icon name="list-bulleted" class="gl-mr-3 gl-shrink-0" variant="subtle" />
             <span class="gl-text-start">

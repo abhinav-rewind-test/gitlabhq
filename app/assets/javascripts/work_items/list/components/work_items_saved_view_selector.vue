@@ -5,6 +5,7 @@ import {
   GlIcon,
   GlDisclosureDropdownGroup,
   GlButton,
+  GlTooltipDirective,
 } from '@gitlab/ui';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { __, s__, sprintf } from '~/locale';
@@ -24,6 +25,9 @@ export default {
     GlButton,
     WorkItemsNewSavedViewModal,
   },
+  directives: {
+    GlTooltip: GlTooltipDirective,
+  },
   inject: ['isGroup'],
   props: {
     savedView: {
@@ -37,6 +41,16 @@ export default {
     sortKey: {
       type: String,
       required: true,
+    },
+    filters: {
+      type: Object,
+      required: false,
+      default: () => {},
+    },
+    displaySettings: {
+      type: Object,
+      required: false,
+      default: () => {},
     },
   },
   emits: ['unsubscribe-saved-view', 'delete-saved-view'],
@@ -64,10 +78,6 @@ export default {
   methods: {
     editView() {
       this.isNewViewModalVisible = true;
-    },
-    duplicateView() {
-      // TODO: replace this with logic to duplicate a view
-      return '';
     },
     async copyViewLink() {
       try {
@@ -109,10 +119,12 @@ export default {
   <div data-testid="selector-wrapper">
     <gl-disclosure-dropdown
       v-if="isViewActive"
+      v-gl-tooltip="savedView.name"
       category="tertiary"
       :toggle-text="savedView.name"
       auto-close
       class="saved-view-selector saved-view-selector-active !gl-h-full !gl-rounded-none"
+      toggle-class="gl-max-w-15 md:gl-max-w-30 gl-truncate"
       data-testid="saved-view-selector"
     >
       <gl-disclosure-dropdown-item
@@ -123,13 +135,6 @@ export default {
         <template #list-item>
           <gl-icon name="pencil" class="gl-mr-2" variant="subtle" />
           {{ s__('WorkItem|Edit') }}
-        </template>
-      </gl-disclosure-dropdown-item>
-
-      <gl-disclosure-dropdown-item data-testid="duplicate-action" @action="duplicateView">
-        <template #list-item>
-          <gl-icon name="copy-to-clipboard" class="gl-mr-2" variant="subtle" />
-          {{ s__('WorkItem|Duplicate') }}
         </template>
       </gl-disclosure-dropdown-item>
 
@@ -163,9 +168,10 @@ export default {
     </gl-disclosure-dropdown>
     <gl-button
       v-else
+      v-gl-tooltip="savedView.name"
       category="tertiary"
       :to="viewLink"
-      class="saved-view-selector gl-h-full !gl-rounded-none"
+      class="saved-view-selector gl-h-full gl-max-w-15 gl-truncate !gl-rounded-none md:gl-max-w-30"
     >
       {{ savedView.name }}
     </gl-button>
@@ -174,6 +180,8 @@ export default {
       :saved-view="savedView"
       :full-path="fullPath"
       :sort-key="sortKey"
+      :filters="filters"
+      :display-settings="displaySettings"
       @hide="isNewViewModalVisible = false"
     />
   </div>

@@ -6,6 +6,16 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
   let(:merge_request) { create(:merge_request) }
   let(:project) { merge_request.project }
 
+  describe 'factory test' do
+    it 'creates merge_request_commits_metadata accordingly', :aggregate_failures do
+      created_mrdc = create(:merge_request_diff_commit)
+      built_mrdc = build(:merge_request_diff_commit)
+
+      expect(created_mrdc.merge_request_commits_metadata).to be_present
+      expect(built_mrdc.merge_request_commits_metadata).to be_present
+    end
+  end
+
   it_behaves_like 'a BulkInsertSafe model', described_class do
     let(:valid_items_for_bulk_insertion) do
       build_list(:merge_request_diff_commit, 10) do |mr_diff_commit|
@@ -269,16 +279,6 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
               .not_to change { MergeRequest::CommitsMetadata.count }
           end
         end
-
-        context 'when merge_request_diff_commits_dedup is disabled' do
-          before do
-            stub_feature_flags(merge_request_diff_commits_dedup: false)
-          end
-
-          it 'does not create merge_request_commits_metadata records' do
-            expect { create_bulk(merge_request_diff_id) }.not_to change { MergeRequest::CommitsMetadata.count }
-          end
-        end
       end
     end
 
@@ -381,7 +381,7 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
       create(
         :merge_request_diff_commit,
         merge_request_diff: merge_request_diff,
-        merge_request_commits_metadata_id: commits_metadata_1.id
+        merge_request_commits_metadata: commits_metadata_1
       )
     end
 
@@ -405,19 +405,10 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
     let_it_be(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
     let_it_be(:merge_request_diff) { create(:merge_request_diff, merge_request: merge_request) }
 
-    let_it_be(:commits_metadata) do
-      create(
-        :merge_request_commits_metadata,
-        project: project,
-        message: 'This is a commit metadata message'
-      )
-    end
-
     let_it_be(:diff_commit_with_metadata) do
       create(
         :merge_request_diff_commit,
         merge_request_diff: merge_request_diff,
-        merge_request_commits_metadata_id: commits_metadata.id,
         commit_author: create(:merge_request_diff_commit_user),
         committer: create(:merge_request_diff_commit_user),
         authored_date: 2.days.ago,
@@ -429,7 +420,7 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
 
     let_it_be(:diff_commit_without_metadata) do
       create(
-        :merge_request_diff_commit,
+        :diff_commit_without_metadata,
         merge_request_diff: merge_request_diff,
         commit_author: create(:merge_request_diff_commit_user),
         committer: create(:merge_request_diff_commit_user),
@@ -440,6 +431,8 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
       )
     end
 
+    let_it_be(:commits_metadata) { diff_commit_with_metadata.merge_request_commits_metadata }
+
     shared_examples_for 'delegated method to merge_request_commits_metadata' do |delegated_method|
       context 'when diff commit has merge_request_commits_metadata_id' do
         it 'returns data from merge_request_commits_metadata' do
@@ -449,17 +442,6 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
           expected_method_value = expected_method_value.to_i if expected_method_value.is_a?(Time)
 
           expect(method_value).to eq(expected_method_value)
-        end
-
-        context 'when merge_request_diff_commits_dedup is disabled' do
-          before do
-            stub_feature_flags(merge_request_diff_commits_dedup: false)
-          end
-
-          it 'returns data from diff commit' do
-            expect(diff_commit_with_metadata.public_send(delegated_method))
-              .not_to eq(commits_metadata.public_send(delegated_method))
-          end
         end
       end
 

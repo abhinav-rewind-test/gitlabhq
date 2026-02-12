@@ -5,6 +5,7 @@ import VueApollo from 'vue-apollo';
 import MockAdapter from 'axios-mock-adapter';
 import VueRouter from 'vue-router';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import { makeMockUserCalloutDismisser } from 'helpers/mock_user_callout_dismisser';
 import axios from '~/lib/utils/axios_utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import IssueCardStatistics from 'ee_else_ce/work_items/list/components/issue_card_statistics.vue';
@@ -77,6 +78,8 @@ import hasWorkItemsQuery from '~/work_items/list/graphql/has_work_items.query.gr
 import getWorkItemsCountOnlyQuery from 'ee_else_ce/work_items/list/graphql/get_work_items_count_only.query.graphql';
 import WorkItemDrawer from '~/work_items/components/work_item_drawer.vue';
 import NewResourceDropdown from '~/vue_shared/components/new_resource_dropdown/new_resource_dropdown.vue';
+import WorkItemsOnboardingModal from '~/work_items/components/work_items_onboarding_modal/work_items_onboarding_modal.vue';
+import UserCalloutDismisser from '~/vue_shared/components/user_callout_dismisser.vue';
 import {
   CREATION_CONTEXT_LIST_ROUTE,
   DETAIL_VIEW_QUERY_PARAM_NAME,
@@ -89,6 +92,7 @@ import {
 import { routes } from '~/work_items/router/routes';
 import workItemsReorderMutation from '~/work_items/graphql/work_items_reorder.mutation.graphql';
 import { isLoggedIn } from '~/lib/utils/common_utils';
+import { saveSavedView } from 'ee_else_ce/work_items/list/utils';
 import {
   workItemsQueryResponseCombined,
   workItemsQueryResponseNoLabels,
@@ -112,6 +116,10 @@ jest.mock('~/alert');
 jest.mock('~/lib/utils/common_utils');
 jest.mock('~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal', () => ({
   confirmAction: jest.fn().mockResolvedValue(true),
+}));
+jest.mock('ee_else_ce/work_items/list/utils', () => ({
+  ...jest.requireActual('ee_else_ce/work_items/list/utils'),
+  saveSavedView: jest.fn(),
 }));
 
 const showToast = jest.fn();
@@ -148,6 +156,9 @@ const mockSavedViewsData = [
     description: 'Only I can see this',
     isPrivate: true,
     subscribed: true,
+    filters: {},
+    displaySettings: {},
+    sort: CREATED_DESC,
     userPermissions: {
       updateSavedView: true,
       deleteSavedView: true,
@@ -249,6 +260,7 @@ const findSaveViewButton = () => wrapper.findByTestId('save-view-button');
 const findResetViewButton = () => wrapper.findByTestId('reset-view-button');
 const findUpdateViewButton = () => wrapper.findByTestId('update-view-button');
 const findNewSavedViewModal = () => wrapper.findComponent(WorkItemsNewSavedViewModal);
+const findWorkItemsOnboardingModal = () => wrapper.findComponent(WorkItemsOnboardingModal);
 
 const mountComponent = ({
   provide = {},
@@ -353,6 +365,7 @@ const mountComponent = ({
       newIssuePath: '',
       workItemPlanningViewEnabled: false,
       workItemsSavedViewsEnabled,
+      subscribedSavedViewLimit: 5,
       ...provide,
     },
     propsData: {
@@ -512,6 +525,93 @@ describe('when work items are fetched', () => {
 
     it('does not display error alert when there is no error', () => {
       expect(findGlAlert().exists()).toBe(false);
+    });
+  });
+
+  describe('work items onboarding modal', () => {
+    describe('when workItemPlanningView flag and workItemsSavedViewsEnabled are enabled', () => {
+      describe('when user has not seen the modal before', () => {
+        it('renders the onboarding modal', async () => {
+          mountComponent({
+            workItemPlanningView: true,
+            workItemsSavedViewsEnabled: true,
+            stubs: {
+              WorkItemBulkEditSidebar: true,
+              UserCalloutDismisser: makeMockUserCalloutDismisser({
+                shouldShowCallout: true,
+              }),
+            },
+          });
+          await waitForPromises();
+
+          expect(findWorkItemsOnboardingModal().exists()).toBe(true);
+        });
+
+        it('calls dismiss when modal emits close event', async () => {
+          const dismissSpy = jest.fn();
+
+          mountComponent({
+            workItemPlanningView: true,
+            workItemsSavedViewsEnabled: true,
+            stubs: {
+              WorkItemBulkEditSidebar: true,
+              UserCalloutDismisser: makeMockUserCalloutDismisser({
+                shouldShowCallout: true,
+                dismiss: dismissSpy,
+              }),
+            },
+          });
+          await waitForPromises();
+
+          const modal = findWorkItemsOnboardingModal();
+          modal.vm.$emit('close');
+          await nextTick();
+
+          expect(dismissSpy).toHaveBeenCalled();
+        });
+      });
+
+      describe('when user has already dismissed the modal', () => {
+        it('does not render the onboarding modal', async () => {
+          mountComponent({
+            workItemPlanningView: true,
+            workItemsSavedViewsEnabled: true,
+            stubs: {
+              WorkItemBulkEditSidebar: true,
+              UserCalloutDismisser: makeMockUserCalloutDismisser({
+                shouldShowCallout: false,
+              }),
+            },
+          });
+          await waitForPromises();
+
+          expect(findWorkItemsOnboardingModal().exists()).toBe(false);
+        });
+      });
+    });
+
+    describe('when workItemPlanningView flag is disabled', () => {
+      it('does not render UserCalloutDismisser', async () => {
+        mountComponent({
+          workItemPlanningView: false,
+          workItemsSavedViewsEnabled: true,
+        });
+        await waitForPromises();
+
+        expect(wrapper.findComponent(UserCalloutDismisser).exists()).toBe(false);
+      });
+    });
+
+    describe('when workItemsSavedViewsEnabled flag is disabled', () => {
+      it('does not render UserCalloutDismisser', async () => {
+        mountComponent({
+          workItemPlanningView: true,
+          workItemsSavedViewsEnabled: false,
+        });
+        await waitForPromises();
+
+        expect(wrapper.findComponent(UserCalloutDismisser).exists()).toBe(false);
+      });
     });
   });
 
@@ -2227,7 +2327,7 @@ describe('when workItemsSavedViewsEnabled flag is enabled', () => {
       findIssuableList().vm.$emit('filter', [
         { type: TOKEN_TYPE_AUTHOR, value: { data: 'homer', operator: OPERATOR_IS } },
       ]);
-      await nextTick();
+      await waitForPromises();
 
       findResetViewButton().vm.$emit('click');
       await nextTick();
@@ -2237,26 +2337,85 @@ describe('when workItemsSavedViewsEnabled flag is enabled', () => {
       expect(localStorage.removeItem).toHaveBeenCalledWith('full/path-saved-view-3');
     });
 
-    it('prompts for confirmation when clicking "Save changes"', async () => {
-      findIssuableList().vm.$emit('filter', [
-        { type: TOKEN_TYPE_AUTHOR, value: { data: 'homer', operator: OPERATOR_IS } },
-      ]);
-      await nextTick();
+    describe('when "Save changes" is clicked', () => {
+      beforeEach(async () => {
+        findIssuableList().vm.$emit('filter', [
+          { type: TOKEN_TYPE_AUTHOR, value: { data: 'homer', operator: OPERATOR_IS } },
+        ]);
 
-      findUpdateViewButton().vm.$emit('click');
-      await nextTick();
-      await waitForPromises();
+        await nextTick();
+      });
 
-      expect(confirmAction).toHaveBeenCalledWith(
-        null,
-        expect.objectContaining({
-          title: 'Save changes to Current sprint 3?',
-          modalHtmlMessage: expect.stringContaining(
-            'Changes will be applied for anyone else who has access to the view.',
-          ),
-          primaryBtnText: 'Save changes',
-        }),
-      );
+      it('prompts for confirmation', async () => {
+        await findUpdateViewButton().vm.$emit('click');
+
+        expect(confirmAction).toHaveBeenCalledWith(
+          null,
+          expect.objectContaining({
+            title: 'Save changes to Current sprint 3?',
+            modalHtmlMessage: expect.stringContaining(
+              'Changes will be applied for anyone else who has access to the view.',
+            ),
+            primaryBtnText: 'Save changes',
+          }),
+        );
+      });
+
+      it('calls saveSavedView when user confirms', async () => {
+        saveSavedView.mockResolvedValue({
+          data: {
+            workItemSavedViewUpdate: {
+              errors: [],
+              savedView: singleSavedView[0],
+            },
+          },
+        });
+
+        await findUpdateViewButton().vm.$emit('click');
+
+        await waitForPromises();
+
+        expect(saveSavedView).toHaveBeenCalledTimes(1);
+
+        expect(showToast).toHaveBeenCalledWith('View has been saved.');
+      });
+
+      it('sets error when mutation returns errors', async () => {
+        saveSavedView.mockResolvedValue({
+          data: {
+            workItemSavedViewUpdate: {
+              errors: ['Something went wrong'],
+              savedView: null,
+            },
+          },
+        });
+
+        await findUpdateViewButton().vm.$emit('click');
+
+        await waitForPromises();
+
+        expect(findGlAlert().text()).toBe('Something went wrong while saving the view');
+      });
+
+      it('sets error when mutation throws error', async () => {
+        saveSavedView.mockRejectedValue(new Error('Network error'));
+
+        await findUpdateViewButton().vm.$emit('click');
+
+        await waitForPromises();
+
+        expect(findGlAlert().text()).toBe('Something went wrong while saving the view');
+      });
+
+      it('does not call saveSavedView when user cancels', async () => {
+        confirmAction.mockResolvedValue(false);
+
+        await findUpdateViewButton().vm.$emit('click');
+
+        await waitForPromises();
+
+        expect(saveSavedView).not.toHaveBeenCalled();
+      });
     });
 
     it('persists unsaved changes to localStorage', async () => {
@@ -2281,6 +2440,49 @@ describe('when workItemsSavedViewsEnabled flag is enabled', () => {
       await nextTick();
 
       expect(findIssuableList().props('initialSortBy')).toBe(CREATED_DESC);
+    });
+  });
+
+  describe('subscription limit warning', () => {
+    it('passes showSubscriptionLimitWarning as false to modal when not at limit', async () => {
+      mountComponent({
+        workItemPlanningView: true,
+        workItemsSavedViewsEnabled: true,
+        provide: {
+          subscribedSavedViewLimit: 10,
+        },
+      });
+      await waitForPromises();
+
+      findIssuableList().vm.$emit('filter', [
+        { type: TOKEN_TYPE_AUTHOR, value: { data: 'homer', operator: OPERATOR_IS } },
+      ]);
+      await nextTick();
+
+      await findSaveViewButton().trigger('click');
+      await nextTick();
+
+      expect(findNewSavedViewModal().props('showSubscriptionLimitWarning')).toBe(false);
+    });
+
+    it('passes showSubscriptionLimitWarning as true to modal when at limit', async () => {
+      mountComponent({
+        workItemPlanningView: true,
+        workItemsSavedViewsEnabled: true,
+        provide: {
+          subscribedSavedViewLimit: 1,
+        },
+      });
+      await waitForPromises();
+
+      findIssuableList().vm.$emit('filter', [
+        { type: TOKEN_TYPE_AUTHOR, value: { data: 'homer', operator: OPERATOR_IS } },
+      ]);
+
+      await findSaveViewButton().trigger('click');
+      await nextTick();
+
+      expect(findNewSavedViewModal().props('showSubscriptionLimitWarning')).toBe(true);
     });
   });
 });

@@ -43,7 +43,7 @@ that have the functionality you need in the [CI/CD Catalog](#cicd-catalog).
 For an introduction and hands-on examples, see [Efficient DevSecOps workflows with reusable CI/CD components](https://www.youtube.com/watch?v=-yvfSFKAgbA).
 <!-- Video published on 2024-01-22. DRI: Developer Relations, https://gitlab.com/groups/gitlab-com/marketing/developer-relations/-/epics/399 -->
 
-For common questions and additional support, see the [FAQ: GitLab CI/CD Catalog](https://about.gitlab.com/blog/2024/08/01/faq-gitlab-ci-cd-catalog/)
+For common questions and additional support, see the [FAQ: GitLab CI/CD Catalog](https://about.gitlab.com/blog/faq-gitlab-ci-cd-catalog/)
 blog post.
 
 ## Component project
@@ -150,7 +150,7 @@ Prerequisites:
 
 If you are a member of a parent group that contains the current group or project:
 
-- You must have the minimum role set by the visibility level of the project's parent group. For example, you must have at least the Reporter role if a parent project is set to **Private**.
+- You must have the minimum role set by the visibility level of the project's parent group. For example, you must have the Reporter, Developer, Maintainer, or Owner role if a parent project is set to **Private**.
 
 To add a component to a project's CI/CD configuration, use the [`include: component`](../yaml/_index.md#includecomponent)
 keyword. The component reference is formatted as `<fully-qualified-domain-name>/<project-path>/<component-name>@<specific-version>`,
@@ -661,9 +661,50 @@ in your project, you can select **CI/CD Catalog**.
 Visibility of components in the CI/CD catalog follows the component source project's
 [visibility setting](../../user/public_access.md). Components with source projects set to:
 
-- Private are visible only to users assigned at least the Guest role for the source component project. To use a component, you must have at least the Reporter role.
+- Private are visible only to users assigned the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the source component project. To use a component, you must have the Reporter, Developer, Maintainer, or Owner role.
 - Internal are visible only to users logged into the GitLab instance.
 - Public are visible to anyone with access to the GitLab instance.
+
+### View catalog resource analytics
+
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/14027) in GitLab 18.9.
+
+{{< /history >}}
+
+If you maintain CI/CD catalog resources, you can view usage analytics to understand how your components are being adopted across projects.
+
+Prerequisites:
+
+- You must have the Maintainer or Owner role for one or more catalog resource projects.
+
+To view catalog resource analytics:
+
+1. In the top bar, select **Search or go to** > **Explore**.
+1. Select **CI/CD Catalog**.
+1. Select the **Analytics** tab.
+
+The Analytics view displays the catalog resources where you have the Maintainer or Owner role.
+This view shows:
+
+- **Projects**: The catalog resource name and its latest released version.
+- **Usage statistics**: The number of unique projects that used a component from this catalog resource in a pipeline in the last 30 days.
+- **Components**: A list of components available in the latest version of the catalog resource.
+
+You can use this information to:
+
+- Identify which catalog resources are most widely adopted.
+- Track usage trends for your components over time.
+- Understand which projects are using your catalog resources.
+- Make informed decisions about component maintenance and deprecation.
 
 ### Publish a component project
 
@@ -701,7 +742,7 @@ However, publishing a component's releases in the catalog makes it discoverable 
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - The project must:
   - Be set as a [catalog project](#set-a-component-project-as-a-catalog-project).
   - Have a [project description](../../user/project/working_with_projects.md#edit-a-project) defined.

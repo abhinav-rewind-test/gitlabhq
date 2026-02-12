@@ -142,10 +142,20 @@ module Types
         null: false,
         description: 'Whether the current user can manage security attributes.'
 
+      field :security_scan_profiles_licensed,
+        GraphQL::Types::Boolean,
+        null: false,
+        description: 'Whether the project has a license for security scan profiles.'
+
       field :group_manage_attributes_path,
         GraphQL::Types::String,
         null: true,
         description: 'Path to manage group security attributes.'
+
+      field :max_tracked_refs,
+        GraphQL::Types::Int,
+        null: true,
+        description: 'Maximum number of refs that can be tracked for security scanning.'
       # rubocop:enable GraphQL/ExtractType
     end
   end

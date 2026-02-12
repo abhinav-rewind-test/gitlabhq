@@ -96,7 +96,7 @@ Further reading:
 - [Back up Git repositories concurrently](#back-up-git-repositories-concurrently).
 - [Back up and restore large reference architectures](backup_large_reference_architectures.md).
 - [Alternative backup strategies](#alternative-backup-strategies).
-- [Blog post about decreasing GitLab repository backup times](https://about.gitlab.com/blog/2025/06/05/how-we-decreased-gitlab-repo-backup-times-from-48-hours-to-41-minutes/).
+- [Blog post about decreasing GitLab repository backup times](https://about.gitlab.com/blog/how-we-decreased-gitlab-repo-backup-times-from-48-hours-to-41-minutes/).
 
 ## What data needs to be backed up?
 
@@ -207,7 +207,7 @@ You should back up the configuration directory. At the very minimum, you must ba
 - `/etc/gitlab/gitlab-secrets.json`
 - `/etc/gitlab/gitlab.rb`
 
-For more information, see [Backup and restore Linux package (Omnibus) configuration](https://docs.gitlab.com/omnibus/settings/backups.html#backup-and-restore-omnibus-gitlab-configuration).
+For more information, see [Backup and restore Linux package (Omnibus) configuration](https://docs.gitlab.com/omnibus/settings/backups/#backup-and-restore-omnibus-gitlab-configuration).
 
 {{< /tab >}}
 

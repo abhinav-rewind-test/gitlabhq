@@ -844,7 +844,7 @@ Example response:
 
 List users provisioned by a group. Does not include subgroups.
 
-Requires at least the Maintainer role on the group.
+Requires the Maintainer or Owner role on the group.
 
 ```plaintext
 GET /groups/:id/provisioned_users
@@ -1345,12 +1345,13 @@ The `default_branch_protection` attribute determines whether users with the Deve
 The `default_branch_protection_defaults` attribute describes the default branch
 protection defaults. All parameters are optional.
 
-| Key                          | Type    | Description |
-|:-----------------------------|:--------|:------------|
-| `allowed_to_push`            | array   | An array of access levels allowed to push. Supports Developer (30) or Maintainer (40). |
-| `allow_force_push`           | boolean | Allow force push for all users with push access. |
-| `allowed_to_merge`           | array   | An array of access levels allowed to merge. Supports Developer (30) or Maintainer (40). |
-| `developer_can_initial_push` | boolean | Allow developers to initial push. |
+| Key                            | Type    | Description |
+|:-------------------------------|:--------|:------------|
+| `allowed_to_push`              | array   | An array of access levels allowed to push. Supports Developer (30) or Maintainer (40). |
+| `allow_force_push`             | boolean | Allow force push for all users with push access. |
+| `allowed_to_merge`             | array   | An array of access levels allowed to merge. Supports Developer (30) or Maintainer (40). |
+| `developer_can_initial_push`   | boolean | Allow developers to initial push. |
+| `code_owner_approval_required` | boolean | Require Code Owner approval. |
 
 ### Create a subgroup
 
@@ -1487,13 +1488,9 @@ Parameters:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/481969) in GitLab 18.0 [with a flag](../administration/feature_flags/_index.md) named `archive_group`. Disabled by default. This feature is an [experiment](../policy/development_stages_support.md).
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/526771) in GitLab 18.9. Feature flag `archive_group` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
 
 Archive a group.
 
@@ -1584,13 +1581,9 @@ Example response:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/481969) in GitLab 18.0 [with a flag](../administration/feature_flags/_index.md) named `archive_group`. Disabled by default. This feature is an [experiment](../policy/development_stages_support.md).
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/526771) in GitLab 18.9. Feature flag `archive_group` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
 
 Unarchive a group.
 

@@ -1,23 +1,20 @@
-import { GlForm, GlModal, GlAlert, GlFormRadio } from '@gitlab/ui';
-import Vue from 'vue';
-import VueApollo from 'vue-apollo';
+import { nextTick } from 'vue';
+import { GlForm, GlModal, GlAlert, GlFormRadio, GlIcon, GlLink } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import createMockApollo from 'helpers/mock_apollo_helper';
 import WorkItemsNewSavedViewModal from '~/work_items/list/components/work_items_new_saved_view_modal.vue';
-import createSavedViewMutation from '~/work_items/graphql/create_saved_view.mutation.graphql';
-import updateSavedViewMutation from '~/work_items/graphql/update_saved_view.mutation.graphql';
-import { CREATED_DESC } from '~/work_items/list/constants';
+import { CREATED_DESC, UPDATED_DESC } from '~/work_items/list/constants';
 import { SAVED_VIEW_VISIBILITY } from '~/work_items/constants';
-
 import waitForPromises from 'helpers/wait_for_promises';
+import { saveSavedView } from 'ee_else_ce/work_items/list/utils';
 
-Vue.use(VueApollo);
+jest.mock('ee_else_ce/work_items/list/utils', () => ({
+  saveSavedView: jest.fn(),
+}));
 
 describe('WorkItemsNewSavedViewModal', () => {
   let wrapper;
-  let mockApollo;
 
-  const successMutationHandler = jest.fn().mockResolvedValue({
+  const successCreateResponse = {
     data: {
       workItemSavedViewCreate: {
         errors: [],
@@ -29,6 +26,7 @@ describe('WorkItemsNewSavedViewModal', () => {
           subscribed: true,
           filters: {},
           displaySettings: {},
+          sort: CREATED_DESC,
           userPermissions: {
             updateSavedView: true,
             deleteSavedView: true,
@@ -36,9 +34,9 @@ describe('WorkItemsNewSavedViewModal', () => {
         },
       },
     },
-  });
+  };
 
-  const successUpdateMutationHandler = jest.fn().mockResolvedValue({
+  const successUpdateResponse = {
     data: {
       workItemSavedViewUpdate: {
         errors: [],
@@ -50,6 +48,7 @@ describe('WorkItemsNewSavedViewModal', () => {
           subscribed: true,
           filters: {},
           displaySettings: {},
+          sort: CREATED_DESC,
           userPermissions: {
             updateSavedView: true,
             deleteSavedView: true,
@@ -57,34 +56,46 @@ describe('WorkItemsNewSavedViewModal', () => {
         },
       },
     },
-  });
+  };
+
+  const existingSavedView = {
+    id: 'gid://gitlab/WorkItems::SavedView/123',
+    name: 'Existing View',
+    description: 'Existing Description',
+    isPrivate: false,
+    subscribed: true,
+    filters: {},
+    displaySettings: {},
+    sort: CREATED_DESC,
+    userPermissions: {
+      updateSavedView: true,
+      deleteSavedView: true,
+    },
+  };
 
   const mockToastShow = jest.fn();
 
-  const createComponent = ({
-    props,
-    mutationHandler = successMutationHandler,
-    updateMutationHandler = successUpdateMutationHandler,
-    mockSavedView = null,
-  } = {}) => {
-    mockApollo = createMockApollo([
-      [createSavedViewMutation, mutationHandler],
-      [updateSavedViewMutation, updateMutationHandler],
-    ]);
-
+  const createComponent = ({ props, mockSavedView = null } = {}) => {
     wrapper = shallowMountExtended(WorkItemsNewSavedViewModal, {
-      apolloProvider: mockApollo,
       propsData: {
         show: true,
         fullPath: 'test-project-path',
         sortKey: CREATED_DESC,
         savedView: mockSavedView,
+        filters: {},
+        displaySettings: {},
         ...props,
       },
       mocks: {
         $toast: {
           show: mockToastShow,
         },
+        $router: {
+          push: jest.fn(),
+        },
+      },
+      provide: {
+        subscribedSavedViewLimit: 5,
       },
     });
   };
@@ -97,9 +108,13 @@ describe('WorkItemsNewSavedViewModal', () => {
   const findCreateButton = () => wrapper.findByTestId('create-view-button');
   const findAlert = () => wrapper.findComponent(GlAlert);
   const findVisibilityGlRadioButtons = () => findVisibilityInputs().findAllComponents(GlFormRadio);
+  const findWarningMessage = () => wrapper.findByTestId('subscription-limit-warning');
+  const findWarningIcon = () => findWarningMessage().findComponent(GlIcon);
+  const findLearnMoreLink = () => findWarningMessage().findComponent(GlLink);
 
   beforeEach(() => {
     mockToastShow.mockClear();
+    saveSavedView.mockResolvedValue(successCreateResponse);
     createComponent();
   });
 
@@ -133,7 +148,26 @@ describe('WorkItemsNewSavedViewModal', () => {
     });
     await waitForPromises();
 
+    expect(findTitleInput().props().state).toBe(false);
     expect(findCreateButton().props('disabled')).toBe(true);
+  });
+
+  it('enables the submit button if title is entered after invalid title error', async () => {
+    findTitleInput().vm.$emit('input', undefined);
+
+    findForm().vm.$emit('submit', {
+      preventDefault: jest.fn(),
+    });
+    await waitForPromises();
+
+    expect(findTitleInput().props().state).toBe(false);
+    expect(findCreateButton().props('disabled')).toBe(true);
+
+    findTitleInput().vm.$emit('input', 'New view');
+    await nextTick();
+
+    expect(findTitleInput().props().state).toBe(true);
+    expect(findCreateButton().props('disabled')).toBe(false);
   });
 
   it('creates new saved view and hides modal when submitting a form', async () => {
@@ -149,72 +183,109 @@ describe('WorkItemsNewSavedViewModal', () => {
     expect(findModal().exists()).toBe(true);
   });
 
+  describe('subscription limit warning', () => {
+    describe('when showSubscriptionLimitWarning is false', () => {
+      it('does not show the warning message', () => {
+        createComponent({ props: { showSubscriptionLimitWarning: false } });
+
+        expect(findWarningMessage().exists()).toBe(false);
+      });
+    });
+
+    describe('when showSubscriptionLimitWarning is true', () => {
+      beforeEach(() => {
+        createComponent({ props: { showSubscriptionLimitWarning: true } });
+      });
+
+      it('shows the warning message with icon and link', () => {
+        expect(findWarningMessage().exists()).toBe(true);
+        expect(findWarningIcon().props('name')).toBe('warning');
+        expect(findLearnMoreLink().exists()).toBe(true);
+      });
+
+      it('contains the correct warning text', () => {
+        expect(findWarningMessage().text()).toContain(
+          'You have reached the maximum number of views in your list.',
+        );
+        expect(findWarningMessage().text()).toContain(
+          'If you add a view, the last view in your list will be removed.',
+        );
+      });
+    });
+
+    describe('when in edit mode', () => {
+      it('does not show the warning even when showSubscriptionLimitWarning is true', () => {
+        createComponent({
+          props: { showSubscriptionLimitWarning: true },
+          mockSavedView: existingSavedView,
+        });
+
+        expect(findWarningMessage().exists()).toBe(false);
+      });
+    });
+  });
+
   describe('createSavedViewMutation', () => {
-    it('successfully creates a saved view and shows a toast message', async () => {
-      createComponent({
-        mutationHandlerOverride: successMutationHandler,
-      });
+    const filters = { filters: { search: 'text' } };
+    const displaySettings = { hiddenMetadataKeys: ['assignee'] };
+    const sortKey = UPDATED_DESC;
 
-      findTitleInput().vm.$emit('input', 'Test View');
-      findDescriptionInput().vm.$emit('input', 'Test Description');
+    it.each`
+      scenario                   | props                                    | expectedSortKey | expectedFilters   | expectedDisplaySettings
+      ${'with no config'}        | ${{}}                                    | ${CREATED_DESC} | ${{}}             | ${{}}
+      ${'with sort'}             | ${{ sortKey }}                           | ${UPDATED_DESC} | ${{}}             | ${{}}
+      ${'with filters'}          | ${{ filters }}                           | ${CREATED_DESC} | ${{ ...filters }} | ${{}}
+      ${'with display settings'} | ${{ displaySettings }}                   | ${CREATED_DESC} | ${{}}             | ${{ ...displaySettings }}
+      ${'with all config'}       | ${{ filters, displaySettings, sortKey }} | ${UPDATED_DESC} | ${{ ...filters }} | ${{ ...displaySettings }}
+    `(
+      'successfully creates a saved view $scenario and shows a toast message',
+      async ({ props, expectedSortKey, expectedFilters, expectedDisplaySettings }) => {
+        createComponent({ props });
 
-      findForm().vm.$emit('submit', {
-        preventDefault: jest.fn(),
-      });
+        findTitleInput().vm.$emit('input', 'Test View');
+        findDescriptionInput().vm.$emit('input', 'Test Description');
 
-      await waitForPromises();
+        findForm().vm.$emit('submit', {
+          preventDefault: jest.fn(),
+        });
 
-      expect(successMutationHandler).toHaveBeenCalledWith({
-        input: {
+        await waitForPromises();
+
+        expect(saveSavedView).toHaveBeenCalledWith({
+          apolloClient: undefined,
+          id: undefined,
+          isEdit: false,
+          isForm: true,
           namespacePath: 'test-project-path',
           name: 'Test View',
           description: 'Test Description',
-          private: true,
-          filters: {},
-          displaySettings: {},
-          sort: CREATED_DESC,
-        },
-      });
+          isPrivate: true,
+          filters: expectedFilters,
+          displaySettings: expectedDisplaySettings,
+          sort: expectedSortKey,
+          mutationKey: 'workItemSavedViewCreate',
+          subscribed: undefined,
+          userPermissions: undefined,
+          subscribedSavedViewLimit: 5,
+        });
 
-      expect(mockToastShow).toHaveBeenCalledWith('New view created.');
-      expect(wrapper.emitted('hide')).toEqual([[false]]);
-    });
+        expect(mockToastShow).toHaveBeenCalledWith('New view created.');
+        expect(wrapper.emitted('hide')).toEqual([[false]]);
+      },
+    );
 
-    it('shows an error message when mutation fails with errors in response', async () => {
-      const errorMutationHandler = jest.fn().mockResolvedValue({
-        data: {
-          workItemSavedViewCreate: {
-            errors: ['Failed to create saved view'],
-            savedView: null,
-          },
-        },
-      });
+    it.each`
+      scenario                            | mockSetup                                                                                              | expectedError
+      ${'with errors in response'}        | ${{ data: { workItemSavedViewCreate: { errors: ['Failed to create saved view'], savedView: null } } }} | ${'Something went wrong while creating the view'}
+      ${'when mutation throws exception'} | ${new Error('Network error')}                                                                          | ${'Something went wrong while creating the view'}
+    `('shows an error message $scenario', async ({ mockSetup, expectedError }) => {
+      if (mockSetup instanceof Error) {
+        saveSavedView.mockRejectedValue(mockSetup);
+      } else {
+        saveSavedView.mockResolvedValue(mockSetup);
+      }
 
-      createComponent({
-        mutationHandler: errorMutationHandler,
-      });
-
-      findTitleInput().vm.$emit('input', 'Test View');
-
-      findForm().vm.$emit('submit', {
-        preventDefault: jest.fn(),
-      });
-
-      await waitForPromises();
-
-      expect(errorMutationHandler).toHaveBeenCalled();
-
-      expect(findAlert().text()).toBe('Something went wrong while saving the view');
-      expect(mockToastShow).not.toHaveBeenCalled();
-      expect(wrapper.emitted('hide')).toBeUndefined();
-    });
-
-    it('shows an error message when mutation throws an exception', async () => {
-      const exceptionMutationHandler = jest.fn().mockRejectedValue(new Error('Network error'));
-
-      createComponent({
-        mutationHandler: exceptionMutationHandler,
-      });
+      createComponent();
 
       findTitleInput().vm.$emit('input', 'Test View');
 
@@ -224,26 +295,14 @@ describe('WorkItemsNewSavedViewModal', () => {
 
       await waitForPromises();
 
-      expect(exceptionMutationHandler).toHaveBeenCalled();
-      expect(findAlert().text()).toBe('Something went wrong while saving the view');
+      expect(saveSavedView).toHaveBeenCalled();
+      expect(findAlert().text()).toBe(expectedError);
       expect(mockToastShow).not.toHaveBeenCalled();
       expect(wrapper.emitted('hide')).toBeUndefined();
     });
   });
 
   describe('updateSavedViewMutation', () => {
-    const existingSavedView = {
-      id: 'gid://gitlab/WorkItems::SavedView/123',
-      name: 'Existing View',
-      description: 'Existing Description',
-      isPrivate: false,
-      subscribed: true,
-      userPermissions: {
-        updateSavedView: true,
-        deleteSavedView: true,
-      },
-    };
-
     it('renders the modal with edit title when savedView has an id', () => {
       createComponent({ mockSavedView: existingSavedView });
 
@@ -271,7 +330,10 @@ describe('WorkItemsNewSavedViewModal', () => {
       );
     });
 
+    // Note: The form is not supposed to update the filters, display settings and sort key
     it('successfully updates a saved view and shows a toast message', async () => {
+      saveSavedView.mockResolvedValue(successUpdateResponse);
+
       createComponent({ mockSavedView: existingSavedView });
 
       findTitleInput().vm.$emit('input', 'Updated View');
@@ -283,15 +345,24 @@ describe('WorkItemsNewSavedViewModal', () => {
 
       await waitForPromises();
 
-      expect(successUpdateMutationHandler).toHaveBeenCalledWith({
-        input: {
-          id: 'gid://gitlab/WorkItems::SavedView/123',
-          name: 'Updated View',
-          description: 'Updated Description',
-          private: false,
-          filters: {},
-          displaySettings: {},
-          sort: CREATED_DESC,
+      expect(saveSavedView).toHaveBeenCalledWith({
+        apolloClient: undefined,
+        id: 'gid://gitlab/WorkItems::SavedView/123',
+        name: 'Updated View',
+        description: 'Updated Description',
+        isPrivate: false,
+        filters: {},
+        displaySettings: {},
+        sort: CREATED_DESC,
+        isEdit: true,
+        isForm: true,
+        mutationKey: 'workItemSavedViewUpdate',
+        namespacePath: 'test-project-path',
+        subscribed: true,
+        subscribedSavedViewLimit: 5,
+        userPermissions: {
+          deleteSavedView: true,
+          updateSavedView: true,
         },
       });
 
@@ -300,10 +371,10 @@ describe('WorkItemsNewSavedViewModal', () => {
     });
 
     it('shows an error message when update mutation fails with errors in response', async () => {
-      const errorUpdateMutationHandler = jest.fn().mockResolvedValue({
+      saveSavedView.mockResolvedValue({
         data: {
-          workItemSavedViewUpdate: {
-            errors: ['Failed to update saved view'],
+          workItemSavedViewCreate: {
+            errors: ['Failed to create saved view'],
             savedView: null,
           },
         },
@@ -311,7 +382,6 @@ describe('WorkItemsNewSavedViewModal', () => {
 
       createComponent({
         mockSavedView: existingSavedView,
-        updateMutationHandler: errorUpdateMutationHandler,
       });
 
       findTitleInput().vm.$emit('input', 'Updated View');
@@ -322,20 +392,17 @@ describe('WorkItemsNewSavedViewModal', () => {
 
       await waitForPromises();
 
-      expect(errorUpdateMutationHandler).toHaveBeenCalled();
+      expect(saveSavedView).toHaveBeenCalled();
       expect(findAlert().text()).toBe('Something went wrong while saving the view');
       expect(mockToastShow).not.toHaveBeenCalled();
       expect(wrapper.emitted('hide')).toBeUndefined();
     });
 
     it('shows an error message when update mutation throws an exception', async () => {
-      const exceptionUpdateMutationHandler = jest
-        .fn()
-        .mockRejectedValue(new Error('Network error'));
+      saveSavedView.mockRejectedValue(new Error('Network error'));
 
       createComponent({
         mockSavedView: existingSavedView,
-        updateMutationHandler: exceptionUpdateMutationHandler,
       });
 
       findTitleInput().vm.$emit('input', 'Updated View');
@@ -346,7 +413,7 @@ describe('WorkItemsNewSavedViewModal', () => {
 
       await waitForPromises();
 
-      expect(exceptionUpdateMutationHandler).toHaveBeenCalled();
+      expect(saveSavedView).toHaveBeenCalled();
       expect(findAlert().text()).toBe('Something went wrong while saving the view');
       expect(mockToastShow).not.toHaveBeenCalled();
       expect(wrapper.emitted('hide')).toBeUndefined();

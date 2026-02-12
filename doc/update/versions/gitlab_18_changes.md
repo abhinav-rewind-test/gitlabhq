@@ -40,7 +40,7 @@ required upgrade stops occur at versions:
   > [!warning]
   > Automatic database version upgrades only apply to single node instances when using the Linux package.
   > In all other cases, like Geo instances, PostgreSQL with high availability using the
-  > Linux package, or using an external PostgreSQL database (like Amazon RDS), you must upgrade PostgreSQL manually. See [upgrading a Geo instance](https://docs.gitlab.com/omnibus/settings/database.html#upgrading-a-geo-instance) for detailed steps.
+  > Linux package, or using an external PostgreSQL database (like Amazon RDS), you must upgrade PostgreSQL manually. See [upgrading a Geo instance](https://docs.gitlab.com/omnibus/settings/database/#upgrading-a-geo-instance) for detailed steps.
 
 - From September 29th, 2025 Bitnami will stop providing tagged PostgreSQL and Redis images. If you deploy GitLab 17.11 or earlier using the
   GitLab chart with bundled Redis or Postgres, you must manually update your values to use the legacy repository to prevent unexpected
@@ -104,13 +104,17 @@ to be reintroduced to handle an edge case in the data structure and ensure that 
   - [Geo documentation for the Linux package](../../administration/geo/replication/configuration.md#add-primary-and-secondary-urls-as-allowed-actioncable-origins)
   - [Geo documentation for the Helm chart](https://docs.gitlab.com/charts/advanced/geo/#configure-primary-database)
 
+### Geo installations 18.6.5
+
+- Fixed the Geo [issue 587407](https://gitlab.com/gitlab-org/gitlab/-/work_items/587407) where `Geo::VerificationStateBackfillWorker` generated large slow queries for the `merge_request_diff_details` table.
+
 ## 18.6.2
 
 GitLab 18.6.2, 18.5.4, and 18.4.6 introduced size and rate limits on requests made to the following endpoints:
 
 - `POST /projects/:id/repository/commits` - [Create a commit](../../api/commits.md#create-a-commit)
-- `POST /projects/:id/repository/files/:file_path` - [Create new file in repository](../../api/repository_files.md#create-new-file-in-repository)
-- `PUT /projects/:id/repository/files/:file_path` - [Update existing file in repository](../../api/repository_files.md#update-existing-file-in-repository)
+- `POST /projects/:id/repository/files/:file_path` - [Create a file in a repository](../../api/repository_files.md#create-a-file-in-a-repository)
+- `PUT /projects/:id/repository/files/:file_path` - [Update a file in a repository](../../api/repository_files.md#update-a-file-in-a-repository)
 
 GitLab responds to requests that exceed the size limit with a `413 Entity Too large` status, and requests that exceed the rate limit with a `429 Too Many Requests` status. For more information, see [Commits and Files API limits](../../administration/instance_limits.md#commits-and-files-api-limits)
 

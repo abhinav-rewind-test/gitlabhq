@@ -146,7 +146,7 @@ For example, if a project has a high score for deployment frequency (velocity), 
 | Time to restore service | ≤1   | 2-6     | ≥7   | The number of days to restore service when a service incident or a defect that impacts users occurs |
 | Change failure rate     | ≤15% | 16%-44% | ≥45% | The percentage of changes to production resulted in degraded service |
 
-To learn more, see the blog post [Inside DORA Performers score in GitLab Value Streams Dashboard](https://about.gitlab.com/blog/2024/01/18/inside-dora-performers-score-in-gitlab-value-streams-dashboard/).
+To learn more, see the blog post [Inside DORA Performers score in GitLab Value Streams Dashboard](https://about.gitlab.com/blog/inside-dora-performers-score-in-gitlab-value-streams-dashboard/).
 
 #### Filter the panel by project topic
 
@@ -221,7 +221,7 @@ To retrieve aggregated usage counts in the group, use the [GraphQL API](../../ap
 
 Prerequisites:
 
-- You must have at least the Reporter role for the group or project.
+- You must have the Reporter, Developer, Maintainer, or Owner role for the group or project.
 - Overview background aggregation must be enabled.
 - To view the contributor count metric in the comparison panel, you must [set up ClickHouse](../../integration/clickhouse.md).
 - To track deployment to production, the group or project must have an environment in the [production deployment tier](../../ci/environments/_index.md#deployment-tier-of-environments).
@@ -271,7 +271,7 @@ and opens an issue in a specified project.
 The issue includes a comparison metrics table in Markdown format.
 
 See an [example scheduled report](https://gitlab.com/components/vsd-reports-generator#example-for-monthly-executive-value-streams-report).
-To learn more, see the blog post [New Scheduled Reports Generation tool simplifies value stream management](https://about.gitlab.com/blog/2024/06/20/new-scheduled-reports-generation-tool-simplifies-value-stream-management/).
+To learn more, see the blog post [New Scheduled Reports Generation tool simplifies value stream management](https://about.gitlab.com/blog/new-scheduled-reports-generation-tool-simplifies-value-stream-management/).
 
 ## Customize dashboard panels
 
@@ -287,7 +287,7 @@ Before you customize the dashboard panels, you must select a project to store yo
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the group.
+- You must have the Maintainer or Owner role for the group.
 
 1. On the top bar, select **Search or go to** and find your group.
 1. Select **Settings** > **Analytics**.

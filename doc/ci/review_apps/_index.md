@@ -84,7 +84,7 @@ Configure review apps when you want to provide a preview environment of your app
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 - You must have CI/CD pipelines available in the project.
 - You must set up the infrastructure to host and deploy the review apps.
 
@@ -249,7 +249,7 @@ Other examples of review apps:
 
 - <i class="fa-youtube-play" aria-hidden="true"></i>
   [Cloud Native Development with GitLab](https://www.youtube.com/watch?v=jfIyQEwrocw).
-- [Review apps for Android](https://about.gitlab.com/blog/2020/05/06/how-to-create-review-apps-for-android-with-gitlab-fastlane-and-appetize-dot-io/).
+- [Review apps for Android](https://about.gitlab.com/blog/how-to-create-review-apps-for-android-with-gitlab-fastlane-and-appetize-dot-io/).
 
 ## Route maps
 

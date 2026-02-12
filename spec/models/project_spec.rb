@@ -847,6 +847,45 @@ RSpec.describe Project, factory_default: :keep, feature_category: :groups_and_pr
       end
     end
 
+    describe '.deletion_in_progress' do
+      let_it_be(:normal_project) { create(:project) }
+      let_it_be(:pending_delete_project) { create(:project, pending_delete: true) }
+      let_it_be(:deletion_in_progress_project) do
+        project = create(:project)
+        project.project_namespace.start_deletion!(transition_user: project.creator)
+        project
+      end
+
+      it 'returns only projects with deletion_in_progress state' do
+        result = described_class.deletion_in_progress
+
+        expect(result).to contain_exactly(deletion_in_progress_project)
+      end
+
+      it 'does not return projects with pending_delete column' do
+        result = described_class.deletion_in_progress
+
+        expect(result).not_to include(pending_delete_project)
+      end
+    end
+
+    describe '.not_deletion_in_progress' do
+      let_it_be(:normal_project) { create(:project) }
+      let_it_be(:pending_delete_project) { create(:project, pending_delete: true) }
+      let_it_be(:deletion_in_progress_project) do
+        project = create(:project)
+        project.project_namespace.start_deletion!(transition_user: project.creator)
+        project
+      end
+
+      it 'returns projects without deletion_in_progress state' do
+        result = described_class.not_deletion_in_progress
+
+        expect(result).to include(normal_project, pending_delete_project)
+        expect(result).not_to include(deletion_in_progress_project)
+      end
+    end
+
     describe '.archived' do
       let_it_be(:archived_group) { create(:group, :archived) }
       let_it_be(:active_project) { create(:project, group: archived_group, archived: false) }
@@ -7020,40 +7059,6 @@ RSpec.describe Project, factory_default: :keep, feature_category: :groups_and_pr
 
       expect(project.api_variables.map { |variable| variable[:key] })
         .to include(*required_variables)
-    end
-  end
-
-  describe '#latest_successful_builds_for' do
-    let(:project) { build(:project) }
-
-    before do
-      allow(project).to receive(:default_branch).and_return('master')
-    end
-
-    context 'without a ref' do
-      it 'returns a pipeline for the default branch' do
-        expect(project)
-          .to receive(:latest_successful_pipeline_for_default_branch)
-
-        project.latest_successful_pipeline_for
-      end
-    end
-
-    context 'with the ref set to the default branch' do
-      it 'returns a pipeline for the default branch' do
-        expect(project)
-          .to receive(:latest_successful_pipeline_for_default_branch)
-
-        project.latest_successful_pipeline_for(project.default_branch)
-      end
-    end
-
-    context 'with a ref that is not the default branch' do
-      it 'returns the latest successful pipeline for the given ref' do
-        expect(project.ci_pipelines).to receive(:latest_successful_for_ref).with('foo')
-
-        project.latest_successful_pipeline_for('foo')
-      end
     end
   end
 

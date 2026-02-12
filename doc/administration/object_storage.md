@@ -222,7 +222,7 @@ Prerequisites:
 
 - GitLab must be able to connect to the
   [instance metadata endpoint](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html).
-- If GitLab is [configured to use an internet proxy](https://docs.gitlab.com/omnibus/settings/environment-variables.html), the endpoint IP
+- If GitLab is [configured to use an internet proxy](https://docs.gitlab.com/omnibus/settings/environment-variables/), the endpoint IP
   address must be added to the `no_proxy` list.
 - For IMDS v2 access, ensure the [hop limit](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html) is sufficient. If GitLab
   is running in a container, you may need to raise the limit from 1 to 2.
@@ -309,6 +309,12 @@ STREAMING-AWS4-HMAC-SHA256-PAYLOAD is not supported
 
 ### Google Cloud Storage (GCS)
 
+{{< history >}}
+
+- `universe_domain` setting [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221401) in GitLab 18.9.
+
+{{< /history >}}
+
 Here are the valid connection parameters for GCS:
 
 | Setting                      | Description       | Example |
@@ -318,6 +324,7 @@ Here are the valid connection parameters for GCS:
 | `google_json_key_location`   | JSON key path.    | `/path/to/gcp-project-12345-abcde.json` |
 | `google_json_key_string`     | JSON key string.  | `{ "type": "service_account", "project_id": "example-project-382839", ... }` |
 | `google_application_default` | Set to `true` to use [Google Cloud Application Default Credentials](https://cloud.google.com/docs/authentication#adc) to locate service account credentials. | |
+| `universe_domain`            | Universe domain to use for Google Cloud requests. Use this to connect to [Google Cloud Dedicated](https://cloud.google.com/sovereign-cloud) or other non-default universe domains. | `googleapis.com` |
 
 GitLab reads the value of `google_json_key_location`, then `google_json_key_string`, and finally, `google_application_default`.
 It uses the first of these settings that has a value.
@@ -370,6 +377,17 @@ If you use ADC, be sure that:
    }
    ```
 
+   To use a non-default universe domain (for example, [Google Cloud Dedicated](https://cloud.google.com/sovereign-cloud)):
+
+   ```ruby
+   gitlab_rails['object_store']['connection'] = {
+    'provider' => 'Google',
+    'google_project' => '<GOOGLE PROJECT>',
+    'google_application_default' => true,
+    'universe_domain' => '<UNIVERSE DOMAIN>'
+   }
+   ```
+
 1. Save the file and reconfigure GitLab:
 
    ```shell
@@ -395,6 +413,15 @@ If you use ADC, be sure that:
    provider: Google
    google_project: <GOOGLE PROJECT>
    google_application_default: true
+   ```
+
+   To use a non-default universe domain (for example, [Google Cloud Dedicated](https://cloud.google.com/sovereign-cloud)):
+
+   ```yaml
+   provider: Google
+   google_project: <GOOGLE PROJECT>
+   google_application_default: true
+   universe_domain: <UNIVERSE DOMAIN>
    ```
 
 1. Create the Kubernetes Secret:
@@ -485,6 +512,17 @@ If you use ADC, be sure that:
      'provider' => 'Google',
      'google_project' => '<GOOGLE PROJECT>',
      'google_application_default' => true
+   }
+   ```
+
+   To use a non-default universe domain (for example, [Google Cloud Dedicated](https://cloud.google.com/sovereign-cloud)):
+
+   ```ruby
+   gitlab_rails['object_store']['connection'] = {
+     'provider' => 'Google',
+     'google_project' => '<GOOGLE PROJECT>',
+     'google_application_default' => true,
+     'universe_domain' => '<UNIVERSE DOMAIN>'
    }
    ```
 
@@ -1199,7 +1237,7 @@ or add fault tolerance and redundancy, you may be
 looking at removing dependencies on block or network file systems.
 See the following additional guides:
 
-1. Make sure the [`git` user home directory](https://docs.gitlab.com/omnibus/settings/configuration.html#move-the-home-directory-for-a-user) is on local disk.
+1. Make sure the [`git` user home directory](https://docs.gitlab.com/omnibus/settings/configuration/#move-the-home-directory-for-a-user) is on local disk.
 1. Configure [database lookup of SSH keys](operations/fast_ssh_key_lookup.md)
    to eliminate the need for a shared `authorized_keys` file.
 1. [Prevent local disk usage for job logs](cicd/job_logs.md#prevent-local-disk-usage).

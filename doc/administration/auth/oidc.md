@@ -533,12 +533,13 @@ Azure B2C [offers two ways of defining the business logic for logging in a user]
 - [User flows](https://learn.microsoft.com/en-us/azure/active-directory-b2c/user-flow-overview#user-flows)
 - [Custom policies](https://learn.microsoft.com/en-us/azure/active-directory-b2c/user-flow-overview#custom-policies)
 
-Custom policies are required because standard Azure B2C user flows
-[do not send the OpenID `email` claim](https://github.com/MicrosoftDocs/azure-docs/issues/16566).
+Custom policies are required because standard Azure B2C user flows do not send the OpenID `email` claim that GitLab needs to create or link users.
 Therefore, the standard user flows do not work with the
 [`allow_single_sign_on` or `auto_link_user` parameters](../../integration/omniauth.md#configure-common-settings).
 With a standard Azure B2C policy, GitLab cannot create a new account or
 link to an existing account with an email address.
+
+For more information on how Azure AD B2C issues tokens and claims in user flows and custom policies, see the Microsoft documentation on [user flows and custom policies](https://learn.microsoft.com/azure/active-directory-b2c/user-flow-overview) and [claims schema configuration](https://learn.microsoft.com/azure/active-directory-b2c/claimsschema).
 
 First, [create a custom policy](https://learn.microsoft.com/en-us/azure/active-directory-b2c/tutorial-create-user-flows?pivots=b2c-custom-policy).
 
@@ -1750,6 +1751,99 @@ step-up authentication actually failed, making the guidance more relevant and ac
 > - Use HTTPS URLs for security.
 > - Link to internal documentation that explains the specific authentication requirements for your organization.
 > - Include information about how to enable `MFA` or other required authentication methods.
+
+### Session expiration
+
+By default, step-up authentication sessions expire based on the identity provider (IdP) token
+expiration time, typically around 10 minutes. This behavior provides strong security assurance
+but may require users to re-authenticate frequently during long working sessions.
+
+#### Disabling session expiration
+
+To allow step-up authentication to remain valid for the entire user session,
+you can disable session expiration in your provider configuration:
+
+:::Tabs
+
+:::TabTitle Linux package (Omnibus)
+
+1. Edit `/etc/gitlab/gitlab.rb`:
+
+   ```ruby
+   gitlab_rails['omniauth_providers'] = [
+     {
+       name: "openid_connect",
+       label: "Provider name",
+       args: {
+         name: "openid_connect",
+         # ... other args ...
+       },
+       step_up_auth: {
+         session_expiration_enabled: false,  # Disable session expiration
+         admin_mode: {
+           # ... admin_mode config ...
+         },
+         namespace: {
+           # ... namespace config ...
+         }
+       }
+     }
+   ]
+   ```
+
+1. Save the file and reconfigure GitLab:
+
+   ```shell
+   sudo gitlab-ctl reconfigure
+   ```
+
+:::TabTitle Self-compiled (source)
+
+1. Edit `config/gitlab.yml`:
+
+   ```yaml
+   production: &base
+     omniauth:
+       providers:
+         - { name: 'openid_connect',
+             label: 'Provider name',
+             args: {
+               name: 'openid_connect',
+               # ... other args ...
+             },
+             step_up_auth: {
+               session_expiration_enabled: false,
+               admin_mode: {
+                 # ... admin_mode config ...
+               },
+               namespace: {
+                 # ... namespace config ...
+               }
+             }
+           }
+   ```
+
+1. Save the file and restart GitLab:
+
+   ```shell
+   # For systems running systemd
+   sudo systemctl restart gitlab.target
+
+   # For systems running SysV init
+   sudo service gitlab restart
+   ```
+
+:::EndTabs
+
+| Setting | Behavior |
+|---------|----------|
+| `session_expiration_enabled: true` (default) | Step-up authentication expires based on IdP token `exp` claim (typically ~10 minutes). |
+| `session_expiration_enabled: false` | Step-up authentication remains valid for the entire user session until logout. |
+
+WARNING:
+Disabling session expiration reduces security assurance. Only disable this setting if your
+security requirements allow session-lifetime step-up authentication. When disabled, users
+authenticate once per session rather than periodically re-verifying their identity.
 
 ## Troubleshooting
 

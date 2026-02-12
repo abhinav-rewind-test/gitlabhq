@@ -40,7 +40,7 @@ module Users
       security_configuration_devops_alert: 36,   # EE-only
       profile_personal_access_token_expiry: 37,  # EE-only
       # 38 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221338
-      security_newsletter_callout: 39,
+      # 39 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/222259
       verification_reminder: 40, # EE-only
       ci_deprecation_warning_for_types_keyword: 41,
       # 42 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221211
@@ -62,7 +62,7 @@ module Users
       namespace_storage_limit_alert_alert_threshold: 57, # EE-only
       namespace_storage_limit_alert_error_threshold: 58, # EE-only
       # 60 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154140
-      new_top_level_group_alert: 61,
+      # 61 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221324
       # 62, removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/131314
       # 63 and 64 were removed with https://gitlab.com/gitlab-org/gitlab/-/merge_requests/120233
       # 65 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221274
@@ -96,7 +96,7 @@ module Users
       branch_rules_tip_callout: 93,
       openssl_callout: 94,
       # 95 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/170868
-      new_mr_dashboard_banner: 96,
+      # 96 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/222230,
       # 97 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/196130
       # EE-only
       pipl_compliance_alert: 98,
@@ -104,7 +104,7 @@ module Users
       # 100 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/220975
       pipeline_new_inputs_adoption_banner: 101,
       pipeline_schedules_inputs_adoption_banner: 102,
-      product_usage_data_collection_changes: 103,
+      # 103 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/222229
       # 104 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/218816
       # 105 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/218816
       # 106 removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/202983
@@ -124,8 +124,11 @@ module Users
       vulnerability_report_limited_experience: 120, # EE-only
       file_tree_browser_popover: 121,
       virtual_registry_permission_change_alert: 122, # EE-only
-      security_scanner_profiles_announcement: 123 # EE-only
+      security_scanner_profiles_announcement: 123, # EE-only
       # RESERVE CALLOUT ID 124 for a security fix 1509. See internal issue for more information.
+      duo_panel_auto_expanded: 125, # EE-only
+      work_items_nav_badge: 126,
+      work_items_onboarding_modal: 127
     }
 
     validates :feature_name,

@@ -46,6 +46,7 @@ export const initSecurityConfiguration = (el) => {
     canApplyProfiles,
     canReadAttributes,
     canManageAttributes,
+    securityScanProfilesLicensed,
     groupManageAttributesPath,
     upgradePath,
     features,
@@ -58,6 +59,7 @@ export const initSecurityConfiguration = (el) => {
     secretDetectionConfigurationPath,
     vulnerabilityArchiveExportPath,
     licenseConfigurationSource,
+    maxTrackedRefs,
   } = el.dataset;
 
   const { augmentedSecurityFeatures } = augmentFeatures(features ? JSON.parse(features) : []);
@@ -72,6 +74,7 @@ export const initSecurityConfiguration = (el) => {
       canApplyProfiles: parseBoolean(canApplyProfiles),
       canReadAttributes: parseBoolean(canReadAttributes),
       canManageAttributes: parseBoolean(canManageAttributes),
+      securityScanProfilesLicensed: parseBoolean(securityScanProfilesLicensed),
       groupManageAttributesPath,
       upgradePath,
       autoDevopsHelpPagePath,
@@ -81,6 +84,7 @@ export const initSecurityConfiguration = (el) => {
       vulnerabilityArchiveExportPath,
       secretDetectionConfigurationPath,
       licenseConfigurationSource,
+      maxTrackedRefs: Number(maxTrackedRefs, 10),
       ...parseBooleanDataAttributes(el, [
         'secretPushProtectionAvailable',
         'secretPushProtectionEnabled',

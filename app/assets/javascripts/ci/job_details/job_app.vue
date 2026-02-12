@@ -12,7 +12,7 @@ import { __, sprintf } from '~/locale';
 import delayedJobMixin from '~/ci/mixins/delayed_job_mixin';
 import Log from '~/ci/job_details/components/log/log.vue';
 import { MANUAL_STATUS } from '~/ci/constants';
-import ManualJobForm from './components/manual_job_form.vue';
+import JobRunForm from './components/job_run_form.vue';
 import EmptyState from './components/empty_state.vue';
 import EnvironmentsBlock from './components/environments_block.vue';
 import ErasedBlock from './components/erased_block.vue';
@@ -28,7 +28,7 @@ export default {
   components: {
     JobHeader,
     EmptyState,
-    ManualJobForm,
+    JobRunForm,
     EnvironmentsBlock,
     ErasedBlock,
     GlIcon,
@@ -169,12 +169,7 @@ export default {
   created() {
     this.throttleToggleScrollButtons = throttle(this.toggleScrollButtons, 100);
 
-    if (this.staticPanelWrapper) {
-      this.staticPanelWrapper.addEventListener('scroll', this.updateScroll);
-    } else {
-      // This can be removed when `projectStudioEnabled` is removed
-      window.addEventListener('scroll', this.updateScroll);
-    }
+    this.staticPanelWrapper?.addEventListener('scroll', this.updateScroll);
 
     PanelBreakpointInstance.addResizeListener(this.updateSidebar);
   },
@@ -185,12 +180,7 @@ export default {
     this.stopPollingJobLog();
     this.stopPolling();
 
-    if (this.staticPanelWrapper) {
-      this.staticPanelWrapper.removeEventListener('scroll', this.updateScroll);
-    } else {
-      // This can be removed when `projectStudioEnabled` is removed
-      window.removeEventListener('scroll', this.updateScroll);
-    }
+    this.staticPanelWrapper?.removeEventListener('scroll', this.updateScroll);
 
     PanelBreakpointInstance.removeResizeListener(this.updateSidebar);
   },
@@ -342,9 +332,8 @@ export default {
           <p v-if="emptyStateIllustration.content" data-testid="job-empty-state-content">
             {{ emptyStateIllustration.content }}
           </p>
-          <manual-job-form
+          <job-run-form
             :is-retryable="isJobRetryable"
-            :is-manual="job.playable && !job.scheduled"
             :job-id="job.id"
             :job-name="jobName"
             :confirmation-message="jobConfirmationMessage"

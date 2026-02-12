@@ -33,7 +33,10 @@ describe('WorkItemsSavedViewSelector', () => {
     wrapper = shallowMountExtended(WorkItemsSavedViewSelector, {
       propsData: {
         savedView,
-        savedSort: CREATED_DESC,
+        sortKey: CREATED_DESC,
+        filters: {},
+        displaySettings: {},
+        fullPath: 'test-project-path',
       },
       provide: {
         isGroup,
@@ -49,7 +52,6 @@ describe('WorkItemsSavedViewSelector', () => {
 
   const findSelector = () => wrapper.findByTestId('saved-view-selector');
   const findEditAction = () => wrapper.findByTestId('edit-action');
-  const findDuplicateAction = () => wrapper.findByTestId('duplicate-action');
   const findCopyAction = () => wrapper.findByTestId('copy-action');
   const findUnsubscribeAction = () => wrapper.findByTestId('unsubscribe-action');
   const findDeleteAction = () => wrapper.findByTestId('delete-action');
@@ -71,7 +73,6 @@ describe('WorkItemsSavedViewSelector', () => {
 
     it('renders the selector and dropdown actions', () => {
       expect(findEditAction().exists()).toBe(true);
-      expect(findDuplicateAction().exists()).toBe(true);
       expect(findCopyAction().exists()).toBe(true);
       expect(findUnsubscribeAction().exists()).toBe(true);
       expect(findDeleteAction().exists()).toBe(true);

@@ -3,8 +3,8 @@ import {
   GlButton,
   GlFilteredSearchToken,
   GlLoadingIcon,
-  GlTooltipDirective,
   GlIcon,
+  GlTooltipDirective,
   GlSkeletonLoader,
   GlModalDirective,
   GlAlert,
@@ -27,6 +27,7 @@ import {
   getInitialPageParams,
   getSortOptions,
   groupMultiSelectFilterTokens,
+  saveSavedView,
 } from 'ee_else_ce/work_items/list/utils';
 import axios from '~/lib/utils/axios_utils';
 import { TYPENAME_NAMESPACE, TYPENAME_USER } from '~/graphql_shared/constants';
@@ -35,8 +36,8 @@ import {
   STATUS_ALL,
   STATUS_CLOSED,
   STATUS_OPEN,
-  WORKSPACE_GROUP,
-  WORKSPACE_PROJECT,
+  NAMESPACE_GROUP,
+  NAMESPACE_PROJECT,
 } from '~/issues/constants';
 import { AutocompleteCache } from '~/issues/dashboard/utils';
 import EmptyStateWithAnyTickets from '~/issues/service_desk/components/empty_state_with_any_issues.vue';
@@ -58,7 +59,7 @@ import {
 } from '~/work_items/list/constants';
 import searchLabelsQuery from '~/work_items/list/graphql/search_labels.query.graphql';
 import namespaceWorkItemTypesQuery from '~/work_items/graphql/namespace_work_item_types.query.graphql';
-import getSubsribedSavedViewsQuery from '~/work_items/list/graphql/work_item_saved_views_namespace.query.graphql';
+import getSubscribedSavedViewsQuery from '~/work_items/list/graphql/work_item_saved_views_namespace.query.graphql';
 import updateWorkItemListUserPreference from '~/work_items/graphql/update_work_item_list_user_preferences.mutation.graphql';
 import namespaceSavedViewQuery from '~/work_items/graphql/namespace_saved_view.query.graphql';
 import { fetchPolicies } from '~/lib/graphql';
@@ -122,6 +123,7 @@ import getWorkItemsCountOnlyQuery from 'ee_else_ce/work_items/list/graphql/get_w
 import hasWorkItemsQuery from '~/work_items/list/graphql/has_work_items.query.graphql';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { initWorkItemsFeedback } from '~/work_items_feedback';
+import UserCalloutDismisser from '~/vue_shared/components/user_callout_dismisser.vue';
 import CreateWorkItemModal from '../components/create_work_item_modal.vue';
 import WorkItemDrawer from '../components/work_item_drawer.vue';
 import HealthStatus from '../list/components/health_status.vue';
@@ -129,6 +131,7 @@ import WorkItemListHeading from '../list/components/work_item_list_heading.vue';
 import WorkItemUserPreferences from '../list/components/work_item_user_preferences.vue';
 import WorkItemListActions from '../list/components/work_item_list_actions.vue';
 import WorkItemsNewSavedViewModal from '../list/components/work_items_new_saved_view_modal.vue';
+import WorkItemsOnboardingModal from '../components/work_items_onboarding_modal/work_items_onboarding_modal.vue';
 import WorkItemsSavedViewsSelectors from '../list/components/work_items_saved_views_selectors.vue';
 import {
   CREATION_CONTEXT_LIST_ROUTE,
@@ -206,6 +209,8 @@ export default {
     WorkItemsSavedViewsSelectors,
     GlAlert,
     WorkItemsNewSavedViewModal,
+    WorkItemsOnboardingModal,
+    UserCalloutDismisser,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -246,6 +251,7 @@ export default {
     'newIssuePath',
     'workItemPlanningViewEnabled',
     'workItemsSavedViewsEnabled',
+    'subscribedSavedViewLimit',
   ],
   props: {
     eeWorkItemUpdateCount: {
@@ -349,58 +355,11 @@ export default {
         Sentry.captureException(error);
       },
     },
-    workItemsFull: {
-      context: {
-        featureCategory: 'portfolio_management',
-      },
-      query() {
-        return getWorkItemsQuery;
-      },
-      variables() {
-        return this.queryVariables;
-      },
-      update(data) {
-        return data?.namespace?.workItems.nodes ?? [];
-      },
-      skip() {
-        return isEmpty(this.pageParams) || this.metadataLoading || this.savedViewNotFound;
-      },
-      result({ data }) {
-        this.namespaceId = data?.namespace?.id;
-        this.handleListDataResults(data);
-      },
-      error(error) {
-        this.error = s__(
-          'WorkItem|Something went wrong when fetching work items. Please try again.',
-        );
-        Sentry.captureException(error);
-      },
+    workItemsFull() {
+      return this.createWorkItemQuery(getWorkItemsQuery);
     },
-    workItemsSlim: {
-      context: {
-        featureCategory: 'portfolio_management',
-      },
-      query() {
-        return getWorkItemsSlimQuery;
-      },
-      variables() {
-        return this.queryVariables;
-      },
-      update(data) {
-        return data?.namespace?.workItems.nodes ?? [];
-      },
-      skip() {
-        return isEmpty(this.pageParams) || this.metadataLoading || this.savedViewNotFound;
-      },
-      result({ data }) {
-        this.handleListDataResults(data);
-      },
-      error(error) {
-        this.error = s__(
-          'WorkItem|Something went wrong when fetching work items. Please try again.',
-        );
-        Sentry.captureException(error);
-      },
+    workItemsSlim() {
+      return this.createWorkItemQuery(getWorkItemsSlimQuery);
     },
     workItemsCount: {
       query() {
@@ -500,23 +459,23 @@ export default {
               `Unable to find saved view with id ${this.savedViewId} in ${this.rootPageFullPath}`,
             );
           }
-          const tokens = getSavedViewFilterTokens(savedView?.filters, {
-            includeStateToken: true,
-            hasCustomFieldsFeature: this.hasCustomFieldsFeature,
-            convertTypeTokens: true,
-          });
-          const availableTokenTypes = this.searchTokens.map((token) => token.type);
-
+          const tokens = this.getFilterTokensFromSavedView(savedView?.filters || {});
           this.initialViewTokens = tokens;
           this.initialViewSortKey = savedView?.sort;
-          this.initialViewDisplaySettings = savedView.displaySettings;
+          this.initialViewDisplaySettings = {
+            commonPreferences: { ...this.displaySettings.commonPreferences },
+            namespacePreferences: savedView.displaySettings,
+          };
 
           if (draft) {
             this.restoreViewDraft();
           } else {
-            this.filterTokens = tokens.filter((token) => availableTokenTypes.includes(token.type));
+            this.filterTokens = tokens;
             this.sortKey = savedView?.sort;
-            this.localDisplaySettings = savedView.displaySettings;
+            this.localDisplaySettings = {
+              commonPreferences: { ...this.displaySettings.commonPreferences },
+              namespacePreferences: savedView.displaySettings,
+            };
           }
         } catch (error) {
           Sentry.captureException(error);
@@ -527,11 +486,12 @@ export default {
       },
     },
     subscribedSavedViews: {
-      query: getSubsribedSavedViewsQuery,
+      query: getSubscribedSavedViewsQuery,
       variables() {
         return {
           fullPath: this.rootPageFullPath,
-          subscribedOnly: false,
+          subscribedOnly: true,
+          sort: 'RELATIVE_POSITION',
         };
       },
       update(data) {
@@ -562,7 +522,11 @@ export default {
       return this.isServiceDeskList && this.isServiceDeskSupported && this.hasWorkItems;
     },
     workItems() {
-      return combineWorkItemLists(this.workItemsSlim, this.workItemsFull);
+      return combineWorkItemLists(
+        this.workItemsSlim,
+        this.workItemsFull,
+        Boolean(this.glFeatures.workItemFeaturesField),
+      );
     },
     shouldShowList() {
       return (
@@ -624,7 +588,7 @@ export default {
       return this.state === STATUS_OPEN;
     },
     namespace() {
-      return this.isGroup ? WORKSPACE_GROUP : WORKSPACE_PROJECT;
+      return this.isGroup ? NAMESPACE_GROUP : NAMESPACE_PROJECT;
     },
     queryVariables() {
       const hasGroupFilter = Boolean(this.urlFilterParams.group_path);
@@ -1042,11 +1006,11 @@ export default {
       if (!this.initialPreferences) return false;
 
       const currentPreferences = {
-        hiddenMetadataKeys: this.displaySettingsSoT.namespacePreferences?.hiddenMetadataKeys ?? [],
+        hiddenMetadataKeys: this.displaySettingsSoT?.namespacePreferences?.hiddenMetadataKeys ?? [],
       };
       const viewPreferences = {
         hiddenMetadataKeys:
-          this.initialViewDisplaySettings.namespacePreferences?.hiddenMetadataKeys ?? [],
+          this.initialViewDisplaySettings?.namespacePreferences?.hiddenMetadataKeys ?? [],
       };
       const comparePreferences = this.isSavedView ? viewPreferences : this.initialPreferences;
 
@@ -1097,6 +1061,12 @@ export default {
         displaySettings: this.localDisplaySettings,
       };
     },
+    isSubscriptionLimitReached() {
+      return (
+        this.subscribedSavedViewLimit &&
+        this.subscribedSavedViews.length >= this.subscribedSavedViewLimit
+      );
+    },
   },
   watch: {
     eeWorkItemUpdateCount() {
@@ -1136,32 +1106,34 @@ export default {
         });
       }
     },
+    eeSearchTokens() {
+      if (this.isSavedView && this.savedView !== null) {
+        const draft = localStorage.getItem(this.savedViewDraftStorageKey);
+        const tokens = this.getFilterTokensFromSavedView(this.savedView.filters);
+        this.initialViewTokens = tokens;
+        if (draft) {
+          this.restoreViewDraft();
+        } else {
+          this.filterTokens = tokens;
+        }
+      }
+    },
     displaySettings: {
       immediate: true,
       handler(value) {
         if (!this.initialPreferences && value) {
           this.initialPreferences = {
-            hiddenMetadataKeys: value.namespacePreferences?.hiddenMetadataKeys ?? [],
+            commonPreferences: {
+              shouldOpenItemsInSidePanel: value.commonPreferences?.shouldOpenItemsInSidePanel,
+            },
+            namespacePreferences: {
+              hiddenMetadataKeys: value.namespacePreferences?.hiddenMetadataKeys ?? [],
+            },
           };
         }
         if (isEmpty(this.localDisplaySettings) || !this.isSavedView) {
           this.localDisplaySettings = { ...this.value };
         }
-      },
-    },
-    filterTokens: {
-      deep: true,
-      handler() {
-        this.persistDraft();
-      },
-    },
-    sortKey() {
-      this.persistDraft();
-    },
-    localDisplaySettings: {
-      deep: true,
-      handler() {
-        this.persistDraft();
       },
     },
   },
@@ -1185,6 +1157,43 @@ export default {
     setPageDefaultWidth();
   },
   methods: {
+    createWorkItemQuery(query) {
+      return {
+        query,
+        context: {
+          featureCategory: 'portfolio_management',
+        },
+        variables() {
+          return this.queryVariables;
+        },
+        update(data) {
+          return data?.namespace?.workItems.nodes ?? [];
+        },
+        skip() {
+          return isEmpty(this.pageParams) || this.metadataLoading || this.savedViewNotFound;
+        },
+        result({ data }) {
+          this.namespaceId = data?.namespace?.id;
+          this.handleListDataResults(data);
+        },
+        error(error) {
+          this.error = s__(
+            'WorkItem|Something went wrong when fetching work items. Please try again.',
+          );
+          Sentry.captureException(error);
+        },
+      };
+    },
+    getFilterTokensFromSavedView(savedViewFilters) {
+      const tokens = getSavedViewFilterTokens(savedViewFilters, {
+        includeStateToken: true,
+        hasCustomFieldsFeature: this.hasCustomFieldsFeature,
+        convertTypeTokens: true,
+      });
+      const availableTokenTypes = this.searchTokens.map((token) => token.type);
+      return tokens.filter((token) => availableTokenTypes.includes(token.type));
+    },
+
     async handleLocalDisplayPreferencesUpdate(newSettings) {
       this.localDisplaySettings = {
         ...this.localDisplaySettings,
@@ -1192,6 +1201,7 @@ export default {
           hiddenMetadataKeys: [...newSettings.hiddenMetadataKeys],
         },
       };
+      this.persistDraft();
     },
     handleListDataResults(listData) {
       this.pageInfo = listData?.namespace?.workItems.pageInfo ?? {};
@@ -1288,6 +1298,7 @@ export default {
       this.pageParams = getInitialPageParams(this.pageSize);
 
       this.updateRouterQueryParams();
+      this.persistDraft();
     },
     updateRouterQueryParams() {
       if (this.isSavedView) {
@@ -1351,6 +1362,7 @@ export default {
       }
 
       this.updateRouterQueryParams();
+      this.persistDraft();
     },
     async saveSortPreference(sortKey) {
       try {
@@ -1659,18 +1671,50 @@ export default {
         </span>
       `;
 
-      await confirmAction(null, {
+      const confirmation = await confirmAction(null, {
         title,
         modalHtmlMessage: message,
         primaryBtnText: s__('WorkItem|Save changes'),
       });
 
-      // TODO: add update view mutation at integration
+      if (confirmation) {
+        const mutationKey = 'workItemSavedViewUpdate';
+        try {
+          const { data } = await saveSavedView({
+            isEdit: true,
+            isForm: false,
+            namespacePath: this.rootPageFullPath,
+            id: this.savedView?.id,
+            name: this.savedView?.name,
+            description: this.savedView?.description,
+            isPrivate: this.savedView?.isPrivate,
+            filters: this.apiFilterParams,
+            displaySettings: this.displaySettingsSoT?.namespacePreferences || {},
+            sort: this.sortKey,
+            userPermissions: this.savedView?.userPermissions,
+            subscribed: this.savedView?.subscribed,
+            mutationKey,
+            apolloClient: this.$apollo,
+          });
+
+          if (data[mutationKey].errors?.length) {
+            this.error = s__('WorkItem|Something went wrong while saving the view');
+            return;
+          }
+
+          this.$toast.show(s__('WorkItem|View has been saved.'));
+          this.clearLocalSavedViewsConfig();
+        } catch (e) {
+          Sentry.captureException(e);
+          this.error = s__('WorkItem|Something went wrong while saving the view');
+        }
+      }
     },
     async resetToViewDefaults() {
       this.filterTokens = [...this.initialViewTokens];
       this.sortKey = this.initialViewSortKey;
       this.localDisplaySettings = this.initialViewDisplaySettings;
+      this.clearLocalSavedViewsConfig();
     },
     restoreViewDraft() {
       const draft = localStorage.getItem(this.savedViewDraftStorageKey);
@@ -1692,11 +1736,14 @@ export default {
       if (!this.isSavedView) return;
 
       if (!this.viewConfigChanged) {
-        localStorage.removeItem(this.savedViewDraftStorageKey);
+        this.clearLocalSavedViewsConfig();
         return;
       }
 
       localStorage.setItem(this.savedViewDraftStorageKey, JSON.stringify(this.viewDraftData));
+    },
+    clearLocalSavedViewsConfig() {
+      localStorage.removeItem(this.savedViewDraftStorageKey);
     },
   },
   constants: {
@@ -1712,6 +1759,14 @@ export default {
     v-else-if="shouldShowList"
     :class="{ 'work-item-list-container': isPlanningViewsEnabled && !isServiceDeskList }"
   >
+    <user-callout-dismisser
+      v-if="isPlanningViewsEnabled && workItemsSavedViewsEnabled"
+      feature-name="work_items_onboarding_modal"
+    >
+      <template #default="{ dismiss, shouldShowCallout }">
+        <work-items-onboarding-modal v-if="shouldShowCallout" @close="dismiss" />
+      </template>
+    </user-callout-dismisser>
     <div v-if="showLocalBoard">
       <local-board :work-item-list-data="workItems" @back="showLocalBoard = false" />
     </div>
@@ -1889,9 +1944,12 @@ export default {
 
           <template v-if="workItemsSavedViewsEnabled">
             <work-items-saved-views-selectors
+              :selected-saved-view="savedView"
               :full-path="rootPageFullPath"
               :saved-views="subscribedSavedViews"
               :sort-key="sortKey"
+              :filters="apiFilterParams"
+              :display-settings="displaySettingsSoT.namespacePreferences"
               @reset-to-default-view="resetToDefaultView"
               @error="handleError"
             >
@@ -1959,6 +2017,9 @@ export default {
                   :full-path="rootPageFullPath"
                   :title="s__('WorkItem|Save view')"
                   :sort-key="sortKey"
+                  :filters="apiFilterParams"
+                  :display-settings="displaySettingsSoT.namespacePreferences"
+                  :show-subscription-limit-warning="isSubscriptionLimitReached"
                   @hide="isNewViewModalVisible = false"
                 />
               </template>
@@ -1974,7 +2035,7 @@ export default {
                   >
                     {{ s__('WorkItem|Reset to defaults') }}
                   </gl-button>
-                  <div class="gl-border-r gl-mx-4 gl-h-5 gl-h-full gl-w-1 gl-border-r-subtle"></div>
+                  <div class="gl-border-r gl-mx-4 gl-h-full gl-w-1 gl-border-r-subtle"></div>
                   <gl-button
                     size="small"
                     category="primary"

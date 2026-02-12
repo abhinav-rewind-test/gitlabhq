@@ -81,14 +81,12 @@ module Banzai
           [current_commit.sha, path.chomp("/")]
         end
 
-        Gitlab::GitalyClient::BlobService.new(repository).get_blob_types(revision_paths, 1)
+        repository.get_blob_types(revision_paths, 1)
       rescue GRPC::Unavailable, GRPC::DeadlineExceeded => e
         # Handle Gitaly connection issues gracefully
         Gitlab::ErrorTracking.track_exception(e, project_id: project.id)
         # Return all links as blob types
-        paths.collect do |path|
-          [path, :blob]
-        end
+        revision_paths.to_h { |_revision, path| [path, :blob] }
       end
 
       def get_uri(html_attr)
@@ -185,9 +183,11 @@ module Banzai
 
         path.delete_prefix!('./')
 
-        while path.start_with?('../')
-          parts.pop
-          path.sub!('../', '')
+        if path.start_with?('../')
+          count = 0
+          count += 1 while path[(count * 3), 3] == '../'
+          parts.pop(count)
+          path = path[(count * 3)..]
         end
 
         parts.push(path).join('/')

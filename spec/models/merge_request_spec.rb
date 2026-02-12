@@ -179,14 +179,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
       it_behaves_like 'preloads associations efficiently', true
     end
 
-    context 'when feature flag is disabled' do
-      before do
-        stub_feature_flags(merge_request_diff_commits_dedup: false)
-      end
-
-      it_behaves_like 'preloads associations efficiently', false
-    end
-
     context 'edge cases' do
       it 'handles merge requests without diffs gracefully' do
         mr_without_diff = create(:merge_request, :unique_branches, source_project: project, target_project: project)
@@ -213,22 +205,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
         expect(diff_commits_preloads.first).to be_a(Hash)
         expect(diff_commits_preloads.first).to have_key(:merge_request_commits_metadata)
         expect(diff_commits_preloads.first[:merge_request_commits_metadata]).to include(:commit_author, :committer)
-      end
-
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(merge_request_diff_commits_dedup: false)
-        end
-
-        it 'preloads without metadata structure' do
-          result = described_class.preload_latest_diff_commit(nil).where(id: merge_request.id)
-          preload_hash = result.preload_values.first
-          diff_commits_preloads = preload_hash[:latest_merge_request_diff][:merge_request_diff_commits]
-
-          expect(diff_commits_preloads).to be_an(Array)
-          expect(diff_commits_preloads).to include(:commit_author, :committer)
-          expect(diff_commits_preloads).not_to include(hash_including(:merge_request_commits_metadata))
-        end
       end
 
       it 'does not raise errors when accessing associations' do
@@ -1161,7 +1137,7 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
   describe '.by_commit_sha' do
     include ProjectForksHelper
 
-    subject(:by_commit_sha) { described_class.by_commit_sha(merge_request.project, sha) }
+    subject(:by_commit_sha) { described_class.by_commit_sha([merge_request.project.id], sha) }
 
     let!(:merge_request) { create(:merge_request) }
 
@@ -1194,89 +1170,17 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
     context 'with sha contained not in latest merge request diff' do
       let(:sha) { 'b83d6e391c22777fca1ed3012fce84f633d7fed0' }
 
-      it 'returns empty requests' do
+      before do
         latest_merge_request_diff = merge_request.merge_request_diffs.create!
         commits_metadata = MergeRequest::CommitsMetadata.where(sha: 'b83d6e391c22777fca1ed3012fce84f633d7fed0')
         MergeRequestDiffCommit.where(
           merge_request_diff_id: latest_merge_request_diff,
           merge_request_commits_metadata: commits_metadata
         ).delete_all
+      end
 
+      it 'returns empty requests' do
         expect(by_commit_sha).to be_empty
-      end
-    end
-
-    context 'with sha not contained in' do
-      let(:sha) { 'b83d6e3' }
-
-      it 'returns empty result' do
-        expect(by_commit_sha).to be_empty
-      end
-    end
-
-    context 'when target_project_ids is provided' do
-      let_it_be(:target_project_1) { create(:project) }
-      let_it_be(:target_project_2) { create(:project) }
-      let_it_be(:forked_project_1) { fork_project(target_project_1, nil, repository: true) }
-      let_it_be(:forked_project_2) { fork_project(target_project_2, nil, repository: true) }
-      let(:sha) { '2ab7834c' }
-
-      let!(:same_repo_mr) do
-        create(:merge_request, source_project: target_project_1, target_project: target_project_1)
-      end
-
-      let!(:fork_mr_1) do
-        create(:merge_request, source_project: forked_project_1, target_project: target_project_1)
-      end
-
-      let!(:fork_mr_2) do
-        create(:merge_request, source_project: forked_project_2, target_project: target_project_2)
-      end
-
-      before do
-        metadata1 = create(:merge_request_commits_metadata, project: target_project_1, sha: sha)
-        metadata2 = create(:merge_request_commits_metadata, project: target_project_2, sha: sha)
-
-        create(:merge_request_diff_commit,
-          merge_request_diff: same_repo_mr.merge_request_diffs.last,
-          sha: nil,
-          merge_request_commits_metadata: metadata1,
-          relative_order: 0)
-
-        create(:merge_request_diff_commit,
-          merge_request_diff: fork_mr_1.merge_request_diffs.last,
-          sha: nil,
-          merge_request_commits_metadata: metadata1,
-          relative_order: 0)
-
-        create(:merge_request_diff_commit,
-          merge_request_diff: fork_mr_2.merge_request_diffs.last,
-          sha: nil,
-          merge_request_commits_metadata: metadata2,
-          relative_order: 0)
-      end
-
-      context 'with single target_project_ids' do
-        it 'finds merge requests for the specified target project' do
-          result = described_class.by_commit_sha(forked_project_1, sha, [target_project_1.id])
-
-          expect(result).to contain_exactly(same_repo_mr, fork_mr_1)
-        end
-      end
-
-      context 'with multiple target_project_ids' do
-        it 'finds merge requests across all specified target projects' do
-          result = described_class.by_commit_sha(forked_project_1, sha, [target_project_1.id, target_project_2.id])
-
-          expect(result).to contain_exactly(same_repo_mr, fork_mr_1, fork_mr_2)
-        end
-      end
-
-      context 'without target_project_ids array' do
-        it 'falls back to using project parameter' do
-          expect(described_class.by_commit_sha(target_project_1, sha))
-            .to contain_exactly(same_repo_mr, fork_mr_1)
-        end
       end
     end
 
@@ -1893,6 +1797,97 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
           issue_referenced_in_mr_note,
           issue_referenced_in_internal_mr_note,
           issue_referenced_in_mr_commit_msg
+        )
+      end
+    end
+  end
+
+  describe '#cache_closing_issues_after_merge!' do
+    let_it_be_with_reload(:issue1) { create(:issue, project: project) }
+    let_it_be_with_reload(:issue2) { create(:issue, project: project) }
+    let_it_be_with_reload(:issue3) { create(:issue, project: project) }
+    let_it_be_with_reload(:issue4) { create(:issue, project: project) }
+
+    before do
+      project.add_developer(subject.author)
+      subject.target_branch = subject.project.default_branch
+      create(
+        :merge_requests_closing_issues,
+        issue: issue1,
+        merge_request: subject,
+        from_mr_description: true
+      )
+      create(
+        :merge_requests_closing_issues,
+        issue: issue2,
+        merge_request: subject,
+        from_mr_description: false
+      )
+    end
+
+    context 'when squash commit is present' do
+      let(:squash_commit) do
+        double('squash commit', safe_message: "Fixes #{issue3.to_reference} closes #{issue2.to_reference}")
+      end
+
+      before do
+        allow(subject).to receive(:squash_commit).and_return(squash_commit)
+      end
+
+      it 'adds closing issues from the squash commit message, sets from_mr_description=true if matching issues exist' do
+        expect do
+          subject.cache_closing_issues_after_merge!(subject.author)
+        end.to change(subject.merge_requests_closing_issues, :count).by(1)
+
+        expect(subject.merge_requests_closing_issues.pluck(:issue_id, :from_mr_description)).to contain_exactly(
+          [issue1.id, true],
+          [issue2.id, true],
+          [issue3.id, true]
+        )
+      end
+
+      context 'when merge_commit is present' do
+        let(:merge_commit) do
+          double('merge commit', safe_message: "Fixes #{issue4.to_reference}")
+        end
+
+        before do
+          allow(subject).to receive(:merge_commit).and_return(merge_commit)
+        end
+
+        it 'adds closing issues from the squash and merge commit messages' do
+          expect do
+            subject.cache_closing_issues_after_merge!(subject.author)
+          end.to change(subject.merge_requests_closing_issues, :count).by(2)
+
+          expect(subject.merge_requests_closing_issues.pluck(:issue_id, :from_mr_description)).to contain_exactly(
+            [issue1.id, true],
+            [issue2.id, true],
+            [issue3.id, true],
+            [issue4.id, true]
+          )
+        end
+      end
+    end
+
+    context 'when merge_commit is present' do
+      let(:merge_commit) do
+        double('merge commit', safe_message: "Fixes #{issue4.to_reference}")
+      end
+
+      before do
+        allow(subject).to receive(:merge_commit).and_return(merge_commit)
+      end
+
+      it 'adds closing issues from the merge commit message' do
+        expect do
+          subject.cache_closing_issues_after_merge!(subject.author)
+        end.to change(subject.merge_requests_closing_issues, :count).by(1)
+
+        expect(subject.merge_requests_closing_issues.pluck(:issue_id, :from_mr_description)).to contain_exactly(
+          [issue1.id, true],
+          [issue2.id, false],
+          [issue4.id, true]
         )
       end
     end
@@ -3044,75 +3039,57 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
     let(:merge_request) { create(:merge_request) }
 
     context 'with preload_metadata parameter' do
-      before do
-        stub_feature_flags(merge_request_diff_commits_dedup: true)
+      it 'ensures no N+1 queries when preload_metadata is true and not loading from gitaly' do
+        merge_request = create(:merge_request)
+
+        existing_count = merge_request.merge_request_diff.merge_request_diff_commits.count
+
+        2.times do |i|
+          create(:merge_request_diff_commit,
+            merge_request_diff: merge_request.merge_request_diff,
+            commit_author: create(:merge_request_diff_commit_user),
+            committer: create(:merge_request_diff_commit_user),
+            relative_order: existing_count + i)
+        end
+
+        control = ActiveRecord::QueryRecorder.new do
+          commits = merge_request.recent_commits(preload_metadata: true, load_from_gitaly: false)
+          # force loading of associations
+          commits.each do |commit|
+            commit.author if commit.respond_to?(:author)
+            commit.committer if commit.respond_to?(:committer)
+          end
+        end
+
+        3.times do |i|
+          create(:merge_request_diff_commit,
+            merge_request_diff: merge_request.merge_request_diff,
+            commit_author: create(:merge_request_diff_commit_user),
+            committer: create(:merge_request_diff_commit_user),
+            relative_order: existing_count + 2 + i)
+        end
+
+        merge_request.reload
+
+        expect do
+          commits = merge_request.recent_commits(preload_metadata: true, load_from_gitaly: false)
+          commits.each do |commit|
+            commit.author if commit.respond_to?(:author)
+            commit.committer if commit.respond_to?(:committer)
+          end
+        end.not_to exceed_query_limit(control)
       end
 
-      context 'when feature flag is enabled' do
-        it 'ensures no N+1 queries when preload_metadata is true and not loading from gitaly' do
-          merge_request = create(:merge_request)
+      it 'does not preload metadata when loading from gitaly' do
+        expect(merge_request).not_to receive(:preload_commits_metadata)
 
-          existing_count = merge_request.merge_request_diff.merge_request_diff_commits.count
-
-          2.times do |i|
-            create(:merge_request_diff_commit,
-              merge_request_diff: merge_request.merge_request_diff,
-              commit_author: create(:merge_request_diff_commit_user),
-              committer: create(:merge_request_diff_commit_user),
-              relative_order: existing_count + i)
-          end
-
-          control = ActiveRecord::QueryRecorder.new do
-            commits = merge_request.recent_commits(preload_metadata: true, load_from_gitaly: false)
-            # force loading of associations
-            commits.each do |commit|
-              commit.author if commit.respond_to?(:author)
-              commit.committer if commit.respond_to?(:committer)
-            end
-          end
-
-          3.times do |i|
-            create(:merge_request_diff_commit,
-              merge_request_diff: merge_request.merge_request_diff,
-              commit_author: create(:merge_request_diff_commit_user),
-              committer: create(:merge_request_diff_commit_user),
-              relative_order: existing_count + 2 + i)
-          end
-
-          merge_request.reload
-
-          expect do
-            commits = merge_request.recent_commits(preload_metadata: true, load_from_gitaly: false)
-            commits.each do |commit|
-              commit.author if commit.respond_to?(:author)
-              commit.committer if commit.respond_to?(:committer)
-            end
-          end.not_to exceed_query_limit(control)
-        end
-
-        it 'does not preload metadata when loading from gitaly' do
-          expect(merge_request).not_to receive(:preload_commits_metadata)
-
-          merge_request.recent_commits(preload_metadata: true, load_from_gitaly: true)
-        end
-
-        it 'does not preload metadata when preload_metadata is false' do
-          expect(merge_request).not_to receive(:preload_commits_metadata)
-
-          merge_request.recent_commits(preload_metadata: false)
-        end
+        merge_request.recent_commits(preload_metadata: true, load_from_gitaly: true)
       end
 
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(merge_request_diff_commits_dedup: false)
-        end
+      it 'does not preload metadata when preload_metadata is false' do
+        expect(merge_request).not_to receive(:preload_commits_metadata)
 
-        it 'does not preload metadata even when preload_metadata is true' do
-          expect(merge_request).not_to receive(:preload_commits_metadata)
-
-          merge_request.recent_commits(preload_metadata: true)
-        end
+        merge_request.recent_commits(preload_metadata: false)
       end
 
       it 'passes through the limit parameter' do
@@ -3177,42 +3154,24 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
         allow(commits).to receive(:committers).and_return(committers)
       end
 
-      context 'when feature flag is enabled' do
-        before do
-          stub_feature_flags(merge_request_diff_commits_dedup: true)
-        end
+      it 'preloads commits metadata' do
+        expect(merge_request).to receive(:preload_commits_metadata)
 
-        it 'preloads commits metadata' do
-          expect(merge_request).to receive(:preload_commits_metadata)
-
-          merge_request.committers
-        end
-
-        it 'memoizes the result with the same parameters' do
-          expect(merge_request).to receive(:preload_commits_metadata).once
-
-          merge_request.committers
-          merge_request.committers
-        end
-
-        it 'preloads metadata for different parameter combinations' do
-          expect(merge_request).to receive(:preload_commits_metadata).twice
-
-          merge_request.committers(with_merge_commits: false)
-          merge_request.committers(with_merge_commits: true)
-        end
+        merge_request.committers
       end
 
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(merge_request_diff_commits_dedup: false)
-        end
+      it 'memoizes the result with the same parameters' do
+        expect(merge_request).to receive(:preload_commits_metadata).once
 
-        it 'does not preload commits metadata' do
-          expect(merge_request).not_to receive(:preload_commits_metadata)
+        merge_request.committers
+        merge_request.committers
+      end
 
-          merge_request.committers
-        end
+      it 'preloads metadata for different parameter combinations' do
+        expect(merge_request).to receive(:preload_commits_metadata).twice
+
+        merge_request.committers(with_merge_commits: false)
+        merge_request.committers(with_merge_commits: true)
       end
     end
 
@@ -4366,14 +4325,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
 
       it_behaves_like 'persisted merge request'
     end
-
-    context 'when merge_request_diff_commits_dedup feature flag is disabled' do
-      before do
-        stub_feature_flags(merge_request_diff_commits_dedup: false)
-      end
-
-      it_behaves_like 'persisted merge request'
-    end
   end
 
   describe '#merged_commit_sha' do
@@ -5060,33 +5011,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
     end
   end
 
-  describe "#head_pipeline_active? " do
-    context 'when project lacks a head_pipeline relation' do
-      before do
-        subject.head_pipeline = nil
-      end
-
-      it 'returns false' do
-        expect(subject.head_pipeline_active?).to be false
-      end
-    end
-
-    context 'when project has a head_pipeline relation' do
-      let(:pipeline) { create(:ci_empty_pipeline) }
-
-      before do
-        allow(subject).to receive(:head_pipeline) { pipeline }
-      end
-
-      it 'accesses the value from the head_pipeline' do
-        expect(subject.head_pipeline)
-          .to receive(:active?)
-
-        subject.head_pipeline_active?
-      end
-    end
-  end
-
   describe "#diff_head_pipeline_success? " do
     context 'when project lacks an diff_head_pipeline relation' do
       before do
@@ -5566,52 +5490,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
 
       it "returns false" do
         expect(open_merge_request.closed_or_merged_without_fork?).to be_falsey
-      end
-    end
-  end
-
-  describe '#reopenable?' do
-    context 'when the merge request is closed' do
-      it 'returns true' do
-        subject.close
-
-        expect(subject.reopenable?).to be_truthy
-      end
-
-      context 'forked project' do
-        let(:project)      { create(:project, :public) }
-        let(:user)         { create(:user) }
-        let(:forked_project) { fork_project(project, user) }
-
-        let!(:merge_request) do
-          create(:closed_merge_request,
-            source_project: forked_project,
-            target_project: project)
-        end
-
-        it 'returns false if unforked' do
-          Projects::UnlinkForkService.new(forked_project, user).execute
-
-          expect(merge_request.reload.reopenable?).to be_falsey
-        end
-
-        it 'returns false if the source project is deleted' do
-          Projects::DestroyService.new(forked_project, user).execute
-
-          expect(merge_request.reload.reopenable?).to be_falsey
-        end
-
-        it 'returns false if the merge request is merged' do
-          merge_request.update!(state: 'merged')
-
-          expect(merge_request.reload.reopenable?).to be_falsey
-        end
-      end
-    end
-
-    context 'when the merge request is opened' do
-      it 'returns false' do
-        expect(subject.reopenable?).to be_falsey
       end
     end
   end
@@ -7945,33 +7823,105 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
       end
     end
 
-    context 'when block is given' do
-      let(:diff_refs) { instance_double(Gitlab::Diff::DiffRefs) }
-      let(:expected_block) { proc {} }
-      let(:repository) { merge_request.source_project.repository }
-
-      before do
-        allow(base_diff).to receive(:diff_refs).and_return(diff_refs)
+    context 'when compare is present' do
+      let(:compare) do
+        instance_double(
+          Compare,
+          diffs_for_streaming: ['compare diff']
+        )
       end
 
+      before do
+        merge_request.compare = compare
+      end
+
+      it 'returns diffs from compare' do
+        expect(merge_request.diffs_for_streaming).to eq(['compare diff'])
+      end
+    end
+  end
+
+  describe '#diffs_for_streaming_by_changed_paths' do
+    let(:base_diff) do
+      instance_double(
+        MergeRequestDiff,
+        diff_refs: diff_refs
+      )
+    end
+
+    let(:diff_refs) { instance_double(Gitlab::Diff::DiffRefs) }
+    let(:expected_block) { proc {} }
+    let(:merge_request) { build_stubbed(:merge_request) }
+    let(:repository) { merge_request.source_project.repository }
+
+    before do
+      allow(merge_request)
+        .to receive(:diffable_merge_ref?)
+        .and_return(false)
+
+      allow(merge_request)
+        .to receive(:merge_request_diff)
+        .and_return(base_diff)
+    end
+
+    it 'calls diffs_by_changed_paths with given offset' do
+      expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, 0) do |_, &block|
+        expect(block).to be(expected_block)
+      end
+
+      merge_request.diffs_for_streaming_by_changed_paths(&expected_block)
+    end
+
+    context 'when offset_index is given' do
+      let(:offset) { 5 }
+
       it 'calls diffs_by_changed_paths with given offset' do
+        expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, offset) do |_, &block|
+          expect(block).to be(expected_block)
+        end
+
+        merge_request.diffs_for_streaming_by_changed_paths({ offset_index: offset }, &expected_block)
+      end
+    end
+
+    context 'when compare is present' do
+      let(:compare) do
+        instance_double(
+          Compare,
+          diffs_for_streaming_by_changed_paths: ['compare result']
+        )
+      end
+
+      before do
+        merge_request.compare = compare
+      end
+
+      it 'delegates to compare' do
+        expect(compare).to receive(:diffs_for_streaming_by_changed_paths).with({}, &expected_block)
+
+        merge_request.diffs_for_streaming_by_changed_paths({}, &expected_block)
+      end
+    end
+
+    context 'when diffable_merge_ref? is true' do
+      let(:merge_head_diff) do
+        instance_double(
+          MergeRequestDiff,
+          diff_refs: diff_refs
+        )
+      end
+
+      before do
+        allow(merge_request).to receive(:diffable_merge_ref?).and_return(true)
+        allow(merge_request).to receive(:merge_head_diff).and_return(merge_head_diff)
+      end
+
+      it 'uses merge_head_diff instead of merge_request_diff' do
         expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, 0) do |_, &block|
           expect(block).to be(expected_block)
         end
 
-        merge_request.diffs_for_streaming(&expected_block)
-      end
-
-      context 'when offset_index is given' do
-        let(:offset) { 5 }
-
-        it 'calls diffs_by_changed_paths with given offset' do
-          expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, offset) do |_, &block|
-            expect(block).to be(expected_block)
-          end
-
-          merge_request.diffs_for_streaming({ offset_index: offset }, &expected_block)
-        end
+        merge_request.diffs_for_streaming_by_changed_paths(&expected_block)
       end
     end
   end
@@ -8203,9 +8153,8 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
       create(
         :merge_request_diff_commit,
         merge_request_diff: merge_request_diff,
-        merge_request_commits_metadata_id: commits_metadata.id,
-        relative_order: 0,
-        sha: nil
+        merge_request_commits_metadata: commits_metadata,
+        relative_order: 0
       )
     end
 
@@ -8224,17 +8173,6 @@ RSpec.describe MergeRequest, factory_default: :keep, feature_category: :code_rev
 
     context 'when SHA only matches a record in merge_request_diff_commits table' do
       it 'checks existence of commit by SHA from merge_request_diff_commits_table' do
-        expect(merge_request.commit_exists?(diff_commit_without_metadata.sha)).to eq(true)
-      end
-    end
-
-    context 'when merge_request_diff_commits_dedup is disabled' do
-      before do
-        stub_feature_flags(merge_request_diff_commits_dedup: false)
-      end
-
-      it 'checks existence of commit by SHA from merge_request_diff_commits_table' do
-        expect(merge_request.commit_exists?(commits_metadata.sha)).to eq(false)
         expect(merge_request.commit_exists?(diff_commit_without_metadata.sha)).to eq(true)
       end
     end

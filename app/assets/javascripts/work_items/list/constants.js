@@ -757,7 +757,6 @@ export const savedViewFilters = {
     type: TOKEN_TYPE_UPDATED,
     operator: OPERATOR_BEFORE,
   },
-  customField: undefined,
   healthStatusFilter: {
     type: TOKEN_TYPE_HEALTH,
     operator: OPERATOR_IS,
@@ -787,3 +786,5 @@ export const savedViewFilters = {
     operator: OPERATOR_IS,
   },
 };
+
+export const NEW_SAVED_VIEWS_GID = 'gid://gitlab/WorkItems::SavedViews::SavedView/new';

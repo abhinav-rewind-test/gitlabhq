@@ -42,7 +42,13 @@ class Projects::WorkItemsController < Projects::ApplicationController
     end
   end
 
-  def index; end
+  def index
+    return unless current_user
+
+    ::Users::DismissCalloutService.new(
+      container: nil, current_user: current_user, params: { feature_name: :work_items_nav_badge }
+    ).execute
+  end
 
   def show
     return if show_params[:iid] == 'new'
@@ -121,9 +127,10 @@ class Projects::WorkItemsController < Projects::ApplicationController
   end
 
   def issuable
+    # remove order by since we return just one item anyway. In some cases keeping order by confuses PG planner on which
+    # index to use to return the result.
     @issuable ||= ::WorkItems::WorkItemsFinder.new(current_user, project_id: project.id)
-      .execute.with_work_item_type
-      .find_by_iid(show_params[:iid])
+      .execute.with_work_item_type.without_order.find_by_iid(show_params[:iid])
   end
 end
 

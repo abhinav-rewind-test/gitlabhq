@@ -192,6 +192,7 @@ GitLab documentation uses the following shortcodes:
 - [Feature tables](#feature-tables)
   - Yes
   - No
+- [Glossary tooltip](#glossary-tooltip)
 
 ## Language
 
@@ -882,6 +883,7 @@ To make tables easier to maintain:
 
 You can use [Hugo class attributes](https://gohugo.io/content-management/markdown-attributes/) to make a table condensed or expandable.
 To use a Hugo attribute with a table, you must [disable Markdown rules](../testing/markdownlint.md#disable-markdownlint-tests) `055` and `056`.
+Add a space between the Markdown comment and the top of the table so the table renders correctly.
 To avoid introducing linting errors in a table, test the table locally with all rules enabled.
 
 Hugo class attributes only render on the GitLab documentation site (`https://docs.gitlab.com`).
@@ -893,6 +895,9 @@ By default, wide tables that do not fit on the page are condensed. Long tables a
 the `condensed` class attribute to reduce the space the table takes up on a page.
 
 ```markdown
+<!-- markdownlint-disable MD055 -->
+<!-- markdownlint-disable MD056 -->
+
 | Parameter | Default      | Requirements |
 |-----------|--------------|--------------|
 | `param1`  | `true`       | A and B.     |
@@ -903,6 +908,9 @@ the `condensed` class attribute to reduce the space the table takes up on a page
 or
 
 ```markdown
+<!-- markdownlint-disable MD055 -->
+<!-- markdownlint-disable MD056 -->
+
 | Parameter | Default      | Requirements |
 |-----------|--------------|--------------|
 | `param1`  | `true`       | A and B.     |
@@ -1534,7 +1542,7 @@ instructions for your OS.
 You can compress images automatically or manually:
 
 - For automatic compression on macOS, see
-  [One simple trick to make your screenshots 80% smaller](https://about.gitlab.com/blog/2020/01/30/simple-trick-for-smaller-screenshots/).
+  [One simple trick to make your screenshots 80% smaller](https://about.gitlab.com/blog/simple-trick-for-smaller-screenshots/).
 - For manual compression, use the [`pngquant` script](https://gitlab.com/gitlab-org/gitlab/-/blob/master/bin/pngquant).
 
 To use the `pngquant` script, in the root directory of your local copy of `https://gitlab.com/gitlab-org/gitlab`,
@@ -2205,6 +2213,45 @@ maintained GitLab versions as specified by the
 Maintained versions render only on the pre-release version of the GitLab
 documentation site (`https://docs.gitlab.com`). In all other cases and in
 `/help`, a link to the documentation site is shown instead.
+
+## Glossary tooltip
+
+Use the `glossary-tooltip` shortcode to provide a short definition that appears as a tooltip on hover. For example:
+
+```markdown
+To do this thing, use {{</* glossary-tooltip text="my term" */>}}.
+```
+
+When the user hovers on `my term`, a tooltip is displayed.
+
+If the user selects the tooltip, a related glossary page opens.
+
+### Create a glossary term
+
+A [`glossary.yaml` file](https://gitlab.com/gitlab-org/technical-writing/docs-gitlab-com/-/blob/main/data/en-us/glossary.yaml)
+exists in the `docs-gitlab-com` repo.
+
+- Add definitions to this file. Each definition should be short and not contain links.
+- If the term specified in the `text` field matches a value in `glossary.yaml`,
+  the definition is displayed on hover.
+- If no value matches, no definition or underline is displayed.
+  Values are case insensitive.
+- If a related glossary page is not specified, the tooltip is displayed but does not change when selected.
+
+### Usage guidance
+
+Do not use more than five to ten tooltips on a page. Each tooltip slows down the reader. Be careful not to overload users with definitions.
+
+Use glossary tooltips in these cases:
+
+- For the first occurrence of a GitLab-specific term on a page.
+- For terms readers might not know, like `artifact` or `analyzer`.
+
+Do not use glossary tooltips in these cases:
+
+- For common terms like repository, branch, or commit.
+- For every instance of a term.
+- As a replacement for acronyms. If you can spell out the acronym on first use, and it's an industry standard, do not use a glossary tooltip.
 
 ## Plagiarism
 

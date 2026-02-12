@@ -200,6 +200,7 @@ And optionally:
 - [`include:inputs`](#includeinputs)
 - [`include:rules`](#includerules)
 - [`include:integrity`](#includeintegrity)
+- [`include:cache`](#includecache)
 
 **Additional details**:
 
@@ -532,6 +533,62 @@ include:
   - remote: 'https://gitlab.com/example-project/-/raw/main/.gitlab-ci.yml'
     integrity: 'sha256-L3/GAoKaw0Arw6hDCKeKQlV1QPEgHYxGBHsH4zG1IY8='
 ```
+
+---
+
+#### `include:cache`
+
+{{< details >}}
+
+- Status: Experiment
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351252) in GitLab 18.9 as an [experiment](../../policy/development_stages_support.md#experiment) with a [feature flag](../../administration/feature_flags/_index.md) named `ci_cache_remote_includes`. Disabled by default.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+> This feature is available for testing, but not ready for production use.
+
+Use `cache` with `include:remote` to cache the fetched remote file content and reduce HTTP requests.
+When enabled, the remote file is cached for a specified time-to-live (TTL), improving pipeline performance
+for configurations that use the same remote includes repeatedly.
+
+Consider the trade-off between performance and freshness when setting cache durations.
+Longer cache durations improve performance but might use stale content if the remote file changes frequently.
+
+When `cache` is not defined, the remote file is fetched every time.
+
+**Keyword type**: Global keyword.
+
+**Supported values**:
+
+- `true`: Enable caching with a default time-to-live (TTL) of 1 hour.
+- A duration (string): Valid TTL duration strings use time units
+  like `minutes`, `hours`, or `days` (minimum `1 minute`).
+
+**Example of `include:cache`**:
+
+```yaml
+include:
+  - remote: 'https://gitlab.com/example-project/-/raw/main/sample1.gitlab-ci.yml'
+    cache: true
+  - remote: 'https://gitlab.com/example-project/-/raw/main/sample2.gitlab-ci.yml'
+    cache: '1 day'
+```
+
+**Additional details**:
+
+- Caching is only available for `include:remote`.
+- After the remote file is cached, the cached version
+  continues to be used until the TTL expires, even if the remote file content changes.
+- If you use [`integrity`](#includeintegrity) with `cache`, the integrity check is performed
+  on every pipeline run, even when using cached content.
 
 ---
 
@@ -1899,7 +1956,7 @@ with the GitLab UI and API by anonymous users, or Guest and Reporter roles.
 
 - `true` (default): Artifacts in a job in public pipelines are available for download by anyone,
   including anonymous users, or Guest and Reporter roles.
-- `false`: Artifacts in the job are only available for download by users with at least the Developer role.
+- `false`: Artifacts in the job are only available for download by users with the Developer, Maintainer, or Owner role.
 
 **Example of `artifacts:public`**:
 
@@ -1937,8 +1994,8 @@ You cannot use [`artifacts:public`](#artifactspublic) and `artifacts:access` in 
 
 - `all` (default): Artifacts in a job in public pipelines are available for download by anyone,
   including anonymous, guest, and reporter users.
-- `developer`: Artifacts in the job are only available for download by users with at least the Developer role.
-- `maintainer`: Artifacts in the job are only available for download by users with at least the Maintainer role.
+- `developer`: Artifacts in the job are only available for download by users with the Developer, Maintainer, or Owner role.
+- `maintainer`: Artifacts in the job are only available for download by users with the Maintainer or Owner role.
 - `none`: Artifacts in the job are not available for download by anyone.
 
 **Example of `artifacts:access`**:
@@ -3916,7 +3973,7 @@ build_job:
 - To download artifacts from a different pipeline in the current project, set `project`
   to be the same as the current project, but use a different ref than the current pipeline.
   Concurrent pipelines running on the same ref could override the artifacts.
-- The user running the pipeline must have at least the Reporter role for the group or project,
+- The user running the pipeline must have the Reporter, Developer, Maintainer, or Owner role for the group or project,
   or the group/project must have public visibility.
 - You can't use `needs:project` in the same job as [`trigger`](#trigger).
 - When using `needs:project` to download artifacts from another pipeline, the job does not wait for
@@ -4058,6 +4115,10 @@ In this example:
   - `review-job` has no other needed jobs and starts immediately (at the same time as `build-job`),
     like `needs: []`.
 
+**Additional details**:
+
+- You cannot use `needs:optional` with [`needs:parallel:matrix`](#needsparallelmatrix).
+
 ---
 
 #### `needs:pipeline`
@@ -4148,6 +4209,7 @@ The `linux:rspec` job runs as soon as the `linux:build: [aws, app1]` job finishe
 
 **Additional details**:
 
+- You cannot use `needs:parallel:matrix` with [`needs:optional`](#needsoptional).
 - The order of the matrix identifiers in `needs:parallel:matrix` must match the order
   of the matrix variables in the needed job. For example, reversing the order of
   the variables in the `linux:rspec` job in the previous example would be invalid:

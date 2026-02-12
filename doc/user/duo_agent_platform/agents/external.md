@@ -46,6 +46,11 @@ The external agent:
 - Runs a CI/CD pipeline and responds inside GitLab with either a ready-to-merge
   change or an inline comment.
 
+## Prerequisites
+
+- Meet the [prerequisites for the GitLab Duo Agent Platform](../_index.md#prerequisites).
+- Allow [flow execution](../../gitlab_duo/turn_on_off.md#turn-gitlab-duo-on-or-off).
+
 ## Security considerations
 
 External agents integrate with third-party AI model providers and have different security characteristics than GitLab built-in agents and flows. By using external agents, you accept the following risks:
@@ -85,9 +90,6 @@ The following integrations have been tested by GitLab and are available:
 - [OpenAI Codex](https://help.openai.com/en/articles/11096431-openai-codex-cli-getting-started)
 - [Amazon Q](https://aws.amazon.com/q/)
 - [Gemini](https://gemini.google.com/)
-
-Before you can create an agent and integrate it with an external AI model
-provider, you must meet the [prerequisites for the GitLab Duo Agent Platform](../_index.md#prerequisites).
 
 Managed external agents use GitLab-managed credentials and can be enabled in groups
 without additional agent configuration necessary.
@@ -163,13 +165,6 @@ To use the Develop with Gemini Agent:
   - `GOOGLE_CLOUD_PROJECT`
   - `GOOGLE_CLOUD_LOCATION`
 
-## Prerequisites
-
-Before you can create an agent and integrate it with an external AI model
-provider, you must meet the [prerequisites for the GitLab Duo Agent Platform](../_index.md#prerequisites).
-
-To integrate your agent with an external AI model provider, you must also have access credentials which are provided and managed by GitLab.
-
 ### Access credentials
 
 {{< history >}}
@@ -215,7 +210,7 @@ how GitLab connects to the third-party provider.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To add or update a variable in the project settings:
 
@@ -288,7 +283,7 @@ Start by creating the external agent in the AI Catalog.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To create an external agent:
 
@@ -333,7 +328,7 @@ follows this naming convention: `ai-<agent>-<group>`.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - The agent must be enabled in the project's top-level group.
 
 To enable an external agent in a project:
@@ -360,7 +355,7 @@ This account is assigned the Developer role.
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 - If you created an external agent from the AI Catalog, the agent must be enabled in your project.
 - To allow the agent to push to workload branches (`workloads/*`), you might have to create [branch rules](../../project/repository/branches/branch_rules.md).
 
@@ -403,7 +398,7 @@ you must create a different configuration file for each external agent.
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 
 To create a configuration file:
 

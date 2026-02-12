@@ -22,7 +22,9 @@ Before starting, ensure you:
 
 ## Step-by-Step Implementation Guide
 
-### Step 1: Identify API Endpoints for the Resource
+The below steps are for REST API endpoints protection. For GraphQL protection against granular PATs, refer to [GraphQL protection](graphql_granular_token_authorization.md)
+
+### Step 1: Identify REST API Endpoints for the Resource
 
 **Goal:** Find all REST API endpoints for the resource you're working on.
 
@@ -168,7 +170,7 @@ def registry
   ::VirtualRegistries::Packages::Maven::Registry.find(params[:id])
 end
 
-route_setting :authorization, permissions: :download_maven_package_file, boundary: ->{ registry.group }
+route_setting :authorization, permissions: :download_maven_package_file, boundary: -> { registry.group }, boundary_type: :group
 get '/api/v4/virtual_registries/packages/maven/:id/*path' do
   # Boundary cannot be determined through `params`. Instead, it is determined
   # from an object (registry) fetched using an ID from the endpoint's

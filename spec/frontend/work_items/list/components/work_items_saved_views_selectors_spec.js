@@ -1,5 +1,6 @@
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import WorkItemsSavedViewsSelectors from '~/work_items/list/components/work_items_saved_views_selectors.vue';
+import WorkItemsCreateSavedViewDropdown from '~/work_items/list/components/work_items_create_saved_view_dropdown.vue';
 import waitForPromises from 'helpers/wait_for_promises';
 import { CREATED_DESC } from '~/work_items/list/constants';
 import { ROUTES } from '~/work_items/constants';
@@ -18,6 +19,9 @@ describe('WorkItemsSavedViewsSelectors', () => {
       description: 'Only I can see this',
       isPrivate: true,
       subscribed: true,
+      filters: {},
+      displaySettings: {},
+      sort: CREATED_DESC,
       userPermissions: {
         updateSavedView: true,
         deleteSavedView: true,
@@ -30,6 +34,9 @@ describe('WorkItemsSavedViewsSelectors', () => {
       description: 'Only I can see this',
       isPrivate: false,
       subscribed: true,
+      filters: {},
+      displaySettings: {},
+      sort: CREATED_DESC,
       userPermissions: {
         updateSavedView: true,
         deleteSavedView: true,
@@ -42,6 +49,9 @@ describe('WorkItemsSavedViewsSelectors', () => {
       description: 'Only I can see this',
       isPrivate: false,
       subscribed: true,
+      filters: {},
+      displaySettings: {},
+      sort: CREATED_DESC,
       userPermissions: {
         updateSavedView: true,
         deleteSavedView: true,
@@ -78,6 +88,7 @@ describe('WorkItemsSavedViewsSelectors', () => {
     overflowedViews = mockSavedViews.slice(2),
     routeMock = { params: { view_id: '1' } },
     mutateResult = mockUnsubscribeResponse,
+    subscribedSavedViewLimit = null,
   } = {}) => {
     routerPushMock = jest.fn();
     toastShowMock = jest.fn();
@@ -88,6 +99,8 @@ describe('WorkItemsSavedViewsSelectors', () => {
         fullPath: 'test-project-path',
         savedViews: mockSavedViews,
         sortKey: CREATED_DESC,
+        filters: {},
+        displaySettings: {},
         ...props,
       },
       data() {
@@ -95,6 +108,9 @@ describe('WorkItemsSavedViewsSelectors', () => {
           visibleViews,
           overflowedViews,
         };
+      },
+      provide: {
+        subscribedSavedViewLimit,
       },
       slots: {
         'header-area': '<div data-testid="header-area-slot">Header Area</div>',
@@ -133,6 +149,7 @@ describe('WorkItemsSavedViewsSelectors', () => {
     findVisibleViewSelectors().at(index).find('[data-testid="unsubscribe-btn"]');
   const findDeleteBtnAt = (index) =>
     findVisibleViewSelectors().at(index).find('[data-testid="delete-btn"]');
+  const findCreateSavedViewDropdown = () => wrapper.findComponent(WorkItemsCreateSavedViewDropdown);
 
   describe('default view selector', () => {
     it('renders the default view selector title', () => {
@@ -174,6 +191,22 @@ describe('WorkItemsSavedViewsSelectors', () => {
       });
 
       expect(findOverflowDropdown().exists()).toBe(false);
+    });
+
+    describe('overflow view click', () => {
+      it('navigates to clicked overflow view', () => {
+        createComponent();
+
+        const overflowItems = findOverflowDropdown().props('items');
+
+        overflowItems[0].action();
+
+        expect(routerPushMock).toHaveBeenCalledWith({
+          name: ROUTES.savedView,
+          params: { view_id: '3' },
+          query: undefined,
+        });
+      });
     });
   });
 
@@ -346,6 +379,33 @@ describe('WorkItemsSavedViewsSelectors', () => {
         name: ROUTES.savedView,
         params: { view_id: '1' },
       });
+    });
+  });
+
+  describe('subscription limit warning', () => {
+    it('passes showSubscriptionLimitWarning as false when below limit', () => {
+      createComponent({ subscribedSavedViewLimit: 5 });
+
+      expect(findCreateSavedViewDropdown().props('showSubscriptionLimitWarning')).toBe(false);
+    });
+
+    it('passes showSubscriptionLimitWarning as true when at limit', () => {
+      createComponent({ subscribedSavedViewLimit: 3 });
+
+      expect(findCreateSavedViewDropdown().props('showSubscriptionLimitWarning')).toBe(true);
+    });
+
+    it('passes showSubscriptionLimitWarning as true when exceeding limit', () => {
+      createComponent({ subscribedSavedViewLimit: 2 });
+
+      expect(findCreateSavedViewDropdown().props('showSubscriptionLimitWarning')).toBe(true);
+    });
+
+    it('passes correct fullPath and sortKey props to dropdown', () => {
+      createComponent();
+
+      expect(findCreateSavedViewDropdown().props('fullPath')).toBe('test-project-path');
+      expect(findCreateSavedViewDropdown().props('sortKey')).toBe(CREATED_DESC);
     });
   });
 

@@ -21,7 +21,6 @@ import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import toast from '~/vue_shared/plugins/global_toast';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { isLoggedIn } from '~/lib/utils/common_utils';
-import { WORKSPACE_PROJECT } from '~/issues/constants';
 import { addShortcutsExtension } from '~/behaviors/shortcuts';
 import { sanitize } from '~/lib/dompurify';
 import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
@@ -934,7 +933,6 @@ export default {
     },
   },
   WORK_ITEM_TYPE_NAME_OBJECTIVE,
-  WORKSPACE_PROJECT,
   noAccessSvg,
 };
 </script>
@@ -1378,8 +1376,8 @@ export default {
                 :hide-fullscreen-markdown-button="isDrawer"
                 @error="updateError = $event"
                 @openReportAbuse="openReportAbuseModal"
-                @startEditing="isAddingNotes = true"
-                @stopEditing="isAddingNotes = false"
+                @start-editing="isAddingNotes = true"
+                @stop-editing="isAddingNotes = false"
                 @focus="isAddingNotes = true"
                 @blur="isAddingNotes = false"
               />

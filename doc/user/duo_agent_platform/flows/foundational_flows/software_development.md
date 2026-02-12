@@ -10,8 +10,6 @@ title: Software Development Flow
 - Tier: Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-This feature uses [GitLab Credits](../../../../subscriptions/gitlab_credits.md).
-
 {{< /details >}}
 
 {{< collapsible title="Model information" >}}
@@ -55,7 +53,7 @@ To use the flow:
 1. Select the **Flows** tab.
 1. In the text box, specify a code task in detail.
    - The flow is aware of all files available to Git in the project branch.
-   - You can provide additional [context](../../../gitlab_duo/context.md#gitlab-duo-chat) for your chat.
+   - You can provide additional [context](../../../duo_agent_platform/context.md#gitlab-duo-chat-agentic) for your chat.
    - The flow cannot access external sources or the web.
 1. Select **Start**.
 

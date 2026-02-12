@@ -65,10 +65,11 @@ If you use another user account to create deploy keys, that user is granted priv
 
 In addition:
 
-- Deploy keys work even if the user who created them is removed from the group or project.
-- The creator of a deploy key retains access to the group or project, even if the user is demoted or removed.
+- If the deploy key owner is blocked or removed from the instance, the deploy key is
+  [rejected](#deploy-key-is-rejected). It cannot be used for any repository operations,
+  including pulls and pushes.
 - When a deploy key is specified in a protected branch rule, the creator of the deploy key:
-  - Gains access to the protected branch, as well as to the deploy key itself.
+  - Gains access to the protected branch, and to the deploy key itself.
   - Can push to the protected branch, if the deploy key has read-write permission.
     This is true even if the branch is protected against changes from all users.
 
@@ -98,7 +99,7 @@ The [GitLab CLI](../../../editor_extensions/gitlab_cli/_index.md) provides a `gl
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - [Generate an SSH key pair](../../ssh.md#generate-an-ssh-key-pair). Put the private SSH
   key on the host that requires access to the repository.
 
@@ -146,7 +147,7 @@ You can modify only a public deploy key's name.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To grant a public deploy key access to a project:
 
@@ -163,7 +164,7 @@ To grant a public deploy key access to a project:
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To edit the project access permissions of a deploy key:
 
@@ -180,7 +181,7 @@ a deploy key stops working when the key is disabled.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To disable a deploy key:
 

@@ -7969,33 +7969,7 @@ export const namespaceWorkItemTypesQueryResponse = {
             id: 'gid://gitlab/WorkItems::Type/8',
             name: 'Epic',
             iconName: 'work-item-epic',
-            supportedConversionTypes: [
-              {
-                id: 'gid://gitlab/WorkItems::Type/2',
-                name: 'Incident',
-                __typename: 'WorkItemType',
-              },
-              {
-                id: 'gid://gitlab/WorkItems::Type/1',
-                name: 'Issue',
-                __typename: 'WorkItemType',
-              },
-              {
-                id: 'gid://gitlab/WorkItems::Type/5',
-                name: 'Task',
-                __typename: 'WorkItemType',
-              },
-              {
-                id: 'gid://gitlab/WorkItems::Type/3',
-                name: 'Test Case',
-                __typename: 'WorkItemType',
-              },
-              {
-                id: 'gid://gitlab/WorkItems::Type/9',
-                name: 'Ticket',
-                __typename: 'WorkItemType',
-              },
-            ],
+            supportedConversionTypes: [],
             widgetDefinitions: [
               {
                 type: 'ASSIGNEES',
@@ -9673,6 +9647,7 @@ export const mockMetadataQueryResponse = {
     namespace: {
       __typename: 'Group',
       id: 'gid://gitlab/Group/15',
+      subscribedSavedViewLimit: 5,
       availableFeatures: {
         __typename: 'AvailableFeatures',
         hasIssueWeightsFeature: true,
@@ -10634,7 +10609,7 @@ export const singleSavedView = [
     __typename: 'SavedView',
     name: 'Current sprint 3',
     description: 'The things I am focused on for the sprint',
-    isSubscribed: false,
+    subscribed: false,
     isPrivate: true,
     id: 'gid://gitlab/WorkItems::SavedViews::SavedView/3',
     displaySettings: {
@@ -10657,6 +10632,10 @@ export const singleSavedView = [
       labelName: 'Broffe',
     },
     sort: 'UPDATED_DESC',
+    userPermissions: {
+      updateSavedView: true,
+      deleteSavedView: true,
+    },
   },
 ];
 

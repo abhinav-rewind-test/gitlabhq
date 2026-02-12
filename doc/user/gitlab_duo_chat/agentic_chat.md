@@ -9,7 +9,6 @@ title: GitLab Duo Chat (Agentic)
 
 - Tier: Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-This feature uses [GitLab Credits](../../subscriptions/gitlab_credits.md).
 
 {{< /details >}}
 
@@ -102,7 +101,7 @@ To use Chat in the GitLab UI:
    A Chat conversation opens in the GitLab Duo sidebar on the right side of your screen.
 1. Under the chat text box, ensure the **Agentic** toggle is turned on.
 1. Enter your question in the chat text box and press <kbd>Enter</kbd> or select **Send**.
-   - You can provide additional [context](../gitlab_duo/context.md#gitlab-duo-chat) for your chat.
+   - You can provide additional [context](../duo_agent_platform/context.md#gitlab-duo-chat-agentic) for your chat.
    - It might take a few seconds for the interactive AI chat to produce an answer.
 1. Optional. You can:
    - Ask a follow-up question.
@@ -199,6 +198,7 @@ In your IDE, the last 20 conversations are visible. [Issue 1308](https://gitlab.
 {{< history >}}
 
 - Multiple conversations [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/556875) in GitLab 18.3.
+- Search capability for chat history in the GitLab UI [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/582513) in GitLab 18.9.
 
 {{< /history >}}
 
@@ -224,8 +224,9 @@ Your conversations synchronize across GitLab Duo Chat in the GitLab UI and your 
 1. To view all of your conversations, look at your [chat history](#view-the-chat-history).
 1. To switch between conversations, in your chat history, select the
    appropriate conversation.
-1. IDE only: To search for a specific conversation in the chat history, in the
-   **Search chats** text box, enter your search term.
+1. To search for a specific conversation in the chat history:
+   - GitLab UI: In the **Search for a thread** text box, enter your search term.
+   - IDE: In the **Search chats** text box, enter your search term.
 
 Because of LLM context window limits, conversations are truncated to 200,000 tokens
 (roughly 800,000 characters) each.
@@ -408,4 +409,4 @@ Share your experiences, suggestions, or issues in [issue 542198](https://gitlab.
 
 ## Related topics
 
-- [Blog: GitLab Duo Chat gets agentic AI makeover](https://about.gitlab.com/blog/2025/05/29/gitlab-duo-chat-gets-agentic-ai-makeover/)
+- [Blog: GitLab Duo Chat gets agentic AI makeover](https://about.gitlab.com/blog/gitlab-duo-chat-gets-agentic-ai-makeover/)

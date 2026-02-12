@@ -1,16 +1,21 @@
+/* eslint-disable no-console */
+
 import '~/webpack';
 import gitlabLogo from '@gitlab/svgs/dist/illustrations/gitlab_logo.svg?raw';
 import { gql } from '@apollo/client';
 import { GraphiQL } from 'graphiql';
+import { getIntrospectionQuery, buildClientSchema } from 'graphql';
 /* eslint-disable no-restricted-imports */
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Mousetrap } from '~/lib/mousetrap';
-import { DOCS_URL_IN_EE_DIR } from '~/constants';
+import { DOCS_URL } from '~/constants';
 /* eslint-enable no-restricted-imports */
 import createDefaultClient, { fetchPolicies } from '~/lib/graphql';
 import { keysFor, TOGGLE_PERFORMANCE_BAR } from '~/behaviors/shortcuts/keybindings';
 import Shortcuts from '~/behaviors/shortcuts/shortcuts';
+import { __ } from '~/locale';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 
 const apolloClient = createDefaultClient(
   {},
@@ -20,9 +25,37 @@ const apolloClient = createDefaultClient(
   },
 );
 
+let introspectionResult = null;
+
+const isProduction = process.env.NODE_ENV === 'production';
+const graphiqlContainer = document.getElementById('graphiql-container');
+
+const loadSchema = async () => {
+  if (isProduction) {
+    try {
+      // Fetch static schema file in production
+      const { introspectionSchemaPath } = graphiqlContainer.dataset;
+      const response = await fetch(introspectionSchemaPath);
+      if (!response.ok) {
+        throw new Error(__('Cached schema not available'));
+      }
+      introspectionResult = await response.json();
+      const schema = buildClientSchema(introspectionResult.data);
+      console.log(__('Using cached GraphQL schema'));
+      return schema;
+    } catch (error) {
+      console.log(__('Using live GraphQL introspection'));
+      return null;
+    }
+  } else {
+    console.log(__('Using live GraphQL introspection'));
+    return null;
+  }
+};
+
 const defaultQuery = `# Welcome to GraphQL explorer (GraphiQL)
 #
-# Full documentation: ${DOCS_URL_IN_EE_DIR}/api/graphql
+# Full documentation: ${DOCS_URL}/api/graphql
 #
 # GraphQL explorer is an in-browser tool for writing, validating, and
 # testing GraphQL queries.
@@ -61,16 +94,24 @@ const GraphiQLLogo = React.createElement(
   GraphiQL.Logo,
   {},
   React.createElement('a', {
-    href: `${DOCS_URL_IN_EE_DIR}/api/graphql`,
+    href: `${DOCS_URL}/api/graphql`,
     target: '_blank',
     title: 'GraphQL API documentation',
     dangerouslySetInnerHTML: { __html: gitlabLogo },
   }),
 );
 
-const graphiqlContainer = document.getElementById('graphiql-container');
-
 function apolloFetcher(graphQLParams, { headers }) {
+  const isIntrospectionQuery =
+    graphQLParams.query.includes('__schema') ||
+    graphQLParams.query.includes('__type') ||
+    graphQLParams.query === getIntrospectionQuery();
+
+  if (introspectionResult && isIntrospectionQuery) {
+    console.log(__('Using cached introspection result'));
+    return Promise.resolve(introspectionResult);
+  }
+
   let query = gql(graphQLParams.query);
 
   /*
@@ -106,12 +147,29 @@ function apolloFetcher(graphQLParams, { headers }) {
   return apolloClient.subscribe(apolloObject);
 }
 
-createRoot(graphiqlContainer).render(
-  React.createElement(
-    GraphiQL,
-    { defaultQuery, fetcher: apolloFetcher, inputValueDeprecation: true },
-    GraphiQLLogo,
-  ),
-);
+const initializeGraphiQL = async () => {
+  try {
+    const loadedSchema = await loadSchema();
+
+    const graphiqlProps = {
+      defaultQuery,
+      fetcher: apolloFetcher,
+      inputValueDeprecation: true,
+    };
+
+    if (loadedSchema) {
+      graphiqlProps.schema = loadedSchema;
+    }
+
+    createRoot(graphiqlContainer).render(
+      React.createElement(GraphiQL, graphiqlProps, GraphiQLLogo),
+    );
+  } catch (error) {
+    console.error('Failed to initialize GraphiQL:', error);
+    Sentry.captureException(error);
+  }
+};
+
+initializeGraphiQL();
 
 Mousetrap.bind(keysFor(TOGGLE_PERFORMANCE_BAR), Shortcuts.onTogglePerfBar);

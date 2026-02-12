@@ -232,7 +232,6 @@ RSpec.configure do |config|
     # Enable all features by default for testing
     # Reset any changes in after hook.
     stub_all_feature_flags
-    stub_feature_flags(main_branch_over_master: false)
 
     TestEnv.seed_db
   end
@@ -296,12 +295,6 @@ RSpec.configure do |config|
       # It's disabled in specs because we don't support certain features which
       # cause spec failures.
       stub_feature_flags(gitlab_error_tracking: false)
-
-      # Disable `main_branch_over_master` as we migrate
-      # from `master` to `main` accross our codebase.
-      # It's done in order to preserve the concistency in tests
-      # As we're ready to change `master` usages to `main`, let's enable it
-      stub_feature_flags(main_branch_over_master: false)
 
       # Disable issue respositioning to avoid heavy load on database when importing big projects.
       # This is only turned on when app is handling heavy project imports.
@@ -388,6 +381,8 @@ RSpec.configure do |config|
       # queries, which in turn can cause some specs to fail.
       # Due to time constraints, we'll need to address those in follow-ups.
       stub_feature_flags(dap_onboarding_empty_states: false)
+      # This feature is wip and should not be enabled in tests by default
+      stub_feature_flags(iam_svc_login: false)
     else
       unstub_all_feature_flags
     end

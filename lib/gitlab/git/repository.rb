@@ -183,6 +183,12 @@ module Gitlab
         end
       end
 
+      def fork_repository(source_repository, branch = nil)
+        wrapped_gitaly_errors do
+          gitaly_repository_client.fork_repository(source_repository, branch)
+        end
+      end
+
       def expire_has_local_branches_cache
         clear_memoization(:has_local_branches)
       end
@@ -438,6 +444,15 @@ module Gitlab
         end
       end
 
+      # Returns a hash mapping file paths to their object types (:blob, :tree, or :commit).
+      #
+      # revision_paths - Array of [revision, path] tuples
+      # limit - Maximum bytes to fetch per blob (default: -1 for no limit)
+      #
+      def get_blob_types(revision_paths, limit = -1)
+        gitaly_blob_client.get_blob_types(revision_paths, limit)
+      end
+
       def count_commits(options)
         options = process_count_commits_options(options.dup)
 
@@ -597,13 +612,6 @@ module Gitlab
       def submodule_urls_for(ref)
         wrapped_gitaly_errors do
           gitaly_submodule_urls_for(ref)
-        end
-      end
-
-      # Return total commits count accessible from passed ref
-      def commit_count(ref)
-        wrapped_gitaly_errors do
-          gitaly_commit_client.commit_count(ref)
         end
       end
 

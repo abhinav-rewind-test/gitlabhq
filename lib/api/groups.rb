@@ -278,6 +278,7 @@ module API
         use :group_list_params
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_group, boundary_type: :user
       get feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:groups_api)
 
@@ -298,6 +299,7 @@ module API
 
         use :optional_params
       end
+      route_setting :authorization, permissions: :create_group, boundary_type: :user
       post feature_category: :groups_and_projects, urgency: :low do
         organization = find_organization!(params[:organization_id]) if params[:organization_id].present?
         authorize! :create_group, organization if organization
@@ -332,10 +334,12 @@ module API
       params do
         optional :name, type: String, desc: 'The name of the group'
         optional :path, type: String, desc: 'The path of the group'
+        optional :shared_runners_setting, type: String, values: ::Namespace::SHARED_RUNNERS_SETTINGS, desc: 'Enable/disable shared runners for the group and its subgroups and projects'
         use :optional_params
         use :optional_update_params
         use :optional_update_params_ee
       end
+      route_setting :authorization, permissions: :update_group, boundary_type: :group
       put ':id', feature_category: :groups_and_projects, urgency: :low do
         check_query_limit
         group = find_group!(params[:id])
@@ -360,6 +364,7 @@ module API
         ]
         tags %w[groups]
       end
+      route_setting :authorization, permissions: :archive_group, boundary_type: :group
       post ':id/archive', feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:group_archive_unarchive_api)
 
@@ -383,6 +388,7 @@ module API
         ]
         tags %w[groups]
       end
+      route_setting :authorization, permissions: :unarchive_group, boundary_type: :group
       post ':id/unarchive', feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:group_archive_unarchive_api)
 
@@ -408,6 +414,7 @@ module API
         optional :with_projects, type: Boolean, default: true, desc: 'Omit project details'
       end
       # TODO: Set higher urgency after resolving https://gitlab.com/gitlab-org/gitlab/-/issues/357841
+      route_setting :authorization, permissions: :read_group, boundary_type: :group
       get ":id", feature_category: :groups_and_projects, urgency: :low do
         check_rate_limit_by_user_or_ip!(:group_api)
 
@@ -420,6 +427,7 @@ module API
       desc 'Remove a group.' do
         tags %w[groups]
       end
+      route_setting :authorization, permissions: :delete_group, boundary_type: :group
       delete ":id", feature_category: :groups_and_projects, urgency: :low do
         group = find_group!(params[:id])
         authorize! :remove_group, group
@@ -429,6 +437,7 @@ module API
       end
 
       desc 'Restore a group.'
+      route_setting :authorization, permissions: :restore_group, boundary_type: :group
       post ':id/restore', feature_category: :groups_and_projects do
         authorize! :remove_group, user_group
 
@@ -458,6 +467,7 @@ module API
         use :pagination
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_shared_group, boundary_type: :group
       get ":id/groups/shared", feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:group_shared_groups_api)
 
@@ -480,6 +490,7 @@ module API
         use :pagination
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_invited_group, boundary_type: :group
       get ":id/invited_groups", feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:group_invited_groups_api)
 
@@ -519,6 +530,7 @@ module API
         use :optional_projects_params
       end
       # TODO: Set higher urgency after resolving https://gitlab.com/gitlab-org/gitlab/-/issues/211498
+      route_setting :authorization, permissions: :read_project, boundary_type: :group
       get ":id/projects", feature_category: :groups_and_projects, urgency: :low do
         check_rate_limit_by_user_or_ip!(:group_projects_api)
 
@@ -557,6 +569,7 @@ module API
         use :pagination
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_shared_project, boundary_type: :group
       get ":id/projects/shared", feature_category: :groups_and_projects do
         projects = find_group_projects(params, { only_shared: true })
 
@@ -572,6 +585,7 @@ module API
         use :group_list_params
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_sub_group, boundary_type: :group
       get ":id/subgroups", feature_category: :groups_and_projects, urgency: :low do
         groups = find_groups(declared_params(include_missing: false), params[:id])
         present_groups params, groups
@@ -586,6 +600,7 @@ module API
         use :group_list_params
         use :with_custom_attributes
       end
+      route_setting :authorization, permissions: :read_descendant_group, boundary_type: :group
       get ":id/descendant_groups", feature_category: :groups_and_projects, urgency: :low do
         finder_params = declared_params(include_missing: false).merge(include_parent_descendants: true)
         groups = find_groups(finder_params, params[:id])
@@ -599,6 +614,7 @@ module API
       params do
         requires :project_id, type: String, desc: 'The ID or path of the project'
       end
+      route_setting :authorization, permissions: :transfer_project, boundary_type: :instance
       post ":id/projects/:project_id", requirements: { project_id: /.+/ }, feature_category: :groups_and_projects do
         authenticated_as_admin!
         group = find_group!(params[:id])
@@ -622,6 +638,7 @@ module API
         optional :search, type: String, desc: 'Return list of namespaces matching the search criteria'
         use :pagination
       end
+      route_setting :authorization, permissions: :read_transfer_location, boundary_type: :group
       get ':id/transfer_locations', feature_category: :groups_and_projects do
         authorize! :admin_group, user_group
         args = declared_params(include_missing: false)
@@ -641,6 +658,7 @@ module API
           desc: 'The ID of the target group to which the group needs to be transferred to.'\
                 'If not provided, the source group will be promoted to a top-level group.'
       end
+      route_setting :authorization, permissions: :transfer_group, boundary_type: :group
       post ':id/transfer', feature_category: :groups_and_projects do
         group = find_group!(params[:id])
         authorize! :change_group, group
@@ -671,6 +689,7 @@ module API
       params do
         requires :organization_id, type: Integer, desc: 'The ID of the organization to transfer the group to'
       end
+      route_setting :authorization, permissions: :transfer_group, boundary_type: :group
       post ':id/transfer_to_organization', feature_category: :groups_and_projects do
         group = find_group!(params[:id])
 
@@ -706,6 +725,7 @@ module API
         optional :expires_at, type: Date, desc: 'Share expiration date'
         optional :member_role_id, type: Integer, desc: 'The ID of the Member Role to be assigned to the group'
       end
+      route_setting :authorization, permissions: :share_group, boundary_type: :group
       post ":id/share", feature_category: :groups_and_projects, urgency: :low do
         shared_with_group = find_group!(params[:group_id])
 
@@ -729,6 +749,7 @@ module API
         requires :group_id, type: Integer, desc: 'The ID of the shared group'
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :unshare_group, boundary_type: :group
       delete ":id/share/:group_id", feature_category: :groups_and_projects do
         shared_group = find_group!(params[:id])
 

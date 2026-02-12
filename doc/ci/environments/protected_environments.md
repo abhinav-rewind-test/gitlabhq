@@ -2,6 +2,7 @@
 stage: Verify
 group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Restrict deployment access by protecting environments. Control who can deploy to specific environments based on roles, users, or group membership.
 title: Protected environments
 ---
 
@@ -50,7 +51,7 @@ To protect an environment:
      - **Maintainers**: Allows access to all of the project's users with the Maintainer role.
      - **Developers**: Allows access to all of the project's users with the Maintainer and Developer role.
    - You can also select groups that are already [invited](../../user/project/members/sharing_projects_groups.md#invite-a-group-to-a-project) to the project. Invited groups added to the project with the Reporter role appear in the dropdown list for [deployment-only access](#deployment-only-access-to-protected-environments).
-   - You can also select specific users. The users must have at least the Developer role to appear in
+   - You can also select specific users. The users must have the Developer, Maintainer, or Owner role to appear in
      the **Allowed to deploy** list.
 1. In the **Approvers** list, select the role, users, or groups you
    want to give deploy access to. Keep in mind that:
@@ -59,7 +60,7 @@ To protect an environment:
      - **Maintainers**: Allows access to all of the project's users with the Maintainer role.
      - **Developers**: Allows access to all of the project's users with the Maintainer and Developer role.
    - You can only select groups that are already [invited](../../user/project/members/sharing_projects_groups.md#invite-a-group-to-a-project) to the project.
-   - Users must have at least the Developer role to appear in
+   - Users must have the Developer, Maintainer, or Owner role to appear in
      the **Approvers** list.
 
 1. In the **Approval rules** section:

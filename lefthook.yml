@@ -63,10 +63,16 @@ pre-push:
       files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD)..HEAD
       glob: '{,ee/}app/graphql/*.rb'
       run: bundle exec rake gitlab:graphql:check_docs
+    graphql_introspection_check:
+      tags: graphql schema backend
+      files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD)..HEAD
+      glob: '{,ee/}app/graphql/**/*.rb'
+      run: bundle exec rake gitlab:graphql:check_introspection_sync
     openapi_docs:
       tags: documentation
       files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD)..HEAD
-      run: bundle exec rake gitlab:openapi:v2:check_docs && bundle exec rake gitlab:openapi:v3:check_docs
+      glob: '{doc/api/openapi/openapi_v2.yaml,doc/api/openapi/openapi_v3.yaml,*.rb}'
+      run: bundle exec rake gitlab:openapi:v3:check_docs gitlab:openapi:v2:check_docs
     vale: # Requires Vale: https://docs.gitlab.com/development/documentation/testing/vale/
       tags: documentation style
       files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD)..HEAD
@@ -153,7 +159,7 @@ pre-push:
     permissions_docs:
       tags: documentation
       files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD)..HEAD
-      glob: '{config/authz/permissions/*.yml,app/policies/*,rb.ee/app/policies/*.rb}'
+      glob: '{config/authz/permissions/**/*.yml,config/authz/permission_groups/**/*.yml,{,ee/}app/policies/**/*.rb,{,ee/}lib/api/**/*.rb}'
       run: bundle exec rake gitlab:permissions:validate
     check-deprecated-files:
       tags: backend frontend view haml
@@ -220,6 +226,14 @@ pre-commit:
       files: git diff --name-only --diff-filter=d $(git merge-base origin/master HEAD) --cached
       glob: 'config/gitlab_loose_foreign_keys.yml'
       run: scripts/validate_loose_foreign_keys_ordering
+    prevent_graphql_schema_deletion:
+      tags: graphql schema
+      run: |
+        if git diff --cached --name-only --diff-filter=D | grep -q "public/-/graphql/introspection_result.json"; then
+          echo "🚫 Cannot delete GraphQL introspection schema file!"
+          echo "Regenerate it with: bundle exec rake gitlab:graphql:generate_introspection_schema"
+          exit 1
+        fi
     vale: # Requires Vale: https://docs.gitlab.com/development/documentation/testing/vale/
       tags: documentation style
       files: git diff --name-only --diff-filter=d --staged

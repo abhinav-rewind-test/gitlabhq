@@ -2081,6 +2081,23 @@ four standard [pagination arguments](#pagination-arguments):
 | <a id="querytopicsorganizationid"></a>`organizationId` {{< icon name="warning-solid" >}} | [`OrganizationsOrganizationID`](#organizationsorganizationid) | **Introduced** in GitLab 17.7. **Status**: Experiment. Global ID of the organization. |
 | <a id="querytopicssearch"></a>`search` | [`String`](#string) | Search query for topic name. |
 
+### `Query.trialUsage`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Usage data for trial subscriptions.
+
+Returns [`GitlabTrialUsage`](#gitlabtrialusage).
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="querytrialusagenamespacepath"></a>`namespacePath` | [`ID`](#id) | Path of the top-level namespace. Leave it blank if querying the instance subscription. |
+
 ### `Query.usageTrendsMeasurements`
 
 Get statistics on the instance.
@@ -4361,6 +4378,7 @@ Input type: `BranchRuleExternalStatusCheckCreateInput`
 | <a id="mutationbranchruleexternalstatuscheckcreateclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
 | <a id="mutationbranchruleexternalstatuscheckcreateexternalurl"></a>`externalUrl` | [`String!`](#string) | URL of external status check resource. |
 | <a id="mutationbranchruleexternalstatuscheckcreatename"></a>`name` | [`String!`](#string) | Name of the external status check. |
+| <a id="mutationbranchruleexternalstatuscheckcreatesharedsecret"></a>`sharedSecret` | [`String`](#string) | HMAC shared secret for authenticating external status check requests. |
 
 #### Fields
 
@@ -4416,6 +4434,7 @@ Input type: `BranchRuleExternalStatusCheckUpdateInput`
 | <a id="mutationbranchruleexternalstatuscheckupdateexternalurl"></a>`externalUrl` | [`String!`](#string) | External URL of the external status check. |
 | <a id="mutationbranchruleexternalstatuscheckupdateid"></a>`id` | [`MergeRequestsExternalStatusCheckID!`](#mergerequestsexternalstatuscheckid) | Global ID of the external status check to update. |
 | <a id="mutationbranchruleexternalstatuscheckupdatename"></a>`name` | [`String!`](#string) | Name of the external status check. |
+| <a id="mutationbranchruleexternalstatuscheckupdatesharedsecret"></a>`sharedSecret` | [`String`](#string) | HMAC shared secret for authenticating external status check requests. |
 
 #### Fields
 
@@ -5031,6 +5050,30 @@ Input type: `ConfigureSecretDetectionInput`
 | <a id="mutationconfiguresecretdetectionerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
 | <a id="mutationconfiguresecretdetectionsuccesspath"></a>`successPath` | [`String`](#string) | Redirect path to use when the response is successful. |
 
+### `Mutation.containerUpstreamCacheDelete`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Input type: `ContainerUpstreamCacheDeleteInput`
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationcontainerupstreamcachedeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationcontainerupstreamcachedeleteid"></a>`id` | [`VirtualRegistriesContainerUpstreamID!`](#virtualregistriescontainerupstreamid) | ID of the container virtual registry upstream. |
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationcontainerupstreamcachedeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationcontainerupstreamcachedeleteerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
+| <a id="mutationcontainerupstreamcachedeleteupstream"></a>`upstream` | [`ContainerUpstream`](#containerupstream) | Container virtual registry upstream. |
+
 ### `Mutation.containerUpstreamCreate`
 
 {{< details >}}
@@ -5114,6 +5157,30 @@ Input type: `ContainerUpstreamUpdateInput`
 | <a id="mutationcontainerupstreamupdateclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
 | <a id="mutationcontainerupstreamupdateerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
 | <a id="mutationcontainerupstreamupdateupstream"></a>`upstream` | [`ContainerUpstreamDetails`](#containerupstreamdetails) | Container upstream after the mutation. |
+
+### `Mutation.containerVirtualRegistryCacheDelete`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Input type: `ContainerVirtualRegistryCacheDeleteInput`
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationcontainervirtualregistrycachedeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationcontainervirtualregistrycachedeleteid"></a>`id` | [`VirtualRegistriesContainerRegistryID!`](#virtualregistriescontainerregistryid) | ID of the container virtual registry. |
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationcontainervirtualregistrycachedeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationcontainervirtualregistrycachedeleteerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
+| <a id="mutationcontainervirtualregistrycachedeleteregistry"></a>`registry` | [`ContainerRegistry`](#containerregistry) | Container virtual registry. |
 
 ### `Mutation.containerVirtualRegistryCreate`
 
@@ -6554,6 +6621,33 @@ Input type: `DeleteProjectCustomAttributeInput`
 | <a id="mutationdeleteprojectcustomattributecustomattribute"></a>`customAttribute` | [`CustomAttribute`](#customattribute) | Deleted custom attribute. |
 | <a id="mutationdeleteprojectcustomattributeerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
 
+### `Mutation.deleteUserCustomAttribute`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Deletes a custom attribute from a user. Only available to admins.
+
+Input type: `DeleteUserCustomAttributeInput`
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationdeleteusercustomattributeclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationdeleteusercustomattributekey"></a>`key` | [`String!`](#string) | Key of the custom attribute to delete. |
+| <a id="mutationdeleteusercustomattributeuserid"></a>`userId` | [`UserID!`](#userid) | Global ID of the user. |
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationdeleteusercustomattributeclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationdeleteusercustomattributecustomattribute"></a>`customAttribute` | [`CustomAttribute`](#customattribute) | Deleted custom attribute. |
+| <a id="mutationdeleteusercustomattributeerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
+
 ### `Mutation.designManagementDelete`
 
 Input type: `DesignManagementDeleteInput`
@@ -7992,6 +8086,26 @@ Input type: `GroupSecretCreateInput`
 | <a id="mutationgroupsecretcreateclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
 | <a id="mutationgroupsecretcreateerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
 | <a id="mutationgroupsecretcreategroupsecret"></a>`groupSecret` | [`GroupSecret`](#groupsecret) | Group secret. |
+
+### `Mutation.groupSecretDelete`
+
+Input type: `GroupSecretDeleteInput`
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationgroupsecretdeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationgroupsecretdeletegrouppath"></a>`groupPath` | [`ID!`](#id) | Group of the secret. |
+| <a id="mutationgroupsecretdeletename"></a>`name` | [`String!`](#string) | Name of the group secret to delete. |
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationgroupsecretdeleteclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationgroupsecretdeleteerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
+| <a id="mutationgroupsecretdeletegroupsecret"></a>`groupSecret` | [`GroupSecret`](#groupsecret) | Deleted group secret. |
 
 ### `Mutation.groupSecretUpdate`
 
@@ -14236,6 +14350,32 @@ Input type: `UpdateDependencyProxySettingsInput`
 | <a id="mutationupdatedependencyproxysettingsdependencyproxysetting"></a>`dependencyProxySetting` | [`DependencyProxySetting`](#dependencyproxysetting) | Group dependency proxy settings after mutation. |
 | <a id="mutationupdatedependencyproxysettingserrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
 
+### `Mutation.updateDuoWorkflowToolCallApprovals`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Input type: `UpdateDuoWorkflowToolCallApprovalsInput`
+
+#### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationupdateduoworkflowtoolcallapprovalsclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationupdateduoworkflowtoolcallapprovalstoolcallargs"></a>`toolCallArgs` | [`JSON!`](#json) | Arguments for the tool call. |
+| <a id="mutationupdateduoworkflowtoolcallapprovalstoolname"></a>`toolName` | [`String!`](#string) | Name of the tool to approve. |
+| <a id="mutationupdateduoworkflowtoolcallapprovalsworkflowid"></a>`workflowId` | [`AiDuoWorkflowsWorkflowID!`](#aiduoworkflowsworkflowid) | Global ID of the workflow to update. |
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="mutationupdateduoworkflowtoolcallapprovalsclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+| <a id="mutationupdateduoworkflowtoolcallapprovalserrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during update. |
+| <a id="mutationupdateduoworkflowtoolcallapprovalsworkflow"></a>`workflow` | [`DuoWorkflow`](#duoworkflow) | Updated workflow with new tool approvals. |
+
 ### `Mutation.updateEpic`
 
 {{< details >}}
@@ -20324,6 +20464,29 @@ The edge type for [`GitlabSubscriptionUsageUserEvent`](#gitlabsubscriptionusageu
 | <a id="gitlabsubscriptionusageusereventedgecursor"></a>`cursor` | [`String!`](#string) | A cursor for use in pagination. |
 | <a id="gitlabsubscriptionusageusereventedgenode"></a>`node` | [`GitlabSubscriptionUsageUserEvent`](#gitlabsubscriptionusageuserevent) | The item at the end of the edge. |
 
+#### `GitlabTrialUsageUserConnection`
+
+The connection type for [`GitlabTrialUsageUser`](#gitlabtrialusageuser).
+
+##### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="gitlabtrialusageuserconnectionedges"></a>`edges` | [`[GitlabTrialUsageUserEdge]`](#gitlabtrialusageuseredge) | A list of edges. |
+| <a id="gitlabtrialusageuserconnectionnodes"></a>`nodes` | [`[GitlabTrialUsageUser]`](#gitlabtrialusageuser) | A list of nodes. |
+| <a id="gitlabtrialusageuserconnectionpageinfo"></a>`pageInfo` | [`PageInfo!`](#pageinfo) | Information to aid in pagination. |
+
+#### `GitlabTrialUsageUserEdge`
+
+The edge type for [`GitlabTrialUsageUser`](#gitlabtrialusageuser).
+
+##### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="gitlabtrialusageuseredgecursor"></a>`cursor` | [`String!`](#string) | A cursor for use in pagination. |
+| <a id="gitlabtrialusageuseredgenode"></a>`node` | [`GitlabTrialUsageUser`](#gitlabtrialusageuser) | The item at the end of the edge. |
+
 #### `GoogleCloudArtifactRegistryArtifactConnection`
 
 The connection type for [`GoogleCloudArtifactRegistryArtifact`](#googlecloudartifactregistryartifact).
@@ -25569,6 +25732,17 @@ Permission that belongs to a granular scope.
 | <a id="achievementupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp the achievement was last updated. |
 | <a id="achievementuserachievements"></a>`userAchievements` {{< icon name="warning-solid" >}} | [`UserAchievementConnection`](#userachievementconnection) | **Introduced** in GitLab 15.10. **Status**: Experiment. Recipients for the achievement. |
 
+### `ActiveTrial`
+
+Active trial information.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="activetrialenddate"></a>`endDate` | [`ISO8601Date`](#iso8601date) | Trial end date. |
+| <a id="activetrialstartdate"></a>`startDate` | [`ISO8601Date`](#iso8601date) | Trial start date. |
+
 ### `AddOnPurchase`
 
 Represents AddOn purchase for Namespace.
@@ -26280,6 +26454,7 @@ An AI catalog agent.
 | <a id="aicatalogagentsoftdeletedat"></a>`softDeletedAt` | [`Time`](#time) | Timestamp of when the item was soft deleted. |
 | <a id="aicatalogagentupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp of when the item was updated. |
 | <a id="aicatalogagentuserpermissions"></a>`userPermissions` | [`AiCatalogItemPermissions!`](#aicatalogitempermissions) | Permissions for the current user on the resource. |
+| <a id="aicatalogagentverificationlevel"></a>`verificationLevel` | [`AiCatalogItemVerificationLevel!`](#aicatalogitemverificationlevel) | Verification level of the item. |
 | <a id="aicatalogagentversions"></a>`versions` | [`AiCatalogItemVersionConnection`](#aicatalogitemversionconnection) | Versions of the item. (see [Connections](#connections)) |
 
 #### Fields with arguments
@@ -26385,6 +26560,7 @@ An AI catalog flow.
 | <a id="aicatalogflowsoftdeletedat"></a>`softDeletedAt` | [`Time`](#time) | Timestamp of when the item was soft deleted. |
 | <a id="aicatalogflowupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp of when the item was updated. |
 | <a id="aicatalogflowuserpermissions"></a>`userPermissions` | [`AiCatalogItemPermissions!`](#aicatalogitempermissions) | Permissions for the current user on the resource. |
+| <a id="aicatalogflowverificationlevel"></a>`verificationLevel` | [`AiCatalogItemVerificationLevel!`](#aicatalogitemverificationlevel) | Verification level of the item. |
 | <a id="aicatalogflowversions"></a>`versions` | [`AiCatalogItemVersionConnection`](#aicatalogitemversionconnection) | Versions of the item. (see [Connections](#connections)) |
 
 #### Fields with arguments
@@ -26529,6 +26705,7 @@ An AI catalog third party flow.
 | <a id="aicatalogthirdpartyflowsoftdeletedat"></a>`softDeletedAt` | [`Time`](#time) | Timestamp of when the item was soft deleted. |
 | <a id="aicatalogthirdpartyflowupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp of when the item was updated. |
 | <a id="aicatalogthirdpartyflowuserpermissions"></a>`userPermissions` | [`AiCatalogItemPermissions!`](#aicatalogitempermissions) | Permissions for the current user on the resource. |
+| <a id="aicatalogthirdpartyflowverificationlevel"></a>`verificationLevel` | [`AiCatalogItemVerificationLevel!`](#aicatalogitemverificationlevel) | Verification level of the item. |
 | <a id="aicatalogthirdpartyflowversions"></a>`versions` | [`AiCatalogItemVersionConnection`](#aicatalogitemversionconnection) | Versions of the item. (see [Connections](#connections)) |
 
 #### Fields with arguments
@@ -28465,6 +28642,18 @@ Represents a component usage in a project.
 | <a id="cicatalogresourcecomponentusagename"></a>`name` | [`String`](#string) | Name of the component. |
 | <a id="cicatalogresourcecomponentusageversion"></a>`version` | [`String`](#string) | Version of the component. |
 
+### `CiCatalogResourceSemver`
+
+Semantic version information for a catalog resource version.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="cicatalogresourcesemvermajor"></a>`major` | [`Int`](#int) | Major version number. |
+| <a id="cicatalogresourcesemverminor"></a>`minor` | [`Int`](#int) | Minor version number. |
+| <a id="cicatalogresourcesemverpatch"></a>`patch` | [`Int`](#int) | Patch version number. |
+
 ### `CiCatalogResourceVersion`
 
 #### Fields
@@ -28481,6 +28670,7 @@ Represents a component usage in a project.
 | <a id="cicatalogresourceversionreadme"></a>`readme` | [`String`](#string) | Readme data. |
 | <a id="cicatalogresourceversionreadmehtml"></a>`readmeHtml` | [`String`](#string) | GitLab Flavored Markdown rendering of `readme`. |
 | <a id="cicatalogresourceversionreleasedat"></a>`releasedAt` {{< icon name="warning-solid" >}} | [`Time`](#time) | **Introduced** in GitLab 16.7. **Status**: Experiment. Timestamp of when the version was released. |
+| <a id="cicatalogresourceversionsemver"></a>`semver` | [`CiCatalogResourceSemver`](#cicatalogresourcesemver) | Semantic version information. |
 
 ### `CiCdSettings`
 
@@ -32809,6 +32999,7 @@ GitLab Duo Agent Platform session.
 | <a id="duoworkflowstatus"></a>`status` | [`DuoWorkflowStatus`](#duoworkflowstatus) | Status of the session. |
 | <a id="duoworkflowstatusgroup"></a>`statusGroup` | [`DuoWorkflowStatusGroup`](#duoworkflowstatusgroup) | Status group of the flow session. |
 | <a id="duoworkflowstatusname"></a>`statusName` | [`String`](#string) | Status name of the session. |
+| <a id="duoworkflowtoolcallapprovals"></a>`toolCallApprovals` | [`JSON`](#json) | Tools approval per session policy. |
 | <a id="duoworkflowupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp of when the session was last updated. |
 | <a id="duoworkflowuserid"></a>`userId` | [`UserID!`](#userid) | ID of the user. |
 | <a id="duoworkflowuserpermissions"></a>`userPermissions` | [`DuoWorkflowPermissions`](#duoworkflowpermissions) | Permissions of the current user for the workflow. |
@@ -34158,6 +34349,7 @@ Describes paid tier trial information for the subscription.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
+| <a id="gitlabsubscriptionpaidtiertrialdailyusage"></a>`dailyUsage` | [`[GitlabSubscriptionDailyUsage!]`](#gitlabsubscriptiondailyusage) | Array of daily usage of the subscription's paid tier trial. |
 | <a id="gitlabsubscriptionpaidtiertrialisactive"></a>`isActive` | [`Boolean!`](#boolean) | Indicates whether the subscription is currently in a paid tier trial for GitLab Credits. |
 
 ### `GitlabSubscriptionUsage`
@@ -34258,6 +34450,42 @@ four standard [pagination arguments](#pagination-arguments):
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | <a id="gitlabsubscriptionusageusersusageusersusername"></a>`username` | [`String`](#string) | Username of the User. |
+
+### `GitlabTrialUsage`
+
+Describes the usage and details of a trial subscription.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="gitlabtrialusageactivetrial"></a>`activeTrial` | [`ActiveTrial`](#activetrial) | Active trial information if the subscription has an active trial. |
+| <a id="gitlabtrialusageusersusage"></a>`usersUsage` | [`TrialUsage`](#trialusage) | Trial usage statistics for users. |
+
+### `GitlabTrialUsageUser`
+
+Describes the user with their trial usage data.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="gitlabtrialusageuseravatarurl"></a>`avatarUrl` | [`String`](#string) | URL of the user's avatar. |
+| <a id="gitlabtrialusageuserid"></a>`id` | [`UserID!`](#userid) | Global ID of the user. |
+| <a id="gitlabtrialusageusername"></a>`name` | [`String!`](#string) | Human-readable name of the user. |
+| <a id="gitlabtrialusageuserusage"></a>`usage` | [`GitlabTrialUsageUserUsage`](#gitlabtrialusageuserusage) | Credit usage for a user during a trial. |
+| <a id="gitlabtrialusageuserusername"></a>`username` | [`String!`](#string) | Username of the user. Unique within the instance of GitLab. |
+
+### `GitlabTrialUsageUserUsage`
+
+Describes any credit usage for a user during a trial.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="gitlabtrialusageuserusagecreditsused"></a>`creditsUsed` | [`Float`](#float) | GitLab Credits consumed by the user during a trial. |
+| <a id="gitlabtrialusageuserusagetotalcredits"></a>`totalCredits` | [`Float`](#float) | Total GitLab Credits available to the user during a trial. |
 
 ### `GoogleCloudArtifactRegistryDockerImage`
 
@@ -47529,10 +47757,12 @@ Security configuration data for a project.
 | <a id="securityconfigurationisgitlabcom"></a>`isGitlabCom` | [`Boolean`](#boolean) | Whether the instance is GitLab.com. |
 | <a id="securityconfigurationlatestpipelinepath"></a>`latestPipelinePath` | [`String`](#string) | Path to the latest pipeline on the default branch. |
 | <a id="securityconfigurationlicenseconfigurationsource"></a>`licenseConfigurationSource` | [`String`](#string) | Source of license configuration. |
+| <a id="securityconfigurationmaxtrackedrefs"></a>`maxTrackedRefs` | [`Int`](#int) | Maximum number of refs that can be tracked for security scanning. |
 | <a id="securityconfigurationsecretdetectionconfigurationpath"></a>`secretDetectionConfigurationPath` | [`String`](#string) | Path to secret detection configuration. |
 | <a id="securityconfigurationsecretpushprotectionavailable"></a>`secretPushProtectionAvailable` | [`Boolean!`](#boolean) | Whether secret push protection is available at the instance level. |
 | <a id="securityconfigurationsecretpushprotectionenabled"></a>`secretPushProtectionEnabled` | [`Boolean`](#boolean) | Whether secret push protection is enabled for the project. |
 | <a id="securityconfigurationsecretpushprotectionlicensed"></a>`secretPushProtectionLicensed` | [`Boolean!`](#boolean) | Whether the project has a license for secret push protection. |
+| <a id="securityconfigurationsecurityscanprofileslicensed"></a>`securityScanProfilesLicensed` | [`Boolean!`](#boolean) | Whether the project has a license for security scan profiles. |
 | <a id="securityconfigurationsecuritytrainingenabled"></a>`securityTrainingEnabled` | [`Boolean!`](#boolean) | Whether security training is available for the project. |
 | <a id="securityconfigurationupgradepath"></a>`upgradePath` | [`String`](#string) | Path to upgrade security features. |
 | <a id="securityconfigurationuserisprojectadmin"></a>`userIsProjectAdmin` | [`Boolean!`](#boolean) | Whether the current user has admin permissions for security testing. |
@@ -47583,6 +47813,25 @@ Represents security metrics.
 | <a id="securitymetricsriskscore"></a>`riskScore` {{< icon name="warning-solid" >}} | [`RiskScore`](#riskscore) | **Introduced** in GitLab 18.4. **Status**: Experiment. Total risk score information. This feature is currently under development and not yet available for general use. |
 
 #### Fields with arguments
+
+##### `SecurityMetrics.vulnerabilitiesByAge`
+
+{{< details >}}
+**Introduced** in GitLab 18.9.
+**Status**: Experiment.
+{{< /details >}}
+
+Vulnerability age statistics based on predefined age bands.
+See [`VulnerabilitiesByAge`](#vulnerabilitiesbyage) for details.
+This feature is currently under development and not yet available for general use.
+
+Returns [`[VulnerabilitiesByAge!]`](#vulnerabilitiesbyage).
+
+###### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="securitymetricsvulnerabilitiesbyageseverity"></a>`severity` | [`[VulnerabilitySeverity!]`](#vulnerabilityseverity) | Filter vulnerabilities by severity. |
 
 ##### `SecurityMetrics.vulnerabilitiesOverTime`
 
@@ -48733,6 +48982,35 @@ Represents a directory.
 | <a id="treeentrywebpath"></a>`webPath` | [`String`](#string) | Web path for the tree entry (directory). |
 | <a id="treeentryweburl"></a>`webUrl` | [`String`](#string) | Web URL for the tree entry (directory). |
 
+### `TrialUsage`
+
+Trial usage statistics.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="trialusagecreditsused"></a>`creditsUsed` | [`Float`](#float) | Total credits used during a trial. |
+| <a id="trialusagetotalusersusingcredits"></a>`totalUsersUsingCredits` | [`Int`](#int) | Number of users who have used credits during a trial. |
+
+#### Fields with arguments
+
+##### `TrialUsage.users`
+
+List of users with their trial usage data.
+
+Returns [`GitlabTrialUsageUserConnection`](#gitlabtrialusageuserconnection).
+
+This field returns a [connection](#connections). It accepts the
+four standard [pagination arguments](#pagination-arguments):
+`before: String`, `after: String`, `first: Int`, and `last: Int`.
+
+###### Arguments
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="trialusageusersusername"></a>`username` | [`String`](#string) | Username of the User. |
+
 ### `UnprotectAccessLevel`
 
 Defines which user roles, users, or groups can unprotect a protected branch.
@@ -49661,6 +49939,19 @@ Represents a virtual registry cleanup policy.
 | <a id="virtualregistrycleanuppolicynotifyonsuccess"></a>`notifyOnSuccess` {{< icon name="warning-solid" >}} | [`Boolean!`](#boolean) | **Introduced** in GitLab 18.7. **Status**: Experiment. Boolean to notify group owners on successful cleanup runs. |
 | <a id="virtualregistrycleanuppolicystatus"></a>`status` {{< icon name="warning-solid" >}} | [`PolicyStatus!`](#policystatus) | **Introduced** in GitLab 18.7. **Status**: Experiment. Current execution status of the cleanup policy. |
 | <a id="virtualregistrycleanuppolicyupdatedat"></a>`updatedAt` {{< icon name="warning-solid" >}} | [`Time!`](#time) | **Introduced** in GitLab 18.7. **Status**: Experiment. Timestamp when the cleanup policy was last updated. |
+
+### `VulnerabilitiesByAge`
+
+Represents vulnerability metrics by age with filtering and grouping capabilities.
+
+#### Fields
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| <a id="vulnerabilitiesbyagebyreporttype"></a>`byReportType` | [`[VulnerabilityReportTypeCount!]`](#vulnerabilityreporttypecount) | Vulnerability counts grouped by report type. |
+| <a id="vulnerabilitiesbyagebyseverity"></a>`bySeverity` | [`[VulnerabilitySeverityCount!]`](#vulnerabilityseveritycount) | Vulnerability counts grouped by severity level. |
+| <a id="vulnerabilitiesbyagecount"></a>`count` | [`Int`](#int) | Number of vulnerabilities in the age band. |
+| <a id="vulnerabilitiesbyagename"></a>`name` | [`String!`](#string) | Age band name ("< 7 days", "7 - 14 days", "15 - 30 days", "31 - 60 days", "61 - 90 days", "91 - 180 days", "> 180 days" ). |
 
 ### `VulnerabilitiesCountByDay`
 
@@ -52181,6 +52472,16 @@ Possible item types for AI items.
 | <a id="aicatalogitemtypeflow"></a>`FLOW` | Flow. |
 | <a id="aicatalogitemtypethird_party_flow"></a>`THIRD_PARTY_FLOW` | Third party flow. |
 
+### `AiCatalogItemVerificationLevel`
+
+| Value | Description |
+| ----- | ----------- |
+| <a id="aicatalogitemverificationlevelgitlab_maintained"></a>`GITLAB_MAINTAINED` | The item is Gitlab Maintained. |
+| <a id="aicatalogitemverificationlevelgitlab_partner_maintained"></a>`GITLAB_PARTNER_MAINTAINED` | The item is Gitlab Partner Maintained. |
+| <a id="aicatalogitemverificationlevelunverified"></a>`UNVERIFIED` | The item is Unverified. |
+| <a id="aicatalogitemverificationlevelverified_creator_maintained"></a>`VERIFIED_CREATOR_MAINTAINED` | The item is Verified Creator Maintained. |
+| <a id="aicatalogitemverificationlevelverified_creator_self_managed"></a>`VERIFIED_CREATOR_SELF_MANAGED` | The item is Verified Creator Self Managed. |
+
 ### `AiCatalogVersionBump`
 
 Possible version bumps for AI catalog items.
@@ -53916,6 +54217,7 @@ Geo registry class.
 | <a id="georegistryclassjob_artifact_registry"></a>`JOB_ARTIFACT_REGISTRY` | Geo::JobArtifactRegistry registry class. |
 | <a id="georegistryclasslfs_object_registry"></a>`LFS_OBJECT_REGISTRY` | Geo::LfsObjectRegistry registry class. |
 | <a id="georegistryclassmerge_request_diff_registry"></a>`MERGE_REQUEST_DIFF_REGISTRY` | Geo::MergeRequestDiffRegistry registry class. |
+| <a id="georegistryclasspackages_helm_metadata_cache_registry"></a>`PACKAGES_HELM_METADATA_CACHE_REGISTRY` | Geo::PackagesHelmMetadataCacheRegistry registry class. |
 | <a id="georegistryclasspackages_nuget_symbol_registry"></a>`PACKAGES_NUGET_SYMBOL_REGISTRY` | Geo::PackagesNugetSymbolRegistry registry class. |
 | <a id="georegistryclasspackage_file_registry"></a>`PACKAGE_FILE_REGISTRY` | Geo::PackageFileRegistry registry class. |
 | <a id="georegistryclasspages_deployment_registry"></a>`PAGES_DEPLOYMENT_REGISTRY` | Geo::PagesDeploymentRegistry registry class. |
@@ -56054,6 +56356,7 @@ Name of the feature that the callout is for.
 | <a id="usercalloutfeaturenameenumcluster_security_warning"></a>`CLUSTER_SECURITY_WARNING` | Callout feature name for cluster_security_warning. |
 | <a id="usercalloutfeaturenameenumduo_amazon_q_alert"></a>`DUO_AMAZON_Q_ALERT` | Callout feature name for duo_amazon_q_alert. |
 | <a id="usercalloutfeaturenameenumduo_chat_callout"></a>`DUO_CHAT_CALLOUT` | Callout feature name for duo_chat_callout. |
+| <a id="usercalloutfeaturenameenumduo_panel_auto_expanded"></a>`DUO_PANEL_AUTO_EXPANDED` | Callout feature name for duo_panel_auto_expanded. |
 | <a id="usercalloutfeaturenameenumemail_otp_enrollment_callout"></a>`EMAIL_OTP_ENROLLMENT_CALLOUT` | Callout feature name for email_otp_enrollment_callout. |
 | <a id="usercalloutfeaturenameenumexpired_trial_status_widget"></a>`EXPIRED_TRIAL_STATUS_WIDGET` | Callout feature name for expired_trial_status_widget. |
 | <a id="usercalloutfeaturenameenumfeature_flags_new_version"></a>`FEATURE_FLAGS_NEW_VERSION` | Callout feature name for feature_flags_new_version. |
@@ -56071,8 +56374,6 @@ Name of the feature that the callout is for.
 | <a id="usercalloutfeaturenameenumnamespace_storage_limit_alert_error_threshold"></a>`NAMESPACE_STORAGE_LIMIT_ALERT_ERROR_THRESHOLD` | Callout feature name for namespace_storage_limit_alert_error_threshold. |
 | <a id="usercalloutfeaturenameenumnamespace_storage_limit_alert_warning_threshold"></a>`NAMESPACE_STORAGE_LIMIT_ALERT_WARNING_THRESHOLD` | Callout feature name for namespace_storage_limit_alert_warning_threshold. |
 | <a id="usercalloutfeaturenameenumnamespace_storage_pre_enforcement_banner"></a>`NAMESPACE_STORAGE_PRE_ENFORCEMENT_BANNER` | Callout feature name for namespace_storage_pre_enforcement_banner. |
-| <a id="usercalloutfeaturenameenumnew_mr_dashboard_banner"></a>`NEW_MR_DASHBOARD_BANNER` | Callout feature name for new_mr_dashboard_banner. |
-| <a id="usercalloutfeaturenameenumnew_top_level_group_alert"></a>`NEW_TOP_LEVEL_GROUP_ALERT` | Callout feature name for new_top_level_group_alert. |
 | <a id="usercalloutfeaturenameenumnew_user_signups_cap_reached"></a>`NEW_USER_SIGNUPS_CAP_REACHED` | Callout feature name for new_user_signups_cap_reached. |
 | <a id="usercalloutfeaturenameenumopenssl_callout"></a>`OPENSSL_CALLOUT` | Callout feature name for openssl_callout. |
 | <a id="usercalloutfeaturenameenumperiod_in_terraform_state_name_alert"></a>`PERIOD_IN_TERRAFORM_STATE_NAME_ALERT` | Callout feature name for period_in_terraform_state_name_alert. |
@@ -56084,13 +56385,11 @@ Name of the feature that the callout is for.
 | <a id="usercalloutfeaturenameenumpipeline_schedules_inputs_adoption_banner"></a>`PIPELINE_SCHEDULES_INPUTS_ADOPTION_BANNER` | Callout feature name for pipeline_schedules_inputs_adoption_banner. |
 | <a id="usercalloutfeaturenameenumpipl_compliance_alert"></a>`PIPL_COMPLIANCE_ALERT` | Callout feature name for pipl_compliance_alert. |
 | <a id="usercalloutfeaturenameenumpreview_user_over_limit_free_plan_alert"></a>`PREVIEW_USER_OVER_LIMIT_FREE_PLAN_ALERT` | Callout feature name for preview_user_over_limit_free_plan_alert. |
-| <a id="usercalloutfeaturenameenumproduct_usage_data_collection_changes"></a>`PRODUCT_USAGE_DATA_COLLECTION_CHANGES` | Callout feature name for product_usage_data_collection_changes. |
 | <a id="usercalloutfeaturenameenumprofile_personal_access_token_expiry"></a>`PROFILE_PERSONAL_ACCESS_TOKEN_EXPIRY` | Callout feature name for profile_personal_access_token_expiry. |
 | <a id="usercalloutfeaturenameenumproject_repository_limit_alert_warning_threshold"></a>`PROJECT_REPOSITORY_LIMIT_ALERT_WARNING_THRESHOLD` | Callout feature name for project_repository_limit_alert_warning_threshold. |
 | <a id="usercalloutfeaturenameenumregistration_enabled_callout"></a>`REGISTRATION_ENABLED_CALLOUT` | Callout feature name for registration_enabled_callout. |
 | <a id="usercalloutfeaturenameenumsecurity_configuration_devops_alert"></a>`SECURITY_CONFIGURATION_DEVOPS_ALERT` | Callout feature name for security_configuration_devops_alert. |
 | <a id="usercalloutfeaturenameenumsecurity_configuration_upgrade_banner"></a>`SECURITY_CONFIGURATION_UPGRADE_BANNER` | Callout feature name for security_configuration_upgrade_banner. |
-| <a id="usercalloutfeaturenameenumsecurity_newsletter_callout"></a>`SECURITY_NEWSLETTER_CALLOUT` | Callout feature name for security_newsletter_callout. |
 | <a id="usercalloutfeaturenameenumsecurity_policy_protected_branch_modification"></a>`SECURITY_POLICY_PROTECTED_BRANCH_MODIFICATION` | Callout feature name for security_policy_protected_branch_modification. |
 | <a id="usercalloutfeaturenameenumsecurity_scanner_profiles_announcement"></a>`SECURITY_SCANNER_PROFILES_ANNOUNCEMENT` | Callout feature name for security_scanner_profiles_announcement. |
 | <a id="usercalloutfeaturenameenumsubmit_license_usage_data_banner"></a>`SUBMIT_LICENSE_USAGE_DATA_BANNER` | Callout feature name for submit_license_usage_data_banner. |
@@ -56113,6 +56412,8 @@ Name of the feature that the callout is for.
 | <a id="usercalloutfeaturenameenumvulnerability_report_limited_experience"></a>`VULNERABILITY_REPORT_LIMITED_EXPERIENCE` | Callout feature name for vulnerability_report_limited_experience. |
 | <a id="usercalloutfeaturenameenumweb_ide_alert_dismissed"></a>`WEB_IDE_ALERT_DISMISSED` | Callout feature name for web_ide_alert_dismissed. |
 | <a id="usercalloutfeaturenameenumweb_ide_ci_environments_guidance"></a>`WEB_IDE_CI_ENVIRONMENTS_GUIDANCE` | Callout feature name for web_ide_ci_environments_guidance. |
+| <a id="usercalloutfeaturenameenumwork_items_nav_badge"></a>`WORK_ITEMS_NAV_BADGE` | Callout feature name for work_items_nav_badge. |
+| <a id="usercalloutfeaturenameenumwork_items_onboarding_modal"></a>`WORK_ITEMS_ONBOARDING_MODAL` | Callout feature name for work_items_onboarding_modal. |
 | <a id="usercalloutfeaturenameenumwork_item_consolidated_list_feedback"></a>`WORK_ITEM_CONSOLIDATED_LIST_FEEDBACK` | Callout feature name for work_item_consolidated_list_feedback. |
 | <a id="usercalloutfeaturenameenumwork_item_epic_feedback"></a>`WORK_ITEM_EPIC_FEEDBACK` | Callout feature name for work_item_epic_feedback. |
 
@@ -56127,7 +56428,6 @@ Name of the feature that the callout is for.
 | <a id="usergroupcalloutfeaturenameci_minutes_limit_alert_danger_stage"></a>`CI_MINUTES_LIMIT_ALERT_DANGER_STAGE` | Callout feature name for ci_minutes_limit_alert_danger_stage. |
 | <a id="usergroupcalloutfeaturenameci_minutes_limit_alert_exceeded_stage"></a>`CI_MINUTES_LIMIT_ALERT_EXCEEDED_STAGE` | Callout feature name for ci_minutes_limit_alert_exceeded_stage. |
 | <a id="usergroupcalloutfeaturenameci_minutes_limit_alert_warning_stage"></a>`CI_MINUTES_LIMIT_ALERT_WARNING_STAGE` | Callout feature name for ci_minutes_limit_alert_warning_stage. |
-| <a id="usergroupcalloutfeaturenamecompliance_framework_settings_moved_callout"></a>`COMPLIANCE_FRAMEWORK_SETTINGS_MOVED_CALLOUT` | Callout feature name for compliance_framework_settings_moved_callout. |
 | <a id="usergroupcalloutfeaturenameend_of_trial_modal"></a>`END_OF_TRIAL_MODAL` | Callout feature name for end_of_trial_modal. |
 | <a id="usergroupcalloutfeaturenameenforcement_at_limit_alert"></a>`ENFORCEMENT_AT_LIMIT_ALERT` | Callout feature name for enforcement_at_limit_alert. |
 | <a id="usergroupcalloutfeaturenameexpired_duo_enterprise_trial_widget"></a>`EXPIRED_DUO_ENTERPRISE_TRIAL_WIDGET` | Callout feature name for expired_duo_enterprise_trial_widget. |
@@ -58420,6 +58720,7 @@ Implementations:
 | <a id="aicatalogitemsoftdeletedat"></a>`softDeletedAt` | [`Time`](#time) | Timestamp of when the item was soft deleted. |
 | <a id="aicatalogitemupdatedat"></a>`updatedAt` | [`Time!`](#time) | Timestamp of when the item was updated. |
 | <a id="aicatalogitemuserpermissions"></a>`userPermissions` | [`AiCatalogItemPermissions!`](#aicatalogitempermissions) | Permissions for the current user on the resource. |
+| <a id="aicatalogitemverificationlevel"></a>`verificationLevel` | [`AiCatalogItemVerificationLevel!`](#aicatalogitemverificationlevel) | Verification level of the item. |
 | <a id="aicatalogitemversions"></a>`versions` | [`AiCatalogItemVersionConnection`](#aicatalogitemversionconnection) | Versions of the item. (see [Connections](#connections)) |
 
 ##### Fields with arguments

@@ -692,7 +692,7 @@ For more information, see the various [Patroni replication methods](../postgresq
 
 1. [Reconfigure GitLab](../restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 
-Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/database.html)
+Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/database/)
 are supported and can be added if needed.
 
 <div align="right">
@@ -1036,7 +1036,7 @@ a node and change its status from primary to replica (and vice versa).
    1. Go through the steps again for all the other replica nodes, and
       make sure to set up the IPs correctly.
 
-Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/redis.html) are supported and can be added if needed.
+Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/redis/) are supported and can be added if needed.
 
 <div align="right">
   <a type="button" class="btn btn-default" href="#set-up-components">
@@ -1181,7 +1181,7 @@ a node and change its status from primary to replica (and vice versa).
 1. Go through the steps again for all the other replica nodes, and
    make sure to set up the IPs correctly.
 
-Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/redis.html) are supported and can be added if needed.
+Advanced [configuration options](https://docs.gitlab.com/omnibus/settings/redis/) are supported and can be added if needed.
 
 <div align="right">
   <a type="button" class="btn btn-default" href="#set-up-components">
@@ -1216,11 +1216,29 @@ The recommended cluster setup includes the following components:
 - 3 Praefect nodes: Router and transaction manager for Gitaly Cluster (Praefect).
 - 1 Praefect PostgreSQL node: Database server for Praefect. A third-party solution
   is required for Praefect database connections to be made highly available.
-- 1 load balancer: A load balancer is required for Praefect. The
-  [internal load balancer](#configure-the-internal-load-balancer) is used.
+- [Service discovery](../gitaly/praefect/configure.md#configure-service-discovery):
+  Even distribution of traffic to Praefect nodes. For more information, see
+  [service discovery vs a TCP load balancer](#service-discovery-vs-tcp-load-balancer).
 
 This section details how to configure the recommended standard setup in order.
-For more advanced setups refer to the [standalone Gitaly Cluster (Praefect) documentation](../gitaly/praefect/_index.md).
+For more advanced setups, refer to the
+[standalone Gitaly Cluster (Praefect) documentation](../gitaly/praefect/_index.md).
+
+### Service discovery vs TCP load balancer
+
+A TCP load balancer is **not recommended** because TCP load balancers balance
+at the connection level, not the request level. With gRPP HTTP/2 connections,
+multiple requests are multiplexed over long-lived connections. The
+load balancer's routing decision, made once when the connection is established,
+applies to all subsequent requests on that connection, which can lead:
+
+- To imbalanced traffic if some connections serve more requests than others.
+- To a situation where if a Praefect node goes down, clients
+  re-establish connections with the other Praefect nodes. Even if the downed node
+  comes back up, it won't receive as much traffic as the others.
+
+Service discovery enables gRPC request-level round-robin balancing across
+Praefect nodes, ensuring even traffic distribution.
 
 ### Configure Praefect PostgreSQL
 

@@ -1533,6 +1533,40 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
+  describe '#fork_from' do
+    let_it_be(:source_project) { create(:project, :repository) }
+    let(:target_project) { create(:project) }
+
+    it 'creates a fork of the source repository' do
+      target_project.repository.fork_from(source_project.repository)
+
+      # Verify the fork was created by checking that refs match
+      expect(target_project.repository.branch_names).to match_array(source_project.repository.branch_names)
+      expect(target_project.repository.commit('master').id).to eq(source_project.repository.commit('master').id)
+    end
+
+    context 'when forking a specific branch' do
+      it 'creates a fork with only the specified branch' do
+        target_project.repository.fork_from(source_project.repository, 'flatten-dir')
+
+        # Verify only the specified branch exists
+        expect(target_project.repository.branch_names).to match_array(['flatten-dir'])
+        expect(target_project.repository.commit('flatten-dir').id).to eq(source_project.repository.commit('flatten-dir').id)
+      end
+    end
+
+    context 'when fork fails' do
+      it 'raises Gitlab::Git::CommandError' do
+        allow(target_project.repository.raw_repository.gitaly_repository_client)
+          .to receive(:fork_repository)
+          .and_raise(GRPC::BadStatus.new(GRPC::Core::StatusCodes::INTERNAL, 'Fork failed'))
+
+        expect { target_project.repository.fork_from(source_project.repository) }
+          .to raise_error(Gitlab::Git::CommandError)
+      end
+    end
+  end
+
   describe '#get_raw_changes' do
     context 'with non-UTF8 bytes in paths' do
       let(:old_rev) { 'd0888d297eadcd7a345427915c309413b1231e65' }
@@ -2355,6 +2389,20 @@ RSpec.describe Repository, feature_category: :source_code_management do
       it 'returns empty array' do
         expect(repository.blobs_at([%w[master foobar]])).to be_empty
       end
+    end
+  end
+
+  describe '#get_blob_types' do
+    let(:revision_paths) { [['master', 'README.md'], ['master', 'files']] }
+
+    it 'delegates to raw_repository' do
+      expect(repository.raw_repository).to receive(:get_blob_types)
+        .with(revision_paths, -1)
+        .and_return({ 'README.md' => :blob, 'files' => :tree })
+
+      result = repository.get_blob_types(revision_paths, -1)
+
+      expect(result).to eq({ 'README.md' => :blob, 'files' => :tree })
     end
   end
 

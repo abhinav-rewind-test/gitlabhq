@@ -40,8 +40,6 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   before_action only: [:show, :diffs, :rapid_diffs, :reports] do
     push_frontend_feature_flag(:mr_pipelines_graphql, project)
-    push_frontend_feature_flag(:ci_pipeline_creation_requests_realtime, project)
-    push_frontend_feature_flag(:ci_pipeline_statuses_updated_subscription, project)
     push_frontend_feature_flag(:notifications_todos_buttons, current_user)
   end
 
@@ -704,10 +702,6 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     flash[:alert] =
       _("This merge request has too many diff commits, and can't be updated. " \
         "Close this merge request and create a new one.")
-  end
-
-  def diffs_resource(diff_options = {})
-    @merge_request.latest_diffs(diff_options)
   end
 
   def diff_file_component(base_args)

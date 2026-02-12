@@ -42,7 +42,8 @@ module Ci
       artifacts_exclude: ->(build) { build.supports_artifacts_exclude? },
       multi_build_steps: ->(build) { build.multi_build_steps? },
       return_exit_code: ->(build) { build.exit_codes_defined? },
-      fallback_cache_keys: ->(build) { build.fallback_cache_keys_defined? }
+      fallback_cache_keys: ->(build) { build.fallback_cache_keys_defined? },
+      job_inputs: ->(build) { build.inputs_defined? }
     }.freeze
 
     DEGRADATION_THRESHOLD_VARIABLE_NAME = 'DEGRADATION_THRESHOLD'
@@ -209,10 +210,10 @@ module Ci
       )
     end
 
-    scope :timed_out_running_builds, -> do
+    scope :timed_out_running_builds, ->(time_buffer = 0) do
       joins(:runtime_metadata)
         .where("#{Ci::RunningBuild.table_name}.created_at + INTERVAL \'1 second\' * #{table_name}.timeout <= ?",
-          Time.current)
+          Time.current - time_buffer)
         .where(arel_table[:partition_id].eq(Ci::RunningBuild.arel_table[:partition_id]))
     end
 
@@ -1114,6 +1115,10 @@ module Ci
 
     def multi_build_steps?
       options[:release]&.any?
+    end
+
+    def inputs_defined?
+      options[:inputs].present?
     end
 
     def hide_secrets(data, metrics = ::Gitlab::Ci::Trace::Metrics.new)

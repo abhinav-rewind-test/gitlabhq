@@ -9056,7 +9056,12 @@ paths:
         description: Excludes forked projects in the search. Available with exact
           code search. Introduced in GitLab 18.9.
         type: boolean
-        default: true
+        required: false
+      - in: query
+        name: regex
+        description: Performs a regex code search. Available with exact code search.
+          Introduced in GitLab 18.9
+        type: boolean
         required: false
       - in: query
         name: page
@@ -38653,6 +38658,12 @@ paths:
           - title
         required: false
       - in: query
+        name: regex
+        description: Performs a regex code search. Available with exact code search.
+          Introduced in GitLab 18.9
+        type: boolean
+        required: false
+      - in: query
         name: page
         description: Current page number
         type: integer
@@ -45878,7 +45889,12 @@ paths:
         description: Excludes forked projects in the search. Available with exact
           code search. Introduced in GitLab 18.9.
         type: boolean
-        default: true
+        required: false
+      - in: query
+        name: regex
+        description: Performs a regex code search. Available with exact code search.
+          Introduced in GitLab 18.9
+        type: boolean
         required: false
       - in: query
         name: page
@@ -46565,7 +46581,8 @@ paths:
       operationId: getApiV4FeatureFlagsUnleashProjectId
   "/api/v4/feature_flags/unleash/{project_id}/features":
     get:
-      description: Get a list of features (deprecated, v2 client support)
+      summary: Get a list of features (v2 client support)
+      description: Deprecated in GitLab 15.6
       produces:
       - application/json
       parameters:
@@ -46586,10 +46603,11 @@ paths:
         required: false
       responses:
         '200':
-          description: Get a list of features (deprecated, v2 client support)
+          description: Get a list of features (v2 client support)
       tags:
       - unleash
       operationId: getApiV4FeatureFlagsUnleashProjectIdFeatures
+      deprecated: true
   "/api/v4/feature_flags/unleash/{project_id}/client/features":
     get:
       description: Get a list of features
@@ -48396,14 +48414,6 @@ definitions:
           developer_can_initial_push:
             type: boolean
             description: Allow developers to initial push
-      shared_runners_setting:
-        type: string
-        description: Enable/disable shared runners for the group and its subgroups
-          and projects
-        enum:
-        - disabled_and_unoverridable
-        - disabled_and_overridable
-        - enabled
       enabled_git_access_protocol:
         type: string
         description: Allow only the selected protocols to be used for Git access.
@@ -48449,9 +48459,6 @@ definitions:
       duo_foundational_flows_availability:
         type: boolean
         description: Enable GitLab foundational Duo flows for this group
-      duo_sast_fp_detection_availability:
-        type: boolean
-        description: Enable GitLab Duo SAST false position detection for this group
       amazon_q_auto_review_enabled:
         type: boolean
         description: Enable Amazon Q auto review for merge request
@@ -48486,6 +48493,9 @@ definitions:
           duo_workflow_mcp_enabled:
             type: boolean
             description: Enable MCP support for Duo Agent Platform
+          ai_usage_data_collection_enabled:
+            type: boolean
+            description: Enable AI usage data collection for this namespace
           foundational_agents_default_enabled:
             type: boolean
             description: Whether new foundational agents are enabled by default
@@ -48549,6 +48559,14 @@ definitions:
       path:
         type: string
         description: The path of the group
+      shared_runners_setting:
+        type: string
+        description: Enable/disable shared runners for the group and its subgroups
+          and projects
+        enum:
+        - disabled_and_unoverridable
+        - disabled_and_overridable
+        - enabled
       description:
         type: string
         description: The description of the group
@@ -48670,14 +48688,6 @@ definitions:
           developer_can_initial_push:
             type: boolean
             description: Allow developers to initial push
-      shared_runners_setting:
-        type: string
-        description: Enable/disable shared runners for the group and its subgroups
-          and projects
-        enum:
-        - disabled_and_unoverridable
-        - disabled_and_overridable
-        - enabled
       enabled_git_access_protocol:
         type: string
         description: Allow only the selected protocols to be used for Git access.
@@ -48723,9 +48733,6 @@ definitions:
       duo_foundational_flows_availability:
         type: boolean
         description: Enable GitLab foundational Duo flows for this group
-      duo_sast_fp_detection_availability:
-        type: boolean
-        description: Enable GitLab Duo SAST false position detection for this group
       amazon_q_auto_review_enabled:
         type: boolean
         description: Enable Amazon Q auto review for merge request
@@ -48760,6 +48767,9 @@ definitions:
           duo_workflow_mcp_enabled:
             type: boolean
             description: Enable MCP support for Duo Agent Platform
+          ai_usage_data_collection_enabled:
+            type: boolean
+            description: Enable AI usage data collection for this namespace
           foundational_agents_default_enabled:
             type: boolean
             description: Whether new foundational agents are enabled by default
@@ -68087,6 +68097,9 @@ definitions:
         type: string
         format: date-time
         example: '2022-11-28T16:26:39+02:00'
+      estimated_time_remaining:
+        type: string
+        example: 1 day
     description: API_Entities_BatchedBackgroundMigration model
   putApiV4AdminBatchedBackgroundMigrationsIdResume:
     type: object
@@ -70327,6 +70340,26 @@ definitions:
         type: string
       supply_chain_attestations_verification_failed_count:
         type: string
+      packages_helm_metadata_caches_count:
+        type: string
+      packages_helm_metadata_caches_checksum_total_count:
+        type: string
+      packages_helm_metadata_caches_checksummed_count:
+        type: string
+      packages_helm_metadata_caches_checksum_failed_count:
+        type: string
+      packages_helm_metadata_caches_synced_count:
+        type: string
+      packages_helm_metadata_caches_failed_count:
+        type: string
+      packages_helm_metadata_caches_registry_count:
+        type: string
+      packages_helm_metadata_caches_verification_total_count:
+        type: string
+      packages_helm_metadata_caches_verified_count:
+        type: string
+      packages_helm_metadata_caches_verification_failed_count:
+        type: string
       git_fetch_event_count_weekly:
         type: string
       git_push_event_count_weekly:
@@ -70414,6 +70447,10 @@ definitions:
       supply_chain_attestations_synced_in_percentage:
         type: string
       supply_chain_attestations_verified_in_percentage:
+        type: string
+      packages_helm_metadata_caches_synced_in_percentage:
+        type: string
+      packages_helm_metadata_caches_verified_in_percentage:
         type: string
       repositories_count:
         type: string

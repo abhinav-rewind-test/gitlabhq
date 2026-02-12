@@ -6,6 +6,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   using RSpec::Parameterized::TableSyntax
   include Ci::TemplateHelpers
   include AfterNextHelpers
+  include Ci::PipelineVariableHelpers
 
   let_it_be(:user) { create(:user) }
   let_it_be(:group, reload: true) { create_default(:group, :allow_runner_registration_token) }
@@ -164,6 +165,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
       it 'only fetches the timed out running builds' do
         expect(described_class.timed_out_running_builds.pluck(:id)).to contain_exactly(timed_out_build.id)
+      end
+
+      context 'when a time buffer is provided' do
+        it 'applies the buffer' do
+          expect(described_class.timed_out_running_builds(10.minutes).pluck(:id)).to be_empty
+        end
       end
     end
 
@@ -3522,9 +3529,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
 
     context 'when pipeline has a variable' do
-      let!(:pipeline_variable) { create(:ci_pipeline_variable, pipeline: pipeline) }
+      before_all do
+        create_or_replace_pipeline_variables(pipeline, { key: 'TEST_VAR', value: 'test_value' })
+      end
 
-      it { is_expected.to include(key: pipeline_variable.key, value: pipeline_variable.value, public: false, masked: false) }
+      it { is_expected.to include(key: 'TEST_VAR', value: 'test_value', public: false, masked: false) }
     end
 
     context 'when a job was triggered by a pipeline schedule' do
@@ -5378,6 +5387,14 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
       it { is_expected.to include(:artifacts_exclude) }
     end
+
+    context 'when inputs are defined' do
+      let(:options) do
+        { inputs: { foo: 'bar' } }
+      end
+
+      it { is_expected.to include(:job_inputs) }
+    end
   end
 
   describe '#supported_runner?' do
@@ -5479,6 +5496,26 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         it 'requires `upload_multiple_artifacts` too' do
           is_expected.to be_falsey
         end
+      end
+    end
+
+    context 'when `job_inputs` feature is required by build' do
+      let(:options) { { inputs: { foo: 'bar' } } }
+
+      before do
+        stub_ci_job_definition(build, options: options)
+      end
+
+      context 'when runner provides given feature' do
+        let(:runner_features) { { job_inputs: true } }
+
+        it { is_expected.to be_truthy }
+      end
+
+      context 'when runner does not provide given feature' do
+        let(:runner_features) { {} }
+
+        it { is_expected.to be_falsey }
       end
     end
   end
@@ -5624,7 +5661,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it 'reflects pipeline variables' do
-          create(:ci_pipeline_variable, key: 'CI_DEBUG_TRACE', value: value, pipeline: pipeline)
+          create_or_replace_pipeline_variables(pipeline, { key: 'CI_DEBUG_TRACE', value: value })
 
           is_expected.to eq true
         end
@@ -5664,7 +5701,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it 'reflects pipeline variables' do
-          create(:ci_pipeline_variable, key: 'CI_DEBUG_SERVICES', value: value, pipeline: pipeline)
+          create_or_replace_pipeline_variables(pipeline, { key: 'CI_DEBUG_SERVICES', value: value })
 
           is_expected.to eq true
         end

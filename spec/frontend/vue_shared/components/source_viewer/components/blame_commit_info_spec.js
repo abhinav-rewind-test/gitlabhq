@@ -1,6 +1,7 @@
 import { GlButton, GlLink } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import BlameCommitInfo from '~/vue_shared/components/source_viewer/components/blame_commit_info.vue';
+import CommitPopover from '~/vue_shared/components/source_viewer/components/commit_popover.vue';
 import TimeagoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import UserAvatarImage from '~/vue_shared/components/user_avatar/user_avatar_image.vue';
 
@@ -12,8 +13,17 @@ describe('BlameCommitInfo component', () => {
     message: 'Commit message',
     authoredDate: '2024-01-01',
     authorGravatar: 'https://gravatar.com/avatar',
+    authorName: 'Test Author',
     webPath: '/commit/abc123',
     parentSha: 'parent123',
+    sha: 'abc123',
+  };
+
+  const defaultAuthor = {
+    id: 'gid://gitlab/User/1',
+    username: 'testuser',
+    webPath: '/testuser',
+    avatarUrl: 'https://example.com/avatar.png',
   };
 
   const createComponent = (props = {}) => {
@@ -29,6 +39,8 @@ describe('BlameCommitInfo component', () => {
   const findUserAvatar = () => wrapper.findComponent(UserAvatarImage);
   const findCommitLink = () => wrapper.findComponent(GlLink);
   const findPreviousBlameButton = () => wrapper.findComponent(GlButton);
+  const findAuthorLink = () => wrapper.findByTestId('commit-author-link');
+  const findCommitPopover = () => wrapper.findComponent(CommitPopover);
 
   describe('commit information display', () => {
     beforeEach(() => createComponent());
@@ -43,6 +55,49 @@ describe('BlameCommitInfo component', () => {
 
     it('renders commit link with correct href', () => {
       expect(findCommitLink().attributes('href')).toBe(defaultCommit.webPath);
+    });
+  });
+
+  describe('author avatar popover', () => {
+    describe('when author data is available', () => {
+      beforeEach(() => {
+        createComponent({ commit: { ...defaultCommit, author: defaultAuthor } });
+      });
+
+      it('wraps avatar in a link with js-user-link class', () => {
+        expect(findAuthorLink().exists()).toBe(true);
+        expect(findAuthorLink().classes()).toContain('js-user-link');
+        expect(findAuthorLink().attributes('href')).toBe(defaultAuthor.webPath);
+      });
+
+      it('sets data-user-id attribute from GraphQL ID', () => {
+        expect(findAuthorLink().attributes('data-user-id')).toBe('1');
+      });
+
+      it('sets data-username attribute', () => {
+        expect(findAuthorLink().attributes('data-username')).toBe(defaultAuthor.username);
+      });
+    });
+
+    describe('when author data is not available', () => {
+      beforeEach(() => createComponent());
+
+      it('renders avatar without link wrapper', () => {
+        expect(findUserAvatar().exists()).toBe(true);
+        expect(findAuthorLink().exists()).toBe(false);
+      });
+    });
+  });
+
+  describe('commit popover', () => {
+    beforeEach(() => createComponent());
+
+    it('renders commit popover', () => {
+      expect(findCommitPopover().exists()).toBe(true);
+    });
+
+    it('passes commit data to popover', () => {
+      expect(findCommitPopover().props('commit')).toEqual(defaultCommit);
     });
   });
 
@@ -83,12 +138,13 @@ describe('BlameCommitInfo component', () => {
   });
 
   describe('previous blame button', () => {
-    it('renders when previousPath, parentSha, and projectPath are provided', () => {
+    it('is visible when previousPath, parentSha, and projectPath are provided', () => {
       createComponent({
         previousPath: 'old/file.js',
         projectPath: 'gitlab-org/gitlab',
       });
 
+      expect(findPreviousBlameButton().classes()).not.toContain('gl-invisible');
       expect(findPreviousBlameButton().attributes('href')).toBe(
         '/gitlab-org/gitlab/-/blob/parent123/old/file.js?blame=1',
       );
@@ -105,10 +161,10 @@ describe('BlameCommitInfo component', () => {
           commit: { ...defaultCommit, parentSha: null },
         },
       ],
-    ])('does not render when %s is missing', (_, props) => {
+    ])('is hidden when %s is missing', (_, props) => {
       createComponent(props);
 
-      expect(findPreviousBlameButton().exists()).toBe(false);
+      expect(findPreviousBlameButton().classes()).toContain('gl-invisible');
     });
   });
 });

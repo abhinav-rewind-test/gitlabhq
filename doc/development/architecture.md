@@ -12,7 +12,7 @@ There are two software distributions of GitLab:
 - The open source [Community Edition](https://gitlab.com/gitlab-org/gitlab-foss/) (CE).
 - The open core [Enterprise Edition](https://gitlab.com/gitlab-org/gitlab/) (EE).
 
-The EE repository has been archived. GitLab now operates [under a single codebase](https://about.gitlab.com/blog/2019/08/23/a-single-codebase-for-gitlab-community-and-enterprise-edition/).
+The EE repository has been archived. GitLab now operates [under a single codebase](https://about.gitlab.com/blog/a-single-codebase-for-gitlab-community-and-enterprise-edition/).
 
 GitLab is available under [different subscriptions](https://about.gitlab.com/pricing/).
 
@@ -506,7 +506,7 @@ Consul is a tool for service discovery and configuration. Consul is distributed,
 #### Database migrations
 
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/database.html#disabling-automatic-database-migration)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/database/#disabling-automatic-database-migration)
   - [Charts](https://docs.gitlab.com/charts/charts/gitlab/migrations/)
   - [Source](../update/upgrading_from_source.md#install-libraries-and-run-migrations)
 - Layer: Core Service (Data)
@@ -635,7 +635,7 @@ GitLab CI/CD is the open-source continuous integration service included with Git
 - Layer: Core Service (Processor)
 - Process: `gitlab-workhorse`
 
-[GitLab Workhorse](https://gitlab.com/gitlab-org/gitlab/-/tree/master/doc/development/workhorse) is a program designed at GitLab to help alleviate pressure from Puma. You can read more about the [historical reasons for developing](https://about.gitlab.com/blog/2016/04/12/a-brief-history-of-gitlab-workhorse/). It's designed to act as a smart reverse proxy to help speed up GitLab as a whole.
+[GitLab Workhorse](https://gitlab.com/gitlab-org/gitlab/-/tree/master/doc/development/workhorse) is a program designed at GitLab to help alleviate pressure from Puma. You can read more about the [historical reasons for developing](https://about.gitlab.com/blog/a-brief-history-of-gitlab-workhorse/). It's designed to act as a smart reverse proxy to help speed up GitLab as a whole.
 
 #### Grafana
 
@@ -666,7 +666,7 @@ It can be used for monitoring microservices-based distributed systems.
 
 - [Project page](https://github.com/logrotate/logrotate/blob/main/README.md)
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/logs.html#logrotate)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/logs/#logrotate)
 - Layer: Core Service
 - Process: `logrotate`
 
@@ -702,7 +702,7 @@ MinIO is an object storage server released under the GNU AGPL v3.0. It is compat
   - [Omnibus](https://github.com/nginx/nginx)
   - [Charts](https://github.com/kubernetes/ingress-nginx/blob/main/README.md)
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/nginx.html)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/nginx/)
   - [Charts](https://docs.gitlab.com/charts/charts/nginx/)
   - [Source](../install/self_compiled/_index.md#10-nginx)
 - Layer: Core Service (Processor)
@@ -757,7 +757,7 @@ Prometheus exporter for PgBouncer. Exports metrics at 9127/metrics.
 
 - [Project page](https://github.com/postgres/postgres/)
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/database.html)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/database/)
   - [Charts](https://docs.gitlab.com/charts/installation/deployment/#postgresql)
   - [Source](../install/self_compiled/_index.md#7-database)
 - Layer: Core Service (Data)
@@ -794,7 +794,7 @@ Prometheus is a time-series tool that helps GitLab administrators expose metrics
 
 - [Project page](https://github.com/redis/redis/blob/unstable/README.md)
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/redis.html)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/redis/)
   - [Charts](https://docs.gitlab.com/charts/installation/deployment/#redis)
   - [Source](../install/self_compiled/_index.md#8-redis)
 - Layer: Core Service (Data)
@@ -846,7 +846,7 @@ An external registry can also be configured to use GitLab as an auth endpoint.
 
 - [Project page](https://github.com/getsentry/sentry/)
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/configuration.html#error-reporting-and-logging-with-sentry)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/configuration/#error-reporting-and-logging-with-sentry)
   - [Charts](https://docs.gitlab.com/charts/charts/globals#sentry-settings)
   - [Source](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example)
   - [GDK](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example)
@@ -902,7 +902,7 @@ Starting with GitLab 13.0, Puma is the default web server.
 #### Outbound Email
 
 - Configuration:
-  - [Omnibus](https://docs.gitlab.com/omnibus/settings/smtp.html)
+  - [Omnibus](https://docs.gitlab.com/omnibus/settings/smtp/)
   - [Charts](https://docs.gitlab.com/charts/installation/command-line-options/#outgoing-email-configuration)
   - [Source](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example)
   - [GDK](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example)

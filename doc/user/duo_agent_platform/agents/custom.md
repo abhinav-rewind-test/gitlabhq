@@ -10,8 +10,6 @@ title: Custom agents
 - Tier: Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed
 
-This feature uses [GitLab Credits](../../../subscriptions/gitlab_credits.md).
-
 {{< /details >}}
 
 {{< collapsible title="Model information" >}}
@@ -42,6 +40,10 @@ created by GitLab.
 When you're ready to interact with an agent, you can enable it to
 start using it with GitLab Duo Chat.
 
+## Prerequisites
+
+- Meet the [prerequisites for the GitLab Duo Agent Platform](../_index.md#prerequisites).
+
 ## Agent visibility
 
 When you create a custom agent, you select a project to manage it and choose whether the agent is public or private.
@@ -52,7 +54,7 @@ Public agents:
 
 Private agents:
 
-- Can be viewed only by members of the managing project who have at least the Developer role.
+- Can be viewed only by members of the managing project who have the Developer, Maintainer, or Owner role.
 - Cannot be enabled in projects other than the managing project.
 
 You cannot make a public agent private if the agent is currently enabled.
@@ -61,7 +63,7 @@ You cannot make a public agent private if the agent is currently enabled.
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 
 To view a list of agents associated with your project:
 
@@ -78,7 +80,7 @@ You can create an agent from a project, or by using the AI Catalog.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 {{< tabs >}}
 
@@ -160,7 +162,7 @@ The agent appears in the group's **Automate** > **Agents** page.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - The agent must be enabled in a top-level group.
 
 To enable an agent in a project:
@@ -180,7 +182,7 @@ For more information, see [select an agent](../../gitlab_duo_chat/agentic_chat.m
 Prerequisites:
 
 - For groups, you must have the Owner role.
-- For projects, you must have at least the Maintainer role.
+- For projects, you must have the Maintainer or Owner role.
 
 To disable an agent:
 
@@ -197,7 +199,7 @@ To make changes to an agent without overwriting the original, create a copy of a
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To duplicate an agent:
 
@@ -214,7 +216,7 @@ Edit an agent to change its configuration, or delete it to remove it from the AI
 
 Prerequisites:
 
-- You must be a member of the managing project and have at least the Maintainer role.
+- You must be a member of the managing project and have the Maintainer or Owner role.
 
 To manage an agent:
 

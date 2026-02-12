@@ -225,6 +225,7 @@ export const EPIC_COLORS = [
 ];
 
 export const DEFAULT_EPIC_COLORS = '#1068bf';
+export const DEFAULT_DESCRIPTION_TEMPLATE_NAME = 'default';
 
 export const MAX_FREQUENT_PROJECTS = 3;
 export const MAX_FREQUENT_ITEMS = 3;
@@ -236,7 +237,6 @@ export const WORK_ITEM_REFERENCE_CHAR = '#';
 export const NEW_WORK_ITEM_IID = 'new-work-item-iid';
 export const NEW_WORK_ITEM_GID = 'gid://gitlab/WorkItem/new';
 export const NO_WORK_ITEM_IID = 'no-work-item-iid';
-export const NEW_SAVED_VIEWS_GID = 'gid://gitlab/WorkItems::SavedViews::SavedView/new';
 
 export const DETAIL_VIEW_QUERY_PARAM_NAME = 'show';
 export const DETAIL_VIEW_DESIGN_VERSION_PARAM_NAME = 'version';
@@ -528,15 +528,4 @@ export const ICON_NAVIGATION_KEYS = {
   PREVIOUS: [ARROW_LEFT_KEY, ARROW_UP_KEY],
   NEXT: [ARROW_RIGHT_KEY, ARROW_DOWN_KEY],
   IGNORE: [' ', ENTER_KEY],
-};
-
-export const DEFAULT_SETTINGS_CONFIG = {
-  showWorkItemTypesSettings: true,
-  showCustomFieldsSettings: true,
-  showCustomStatusSettings: true,
-  workItemTypeSettingsPermissions: ['edit', 'create', 'archive', 'list'], // 'read' is default hence showing custom work item types
-  // in future we may also have similar permissions on custom status and custom fields
-  // customStatusSettingsPermissions: ['createLifecycle', 'editLifecycle']
-  // we may allow editing lifecycle even at subgroup level that may change
-  layout: 'list', // 'table'
 };

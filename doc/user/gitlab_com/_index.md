@@ -610,7 +610,7 @@ see [SSH maximum number of connections](#ssh-maximum-number-of-connections).
 ### Alternative SSH port
 
 GitLab.com can be reached by using a
-[different SSH port](https://about.gitlab.com/blog/2016/02/18/gitlab-dot-com-now-supports-an-alternate-git-plus-ssh-port/) for `git+ssh`.
+[different SSH port](https://about.gitlab.com/blog/gitlab-dot-com-now-supports-an-alternate-git-plus-ssh-port/) for `git+ssh`.
 
 | Setting    | Value               |
 |------------|---------------------|
@@ -668,7 +668,8 @@ The following limits apply for [webhooks](../project/integrations/webhooks.md).
 
 ### Rate limits
 
-For each top-level namespace, the number of times each minute that a webhook can be called.
+The number of times each minute that webhooks in a top-level namespace can be called.
+All project and group webhooks in the namespace share this limit.
 The limit varies depending on your plan and the number of seats in your subscription.
 
 | Plan                                                   | Default for GitLab.com |
@@ -680,6 +681,9 @@ The limit varies depending on your plan and the number of seats in your subscrip
 | GitLab Ultimate and open source, `999` seats or fewer  | `6,000`                |
 | GitLab Ultimate and open source, `1,000-4,999` seats   | `9,000`                |
 | GitLab Ultimate and open source, `5,000` seats or more | `13,000`               |
+
+When the rate limit is reached, all webhooks in the namespace are temporarily disabled and
+automatically re-enabled in the next minute.
 
 ### Security policy limits
 
