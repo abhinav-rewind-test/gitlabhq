@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Prerequisites for installation.
 title: GitLab installation requirements
 ---
@@ -21,6 +21,8 @@ The necessary storage space largely depends on the size of the repositories you 
 As a guideline, you should have at least as much free space as all your repositories combined.
 
 The Linux package requires about 2.5 GB of storage space for installation.
+When combined with PostgreSQL, logs, temporary files, and operating system overhead,
+plan for at least 40 GB of disk space for a basic GitLab installation with no repository data.
 For storage flexibility, consider mounting your hard drive through logical volume management.
 You should have a hard drive with at least 7,200 RPM or a solid-state drive to reduce response times.
 
@@ -55,21 +57,16 @@ For more information, see
 You can also use an [external PostgreSQL database](https://docs.gitlab.com/omnibus/settings/database/#using-a-non-packaged-postgresql-database-management-server)
 [which must be configured correctly](#postgresql-settings).
 
-Depending on the [number of users](../administration/reference_architectures/_index.md),
-the PostgreSQL server should have:
-
-- For most GitLab instances, at least 5 to 10 GB of storage
-- For GitLab Ultimate, at least 12 GB of storage
-  (1 GB of vulnerability data must be imported)
+### Supported versions
 
 For the following versions of GitLab, use these PostgreSQL versions:
 
 | GitLab version | Helm chart version | Minimum PostgreSQL version | Maximum PostgreSQL version |
 | -------------- | ------------------ | -------------------------- | -------------------------- |
-| 18.x           | 9.x                | [16.5](https://gitlab.com/gitlab-org/gitlab/-/issues/508672) | 17.x ([tested against GitLab 17.10 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/521159))          |
+| 19.x           | 10.x               | 17.x                       | 17.x                       |
+| 18.x           | 9.x                | [16.5](https://gitlab.com/gitlab-org/gitlab/-/issues/508672) | 17.x ([tested against GitLab 17.10 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/521159)) |
 | 17.x           | 8.x                | [14.14](https://gitlab.com/gitlab-org/gitlab/-/issues/508672) | 16.x ([tested against GitLab 16.10 and later](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/145298)) |
 | 16.x           | 7.x                | 13.6                       | 15.x ([tested against GitLab 16.1 and later](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/119344)) |
-| 15.x           | 6.x                | 12.10                      | 14.x ([tested against GitLab 15.11 only](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/114624)), 13.x |
 
 Minor PostgreSQL releases [include only bug and security fixes](https://www.postgresql.org/support/versioning/).
 Always use the latest minor version to avoid known issues in PostgreSQL.
@@ -78,8 +75,27 @@ For more information, see [issue 364763](https://gitlab.com/gitlab-org/gitlab/-/
 To use a later major version of PostgreSQL than specified, check if a
 [later version is bundled with the Linux package](http://gitlab-org.gitlab.io/omnibus-gitlab/licenses.html).
 
-You must also ensure some extensions are loaded into every GitLab database.
-For more information, see [managing PostgreSQL extensions](postgresql_extensions.md).
+### Storage requirements
+
+Depending on the [number of users](../administration/reference_architectures/_index.md),
+the PostgreSQL server should have:
+
+- For most GitLab instances, at least 5 to 10 GB of storage.
+- For GitLab Ultimate, at least 12 GB of storage
+  (1 GB of vulnerability data must be imported).
+
+### Extensions
+
+To install extensions, PostgreSQL requires superuser privileges. For instructions, see
+[Manage PostgreSQL extensions](../administration/postgresql/extensions.md).
+
+| Extension            | Minimum GitLab version | Type        | Database |
+|----------------------|------------------------|-------------|----------|
+| `amcheck`            | 18.4                   | Required    | Main |
+| `btree_gist`         | 13.1                   | Required    | Main |
+| `pg_trgm`            | 8.6                    | Required    | Main |
+| `plpgsql`            | 11.7                   | Required    | Main, [Geo secondary tracking databases](../administration/geo/_index.md) (minimum version 9.0) |
+| `pg_stat_statements` | -                      | Recommended | All |
 
 ### GitLab Geo
 
@@ -190,14 +206,12 @@ More threads would lead to excessive swapping and lower performance.
 
 ## Redis
 
-[Redis](https://redis.io/) stores all user sessions and background tasks
+[Redis](https://redis.io/) or [Valkey](https://valkey.io/) stores all user sessions and background tasks
 and requires about 25 kB per user on average.
 
-In GitLab 16.0 and later, Redis 6.x or 7.x is required.
+Redis 7.2 or Valkey 7.2 is required.
 For more information about end-of-life dates, see the
-[Redis documentation](https://redis.io/docs/latest/operate/rs/installing-upgrading/product-lifecycle/).
-
-For Redis:
+[Redis documentation](https://redis.io/docs/latest/operate/oss_and_stack/install/version-mgmt/).
 
 - Use a standalone instance (with or without high availability).
   Redis Cluster is not supported.

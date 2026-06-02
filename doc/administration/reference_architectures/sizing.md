@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Guide to define Reference Architecture size and component-specific adjustments.
 title: Assess reference architecture size
 ---
@@ -57,7 +57,7 @@ If migrating from other platforms, the following PromQL queries cannot be applie
 However, the general assessment methodology remains valid:
 
 1. Estimate the nearest reference architecture based on expected workload.
-1. Identify anticipated additional workloads.
+1. Identify anticipated [additional workloads](_index.md#additional-workloads).
 1. Assess number of large repositories
 1. Incorporate growth projections.
 1. Select a reference architecture with

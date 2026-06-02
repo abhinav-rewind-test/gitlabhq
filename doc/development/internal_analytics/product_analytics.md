@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: GitLab Product Analytics usage for tracking user behavior, analyzing usage data, and enabling data-driven product decisions.
 title: Product analytics
 ---
@@ -121,7 +121,7 @@ process, store and query your analytics data.
 On GitLab.com you can use a GitLab-managed provider offered only in the Google Cloud Platform zone `us-central-1`.
 
 If GitLab manages your product analytics provider, then your analytics data is retained for one year.
-You can request to delete your data at any time by [contacting support](https://about.gitlab.com/support/#contact-support).
+You can request to delete your data at any time by [contacting support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#contact-support).
 
 {{< /tab >}}
 
@@ -158,7 +158,7 @@ Prerequisites:
 To enable product analytics on your instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Analytics**.
+1. In the left sidebar, select **Settings** > **Analytics**.
 1. Enter the configuration values.
 1. Select **Save changes**.
 
@@ -173,7 +173,7 @@ Prerequisites:
 - The project must be in a group namespace.
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Analytics**.
+1. In the left sidebar, select **Settings** > **Analytics**.
 1. Expand **Data sources** and enter the configuration values.
 1. Select **Save changes**.
 
@@ -194,7 +194,7 @@ Onboarding a GitLab project means preparing it to receive events that are used f
 To onboard a project:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Analyze** > **Analytics dashboards**.
+1. In the left sidebar, select **Analyze** > **Analytics dashboards**.
 1. Under **Product analytics**, select **Set up**.
 
 Then continue with the setup depending on the provider type.
@@ -305,7 +305,7 @@ Because Cube acts as an abstraction layer between the raw data and the API, the 
 
 ### Export raw data with Cube queries
 
-You can [query the raw data with the REST API](../../api/product_analytics.md#send-query-request-to-cube),
+You can [query the raw data with the REST API](../../api/product_analytics.md#create-a-cube-query-request),
 and convert the JSON output to any required format.
 
 To export the raw data for a specific dimension, pass a list of dimensions to the `dimensions` key.
@@ -351,7 +351,7 @@ Product analytics usage quota is calculated from the number of events received f
 To view product analytics usage quota:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Usage quota**.
+1. In the left sidebar, select **Settings** > **Usage quotas**.
 1. Select the **Product analytics** tab.
 
 The tab displays the monthly totals for the group and a breakdown of usage per project.

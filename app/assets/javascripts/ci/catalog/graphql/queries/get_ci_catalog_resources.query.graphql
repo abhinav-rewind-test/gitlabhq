@@ -1,10 +1,15 @@
+# @feature_category: pipeline_composition
 #import "~/ci/catalog/graphql/fragments/catalog_resource.fragment.graphql"
+#import "~/ci/catalog/graphql/fragments/catalog_resource_version.fragment.graphql"
 
 query getCatalogResources(
   $scope: CiCatalogResourceScope
   $minAccessLevel: AccessLevelEnum
   $searchTerm: String
   $sortValue: CiCatalogResourceSort
+  $verificationLevel: CiCatalogResourceVerificationLevel
+  $topics: [String!]
+  $groupIds: [GroupID!]
   $after: String
   $before: String
   $first: Int = 20
@@ -15,6 +20,9 @@ query getCatalogResources(
     minAccessLevel: $minAccessLevel
     search: $searchTerm
     sort: $sortValue
+    verificationLevel: $verificationLevel
+    topics: $topics
+    groupIds: $groupIds
     after: $after
     before: $before
     first: $first
@@ -28,6 +36,17 @@ query getCatalogResources(
     }
     nodes {
       ...CatalogResourceFields
+      versions(first: 1) {
+        nodes {
+          ...CatalogResourceVersionFields
+          components {
+            nodes {
+              id
+              name
+            }
+          }
+        }
+      }
     }
   }
 }

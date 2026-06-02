@@ -22,11 +22,6 @@ RSpec.describe 'Project Issues Calendar Feed', feature_category: :groups_and_pro
     let!(:issue)    { create(:issue, author: user, assignees: [assignee], project: project) }
 
     before do
-      # TODO: When removing the feature flag,
-      # we won't need the tests for the issues listing page, since we'll be using
-      # the work items listing page.
-      stub_feature_flags(work_item_planning_view: false)
-
       project.add_developer(user)
     end
 
@@ -74,6 +69,9 @@ RSpec.describe 'Project Issues Calendar Feed', feature_category: :groups_and_pro
     end
 
     context 'issue with due date' do
+      let_it_be(:group) { create(:group, path: 'ics-feed-test') }
+      let_it_be(:project) { create(:project, namespace: group, path: 'calendar-project') }
+
       let!(:issue) do
         create(
           :issue,
@@ -90,11 +88,12 @@ RSpec.describe 'Project Issues Calendar Feed', feature_category: :groups_and_pro
         visit project_issues_path(project, :ics, feed_token: user.feed_token)
 
         expect(body).to have_text("SUMMARY:test title (in #{project.full_path})")
-        # line length for ics is 75 chars
-        expected_description = "DESCRIPTION:Find out more at #{issue_url(issue)}".insert(75, ' ')
+        # ICS lines are folded at 75 bytes per RFC 5545; simulate the fold with .insert(75, ' ')
+        expected_description = "DESCRIPTION:Find out more at #{project_work_item_url(project, issue)}".insert(75, ' ')
         expect(body).to have_text(expected_description)
         expect(body).to have_text("DTSTART;VALUE=DATE:#{Date.tomorrow.strftime('%Y%m%d')}")
-        expect(body).to have_text("URI:#{issue_url(issue)}")
+        expected_url = "URL;VALUE=URI:#{project_work_item_url(project, issue)}".insert(75, ' ')
+        expect(body).to have_text(expected_url)
         expect(body).to have_text('TRANSP:TRANSPARENT')
       end
     end

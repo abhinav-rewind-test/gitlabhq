@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting GitLab for Jira Cloud app administration
 ---
 
@@ -14,7 +14,7 @@ title: Troubleshooting GitLab for Jira Cloud app administration
 
 When administering the GitLab for Jira Cloud app, you might encounter the following issues.
 
-For user documentation, see [GitLab for Jira Cloud app](../../integration/jira/connect-app.md#troubleshooting).
+For user troubleshooting, see [GitLab for Jira Cloud app](../../integration/jira/connect-app.md#troubleshooting).
 
 ## Sign-in message displayed when already signed in
 
@@ -49,15 +49,14 @@ Prerequisites:
 
 - Administrator access.
 
-- In GitLab 15.7:
+To disable the **Jira Connect Proxy URL** setting:
 
+- In GitLab 15.7:
   1. Open a [Rails console](../operations/rails_console.md#starting-a-rails-console-session).
   1. Execute `ApplicationSetting.current_without_cache.update(jira_connect_proxy_url: nil)`.
-
 - In GitLab 15.8 and later:
-
   1. In the upper-right corner, select **Admin**.
-  1. On the left sidebar, select **Settings** > **General**.
+  1. In the left sidebar, select **Settings** > **General**.
   1. Expand **GitLab for Jira App**.
   1. Clear the **Jira Connect Proxy URL** text box.
   1. Select **Save changes**.
@@ -70,6 +69,10 @@ To test connectivity, run the following command:
 # A `404 Not Found` is expected because you're not passing a token
 curl --head "https://connect-install-keys.atlassian.com"
 ```
+
+## Review installation changes to the GitLab for Jira Cloud app
+
+There are several methods to review any installation changes to the GitLab for Jira Cloud app. For more information, see the official [Jira documentation](https://support.atlassian.com/jira/kb/how-to-check-who-installed-enabled-disabled-uninstalled-plugin-in-jira/).
 
 ## Data sync fails with `Invalid JWT`
 
@@ -201,7 +204,7 @@ You should see a `GET` request to `https://gitlab.com/-/jira_connect/installatio
 This request should return a `200 OK`, but it might return a `422 Unprocessable Entity` if there was a problem.
 You can check the response body for the error.
 
-If you cannot resolve the issue and you're a GitLab customer, contact [GitLab Support](https://about.gitlab.com/support/) for assistance.
+If you cannot resolve the issue and you're a GitLab customer, contact [GitLab Support](https://support.gitlab.com/) for assistance.
 Provide GitLab Support with:
 
 - Your GitLab Self-Managed instance URL.
@@ -279,6 +282,49 @@ For the second log, you might have one of the following scenarios:
 - Scenario 2:
   - `json.exception.class` and `json.exception.message` are present.
   - `json.exception.class` and `json.exception.message` contain whether an issue occurred while contacting the GitLab Self-Managed instance.
+
+## Error: `The Jira user is not a site or organization administrator`
+
+When you try to link a GitLab group, you might get one of the following errors:
+
+```plaintext
+The Jira user is not a site or organization administrator. Check the permissions in Jira and try again.
+```
+
+```plaintext
+Failed to link group. Please try again.
+```
+
+This issue occurs when the Jira user is not a member of the `site-admins` or
+`org-admins` group. GitLab checks group membership by calling the Jira API
+endpoint `/rest/api/3/user?expand=groups` and verifying that the user belongs
+to one of these two groups.
+
+A user can appear as a site administrator in the
+[Atlassian organization](https://admin.atlassian.com) and have full
+administrator privileges, but if they are not explicitly added to the `site-admins` or
+`org-admins` group, the GitLab permission check fails. This also means that
+administrator privileges assigned through custom groups or product-specific roles
+are not detected by GitLab.
+
+To resolve this issue, add the Jira user to the `org-admins` or `site-admins`
+group:
+
+1. Sign in to your [Atlassian organization](https://admin.atlassian.com).
+1. Go to **Directory** > **Groups**.
+1. Select the `org-admins` group (recommended) or `site-admins` group.
+   If the group does not exist,
+   [create it](https://support.atlassian.com/user-management/docs/create-groups/).
+1. Add the Jira user to the group.
+
+For more information about Jira user requirements, see
+[Jira user requirements](jira_cloud_app.md#jira-user-requirements).
+
+GitLab cannot use Jira's permissions API to check administrator status directly
+due to OAuth scope limitations. For more context, see
+[issue #420687](https://gitlab.com/gitlab-org/gitlab/-/issues/420687)
+and
+[merge request !135771](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/135771).
 
 ## Error: `Failed to link group`
 
@@ -361,3 +407,23 @@ Failed to sign in to GitLab
 
 To resolve this issue, ensure the **Trusted** and **Confidential** checkboxes are cleared in
 the [OAuth application](jira_cloud_app.md#set-up-oauth-authentication) created for the app.
+If the error persists, see [issue 581765](https://gitlab.com/gitlab-org/gitlab/-/work_items/581765).
+
+### Chrome 142 and later blocks local network requests
+
+If your GitLab Self-Managed instance is on a local or private network, Chrome
+142 and later blocks the connection from Jira Cloud because of its
+[Local Network Access](https://developer.chrome.com/blog/local-network-access)
+policy. Chrome surfaces this as a `Failed to sign in to GitLab` message or as
+`ERR_BLOCKED_BY_PRIVATE_NETWORK_ACCESS_CHECKS` in the developer console.
+
+GitLab cannot work around this restriction from the GitLab side, because the
+parent iframe in Jira Cloud must grant the permission. To continue using the
+app while the limitation persists, use one of these workarounds:
+
+- Sign in from Firefox or Safari, which do not enforce Local Network Access.
+- Ask your administrator to deploy the Chrome enterprise policy
+  [`LocalNetworkAllowedForUrls`](https://chromeenterprise.google/policies/#LocalNetworkAllowedForUrls)
+  for `*.atlassian.net` so the prompt is bypassed.
+
+For tracking, see [issue 581765](https://gitlab.com/gitlab-org/gitlab/-/work_items/581765).

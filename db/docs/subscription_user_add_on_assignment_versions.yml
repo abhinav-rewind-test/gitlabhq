@@ -4,11 +4,11 @@ description: Stores user add-on assignment versioning data
 introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/169180
 milestone: '17.6'
 feature_categories:
-- subscription_management
+- seat_cost_management
 classes:
 - GitlabSubscriptions::UserAddOnAssignmentVersion
 gitlab_schema: gitlab_main_org
 sharding_key:
   organization_id: organizations
-organization_transfer_support: todo
+organization_transfer_support: supported
 table_size: small

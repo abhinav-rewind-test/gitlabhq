@@ -8,20 +8,19 @@ module Gitlab
           class Repository < Chain::Base
             include Chain::Helpers
 
+            REFERENCE_NOT_FOUND_MESSAGE = 'Reference not found'
+
             def perform!
-              unless @command.branch_exists? ||
-                  @command.tag_exists? ||
-                  @command.merge_request_ref_exists? ||
-                  @command.workload_ref_exists?
-                return error('Reference not found')
+              if @command.ambiguous_ref?
+                return error('Ref is ambiguous')
+              end
+
+              unless @command.ref_exists?
+                return error(REFERENCE_NOT_FOUND_MESSAGE)
               end
 
               unless @command.sha
-                return error('Commit not found')
-              end
-
-              if @command.ambiguous_ref?
-                error('Ref is ambiguous')
+                error('Commit not found')
               end
             end
 

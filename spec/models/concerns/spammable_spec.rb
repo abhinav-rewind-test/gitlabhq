@@ -19,7 +19,7 @@ RSpec.describe Spammable, feature_category: :instance_resiliency do
   end
 
   let(:spammable_model) { SpammableModel.new }
-  let(:issue) { create(:issue, description: 'Test Desc.') }
+  let(:issue) { build_stubbed(:issue, description: 'Test Desc.') }
 
   describe 'Associations' do
     subject { build(:issue) }
@@ -41,7 +41,7 @@ RSpec.describe Spammable, feature_category: :instance_resiliency do
     end
 
     describe '#check_for_spam?' do
-      context 'when not overriden' do
+      context 'when not overridden' do
         subject { spammable_model.check_for_spam? }
 
         context 'when spammable attributes have changed' do

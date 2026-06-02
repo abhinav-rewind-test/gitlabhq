@@ -28,7 +28,7 @@ module Mutations
           description: 'Description of the saved view.'
 
         argument :filters,
-          Types::WorkItems::SavedViews::FilterInputType,
+          ::Types::WorkItems::SavedViews::FilterInputType,
           required: false,
           description: 'Filters associated with the saved view.'
 
@@ -40,11 +40,21 @@ module Mutations
         # rubocop:enable Graphql/JSONType
 
         argument :sort,
-          Types::WorkItems::SortEnum,
+          ::Types::WorkItems::SortEnum,
           required: false,
           description: 'Sorting option associated with the saved view.'
 
+        # TODO: Remove once frontend has migrated to use is_private
         argument :private,
+          GraphQL::Types::Boolean,
+          required: false,
+          description: 'Whether the saved view is private.',
+          deprecated: {
+            reason: 'Replaced by `isPrivate` argument',
+            milestone: '18.10'
+          }
+
+        argument :is_private,
           GraphQL::Types::Boolean,
           required: false,
           description: 'Whether the saved view is private.'
@@ -61,8 +71,12 @@ module Mutations
           scopes: [:api],
           description: 'Errors encountered during the mutation.'
 
+        validates mutually_exclusive: [:private, :is_private]
+
         def resolve(id:, **attrs)
           saved_view = authorized_find!(id: id)
+
+          attrs[:private] = attrs.delete(:is_private) if attrs.key?(:is_private)
 
           result = ::WorkItems::SavedViews::UpdateService.new(
             current_user: current_user,
@@ -74,7 +88,7 @@ module Mutations
             check_spam_action_response!(saved_view)
             { saved_view: saved_view, errors: [] }
           else
-            { saved_view: nil, errors: result.message }
+            { saved_view: nil, errors: result.errors }
           end
         end
 

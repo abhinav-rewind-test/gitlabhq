@@ -1,9 +1,9 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: SSHキーを使用して、GitLabリポジトリ内のコミットに署名します。
-title: SSHキーでコミットに署名する
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: GitリポジトリでSSHキーを使ってコミットとタグを署名します。
+title: SSHキーでコミットとタグを署名する
 ---
 
 {{< details >}}
@@ -13,31 +13,37 @@ title: SSHキーでコミットに署名する
 
 {{< /details >}}
 
-SSHキーでコミットに署名すると、GitLabはGitLabアカウントに関連付けられたSSH公開キーを使用して、コミットの署名を暗号学的に検証します。成功すると、GitLabはコミットに**検証済み**ラベルを表示します。
+コミットまたはタグをSSHキーで署名すると、GitLabはGitLabアカウントに関連付けられているSSH公開キーを使用して署名を暗号学的に検証します。成功した場合、GitLabはコミットまたはタグに**検証済み** ラベルを表示します。
+
+コミットが検証済みとみなされるためのGitLabの条件:
+
+- コミットの署名に使用したSSHキーは、[使用目的](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)を**認証と署名**または**署名**に設定したうえで、GitLabアカウントに追加する必要があります。
+- Git設定のコミッターメールアドレスは、GitLabアカウントに関連付けられている[検証済みのメールアドレス](../../../profile/_index.md#change-your-primary-email)と一致する必要があります。
+
+署名が有効であっても、コミッターのメールがアカウントで検証済みのメールと一致しない場合、コミットは**未検証**としてマークされます。
 
 使用タイプが**認証と署名**である限り、GitLabへの`git+ssh`認証とコミット署名に同じSSHキーを使用できます。[SSHキーをGitLabアカウントに追加する](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)ページで確認できます。
 
-GitLabアカウントに関連付けられたSSHキーの管理の詳細については、[SSHキーを使用してGitLabと通信する](../../../ssh.md)を参照してください。
+SSHキーをGitLabアカウントと関連付けて管理する方法の詳細については、[GitLabとの通信にSSHキーを使用する](../../../ssh.md)を参照してください。
 
-## SSHキーでコミットに署名するようにGitを設定する {#configure-git-to-sign-commits-with-your-ssh-key}
+## Gitを構成してSSHキーでコミットとタグを署名する {#configure-git-to-sign-commits-and-tags-with-your-ssh-key}
 
-[SSHキーを作成](../../../ssh.md#generate-an-ssh-key-pair)し、[GitLabアカウントに追加](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)したら、そのキーを使用するようにGitを設定します。
+[SSHキーを作成](../../../ssh.md#generate-an-ssh-key-pair)し、[GitLabアカウントに追加](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)したら、キーの使用を開始するようにGitを設定します。
 
-前提要件: 
+前提条件: 
 
 - Git 2.34.0以降。
 - OpenSSH 8.1以降。
 
-  {{< alert type="note" >}}
-
-  OpenSSH 8.7には、壊れた署名機能があります。OpenSSH 8.7を使用している場合は、OpenSSH 8.8にアップグレードしてください。
-
-  {{< /alert >}}
+  > [!note]
+  > OpenSSH 8.7には、壊れた署名機能があります。OpenSSH 8.7を使用している場合は、OpenSSH 8.8にアップグレードしてください。
 
 - **使用タイプ**が`Authentication & Signing`または`Signing`のSSHキー。次のSSHキータイプがサポートされています:
   - ED25519
+  - ED25519_SK
   - RSA
   - ECDSA
+  - ECDSA_SK
 
 キーを使用するようにGitを設定するには、次の手順に従います:
 
@@ -55,11 +61,12 @@ GitLabアカウントに関連付けられたSSHキーの管理の詳細につ�
 
 ## SSHキーでコミットに署名する {#sign-commits-with-your-ssh-key}
 
-前提要件:
+前提条件: 
 
-- [SSHキーを作成](../../../ssh.md#generate-an-ssh-key-pair)しました。
-- GitLabアカウントに[キーを追加](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)しました。
-- SSHキーを使用して[コミットに署名するようにGitを設定](#configure-git-to-sign-commits-with-your-ssh-key)しました。
+- [SSHキーを作成](../../../ssh.md#generate-an-ssh-key-pair)済みである。
+- GitLabアカウントに[キーを追加](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)済みである。
+- SSHキーを使用して[コミットに署名するようにGitを設定](#configure-git-to-sign-commits-and-tags-with-your-ssh-key)済みである。
+- Gitの`user.email`が、GitLabアカウントに関連付けられている[検証済みのメールアドレス](../../../profile/_index.md#change-your-primary-email)と一致している。
 
 コミットに署名するには、次の手順に従います:
 
@@ -77,7 +84,39 @@ GitLabアカウントに関連付けられたSSHキーの管理の詳細につ�
 
 1. SSHキーが保護されている場合、Gitはパスフレーズの入力を求めます。
 1. GitLabにプッシュします。
-1. コミットが[検証されている](#verify-commits)ことを確認します。署名の検証では、`allowed_signers`ファイルを使用してメールとSSHキーを関連付けます。このファイルの設定については、[コミットをローカルで検証する](#verify-commits-locally)を参照してください。
+1. コミットが[検証されている](#verify-commits)ことを確認します。署名の検証では、`allowed_signers`ファイルを使用してメールとSSHキーを関連付けます。このファイルの構成に関するヘルプについては、[ローカルでコミットを検証する](#verify-commits-locally)を参照してください。
+
+## タグに署名して検証する {#sign-and-verify-tags}
+
+{{< history >}}
+
+- GitLab 18.3で`render_ssh_signed_tags_verification_status`[フラグ](../../../../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/384473)されました。デフォルトでは無効になっています。
+- GitLab 18.11で[GitLab.com、GitLab Self-Managed、およびGitLab Dedicatedで有効](https://gitlab.com/gitlab-org/gitlab/-/issues/561452)になりました。
+
+{{< /history >}}
+
+> [!flag]
+> この機能の利用は機能フラグによって制御されます。詳細については、履歴を参照してください。
+
+SSHキーを使用して[Gitでコミットとタグに署名するように設定](#configure-git-to-sign-commits-and-tags-with-your-ssh-key)したら、タグに署名できます:
+
+1. Gitタグを作成するときは、`-s`フラグを追加します: 
+
+   ```shell
+   git tag -s v1.1.1 -m "My signed tag"
+   ```
+
+1. GitLabにプッシュし、このコマンドでタグが署名されていることを確認します: 
+
+   ```shell
+   git tag --verify v1.1.1
+   ```
+
+1. オプション。`-s`フラグなしでタグを自動的に署名するには、以下を実行します:
+
+   ```shell
+   git config --global tag.gpgsign true
+   ```
 
 ## コミットを検証する {#verify-commits}
 
@@ -85,35 +124,40 @@ GitLab UIで、署名されたすべてのタイプのコミットを[検証](_i
 
 ### コミットをローカルで検証する {#verify-commits-locally}
 
-コミットをローカルで検証するには、Gitの[許可された署名者ファイル](https://man7.org/linux/man-pages/man1/ssh-keygen.1.html#ALLOWED_SIGNERS)を作成して、SSH公開キーをユーザーに関連付けます:
+ローカルでコミットを検証するには、GitがSSH公開キーをユーザーに関連付けるための[許可された署名者ファイル](https://man7.org/linux/man-pages/man1/ssh-keygen.1.html#ALLOWED_SIGNERS)を作成します。この例では`~/.ssh/allowed_signers`を使用していますが、別のパスを指定できます。以下の手順で同じパスを使用してください。
 
-1. 次のように許可された署名者ファイルを作成します:
+1. SSHディレクトリを作成します:
 
    ```shell
-   touch allowed_signers
+   mkdir -p ~/.ssh
    ```
 
-1. 次のようにGitで`allowed_signers`ファイルを設定します:
+1. 許可された署名者ファイルを作成します。
 
    ```shell
-   git config gpg.ssh.allowedSignersFile "$(pwd)/allowed_signers"
+   touch ~/.ssh/allowed_signers
    ```
 
-1. 許可された署名者ファイルにエントリを追加します。このコマンドを使用して、メールアドレスと公開SSHキーを`allowed_signers`ファイルに追加します。`<MY_KEY>`をキーの名前に、`~/.ssh/allowed_signers`をプロジェクトの`allowed_signers`ファイルの場所に置き換えます:
+1. Gitがファイルを使用するように構成します:
 
    ```shell
-   # Modify this line to meet your needs.
+   git config gpg.ssh.allowedSignersFile "$HOME/.ssh/allowed_signers"
+   ```
+
+1. 許可された署名者ファイルにエントリを追加します。`<MY_KEY>`をキーの名前に置き換えます。ステップ1で別のパスを選択した場合は、`~/.ssh/allowed_signers`をそのパスに置き換えます:
+
+   ```shell
    # Declaring the `git` namespace helps prevent cross-protocol attacks.
    echo "$(git config --get user.email) namespaces=\"git\" $(cat ~/.ssh/<MY_KEY>.pub)" >> ~/.ssh/allowed_signers
    ```
 
-   `allowed_signers`ファイルの結果のエントリには、次のように、メールアドレス、キータイプ、およびキーの内容が含まれています:
+   結果のエントリには、メールアドレス、キータイプ、およびキーのコンテンツが含まれています:
 
    ```plaintext
    example@gitlab.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAmaTS47vRmsKyLyK1jlIFJn/i8wdGQ3J49LYyIYJ2hv
    ```
 
-1. 署名を検証する各ユーザーに対して、前の手順を繰り返します。多くの異なるコントリビューターの署名をローカルで検証する場合は、このファイルをGitリポジトリにチェックインすることを検討してください。
+1. 検証したい追加のユーザーごとにこの手順を繰り返します。他のコントリビューターと共同作業する場合は、このファイルをGitリポジトリにチェックインすることを検討してください。
 
 1. `git log --show-signature`を使用して、コミットの署名ステータスを表示します:
 
@@ -130,7 +174,7 @@ GitLab UIで、署名されたすべてのタイプのコミットを[検証](_i
 
 ## 削除されたSSHキーで署名されたコミット {#signed-commits-with-removed-ssh-keys}
 
-コミットの署名に使用したSSHキーを失効または削除できます。詳細については、[SSHキーを削除する](../../../ssh.md#remove-an-ssh-key)を参照してください。
+コミットの署名に使用したSSHキーを失効または削除できます。詳細については、[SSHキー](../../../ssh.md#remove-an-ssh-key)を削除するを参照してください。
 
 SSHキーを削除すると、キーで署名されたコミットに影響を与える可能性があります:
 
@@ -139,6 +183,6 @@ SSHキーを削除すると、キーで署名されたコミットに影響を�
 
 ## 関連トピック {#related-topics}
 
-- [X.509証明書でコミットとタグに署名する](x509.md)
+- [X.509証明書を使用してコミットとタグに署名する](x509.md)
 - [GPGでコミットに署名する](gpg.md)
 - [コミットAPI](../../../../api/commits.md)

@@ -136,10 +136,10 @@ module ProjectsHelper
   end
 
   def transfer_project_message(project)
-    _("You are about to transfer %{code_start}%{project_full_name}%{code_end} to another namespace. This action " \
+    _("You are about to transfer %{code_start}%{project_full_path}%{code_end} to another namespace. This action " \
       "changes the %{link_to_namespace_change_doc} and can lead to %{link_to_data_loss_doc}.") % {
-        project_full_name: project.full_name,
-        code_start: '<code>',
+        project_full_path: project.full_path,
+        code_start: '<code class="gl-whitespace-pre-wrap">',
         code_end: '</code>',
         link_to_namespace_change_doc: link_to_namespace_change_doc,
         link_to_data_loss_doc: link_to_data_loss_doc
@@ -290,18 +290,6 @@ module ProjectsHelper
       current_user.require_extra_setup_for_git_auth?
   end
 
-  def show_auto_devops_implicitly_enabled_banner?(project, user)
-    return false unless user_can_see_auto_devops_implicitly_enabled_banner?(project, user)
-
-    cookies[:"hide_auto_devops_implicitly_enabled_banner_#{project.id}"].blank?
-  end
-
-  def show_mobile_devops_project_promo?(project)
-    return false unless (project.project_setting.target_platforms & ::ProjectSetting::ALLOWED_TARGET_PLATFORMS).any?
-
-    cookies[:"hide_mobile_devops_promo_#{project.id}"].blank?
-  end
-
   def no_password_message
     set_password_link_start = '<a href="%{url}">'.html_safe % { url: edit_user_settings_password_path }
     set_up_pat_link_start = '<a href="%{url}">'.html_safe % { url: user_settings_personal_access_tokens_path }
@@ -367,9 +355,7 @@ module ProjectsHelper
   end
 
   def explore_projects_tab?
-    current_page?(explore_projects_path) ||
-      current_page?(trending_explore_projects_path) ||
-      current_page?(starred_explore_projects_path)
+    current_page?(explore_projects_path) || current_page?(trending_explore_projects_path)
   end
 
   def show_count?(disabled: false, compact_mode: false)
@@ -389,10 +375,6 @@ module ProjectsHelper
       organization_slug: setting.organization_slug,
       slug: setting.project_slug
     }.to_json
-  end
-
-  def directory?
-    @path.present?
   end
 
   def external_classification_label_help_message
@@ -463,7 +445,8 @@ module ProjectsHelper
       environmentsHelpPath: help_page_path('ci/environments/_index.md'),
       featureFlagsHelpPath: help_page_path('operations/feature_flags.md'),
       releasesHelpPath: help_page_path('user/project/releases/_index.md'),
-      infrastructureHelpPath: help_page_path('user/infrastructure/_index.md')
+      infrastructureHelpPath: help_page_path('user/infrastructure/_index.md'),
+      groupPathRegex: JsRegex.new(Gitlab::PathRegex::FULL_NAMESPACE_FORMAT_REGEX).source
     }
   end
 
@@ -508,7 +491,6 @@ module ProjectsHelper
       forks_count: project.forks_count,
       new_fork_url: new_project_fork_path(project),
       project_forks_url: project_forks_path(project),
-      project_full_path: project.full_path,
       user_fork_url: user_fork_url
     }
   end
@@ -542,7 +524,7 @@ module ProjectsHelper
 
   def home_panel_data_attributes
     project = @project.is_a?(ProjectPresenter) ? @project.project : @project
-    dropdown_attributes = groups_projects_more_actions_dropdown_data(project) || {}
+    dropdown_attributes = project_more_action_data(project)
     fork_button_attributes = fork_button_data_attributes(project) || {}
     notification_attributes = notification_data_attributes(project) || {}
     star_count_attributes = star_count_data_attributes(project)
@@ -558,7 +540,8 @@ module ProjectsHelper
       project_avatar: project.avatar_url,
       project_name: project.name,
       project_id: project.id,
-      project_visibility_level: Gitlab::VisibilityLevel.string_level(project.visibility_level)
+      project_visibility_level: Gitlab::VisibilityLevel.string_level(project.visibility_level),
+      project_full_path: project.full_path
     }.merge(
       dropdown_attributes,
       fork_button_attributes,
@@ -641,7 +624,7 @@ module ProjectsHelper
   end
 
   def can_view_branch_rules?
-    can?(current_user, :maintainer_access, @project)
+    can?(current_user, :read_branch_rule, @project)
   end
 
   def can_push_code?
@@ -653,7 +636,7 @@ module ProjectsHelper
   end
 
   def branch_rules_path
-    project_settings_repository_path(@project, anchor: 'js-branch-rules')
+    project_settings_repository_path(@project, anchor: 'branch-rules')
   end
 
   def visibility_level_content(project, css_class: nil, icon_css_class: nil, icon_variant: nil)
@@ -675,38 +658,12 @@ module ProjectsHelper
     end
   end
 
-  def hidden_issue_icon(issue)
-    return unless issue_hidden?(issue)
-
-    hidden_resource_icon(issue)
-  end
-
-  def issue_css_classes(issue)
-    classes = ["issue"]
-    classes << "closed" if issue.closed?
-    classes << "gl-cursor-grab" if @sort == 'relative_position'
-    classes.join(' ')
-  end
-
-  def issue_manual_ordering_class
-    return unless @sort == 'relative_position' && !issue_repositioning_disabled?
-
-    'manual-ordering'
-  end
-
-  def projects_filtered_search_and_sort_app_data
-    {
-      initial_sort: group_project_list_sort_by,
-      programming_languages: programming_languages,
-      paths_to_exclude_sort_on: [starred_explore_projects_path, explore_root_path]
-    }.to_json
-  end
-
   def dashboard_projects_app_data
     {
       initial_sort: group_project_list_sort_by,
       programming_languages: programming_languages,
-      base_path: root_path
+      base_path: root_path,
+      can_create_project: current_user.can_create_project?
     }.to_json
   end
 
@@ -760,11 +717,7 @@ module ProjectsHelper
   private
 
   def issues_help_page_path(project)
-    if project.work_items_consolidated_list_enabled?(current_user)
-      help_page_path('user/work_items/_index.md')
-    else
-      help_page_path('user/project/issues/_index.md')
-    end
+    help_page_path('user/work_items/_index.md')
   end
 
   def can_admin_project_clusters?(project)
@@ -791,6 +744,10 @@ module ProjectsHelper
     return false unless project.repository.branch_exists?(ref)
 
     ::Gitlab::UserAccess.new(current_user, container: project).can_push_to_branch?(ref)
+  end
+
+  def can_push_initial_commit_to_namespace?(namespace)
+    namespace.can_push_initial_commit?(current_user)
   end
 
   # This function is here to solve rubocop error of line too long.
@@ -885,16 +842,13 @@ module ProjectsHelper
 
   def current_ref
     return current_branch if @repository.try(:branch_exists?, current_branch)
+    return @repository.try(:root_ref) if @wiki
 
     @ref || @repository.try(:root_ref)
   end
 
   def project_child_container_class(view_path)
     view_path == "projects/issues" ? "gl-mt-3" : "project-show-#{view_path}"
-  end
-
-  def project_issues(project)
-    IssuesFinder.new(current_user, project_id: project.id).execute
   end
 
   def project_merge_requests(project)
@@ -952,8 +906,7 @@ module ProjectsHelper
 
   def can_show_last_commit_in_list?(project)
     can?(current_user, :read_cross_project) &&
-      can?(current_user, :read_commit_status, project) &&
-      project.commit
+      can?(current_user, :read_commit_status, project)
   end
 
   def pages_https_only_disabled?
@@ -989,13 +942,6 @@ module ProjectsHelper
       feature_flags
       terraform
     ]
-  end
-
-  def user_can_see_auto_devops_implicitly_enabled_banner?(project, user)
-    Ability.allowed?(user, :admin_project, project) &&
-      project.has_auto_devops_implicitly_enabled? &&
-      project.builds_enabled? &&
-      !project.has_ci_config_file?
   end
 
   def show_visibility_confirm_modal?(project)
@@ -1051,6 +997,11 @@ module ProjectsHelper
         :duo_foundational_flows_enabled,
         project,
         method(:edit_group_path)
+      ),
+      tool_approval_for_session_cascading_settings: project_cascading_namespace_settings_tooltip_data(
+        :tool_approval_for_session_enabled,
+        project,
+        method(:edit_group_path)
       )
     }
   end
@@ -1059,6 +1010,18 @@ module ProjectsHelper
     strong_memoize(:delete_dormant_projects_setting) do
       ::Gitlab::CurrentSettings.delete_inactive_projects?
     end
+  end
+
+  def project_more_action_data(project)
+    request = project.requesters.with_user(current_user).first
+
+    {
+      can_request_access: can?(current_user, :request_access, project).to_s,
+      can_withdraw_access_request: can?(current_user, :withdraw_member_access_request, request).to_s,
+      request_access_path: request_access_project_project_members_path(project),
+      withdraw_access_request_path: leave_project_project_members_path(project),
+      dashboard_path: dashboard_projects_path
+    }
   end
 end
 

@@ -20,7 +20,8 @@ module Enums # rubocop:disable Gitlab/BoundedContexts -- Existing module
     ANALYZER_STATUSES = {
       not_configured: 0,
       success: 1,
-      failed: 2
+      failed: 2,
+      stale: 3
     }.freeze
 
     EDITABLE_STATES = {
@@ -49,6 +50,13 @@ module Enums # rubocop:disable Gitlab/BoundedContexts -- Existing module
       secret_detection: 1,
       container_scanning: 3,
       dependency_scanning: 4
+    }.freeze
+
+    SCAN_PROFILE_STATUSES = {
+      not_configured: 0,
+      success: 1,
+      failed: 2,
+      warning: 3
     }.freeze
 
     SCAN_PROFILE_TRIGGER_TYPES = {
@@ -99,6 +107,10 @@ module Enums # rubocop:disable Gitlab/BoundedContexts -- Existing module
 
     def self.scan_profile_types
       SCAN_PROFILES_TYPES
+    end
+
+    def self.scan_profile_statuses
+      SCAN_PROFILE_STATUSES
     end
 
     def self.scan_profile_trigger_types

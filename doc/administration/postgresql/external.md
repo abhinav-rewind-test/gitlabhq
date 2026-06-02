@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Operations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Configure GitLab using an external PostgreSQL service
 ---
 
@@ -38,7 +38,7 @@ After you set up the external PostgreSQL server:
    - Google Cloud SQL requires the [`cloudsqlsuperuser`](https://cloud.google.com/sql/docs/postgres/users#default-users) role.
 
    This is for the installation of extensions during installation and upgrades. As an alternative,
-   [ensure the extensions are installed manually, and read about the problems that may arise during future GitLab upgrades](../../install/postgresql_extensions.md).
+   [install the required extensions manually](extensions.md).
 1. Configure the GitLab application servers with the appropriate connection details
    for your external PostgreSQL service in your `/etc/gitlab/gitlab.rb` file:
 

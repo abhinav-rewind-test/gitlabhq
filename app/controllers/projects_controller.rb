@@ -28,7 +28,8 @@ class ProjectsController < Projects::ApplicationController
 
   # Authorize
   before_action :authorize_view_edit_page!, only: :edit
-  before_action :authorize_admin_project!, only: [:update, :housekeeping, :download_export, :export, :remove_export, :generate_new_export]
+  before_action :authorize_admin_project!,
+    only: [:update, :housekeeping, :download_export, :export, :remove_export, :generate_new_export]
   before_action :authorize_archive_project!, only: [:archive, :unarchive]
   before_action :event_filter, only: [:show, :activity]
 
@@ -50,18 +51,16 @@ class ProjectsController < Projects::ApplicationController
   before_action do
     push_frontend_feature_flag(:inline_blame, @project)
     push_frontend_feature_flag(:remove_monitor_metrics, @project)
-    push_frontend_feature_flag(:issue_email_participants, @project)
     # TODO: We need to remove the FF eventually when we rollout page_specific_styles
     push_frontend_feature_flag(:page_specific_styles, current_user)
     push_licensed_feature(:file_locks) if @project.present? && @project.licensed_feature_available?(:file_locks)
     push_frontend_feature_flag(:repository_file_tree_browser, current_user)
+    push_frontend_feature_flag(:vue3_migrate_repository, current_user)
 
     if @project.present? && @project.licensed_feature_available?(:security_orchestration_policies)
       push_licensed_feature(:security_orchestration_policies)
     end
   end
-
-  before_action :push_work_item_planning_view_feature_flag, only: [:edit]
 
   layout :determine_layout
 
@@ -97,7 +96,9 @@ class ProjectsController < Projects::ApplicationController
 
     manageable_groups = ::Groups::AcceptingProjectCreationsFinder.new(current_user).execute.limit(2)
 
-    return access_denied! if manageable_groups.empty? && !can?(current_user, :create_projects, current_user.namespace)
+    if manageable_groups.empty? && !can?(current_user, :create_projects, current_user.namespace)
+      return access_denied!(s_('ProjectsNew|You do not have permission to create projects.'))
+    end
 
     @current_user_group = manageable_groups.first if manageable_groups.one?
 
@@ -111,7 +112,8 @@ class ProjectsController < Projects::ApplicationController
   end
 
   def create
-    @project = ::Projects::CreateService.new(current_user, project_params(attributes: project_params_create_attributes)).execute
+    @project = ::Projects::CreateService.new(current_user,
+      project_params(attributes: project_params_create_attributes)).execute
 
     if @project.saved?
       redirect_to(
@@ -137,11 +139,16 @@ class ProjectsController < Projects::ApplicationController
     return access_denied! unless can?(current_user, :change_namespace, @project)
 
     namespace = Namespace.find_by(id: params[:new_namespace_id])
-    ::Projects::TransferService.new(project, current_user).execute(namespace)
 
-    if @project.errors[:new_namespace].present?
-      flash[:alert] = @project.errors[:new_namespace].first
+    unless namespace
+      flash[:alert] = s_('TransferProject|Please select a new namespace for your project.')
       return redirect_to edit_project_path(@project)
+    end
+
+    if Feature.enabled?(:groups_and_projects_async_transfer, @project.root_ancestor)
+      enqueue_async_transfer(namespace)
+    else
+      execute_sync_transfer(namespace)
     end
 
     redirect_to edit_project_path(@project)
@@ -192,6 +199,7 @@ class ProjectsController < Projects::ApplicationController
       format.atom do
         load_events
         @events = @events.select { |event| event.visible_to_user?(current_user) }
+        Events::RenderService.new(current_user).execute(@events, atom_request: true)
         render layout: 'xml'
       end
     end
@@ -203,15 +211,13 @@ class ProjectsController < Projects::ApplicationController
     if @project.self_deletion_scheduled? &&
         ::Gitlab::Utils.to_boolean(params.permit(:permanently_delete)[:permanently_delete])
 
-      return destroy_immediately if Gitlab::CurrentSettings.allow_immediate_namespaces_deletion_for_user?(current_user)
-
-      return access_denied!
+      return destroy_immediately
     end
 
     result = ::Projects::MarkForDeletionService.new(@project, current_user).execute
 
     if result.success?
-      redirect_to project_path(@project), status: :found
+      redirect_to dashboard_projects_path, status: :found
     else
       flash.now[:alert] = result.message
 
@@ -412,6 +418,21 @@ class ProjectsController < Projects::ApplicationController
 
   private
 
+  def enqueue_async_transfer(namespace)
+    service = ::Projects::TransferService.new(@project, current_user)
+    result = service.schedule_async_transfer(namespace)
+
+    return if result.success?
+
+    flash[:alert] = result.message
+  end
+
+  def execute_sync_transfer(namespace)
+    ::Projects::TransferService.new(project, current_user).execute(namespace)
+
+    flash[:alert] = @project.errors[:new_namespace].first if @project.errors[:new_namespace].present?
+  end
+
   def destroy_immediately
     ::Projects::DestroyService.new(@project, current_user, {}).async_execute
     flash[:toast] = safe_format(_("%{project_name} is being deleted."), project_name: @project.name)
@@ -513,8 +534,6 @@ class ProjectsController < Projects::ApplicationController
       mr_default_target_self
       warn_about_potentially_unwanted_characters
       enforce_auth_checks_on_uploads
-      merge_request_title_regex
-      merge_request_title_regex_description
       emails_enabled
     ]
 
@@ -563,8 +582,6 @@ class ProjectsController < Projects::ApplicationController
       :service_desk_enabled,
       :merge_commit_template_or_default,
       :squash_commit_template_or_default,
-      :merge_request_title_regex,
-      :merge_request_title_regex_description,
       { project_setting_attributes: project_setting_attributes,
         project_feature_attributes: project_feature_attributes }
     ]
@@ -660,10 +677,6 @@ class ProjectsController < Projects::ApplicationController
   def enforce_step_up_auth_for_namespace_on_create
     namespace_id = params.dig(:project, :namespace_id)
     enforce_step_up_auth_for_namespace_id(namespace_id)
-  end
-
-  def push_work_item_planning_view_feature_flag
-    push_force_frontend_feature_flag(:work_item_planning_view, !!@project.work_items_consolidated_list_enabled?(current_user))
   end
 end
 

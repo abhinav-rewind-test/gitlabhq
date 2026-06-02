@@ -3,16 +3,20 @@
 require 'spec_helper'
 
 RSpec.describe BulkImports::Projects::Pipelines::ProjectAttributesPipeline, :with_license, feature_category: :importers do
-  let_it_be(:project) { create(:project) }
-  let_it_be(:bulk_import) { create(:bulk_import) }
-  let_it_be(:entity) { create(:bulk_import_entity, :project_entity, project: project, bulk_import: bulk_import) }
-  let_it_be(:tracker) { create(:bulk_import_tracker, entity: entity) }
-  let_it_be(:context) { BulkImports::Pipeline::Context.new(tracker) }
+  let_it_be(:project, freeze: false) { create(:project, name: 'Project name') }
+  let_it_be(:bulk_import, freeze: false) { create(:bulk_import) }
+  let_it_be(:entity, freeze: false) do
+    create(:bulk_import_entity, :project_entity, project: project, bulk_import: bulk_import)
+  end
+
+  let_it_be(:tracker, freeze: false) { create(:bulk_import_tracker, entity: entity) }
+  let_it_be(:context, freeze: false) { BulkImports::Pipeline::Context.new(tracker) }
 
   let(:tmpdir) { Dir.mktmpdir }
   let(:extra) { {} }
   let(:project_attributes) do
     {
+      'name' => 'Source name',
       'description' => 'description',
       'visibility_level' => 0,
       'archived' => false,
@@ -29,7 +33,6 @@ RSpec.describe BulkImports::Projects::Pipelines::ProjectAttributesPipeline, :wit
       'public_builds' => true,
       'last_repository_check_failed' => nil,
       'only_allow_merge_if_pipeline_succeeds' => true,
-      'has_external_issue_tracker' => false,
       'request_access_enabled' => true,
       'has_external_wiki' => false,
       'ci_config_path' => nil,
@@ -37,7 +40,6 @@ RSpec.describe BulkImports::Projects::Pipelines::ProjectAttributesPipeline, :wit
       'printing_merge_request_link_enabled' => true,
       'auto_cancel_pending_pipelines' => 'enabled',
       'service_desk_enabled' => false,
-      'delete_error' => nil,
       'disable_overriding_approvers_per_merge_request' => true,
       'resolve_outdated_diff_discussions' => true,
       'jobs_cache_index' => nil,
@@ -68,9 +70,15 @@ RSpec.describe BulkImports::Projects::Pipelines::ProjectAttributesPipeline, :wit
     end
 
     it 'imports project attributes', :aggregate_failures do
+      project_attributes.delete('name')
+
       project_attributes.each_pair do |key, value|
         expect(project.public_send(key)).to eq(value)
       end
+    end
+
+    it 'does not import project name' do
+      expect(project.name).not_to eq(project_attributes['name'])
     end
 
     context 'when project is archived' do
@@ -90,16 +98,24 @@ RSpec.describe BulkImports::Projects::Pipelines::ProjectAttributesPipeline, :wit
 
       expect(pipeline.transform(context, input)).to eq({ 'description' => 'description' })
     end
+
+    it 'does not import has_external_issue_tracker' do
+      input = { 'description' => 'description', 'has_external_issue_tracker' => false }
+
+      expect(pipeline.transform(context, input)).not_to have_key('has_external_issue_tracker')
+    end
   end
 
   describe '#load' do
-    it 'assigns attributes, drops visibility and reconciles shared runner setting' do
+    it 'marks the project as importing and assigns attributes' do
       expect(project).to receive(:assign_attributes).with(project_attributes)
       expect(project).to receive(:reconcile_shared_runners_setting!)
       expect(project).to receive(:drop_visibility_level!)
       expect(project).to receive(:save!)
 
       pipeline.load(context, project_attributes)
+
+      expect(project.importing?).to eq(true)
     end
   end
 

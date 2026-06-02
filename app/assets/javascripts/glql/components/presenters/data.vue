@@ -1,16 +1,15 @@
 <script>
-import { __ } from '~/locale';
 import { DISPLAY_TYPES } from '../../constants';
+import ColumnChartPresenter from './column_chart.vue';
 import ListPresenter from './list.vue';
 import TablePresenter from './table.vue';
-import ColumnChart from './column_chart.vue';
 
 export default {
   name: 'DataPresenter',
   components: {
     TablePresenter,
     ListPresenter,
-    ColumnChart,
+    ColumnChartPresenter,
   },
   props: {
     displayType: {
@@ -27,31 +26,29 @@ export default {
       type: Array,
       default: () => [],
     },
-    aggregate: {
-      required: false,
-      type: Array,
-      default: null,
-    },
-    groupBy: {
-      required: false,
-      type: Array,
-      default: null,
-    },
     loading: {
       required: false,
       type: [Boolean, Number],
       default: false,
     },
+    displayConfig: {
+      required: false,
+      type: Object,
+      default: () => ({}),
+    },
+  },
+  emits: { error: null },
+  computed: {
+    isList() {
+      return (
+        this.displayType === DISPLAY_TYPES.LIST || this.displayType === DISPLAY_TYPES.ORDERED_LIST
+      );
+    },
+    listType() {
+      return this.displayType === DISPLAY_TYPES.LIST ? 'ul' : 'ol';
+    },
   },
   DISPLAY_TYPES,
-  mounted() {
-    if (
-      this.displayType === this.$options.DISPLAY_TYPES.COLUMN_CHART &&
-      !(this.aggregate?.length > 0 && this.groupBy?.length > 0)
-    ) {
-      this.$emit('error', __('Columns charts require an aggregation to be defined'));
-    }
-  },
 };
 </script>
 <template>
@@ -62,20 +59,18 @@ export default {
     :loading="loading"
   />
   <list-presenter
-    v-else-if="
-      displayType === $options.DISPLAY_TYPES.LIST ||
-      displayType === $options.DISPLAY_TYPES.ORDERED_LIST
-    "
+    v-else-if="isList"
     :data="data"
     :fields="fields"
     :loading="loading"
-    :list-type="displayType === $options.DISPLAY_TYPES.LIST ? 'ul' : 'ol'"
+    :list-type="listType"
   />
-  <column-chart
+  <column-chart-presenter
     v-else-if="displayType === $options.DISPLAY_TYPES.COLUMN_CHART"
     :data="data"
-    :aggregate="aggregate"
-    :group-by="groupBy"
+    :fields="fields"
     :loading="loading"
+    :display-config="displayConfig"
+    @error="$emit('error', $event)"
   />
 </template>

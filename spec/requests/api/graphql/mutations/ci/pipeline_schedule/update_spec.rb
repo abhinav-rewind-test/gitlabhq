@@ -6,7 +6,7 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
   include GraphqlHelpers
 
   let_it_be(:current_user) { create(:user) }
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
   let_it_be(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project, owner: current_user) }
 
   let_it_be(:variable_one) do
@@ -65,6 +65,16 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
     before_all do
       project.update!(ci_pipeline_variables_minimum_override_role: :developer)
       project.add_developer(current_user)
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :update_pipeline_schedule do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:mutation) do
+        graphql_mutation(:pipeline_schedule_update, { id: pipeline_schedule.to_global_id.to_s }, 'errors')
+      end
+
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
     end
 
     context 'when success' do

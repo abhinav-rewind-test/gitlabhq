@@ -2,6 +2,8 @@ import createState from '~/batch_comments/stores/modules/batch_comments/state';
 import * as types from '../stores/modules/batch_comments/mutation_types';
 
 const processDraft = (draft) => ({
+  isEditing: false,
+  editedNote: null,
   ...draft,
   isDraft: true,
 });
@@ -19,7 +21,7 @@ export default {
   },
 
   [types.SET_BATCH_COMMENTS_DRAFTS](drafts) {
-    this.drafts = drafts.map(processDraft);
+    this.drafts = Array.isArray(drafts) ? drafts.map(processDraft) : [];
   },
 
   [types.REQUEST_PUBLISH_DRAFT](draftId) {

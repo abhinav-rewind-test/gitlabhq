@@ -6,10 +6,14 @@ module API
     class CustomHeaders < ::Grape::API
       params do
         requires :hook_id, type: Integer, desc: 'The ID of the hook'
-        requires :key, type: String, desc: 'The key of the custom header'
+        requires :key, type: String, desc: 'The name of the custom header',
+          limit: WebHook::MAX_CUSTOM_HEADER_NAME_LENGTH
       end
       namespace ':hook_id/custom_headers' do
-        desc 'Set a custom header'
+        desc 'Update a custom header' do
+          detail 'Updates a custom header for a specified webhook.'
+          tags ['hooks']
+        end
         params do
           requires :value, type: String, desc: 'The value of the custom header'
         end
@@ -26,7 +30,10 @@ module API
           status :no_content
         end
 
-        desc 'Un-Set a custom header'
+        desc 'Delete a custom header' do
+          detail 'Deletes a custom header from a specified webhook.'
+          tags ['hooks']
+        end
         route_setting :authorization, permissions: :delete_webhook_custom_header,
           boundary_type: configuration[:boundary_type]
         delete ":key" do

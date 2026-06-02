@@ -7,9 +7,14 @@ identifiers:
 - namespace
 - user
 product_group: pipeline_authoring
+product_categories:
+- pipeline_composition
 milestone: '17.5'
 introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/166870
 tiers:
 - free
 - premium
 - ultimate
+additional_properties:
+  author_source:
+    description: "Source of the commit author. Value of the Duo-Workflow-Definition git trailer if present, otherwise human."

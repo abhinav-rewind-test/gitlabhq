@@ -73,22 +73,23 @@ func (m *workflowLockManager) releaseLock(ctx context.Context, mutex *redsync.Mu
 		return
 	}
 
+	logger := log.WithContextFields(ctx, log.Fields{"workflow_id": workflowID})
+
 	ok, err := mutex.UnlockContext(ctx)
 	if err != nil {
-		log.WithContextFields(ctx, log.Fields{
-			"workflow_id": workflowID,
-		}).WithError(err).Error("Failed to release workflow lock")
+		if errors.Is(err, redsync.ErrLockAlreadyExpired) {
+			logger.Info("Workflow lock was already expired")
+			return
+		}
+
+		logger.WithError(err).Error("Failed to release workflow lock")
 		return
 	}
 
 	if !ok {
-		log.WithContextFields(ctx, log.Fields{
-			"workflow_id": workflowID,
-		}).Info("Failed to release workflow lock without an error")
+		logger.Info("Failed to release workflow lock without an error")
 		return
 	}
 
-	log.WithContextFields(ctx, log.Fields{
-		"workflow_id": workflowID,
-	}).Info("Released workflow lock")
+	logger.Info("Released workflow lock")
 }

@@ -404,6 +404,83 @@ RSpec.describe Projects::MergeRequestsController, feature_category: :code_review
         end
       end
     end
+
+    describe 'rapid_diffs_presenter' do
+      it 'is available as a helper method' do
+        go(format: :html)
+
+        expect(controller.view_context.rapid_diffs_presenter).to be_a(RapidDiffs::MergeRequestPresenter)
+      end
+
+      it 'is lazy on show action' do
+        go(format: :html)
+
+        expect(controller.view_context.rapid_diffs_presenter).to be_lazy
+      end
+
+      context 'on rapid_diffs action' do
+        def go_rapid_diffs
+          stub_feature_flags(rapid_diffs_on_mr_show: true)
+          get :rapid_diffs, params: {
+            namespace_id: project.namespace.to_param,
+            project_id: project,
+            id: merge_request.iid,
+            rapid_diffs: 'true'
+          }
+        end
+
+        it 'is not lazy' do
+          go_rapid_diffs
+
+          expect(controller.view_context.rapid_diffs_presenter).not_to be_lazy
+        end
+      end
+
+      context 'when merge request has conflicts' do
+        let(:conflict_file) { instance_double(Gitlab::Conflict::File, path: 'file.txt') }
+        let(:file_collection) { instance_double(Gitlab::Conflict::FileCollection, files: [conflict_file]) }
+
+        before do
+          allow_next_found_instance_of(MergeRequest) do |mr|
+            allow(mr).to receive_messages(
+              cannot_be_merged?: true,
+              source_branch_exists?: true,
+              target_branch_exists?: true
+            )
+          end
+          allow_next_instance_of(MergeRequests::Conflicts::ListService) do |service|
+            allow(service).to receive(:conflicts).and_return(file_collection)
+          end
+          allow(conflict_file).to receive(:conflict_type).with(no_args).and_return(:both_modified)
+          allow(conflict_file).to receive(:conflict_type).with(when_renamed: true).and_return(:renamed_same_file)
+        end
+
+        it 'includes conflicts_with_types hash in the presenter' do
+          go(format: :html)
+
+          expect(controller.view_context.rapid_diffs_presenter.conflicts).to eq({
+            'file.txt' => {
+              conflict_type: :both_modified,
+              conflict_type_when_renamed: :renamed_same_file
+            }
+          })
+        end
+      end
+
+      context 'when merge request can be merged' do
+        before do
+          allow_next_found_instance_of(MergeRequest) do |mr|
+            allow(mr).to receive(:cannot_be_merged?).and_return(false)
+          end
+        end
+
+        it 'does not include conflicts in the presenter' do
+          go(format: :html)
+
+          expect(controller.view_context.rapid_diffs_presenter.conflicts).to be_nil
+        end
+      end
+    end
   end
 
   describe 'GET index' do
@@ -1978,7 +2055,7 @@ RSpec.describe Projects::MergeRequestsController, feature_category: :code_review
         expect(control_count).to be <= 137
       end
 
-      it 'has no N+1 SQL issues for environments', :request_store, retry: 0 do
+      it 'has no N+1 SQL issues for environments', :request_store do
         # First run to insert test data from lets, which does take up some 30 queries
         get_ci_environments_status
 
@@ -2325,6 +2402,23 @@ RSpec.describe Projects::MergeRequestsController, feature_category: :code_review
           let(:requested_iid) { merge_request.iid }
           let(:expected_discussion_count) { 2 }
           let(:expected_discussion_ids) { [mr_note1.discussion_id, mr_note2.discussion_id] }
+        end
+      end
+
+      context 'when a commit discussion references a commit no longer in the repository' do
+        let!(:orphan_commit_note) do
+          create(:diff_note_on_commit, project: merge_request.project)
+        end
+
+        before do
+          allow_any_instance_of(Project).to receive(:commit).and_call_original
+          allow_any_instance_of(Project).to receive(:commit).with(orphan_commit_note.commit_id).and_return(nil)
+        end
+
+        it 'returns 200 instead of raising ActionController::UrlGenerationError' do
+          get :discussions, params: { namespace_id: project.namespace, project_id: project, id: merge_request.iid }
+
+          expect(response).to have_gitlab_http_status(:ok)
         end
       end
     end

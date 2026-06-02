@@ -10,7 +10,9 @@ import { __, sprintf } from '~/locale';
 import UserAccessRoleBadge from '~/vue_shared/components/user_access_role_badge.vue';
 import AbuseCategorySelector from '~/abuse_reports/components/abuse_category_selector.vue';
 import ReplyButton from '~/notes/components/note_actions/reply_button.vue';
+import EmojiPicker from '~/emoji/components/picker.vue';
 import { isLoggedIn } from '~/lib/utils/common_utils';
+import { copyToClipboard } from '~/lib/utils/copy_to_clipboard';
 import * as constants from '~/notes/constants';
 
 export default {
@@ -23,7 +25,7 @@ export default {
   },
   components: {
     AbuseCategorySelector,
-    EmojiPicker: () => import('~/emoji/components/picker.vue'),
+    EmojiPicker,
     GlButton,
     GlDisclosureDropdown,
     GlDisclosureDropdownItem,
@@ -92,6 +94,21 @@ export default {
       type: Boolean,
       required: true,
     },
+    canResolve: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isResolved: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isResolving: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   data() {
     return {
@@ -126,6 +143,19 @@ export default {
         name: this.projectName,
       });
     },
+    resolveIcon() {
+      if (this.isResolving) return null;
+      return this.isResolved ? 'check-circle-filled' : 'check-circle';
+    },
+    resolveButtonTitle() {
+      return this.isResolved ? __('Reopen thread') : __('Resolve thread');
+    },
+  },
+  methods: {
+    async onCopyUrl() {
+      await copyToClipboard(this.noteUrl).catch(() => {});
+      this.$toast.show(__('Link copied to clipboard.'));
+    },
   },
 };
 </script>
@@ -157,13 +187,25 @@ export default {
       {{ __('Contributor') }}
     </user-access-role-badge>
     <span class="@max-sm/discussion:gl-flex-1"></span>
+    <gl-button
+      v-if="canResolve"
+      v-gl-tooltip
+      data-testid="resolve-discussion-button"
+      category="tertiary"
+      :class="{ '!gl-text-success': isResolved }"
+      :title="resolveButtonTitle"
+      :aria-label="resolveButtonTitle"
+      :icon="resolveIcon"
+      :loading="isResolving"
+      @click="$emit('resolve')"
+    />
     <emoji-picker
       v-if="canAwardEmoji"
       toggle-category="tertiary"
       data-testid="note-emoji-button"
       @click="$emit('award', $event)"
     />
-    <reply-button v-if="showReply" ref="replyButton" @start-replying="$emit('start-replying')" />
+    <reply-button v-if="showReply" ref="replyButton" @start-replying="$emit('startReplying')" />
     <gl-button
       v-if="canEdit"
       v-gl-tooltip
@@ -193,11 +235,7 @@ export default {
         placement="bottom-end"
         no-caret
       >
-        <gl-disclosure-dropdown-item
-          v-if="noteUrl"
-          :data-clipboard-text="noteUrl"
-          @action="$toast.show(__('Link copied to clipboard.'))"
-        >
+        <gl-disclosure-dropdown-item v-if="noteUrl" @action="onCopyUrl">
           <template #list-item>{{ __('Copy link') }}</template>
         </gl-disclosure-dropdown-item>
         <gl-disclosure-dropdown-group v-if="canReportAsAbuse || canEdit" bordered>

@@ -10,6 +10,7 @@ module Packages
       include UpdateProjectStatistics
 
       STORE_COLUMN = :file_store
+      FILE_SHA256_MAX_LENGTH = 64.bytes
 
       # Used in destroying orphan symbols in worker
       enum :status, default: 0, processing: 1, error: 3
@@ -21,6 +22,8 @@ module Packages
 
       validates :package, :project, :file, :file_path, :signature, :object_storage_key, :size, presence: true
       validates :object_storage_key, uniqueness: { scope: :project_id }
+      validates :file_sha256,
+        bytesize: { maximum: -> { FILE_SHA256_MAX_LENGTH } }, if: :file_sha256_changed?
 
       validate :unique_signature_and_file_path_when_installable_package, on: :create
 
@@ -37,12 +40,21 @@ module Packages
       scope :with_file_sha256, ->(checksums) { where(file_sha256: Array.wrap(checksums).map(&:downcase)) }
       scope :with_file_path, ->(file_path) { where(arel_table[:file_path].lower.eq(file_path.downcase)) }
 
-      def self.find_by_signature_and_file_and_checksum(signature, file_name, checksums)
-        with_signature(signature)
-        .with_file_name(file_name)
-        .with_file_sha256(checksums)
-        .where.not(orphan.where_values_hash)
-        .take
+      def self.find_by_project_and_signature_and_file_and_checksum(signature:, file_name:, checksums:, project_ids:)
+        project_scope = if project_ids.is_a?(::ActiveRecord::Relation)
+                          where_exists(
+                            project_ids.reselect(1).where(::Project.arel_table[:id].eq(arel_table[:project_id]))
+                          )
+                        else
+                          where(project_id: project_ids)
+                        end
+
+        project_scope
+          .with_signature(signature)
+          .with_file_name(file_name)
+          .with_file_sha256(checksums)
+          .where.not(orphan.where_values_hash)
+          .take
       end
 
       private

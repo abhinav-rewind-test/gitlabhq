@@ -10,6 +10,8 @@ module Mutations
             'can modify container image tags matching a specified pattern.'
 
           authorize :admin_container_image
+          authorize_granular_token permissions: :update_container_registry_protection_tag_rule,
+            boundary_argument: :id, boundary_type: :project
 
           argument :id,
             ::Types::GlobalIDType[::ContainerRegistry::Protection::TagRule],
@@ -20,7 +22,6 @@ module Mutations
             GraphQL::Types::String,
             required: false,
             validates: { allow_blank: false },
-            experiment: { milestone: '17.8' },
             description: copy_field_description(
               Types::ContainerRegistry::Protection::TagRuleType,
               :tag_name_pattern
@@ -29,7 +30,6 @@ module Mutations
           argument :minimum_access_level_for_delete,
             Types::ContainerRegistry::Protection::TagRuleAccessLevelEnum,
             required: false,
-            experiment: { milestone: '17.8' },
             description: copy_field_description(
               Types::ContainerRegistry::Protection::TagRuleType,
               :minimum_access_level_for_delete
@@ -38,7 +38,6 @@ module Mutations
           argument :minimum_access_level_for_push,
             Types::ContainerRegistry::Protection::TagRuleAccessLevelEnum,
             required: false,
-            experiment: { milestone: '17.8' },
             description: copy_field_description(
               Types::ContainerRegistry::Protection::TagRuleType,
               :minimum_access_level_for_push
@@ -47,7 +46,6 @@ module Mutations
           field :container_protection_tag_rule,
             Types::ContainerRegistry::Protection::TagRuleType,
             null: true,
-            experiment: { milestone: '17.8' },
             description: 'Protection rule for container image tags after creation.'
 
           def resolve(id:, **kwargs)

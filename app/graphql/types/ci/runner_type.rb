@@ -9,6 +9,15 @@ module Types
       connection_type_class RunnerCountableConnectionType
 
       authorize :read_runner
+      authorize_granular_token(
+        permissions: :read_runner,
+        boundaries: [
+          { boundary: :owner, boundary_type: :project },
+          { boundary: :owner, boundary_type: :group },
+          { boundary: :instance, boundary_type: :instance }
+        ]
+      )
+
       present_using ::Ci::RunnerPresenter
       expose_permissions Types::PermissionTypes::Ci::Runner
 
@@ -164,10 +173,11 @@ module Types
 
       def job_execution_status
         BatchLoader::GraphQL.for(runner.id).batch(key: :running_builds_exist) do |runner_ids, loader|
-          statuses = ::Ci::Runner.id_in(runner_ids).with_executing_builds.index_by(&:id)
+          # We ignore `canceling` builds because they're short-lived
+          active_ids = ::Ci::Runner.ids_with_running_builds(runner_ids).to_set
 
           runner_ids.each do |runner_id|
-            loader.call(runner_id, statuses[runner_id] ? :active : :idle)
+            loader.call(runner_id, active_ids.include?(runner_id) ? :active : :idle)
           end
         end
       end

@@ -6,7 +6,7 @@ RSpec.describe 'Project.languages', feature_category: :internationalization do
   include GraphqlHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
   let_it_be(:query) do
     %(
       query {
@@ -23,9 +23,9 @@ RSpec.describe 'Project.languages', feature_category: :internationalization do
 
   let_it_be(:test_languages) do
     [{ value: 66.69, label: "Ruby", color: "#701516", highlight: "#701516" },
-     { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
-     { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26" },
-     { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776" }]
+      { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
+      { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26" },
+      { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776" }]
   end
 
   let_it_be(:expected_languages) do
@@ -34,6 +34,12 @@ RSpec.describe 'Project.languages', feature_category: :internationalization do
 
   before do
     allow(project.repository).to receive(:languages).and_return(test_languages)
+  end
+
+  it_behaves_like 'authorizing granular token permissions for GraphQL', [:read_project, :read_language] do
+    let(:user) { create(:user, developer_of: project) }
+    let(:boundary_object) { project }
+    let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
   end
 
   context "when the languages haven't been detected yet" do

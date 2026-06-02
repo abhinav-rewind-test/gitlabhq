@@ -1,4 +1,4 @@
-import { invert } from 'lodash';
+import { invert } from 'lodash-es';
 import { s__, __, sprintf } from '~/locale';
 
 export const defaultEpicSort = 'TITLE_ASC';
@@ -166,4 +166,9 @@ export const INCIDENTS_I18N = {
   updateError: s__(
     'IncidentManagement|An error occurred while updating the incident status. Please reload the page and try again.',
   ),
+};
+
+export const MR_WORK_ITEM_RELATIONSHIP_TYPES = {
+  closing: 'CLOSES',
+  mentioned: 'MENTIONED',
 };

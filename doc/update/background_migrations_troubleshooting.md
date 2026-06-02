@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting background migrations
 description: Solutions for problems with background migrations.
 ---
@@ -13,7 +13,7 @@ description: Solutions for problems with background migrations.
 
 {{< /details >}}
 
-<!-- Linked from lib/gitlab/database/migrations/batched_background_migration_helpers.rb -->
+<!-- Linked from `lib/gitlab/database/migrations/batched_background_migration_helpers.rb` -->
 
 ## Database migrations failing because of batched background migration not finished
 
@@ -39,7 +39,7 @@ To resolve this error:
   - [Roll back and upgrade](#roll-back-and-follow-the-required-upgrade-path) through one of the required
     versions before updating to 14.2+.
   - [Roll forward](#roll-forward-and-finish-the-migrations-on-the-upgraded-version), staying on the current
-   version and manually ensuring that the batched migrations complete successfully.
+    version and manually ensuring that the batched migrations complete successfully.
 
 ### Roll back and follow the required upgrade path
 
@@ -107,5 +107,9 @@ In this case, you must
 
 ## Error: `Elasticsearch version not compatible`
 
-To resolve this problem, confirm that your version of Elasticsearch or OpenSearch is
-[compatible with your version of GitLab](../integration/advanced_search/elasticsearch.md#version-requirements).
+If your Elasticsearch or OpenSearch version is not compatible with GitLab,
+indexing pauses to prevent data loss and this message is logged to [`elasticsearch.log`](../administration/logs/_index.md#elasticsearchlog).
+
+To resolve this issue, [ensure your Elasticsearch or OpenSearch version is compatible with GitLab](../integration/advanced_search/elasticsearch.md#version-compatibility).
+
+If you're using a compatible version, [resume indexing](../integration/advanced_search/elasticsearch.md#resume-indexing).

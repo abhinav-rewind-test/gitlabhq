@@ -1,6 +1,6 @@
 <script>
 import { GlCollapsibleListbox } from '@gitlab/ui';
-import { debounce, isNull } from 'lodash';
+import { debounce, isNull } from 'lodash-es';
 
 import { __, s__ } from '~/locale';
 import { createAlert } from '~/alert';
@@ -47,6 +47,8 @@ export default {
       default: undefined,
     },
   },
+
+  emits: ['select'],
 
   MAX_IMPORT_TARGET_LENGTH: 24,
 

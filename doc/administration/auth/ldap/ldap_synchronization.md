@@ -1,7 +1,7 @@
 ---
 stage: Fulfillment
 group: Seat Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: no
 title: LDAP synchronization
 description: Learn how to configure LDAP synchronization for users and groups, and adjust the sync schedule.
@@ -336,12 +336,7 @@ To take advantage of group sync, group Owners or users with the [Maintainer role
 For information on adding group links by using CNs and filters, refer to the
 [GitLab groups documentation](../../../user/group/access_and_permissions.md#manage-group-memberships-with-ldap).
 
-### Link a custom admin role with an LDAP group
-
-For information on adding custom admin role links by using CNs and filters, refer to the
-[manage users using LDAP documentation](../../../user/custom_roles/_index.md#sync-ldap-groups-to-admin-roles).
-
-### Administrator sync
+### Assign an admin role to an LDAP group
 
 As an extension of group sync, you can automatically manage your global GitLab
 administrators. Specify a group CN for `admin_group` and all members of the
@@ -459,6 +454,66 @@ like the following.
 
 {{< /tabs >}}
 
+### Assign a custom admin role to an LDAP group
+
+{{< details >}}
+
+- Tier: Ultimate
+
+{{< /details >}}
+
+You can assign a custom admin role to all users synced from an external LDAP group. This option is
+not available for SAML groups.
+
+If a user belongs to multiple LDAP groups with different assigned custom roles, GitLab assigns
+the role associated with the LDAP group that was linked first.
+
+> [!note]
+> If an LDAP user with a custom admin role is removed from the LDAP group after configuring a sync,
+> the custom role is not removed until the next sync.
+
+Prerequisites:
+
+- An LDAP server integrated with your instance.
+- Administrator access.
+
+{{< tabs >}}
+
+{{< tab title="Assign with an LDAP CN" >}}
+
+To assign a custom admin role with an LDAP CN:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings** > **Roles and permissions**.
+1. On the **LDAP Synchronization** tab, select an **LDAP Server**.
+1. In the **Sync method** field, select `Group cn`.
+1. In the **Group cn** field, begin typing the CN of the group. A dropdown list appears with matching CNs in the configured `group_base`.
+1. From the dropdown list, select your CN.
+1. In the **Custom admin role** field, select a custom admin role.
+1. Select **Add**.
+
+GitLab begins linking the role to any matching LDAP users. This process may take over an hour to complete.
+
+{{< /tab >}}
+
+{{< tab title="Assign with an LDAP filter" >}}
+
+To assign a custom admin role with an LDAP filter:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings** > **Roles and permissions**.
+1. On the **LDAP Synchronization** tab, select an **LDAP Server**.
+1. In the **Sync method** field, select `User filter`.
+1. In **User filter** text box, enter a filter. For details, see [set up LDAP user filter](_index.md#set-up-ldap-user-filter).
+1. In the **Custom admin role** field, select a custom admin role.
+1. Select **Add**.
+
+GitLab begins linking the role to any matching LDAP users. This process may take over an hour to complete.
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
 ### Global LDAP group memberships lock
 
 GitLab administrators can prevent group members from inviting new members to subgroups that have their membership synchronized with LDAP.
@@ -478,7 +533,7 @@ To enable global group memberships lock:
 
 1. [Configure LDAP](_index.md#configure-ldap).
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility and access controls**.
 1. Ensure the **Lock memberships to LDAP synchronization** checkbox is selected.
 
@@ -490,7 +545,7 @@ GitLab administrators can remove this permission from group Owners:
 
 1. [Configure LDAP](_index.md#configure-ldap).
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility and access controls**.
 1. Ensure the **Allow group owners to manage LDAP-related settings** checkbox is not checked.
 
@@ -729,19 +784,16 @@ access is adjusted accordingly. The only exception is if the user is the
 last owner in a group. Groups need at least one owner to fulfill
 administrative duties.
 
-#### Minimal Access role assignment with Restricted Access
+#### Minimal Access role assignment with restricted access
 
 {{< history >}}
 
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/206932) in GitLab 18.6 [with a flag](../../../administration/feature_flags/_index.md) named `bso_minimal_access_fallback`. Disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/206932) in GitLab 18.6 [with a flag](../../feature_flags/_index.md) named `bso_minimal_access_fallback`. Disabled by default.
+- [Enabled by default](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225777) in GitLab 18.10.
 
 {{< /history >}}
 
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-
-When [Restricted Access](../../../user/group/manage.md#restricted-access) is enabled and no subscription seats are available, users are assigned the Minimal Access role during LDAP group synchronization.
+When [restricted access](../../../user/group/manage.md#restricted-access) is enabled and no subscription seats are available, users are assigned the Minimal Access role during LDAP group synchronization.
 
 For more information, see [Provisioning behavior with SAML, SCIM, and LDAP](../../../user/group/manage.md#provisioning-behavior-with-saml-scim-and-ldap).
 

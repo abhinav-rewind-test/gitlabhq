@@ -7,28 +7,22 @@ module UserSettings
     feature_category :system_access
 
     before_action :check_personal_access_tokens_enabled
+    before_action :ensure_granular_tokens_feature_flag, only: [:legacy_new, :granular_new]
+    before_action :check_granular_token_enforced, only: [:legacy_new]
+    before_action :set_access_token_params, only: [:index, :legacy_new]
+    before_action :set_hide_search_settings, only: [:index, :legacy_new, :granular_new]
+    before_action only: [:index] do
+      push_frontend_feature_flag(:granular_personal_access_tokens, current_user)
+    end
+
     prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:ics) }
 
     def index
-      scopes = []
-      unless params[:scopes].nil?
-        # An over engineered solution to generate scopes array without extra object allocations
-        params[:scopes].split(",", Gitlab::Auth.all_available_scopes.count + 1) do |scope|
-          scope = scope.squish
-          next if scope.empty?
+      if redirect_for_legacy_new?
+        redirect_to action: :legacy_new, **legacy_new_params
 
-          scope = scope.to_sym
-          next if Gitlab::Auth.all_available_scopes.exclude?(scope)
-
-          scopes << scope
-        end
+        return
       end
-
-      @access_token_params = {
-        name: params[:name],
-        description: params[:description],
-        scopes: scopes
-      }
 
       respond_to do |format|
         format.html
@@ -43,12 +37,12 @@ module UserSettings
       end
     end
 
-    def granular_new
-      render_404 unless Feature.enabled?(:granular_personal_access_tokens, current_user)
+    def legacy_new
+      # Renders the legacy create form on a dedicated page
     end
 
-    def legacy_new
-      render_404 unless Feature.enabled?(:granular_personal_access_tokens, current_user)
+    def granular_new
+      # Renders the granular create form on a dedicated page
     end
 
     def create
@@ -56,7 +50,7 @@ module UserSettings
         current_user: current_user,
         target_user: current_user,
         organization_id: Current.organization.id,
-        params: personal_access_token_params,
+        params: personal_access_token_params.merge(creation_source: PersonalAccessToken::CREATION_SOURCE_UI),
         concatenate_errors: false
       ).execute
 
@@ -86,10 +80,26 @@ module UserSettings
 
     private
 
+    def set_hide_search_settings
+      @hide_search_settings = true
+    end
+
+    def set_access_token_params
+      @access_token_params = {
+        name: params[:name],
+        description: params[:description],
+        scopes: parse_scopes_from_params
+      }
+    end
+
     def expiry_ics
-      tokens =
-        PersonalAccessTokensFinder.new({ user: current_user, impersonation: false, state: 'active',
-                                         sort: 'expires_asc' }).execute.preload_users
+      tokens = PersonalAccessTokensFinder.new({
+        user: current_user,
+        impersonation: false,
+        state: 'active',
+        sort: 'expires_asc'
+      }).execute.preload_users
+
       cal = Icalendar::Calendar.new
       tokens.each do |token|
         next unless token.expires_at
@@ -100,6 +110,7 @@ module UserSettings
           event.summary = format(_("Token '%{name}' expires today"), name: token.name)
         end
       end
+
       cal.to_ical
     end
 
@@ -107,12 +118,59 @@ module UserSettings
       params.require(:personal_access_token).permit(:name, :expires_at, :description, scopes: [])
     end
 
+    def legacy_new_params
+      params.permit(:name, :description, :scopes)
+    end
+
     def dpop_params
       params.require(:user).permit(:dpop_enabled)
     end
 
+    def parse_scopes_from_params
+      return [] if params[:scopes].nil?
+
+      scopes = []
+
+      params[:scopes].split(",", Gitlab::Auth.all_available_scopes.count + 1) do |scope|
+        scope = scope.squish
+        next if scope.empty?
+
+        scope = scope.to_sym
+        next if Gitlab::Auth.all_available_scopes.exclude?(scope)
+
+        scopes << scope
+      end
+
+      scopes
+    end
+
     def check_personal_access_tokens_enabled
       render_404 if Gitlab::CurrentSettings.personal_access_tokens_disabled?
+    end
+
+    def ensure_granular_tokens_feature_flag
+      render_404 unless granular_tokens_feature_enabled?
+    end
+
+    def check_granular_token_enforced
+      render_404 if granular_tokens_enforced?
+    end
+
+    def granular_tokens_enforced?
+      return false unless granular_tokens_feature_enabled?
+
+      Gitlab::CurrentSettings.granular_tokens_enforced?
+    end
+
+    def redirect_for_legacy_new?
+      granular_tokens_feature_enabled? &&
+        !granular_tokens_enforced? &&
+        params[:name].present? &&
+        parse_scopes_from_params.any?
+    end
+
+    def granular_tokens_feature_enabled?
+      Feature.enabled?(:granular_personal_access_tokens, current_user)
     end
   end
 end

@@ -141,10 +141,15 @@ module Ci
     # rubocop: disable CodeReuse/ActiveRecord
     def each_build(params, &blk)
       queue = Ci::Queue::BuildQueueService.new(runner)
-      builds = queue.build_candidates
+      builds = queue.build_candidates.limit(MAX_QUEUE_DEPTH + 1)
 
       build_and_partition_ids = retrieve_queue(-> { queue.execute(builds) })
-      queue_size = build_and_partition_ids.size
+      size = build_and_partition_ids.size
+      queue_size = if size > MAX_QUEUE_DEPTH
+                     queue.build_candidates.count
+                   else
+                     size
+                   end
 
       @metrics.observe_queue_size(-> { queue_size }, @runner.runner_type)
 
@@ -220,9 +225,11 @@ module Ci
     rescue StandardError => ex
       @metrics.increment_queue_operation(:build_conflict_exception)
 
-      # If an error (e.g. GRPC::DeadlineExceeded) occurred constructing
-      # the result, consider this as a failure to be retried.
-      scheduler_failure!(build)
+      # If an error (e.g. GRPC::DeadlineExceeded) occurred constructing the
+      # result, consider this as a failure to be retried. We call #reset because
+      # the state machine may have the wrong `from` state, see
+      # https://gitlab.com/gitlab-org/gitlab/-/work_items/590004
+      scheduler_failure!(build.reset)
       track_exception_for_build(ex, build)
 
       # skip, and move to next one
@@ -275,6 +282,10 @@ module Ci
 
     def runner_matched?(build)
       @logger.instrument(:process_build_runner_matched) do
+        if ::Feature.enabled?(:ci_resume_environment_runner_routing, type: :gitlab_com_derisk)
+          next false unless resume_environment_available_to_runner?(build) # rubocop:disable Style/SoleNestedConditional -- clearer as two separate conditions
+        end
+
         runner.matches_build?(build)
       end
     end
@@ -329,7 +340,7 @@ module Ci
     end
 
     def assign_runner!(build, params)
-      build.runner_id = runner.id
+      build.runner = runner
       build.runner_session_attributes = params[:session] if params[:session].present?
 
       failure_reason, _ = @logger.instrument(:assign_runner_failure_reason) do
@@ -364,7 +375,8 @@ module Ci
     end
 
     def scheduler_failure!(build)
-      Gitlab::OptimisticLocking.retry_lock(build, 3, name: 'register_job_scheduler_failure') do |subject|
+      Gitlab::OptimisticLocking.retry_lock(build, 3,
+        name: 'register_job_scheduler_failure') do |subject|
         subject.drop!(:scheduler_failure)
       end
     rescue StandardError => ex
@@ -409,6 +421,13 @@ module Ci
         pipeline_id: build.pipeline_id,
         project_id: build.project_id
       }
+    end
+
+    def resume_environment_available_to_runner?(build)
+      env_key = build.options.dig(:suspend_options, :environment_key)
+      return true if env_key.blank?
+
+      ::Gitlab::Ci::Matching::EnvironmentKey.new(env_key).matches_runner?(runner, runner_manager: runner_manager)
     end
 
     def pre_assign_runner_checks

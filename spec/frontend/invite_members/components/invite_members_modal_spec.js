@@ -1,4 +1,4 @@
-import { GlModal, GlSprintf, GlFormGroup, GlCollapse, GlIcon } from '@gitlab/ui';
+import { GlModal, GlSprintf, GlFormRadioGroup, GlCollapse, GlIcon } from '@gitlab/ui';
 import MockAdapter from 'axios-mock-adapter';
 import { nextTick } from 'vue';
 import { stubComponent } from 'helpers/stub_component';
@@ -8,20 +8,13 @@ import waitForPromises from 'helpers/wait_for_promises';
 import Api from '~/api';
 import InviteMembersModal from '~/invite_members/components/invite_members_modal.vue';
 import InviteModalBase from '~/invite_members/components/invite_modal_base.vue';
-import ModalConfetti from '~/invite_members/components/confetti.vue';
+
 import MembersTokenSelect from '~/invite_members/components/members_token_select.vue';
 import UserLimitNotification from '~/invite_members/components/user_limit_notification.vue';
 import {
-  MEMBERS_MODAL_CELEBRATE_INTRO,
-  MEMBERS_MODAL_CELEBRATE_TITLE,
   MEMBERS_MODAL_ROLE_SELECT_LABEL,
-  MEMBERS_PLACEHOLDER,
-  MEMBERS_TO_PROJECT_CELEBRATE_INTRO_TEXT,
   EXPANDED_ERRORS,
-  EMPTY_INVITES_ALERT_TEXT,
-  ON_CELEBRATION_TRACK_LABEL,
   INVITE_MEMBER_MODAL_TRACKING_CATEGORY,
-  INVALID_FEEDBACK_MESSAGE_DEFAULT,
 } from '~/invite_members/constants';
 import eventHub from '~/invite_members/event_hub';
 import ContentTransition from '~/invite_members/components/content_transition.vue';
@@ -35,11 +28,12 @@ import {
   displaySuccessfulInvitationAlert,
   reloadOnMemberInvitationSuccess,
 } from '~/invite_members/utils/trigger_successful_invite_alert';
-import { captureException } from '~/ci/runner/sentry_utils';
+import { captureException } from '~/sentry/sentry_browser_wrapper';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import { GROUPS_INVITATIONS_PATH, invitationsApiResponse } from '../mock_data/api_responses';
 import {
   propsData,
+  rootGroupPropsData,
   emailPostData,
   postData,
   singleUserPostData,
@@ -50,12 +44,11 @@ import {
   user4,
   user5,
   user6,
-  GlEmoji,
 } from '../mock_data/member_modal';
 
 jest.mock('~/invite_members/utils/trigger_successful_invite_alert');
 jest.mock('~/experimentation/experiment_tracking');
-jest.mock('~/ci/runner/sentry_utils');
+jest.mock('~/sentry/sentry_browser_wrapper');
 
 describe('InviteMembersModal', () => {
   let wrapper;
@@ -91,7 +84,6 @@ describe('InviteMembersModal', () => {
         GlModal: stubComponent(GlModal, {
           template: '<div><slot></slot><slot name="modal-footer"></slot></div>',
         }),
-        GlEmoji,
         ...stubs,
       },
       mocks: {
@@ -132,13 +124,16 @@ describe('InviteMembersModal', () => {
   const findModal = () => wrapper.findComponent(GlModal);
   const findBase = () => wrapper.findComponent(InviteModalBase);
   const findIntroText = () => wrapper.findByTestId('modal-base-intro-text').text();
-  const findEmptyInvitesAlert = () => wrapper.findByTestId('empty-invites-alert');
   const findMemberErrorAlert = () => wrapper.findByTestId('alert-member-error');
   const findMoreInviteErrorsButton = () => wrapper.findByTestId('accordion-button');
   const findUserLimitAlert = () => wrapper.findComponent(UserLimitNotification);
   const findAccordion = () => wrapper.findComponent(GlCollapse);
   const findErrorsIcon = () => wrapper.findComponent(GlIcon);
   const findSeatOveragesAlert = () => wrapper.findByTestId('seat-overages-alert');
+  const findMembershipFormGroup = () => wrapper.findByTestId('membership-radio-group');
+  const findMembershipRadioGroup = () => wrapper.findComponent(GlFormRadioGroup);
+  const findMembershipCurrentRadio = () => wrapper.findByTestId('membership-current');
+  const findMembershipRootGroupRadio = () => wrapper.findByTestId('membership-root-group');
   const expectedErrorMessage = (index, errorType) => {
     const [username, message] = Object.entries(errorType.parsedMessage)[index];
     return `${username}: ${message}`;
@@ -154,9 +149,8 @@ describe('InviteMembersModal', () => {
   const findMembersFormGroup = () => wrapper.findByTestId('members-form-group');
   const membersFormGroupInvalidFeedback = () =>
     findMembersFormGroup().attributes('invalid-feedback');
-  const membersFormGroupDescription = () => findMembersFormGroup().attributes('description');
   const findMembersSelect = () => wrapper.findComponent(MembersTokenSelect);
-  const findCelebrationEmoji = () => wrapper.findComponent(GlEmoji);
+  const findInviteCapReached = () => wrapper.findByTestId('invite-cap-reached');
   const triggerOpenModal = async ({ mode = 'default', source } = {}) => {
     eventHub.$emit('open-modal', { mode, source });
     await nextTick();
@@ -227,69 +221,8 @@ describe('InviteMembersModal', () => {
           createInviteMembersToProjectWrapper();
         });
 
-        it('renders the modal without confetti', () => {
-          expect(wrapper.findComponent(ModalConfetti).exists()).toBe(false);
-        });
-
         it('includes the correct invitee', () => {
           expect(findIntroText()).toBe("You're inviting members to the test name project.");
-          expect(findCelebrationEmoji().exists()).toBe(false);
-        });
-
-        describe('members form group description', () => {
-          it('renders correct description', () => {
-            createInviteMembersToProjectWrapper({ GlFormGroup });
-            expect(membersFormGroupDescription()).toContain(MEMBERS_PLACEHOLDER);
-          });
-        });
-      });
-
-      describe('when inviting members with celebration', () => {
-        beforeEach(async () => {
-          createInviteMembersToProjectWrapper();
-          await triggerOpenModal({ mode: 'celebrate', source: ON_CELEBRATION_TRACK_LABEL });
-        });
-
-        it('renders the modal with confetti', () => {
-          expect(wrapper.findComponent(ModalConfetti).exists()).toBe(true);
-        });
-
-        it('renders the modal with the correct title', () => {
-          expect(findModal().props('title')).toBe(MEMBERS_MODAL_CELEBRATE_TITLE);
-        });
-
-        it('includes the correct celebration text and emoji', () => {
-          expect(findIntroText()).toBe(
-            `${MEMBERS_TO_PROJECT_CELEBRATE_INTRO_TEXT}  ${MEMBERS_MODAL_CELEBRATE_INTRO}`,
-          );
-          expect(findCelebrationEmoji().exists()).toBe(true);
-        });
-
-        describe('members form group description', () => {
-          it('renders correct description', async () => {
-            createInviteMembersToProjectWrapper({ GlFormGroup });
-            await triggerOpenModal({ mode: 'celebrate' });
-
-            expect(membersFormGroupDescription()).toContain(MEMBERS_PLACEHOLDER);
-          });
-        });
-
-        describe('tracking', () => {
-          it('tracks actions', async () => {
-            trackingSpy = mockTracking(undefined, wrapper.element, jest.spyOn);
-
-            await triggerOpenModal({ mode: 'celebrate', source: ON_CELEBRATION_TRACK_LABEL });
-
-            expectTracking('render', ON_CELEBRATION_TRACK_LABEL);
-
-            clickCancelButton();
-            expectTracking('click_cancel', ON_CELEBRATION_TRACK_LABEL);
-
-            findModal().vm.$emit('close');
-            expectTracking('click_x', ON_CELEBRATION_TRACK_LABEL);
-
-            unmockTracking();
-          });
         });
       });
     });
@@ -299,13 +232,6 @@ describe('InviteMembersModal', () => {
         createInviteMembersToGroupWrapper();
 
         expect(findIntroText()).toBe("You're inviting members to the test name group.");
-      });
-
-      describe('members form group description', () => {
-        it('renders correct description', () => {
-          createInviteMembersToGroupWrapper({ GlFormGroup });
-          expect(membersFormGroupDescription()).toContain(MEMBERS_PLACEHOLDER);
-        });
       });
     });
 
@@ -373,7 +299,7 @@ describe('InviteMembersModal', () => {
       mock.onPost(GROUPS_INVITATIONS_PATH).reply(code, data);
     };
 
-    const expectedSyntaxError = 'email contains an invalid email address';
+    const expectedSyntaxError = 'One or more email addresses or usernames are invalid.';
 
     describe('when no invites have been entered in the form and then some are entered', () => {
       beforeEach(() => {
@@ -385,13 +311,25 @@ describe('InviteMembersModal', () => {
 
         await waitForPromises();
 
-        expect(findEmptyInvitesAlert().text()).toBe(EMPTY_INVITES_ALERT_TEXT);
-        expect(membersFormGroupInvalidFeedback()).toBe(MEMBERS_PLACEHOLDER);
+        expect(membersFormGroupInvalidFeedback()).toBe(
+          'Enter an email address or GitLab username.',
+        );
         expect(findMembersSelect().props('exceptionState')).toBe(false);
 
         await triggerMembersTokenSelect([user1]);
 
         expect(membersFormGroupInvalidFeedback()).toBe('');
+      });
+
+      it('focuses alerts ref when validation error is surfaced', async () => {
+        const alertsEl = wrapper.vm.$refs.alerts;
+        const focusSpy = jest.spyOn(alertsEl, 'focus');
+
+        clickInviteButton();
+        await waitForPromises();
+        await nextTick();
+
+        expect(focusSpy).toHaveBeenCalled();
       });
     });
 
@@ -407,8 +345,9 @@ describe('InviteMembersModal', () => {
         clickInviteButton();
         await waitForPromises();
 
-        expect(findEmptyInvitesAlert().exists()).toBe(true);
-        expect(membersFormGroupInvalidFeedback()).toBe(MEMBERS_PLACEHOLDER);
+        expect(membersFormGroupInvalidFeedback()).toBe(
+          'One or more email addresses or usernames are invalid.',
+        );
         expect(findMembersSelect().props('exceptionState')).toBe(false);
 
         findMembersSelect().vm.$emit('tokenization-state-change', false);
@@ -427,8 +366,9 @@ describe('InviteMembersModal', () => {
         clickInviteButton();
         await waitForPromises();
 
-        expect(findEmptyInvitesAlert().exists()).toBe(true);
-        expect(membersFormGroupInvalidFeedback()).toBe(MEMBERS_PLACEHOLDER);
+        expect(membersFormGroupInvalidFeedback()).toBe(
+          'One or more email addresses or usernames are invalid.',
+        );
         expect(findMembersSelect().props('exceptionState')).toBe(false);
 
         findMembersSelect().vm.$emit('tokenization-state-change', false);
@@ -438,7 +378,29 @@ describe('InviteMembersModal', () => {
         await nextTick();
 
         expect(membersFormGroupInvalidFeedback()).toBe('');
-        expect(findEmptyInvitesAlert().exists()).toBe(false);
+      });
+    });
+
+    describe('when invite cap is reached', () => {
+      beforeEach(() => {
+        createInviteMembersToGroupWrapper();
+      });
+
+      it('shows cap reached message when invite-cap-reached is emitted', async () => {
+        findMembersSelect().vm.$emit('invite-cap-reached', true);
+        await nextTick();
+
+        expect(findInviteCapReached().exists()).toBe(true);
+      });
+
+      it('hides cap reached message when invite-cap-reached is resolved', async () => {
+        findMembersSelect().vm.$emit('invite-cap-reached', true);
+        await nextTick();
+
+        findMembersSelect().vm.$emit('invite-cap-reached', false);
+        await nextTick();
+
+        expect(findInviteCapReached().exists()).toBe(false);
       });
     });
 
@@ -557,12 +519,9 @@ describe('InviteMembersModal', () => {
 
           await waitForPromises();
 
-          expect(membersFormGroupInvalidFeedback()).toBe('Something went wrong');
+          expect(membersFormGroupInvalidFeedback()).toBe(expectedSyntaxError);
           expect(findMembersSelect().props('exceptionState')).toBe(false);
-          expect(captureException).toHaveBeenCalledWith({
-            error: new Error(SERVER_ERROR_MESSAGE),
-            component: wrapper.vm.$options.name,
-          });
+          expect(captureException).toHaveBeenCalledWith(new Error(SERVER_ERROR_MESSAGE));
         });
 
         it('displays the restricted user api message for response with bad request', async () => {
@@ -612,9 +571,7 @@ describe('InviteMembersModal', () => {
 
           await waitForPromises();
 
-          expect(membersFormGroupInvalidFeedback()).toBe(
-            invitationsApiResponse.INVITE_LIMIT.message,
-          );
+          expect(membersFormGroupInvalidFeedback()).toBe(expectedSyntaxError);
         });
       });
     });
@@ -666,7 +623,7 @@ describe('InviteMembersModal', () => {
           });
 
           it('displays the default error message', () => {
-            expect(membersFormGroupInvalidFeedback()).toBe(INVALID_FEEDBACK_MESSAGE_DEFAULT);
+            expect(membersFormGroupInvalidFeedback()).toBe(expectedSyntaxError);
             expect(findMembersSelect().props('exceptionState')).toBe(false);
             expect(findActionButton().props('loading')).toBe(false);
           });
@@ -913,6 +870,182 @@ describe('InviteMembersModal', () => {
           clickInviteButton();
 
           expect(Api.inviteGroupMembers).toHaveBeenCalledWith(propsData.id, singleUserPostData);
+        });
+      });
+    });
+
+    describe('membership radio buttons', () => {
+      describe('when canInviteToRootGroup is false', () => {
+        beforeEach(() => {
+          createComponent({ canInviteToRootGroup: false });
+        });
+
+        it('does not render the membership radio group', () => {
+          expect(findMembershipFormGroup().exists()).toBe(false);
+        });
+      });
+
+      describe('when isTopLevelGroup is true', () => {
+        beforeEach(() => {
+          createComponent({
+            ...rootGroupPropsData,
+            isTopLevelGroup: true,
+          });
+        });
+
+        it('does not render the membership radio group', () => {
+          expect(findMembershipFormGroup().exists()).toBe(false);
+        });
+      });
+
+      describe('when canInviteToRootGroup is true and isTopLevelGroup is false', () => {
+        describe('for a project', () => {
+          beforeEach(() => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: true,
+            });
+          });
+
+          it('renders the membership radio group', () => {
+            expect(findMembershipFormGroup().exists()).toBe(true);
+          });
+
+          it('defaults to the current project option', () => {
+            expect(wrapper.vm.inviteToRootGroup).toBe(false);
+          });
+
+          it('shows the "This project only" label', () => {
+            expect(findMembershipCurrentRadio().text()).toBe('test name only');
+          });
+
+          it('shows the "All projects in [group]" label', () => {
+            expect(findMembershipRootGroupRadio().text()).toContain(
+              rootGroupPropsData.rootGroupName,
+            );
+          });
+        });
+
+        describe('for a subgroup', () => {
+          beforeEach(() => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: false,
+            });
+          });
+
+          it('renders the membership radio group', () => {
+            expect(findMembershipFormGroup().exists()).toBe(true);
+          });
+
+          it('shows the "This group only" label', () => {
+            expect(findMembershipCurrentRadio().text()).toBe('test name only');
+          });
+        });
+
+        describe('when "All projects" is selected and invite is submitted', () => {
+          beforeEach(async () => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: true,
+              id: '5',
+              rootId: '1',
+            });
+
+            findMembershipRadioGroup().vm.$emit('input', true);
+            await nextTick();
+
+            await triggerMembersTokenSelect([user1, user2]);
+
+            jest.spyOn(Api, 'inviteGroupMembers').mockResolvedValue({ data: postData });
+            clickInviteButton();
+          });
+
+          it('calls Api.inviteGroupMembers with rootId', () => {
+            expect(Api.inviteGroupMembers).toHaveBeenCalledWith('1', expect.any(Object));
+          });
+        });
+
+        describe('when "This project only" is selected and invite is submitted from a project', () => {
+          beforeEach(async () => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: true,
+              id: '5',
+              rootId: '1',
+            });
+
+            await triggerMembersTokenSelect([user1, user2]);
+
+            jest.spyOn(Api, 'inviteProjectMembers').mockResolvedValue({ data: postData });
+            clickInviteButton();
+          });
+
+          it('calls Api.inviteProjectMembers with the current project id', () => {
+            expect(Api.inviteProjectMembers).toHaveBeenCalledWith('5', expect.any(Object));
+          });
+        });
+
+        describe('when "This group only" is selected and invite is submitted from a subgroup', () => {
+          beforeEach(async () => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: false,
+              id: '7',
+              rootId: '1',
+            });
+
+            await triggerMembersTokenSelect([user1, user2]);
+
+            jest.spyOn(Api, 'inviteGroupMembers').mockResolvedValue({ data: postData });
+            clickInviteButton();
+          });
+
+          it('calls Api.inviteGroupMembers with the current group id', () => {
+            expect(Api.inviteGroupMembers).toHaveBeenCalledWith('7', expect.any(Object));
+          });
+        });
+
+        describe('when resetFields is called', () => {
+          it('resets the radio selection to false', async () => {
+            createComponent({
+              ...rootGroupPropsData,
+              isProject: true,
+            });
+
+            findMembershipRadioGroup().vm.$emit('input', true);
+            await nextTick();
+
+            expect(wrapper.vm.inviteToRootGroup).toBe(true);
+
+            findModal().vm.$emit('hidden');
+            await nextTick();
+
+            expect(wrapper.vm.inviteToRootGroup).toBe(false);
+          });
+        });
+
+        describe('intro text updates when radio selection changes', () => {
+          beforeEach(() => {
+            createComponent(
+              {
+                ...rootGroupPropsData,
+                isProject: true,
+              },
+              { InviteModalBase, ContentTransition, GlSprintf },
+            );
+          });
+
+          it('shows project intro text by default', () => {
+            expect(findIntroText()).toContain(propsData.name);
+          });
+
+          it('shows root group intro text when root group is selected', async () => {
+            findMembershipRadioGroup().vm.$emit('input', true);
+            await nextTick();
+
+            expect(findIntroText()).toContain(rootGroupPropsData.rootGroupName);
+          });
         });
       });
     });

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -214,6 +215,8 @@ type LoadSheddingConfig struct {
 	BacklogHysteresis float64 `toml:"backlog_hysteresis" json:"backlog_hysteresis"`
 	// RetryAfterSeconds is the Retry-After header value in seconds when shedding load
 	RetryAfterSeconds int `toml:"retry_after_seconds" json:"retry_after_seconds"`
+	// StatusCode is the HTTP status code to return when shedding load (default: 503)
+	StatusCode int `toml:"status_code" json:"status_code"`
 	// Strategy is the strategy to use for calculating effective backlog (max, sum; default: max)
 	Strategy string `toml:"strategy" json:"strategy"`
 	// CheckInterval is how often to sample the Puma backlog (independent of readiness checks)
@@ -230,6 +233,7 @@ type Config struct {
 	Redis                        *RedisConfig             `toml:"redis" json:"redis"`
 	Backend                      *url.URL                 `toml:"-"`
 	CableBackend                 *url.URL                 `toml:"-"`
+	IAMServiceURL                *url.URL                 `toml:"-"` // AUTH-011: optional; nil disables OAuth IAM proxy routing
 	Version                      string                   `toml:"-"`
 	DocumentRoot                 string                   `toml:"-"`
 	DevelopmentMode              bool                     `toml:"-"`
@@ -351,6 +355,38 @@ func (c *Config) RegisterGoCloudURLOpeners() error {
 	return nil
 }
 
+// MergeFromFile merges file-based configuration into the current config,
+// applying defaults for health check and load shedding.
+func (c *Config) MergeFromFile(file *Config, prometheusListenAddr string) error {
+	c.MetricsListener = file.MetricsListener
+	if prometheusListenAddr != "" {
+		if c.MetricsListener != nil {
+			return fmt.Errorf("configFile: both prometheusListenAddr and metrics_listener can't be specified")
+		}
+		c.MetricsListener = &ListenerConfig{Network: "tcp", Addr: prometheusListenAddr}
+	}
+
+	c.Redis = file.Redis
+	c.Sentinel = file.Sentinel
+	c.ObjectStorageCredentials = file.ObjectStorageCredentials
+	c.ImageResizerConfig = file.ImageResizerConfig
+	c.AltDocumentRoot = file.AltDocumentRoot
+	c.ShutdownTimeout = file.ShutdownTimeout
+	c.TrustedCIDRsForXForwardedFor = file.TrustedCIDRsForXForwardedFor
+	c.TrustedCIDRsForPropagation = file.TrustedCIDRsForPropagation
+	c.Listeners = file.Listeners
+	c.HealthCheckListener = file.HealthCheckListener
+	c.LoadSheddingConfig = file.LoadSheddingConfig
+
+	c.ApplyHealthCheckDefaults()
+	c.ApplyLoadSheddingDefaults()
+
+	c.CircuitBreakerConfig = file.CircuitBreakerConfig
+	c.AdoptCfRayHeader = file.AdoptCfRayHeader
+
+	return nil
+}
+
 // ApplyHealthCheckDefaults applies default values to health check configuration
 func (c *Config) ApplyHealthCheckDefaults() {
 	if c.HealthCheckListener == nil {
@@ -393,8 +429,12 @@ func (c *Config) ApplyLoadSheddingDefaults() {
 	if c.LoadSheddingConfig.Timeout.Duration == 0 {
 		c.LoadSheddingConfig.Timeout = TomlDuration{Duration: 5 * time.Second}
 	}
+	// Validate hysteresis (must be between 0 and 1, where 1.0 means no hysteresis effect)
 	if c.LoadSheddingConfig.BacklogHysteresis <= 0 || c.LoadSheddingConfig.BacklogHysteresis > 1 {
 		c.LoadSheddingConfig.BacklogHysteresis = 0.8
+	}
+	if c.LoadSheddingConfig.StatusCode == 0 {
+		c.LoadSheddingConfig.StatusCode = http.StatusServiceUnavailable
 	}
 	if c.LoadSheddingConfig.Strategy == "" {
 		c.LoadSheddingConfig.Strategy = "max"
@@ -468,11 +508,11 @@ func (creds *GoogleCredentials) getGCPCredentials(ctx context.Context) (*google.
 			return nil, fmt.Errorf("error reading Google json key location: %w", err)
 		}
 
-		return google.CredentialsFromJSON(ctx, b, gcpCredentialsScope)
+		return google.CredentialsFromJSON(ctx, b, gcpCredentialsScope) //lint:ignore SA1019 https://gitlab.com/gitlab-org/gitlab/-/work_items/598339
 	}
 
 	b := []byte(creds.JSONKeyString)
-	return google.CredentialsFromJSON(ctx, b, gcpCredentialsScope)
+	return google.CredentialsFromJSON(ctx, b, gcpCredentialsScope) //lint:ignore SA1019 https://gitlab.com/gitlab-org/gitlab/-/work_items/598339
 }
 
 func splitCommand(cmd string) (string, []string) {

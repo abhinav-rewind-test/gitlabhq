@@ -1,11 +1,11 @@
 <script>
 import { GlAlert } from '@gitlab/ui';
-import { sortBy } from 'lodash';
+import { sortBy } from 'lodash-es';
 import produce from 'immer';
 import Draggable from '~/lib/utils/vue3compat/draggable_compat.vue';
 import BoardAddNewColumn from 'ee_else_ce/boards/components/board_add_new_column.vue';
 import BoardAddNewColumnTrigger from '~/boards/components/board_add_new_column_trigger.vue';
-import WorkItemDrawer from '~/work_items/components/work_item_drawer.vue';
+import WorkItemDetailPanel from '~/work_items/components/work_item_detail_panel.vue';
 import { s__ } from '~/locale';
 import { removeParams, updateHistory } from '~/lib/utils/url_utility';
 import { defaultSortableOptions, DRAG_DELAY } from '~/sortable/constants';
@@ -20,7 +20,7 @@ import {
   DEFAULT_BOARD_LIST_ITEMS_SIZE,
   BoardType,
 } from 'ee_else_ce/boards/constants';
-import { DETAIL_VIEW_QUERY_PARAM_NAME } from '~/work_items/constants';
+import { DETAIL_VIEW_QUERY_PARAM_NAME, VIEW_CONTEXT } from '~/work_items/constants';
 import { calculateNewPosition } from 'ee_else_ce/boards/boards_util';
 import { setError } from '../graphql/cache_updates';
 import BoardColumn from './board_column.vue';
@@ -28,6 +28,7 @@ import BoardDrawerWrapper from './board_drawer_wrapper.vue';
 
 export default {
   draggableItemTypes: DraggableItemTypes,
+  VIEW_CONTEXT,
   components: {
     BoardAddNewColumn,
     BoardAddNewColumnTrigger,
@@ -35,7 +36,7 @@ export default {
     BoardDrawerWrapper,
     EpicsSwimlanes: () => import('ee_component/boards/components/epics_swimlanes.vue'),
     GlAlert,
-    WorkItemDrawer,
+    WorkItemDetailPanel,
   },
   inject: [
     'boardType',
@@ -83,7 +84,8 @@ export default {
     return {
       highlightedLists: [],
       columnsThatCannotFindActiveItem: 0,
-      draggedType: null,
+      draggedItemId: null,
+      focusedListId: null,
     };
   },
   computed: {
@@ -93,6 +95,15 @@ export default {
     boardListsToUse() {
       const lists = this.boardLists;
       return sortBy([...Object.values(lists)], 'position');
+    },
+    visibleBoardLists() {
+      return this.boardListsToUse.filter((list) => !list.collapsed);
+    },
+    effectiveFocusedListId() {
+      if (this.focusedListId && this.visibleBoardLists.some((l) => l.id === this.focusedListId)) {
+        return this.focusedListId;
+      }
+      return this.visibleBoardLists[0]?.id ?? null;
     },
     canDragColumns() {
       return this.canAdminList;
@@ -129,10 +140,29 @@ export default {
       return this.isGroupBoard ? BoardType.group : BoardType.project;
     },
   },
+  watch: {
+    addColumnFormVisible(visible) {
+      if (visible && this.isSwimlanesOn) {
+        this.$nextTick(() => {
+          this.afterFormEnters();
+        });
+      }
+    },
+  },
   methods: {
+    focusAdjacentList(currentListId, direction) {
+      const lists = this.visibleBoardLists;
+      const currentIndex = lists.findIndex((list) => list.id === currentListId);
+      if (currentIndex === -1) return;
+      const targetIndex = currentIndex + direction;
+      if (targetIndex < 0 || targetIndex >= lists.length) return;
+      this.focusedListId = lists[targetIndex].id;
+    },
     afterFormEnters() {
-      const el = this.canDragColumns ? this.$refs.list.$el : this.$refs.list;
-      el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
+      const formEl = this.$refs.addColumnForm?.$el;
+      if (formEl) {
+        formEl.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
+      }
     },
     highlightList(listId) {
       this.highlightedLists.push(listId);
@@ -249,11 +279,11 @@ export default {
         });
       }
     },
-    handleDragStart({ itemType }) {
-      this.draggedType = itemType;
+    handleDragStart({ itemId }) {
+      this.draggedItemId = itemId;
     },
     handleDragStop() {
-      this.draggedType = null;
+      this.draggedItemId = null;
     },
   },
 };
@@ -266,7 +296,7 @@ export default {
     </gl-alert>
     <div
       v-if="!isSwimlanesOn"
-      class="boards-list gl-w-full gl-overflow-x-auto gl-whitespace-nowrap gl-py-5 gl-pl-0 gl-pr-5 @xl/panel:gl-pl-3 @xl/panel:gl-pr-6"
+      class="boards-list gl-m-0 gl-mb-3 gl-flex gl-min-h-0 gl-w-full gl-overflow-x-auto gl-overflow-y-hidden gl-whitespace-nowrap gl-rounded-b-lg gl-p-0"
     >
       <component
         :is="boardColumnWrapper"
@@ -290,7 +320,8 @@ export default {
           :list-query-variables="listQueryVariables"
           :lists="boardListsById"
           :can-admin-list="canAdminList"
-          :dragged-type="draggedType"
+          :dragged-item-id="draggedItemId"
+          :focused="list.id === effectiveFocusedListId"
           @dragStart="handleDragStart"
           @dragStop="handleDragStop"
           @highlight-list="highlightList"
@@ -298,19 +329,19 @@ export default {
           @setFilters="$emit('setFilters', $event)"
           @addNewListAfter="$emit('setAddColumnFormVisibility', $event)"
           @cannot-find-active-item="handleCannotFindActiveItem"
+          @focus-adjacent="focusAdjacentList(list.id, $event)"
         />
       </component>
-      <transition mode="out-in" name="slide" @after-enter="afterFormEnters">
-        <div v-if="!addColumnFormVisible && canAdminList" class="gl-inline-block gl-pl-2">
-          <board-add-new-column-trigger
-            :is-new-list-showing="addColumnFormVisible"
-            @setAddColumnFormVisibility="$emit('setAddColumnFormVisibility', $event)"
-          />
-        </div>
-      </transition>
+      <div v-if="!addColumnFormVisible && canAdminList" class="gl-inline-block gl-pl-2">
+        <board-add-new-column-trigger
+          :is-new-list-showing="addColumnFormVisible"
+          @setAddColumnFormVisibility="$emit('setAddColumnFormVisibility', $event)"
+        />
+      </div>
       <transition mode="out-in" name="slide" @after-enter="afterFormEnters">
         <board-add-new-column
           v-if="addColumnFormVisible"
+          ref="addColumnForm"
           :board-id="boardId"
           :list-query-variables="listQueryVariables"
           :lists="boardListsById"
@@ -342,6 +373,7 @@ export default {
       </template>
       <div v-if="addColumnFormVisible" class="gl-pl-2">
         <board-add-new-column
+          ref="addColumnForm"
           class="gl-sticky"
           :filter-params="filterParams"
           :list-query-variables="listQueryVariables"
@@ -362,10 +394,11 @@ export default {
           onStateUpdated,
         }"
       >
-        <work-item-drawer
+        <work-item-detail-panel
           :open="Boolean(activeIssuable && activeIssuable.iid)"
           :active-item="activeIssuable"
           :issuable-type="issuableType"
+          :view-context="$options.VIEW_CONTEXT.drawerBoard"
           click-outside-exclude-selector=".board-card"
           is-board
           @close="
@@ -373,7 +406,7 @@ export default {
             $emit('drawer-closed');
           "
           @work-item-updated="updateBoardCard($event, activeIssuable)"
-          @workItemDeleted="onIssuableDeleted(activeIssuable)"
+          @work-item-deleted="onIssuableDeleted(activeIssuable)"
           @attributesUpdated="onAttributeUpdated"
           @workItemStateUpdated="onStateUpdated"
           @workItemTypeChanged="updateBoardCard($event, activeIssuable)"

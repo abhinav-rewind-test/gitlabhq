@@ -4,7 +4,7 @@ require 'rubocop_spec_helper'
 
 require_relative '../../../../rubocop/cop/qa/ambiguous_page_object_name'
 
-RSpec.describe RuboCop::Cop::QA::AmbiguousPageObjectName do
+RSpec.describe RuboCop::Cop::QA::AmbiguousPageObjectName, feature_category: :test_platform do
   let(:source_file) { 'qa/page.rb' }
 
   context 'in a QA file' do
@@ -27,6 +27,12 @@ RSpec.describe RuboCop::Cop::QA::AmbiguousPageObjectName do
         Page::Object.perform do |obj|
           obj.whatever
         end
+      RUBY
+    end
+
+    it "does not register an offense for a numblock" do
+      expect_no_offenses(<<-RUBY)
+        Page::Layout::Bar.perform { _1.do_something }
       RUBY
     end
   end

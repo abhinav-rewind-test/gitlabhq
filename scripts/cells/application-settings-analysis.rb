@@ -57,7 +57,6 @@ class ApplicationSettingsAnalysis
       commit_email_hostname
       concurrent_relation_batch_export_limit
       container_expiration_policies_enable_historic_entries
-      container_registry_data_repair_detail_worker_max_concurrency
       container_registry_db_enabled
       container_registry_expiration_policies_worker_capacity
       container_registry_features
@@ -181,7 +180,6 @@ class ApplicationSettingsAnalysis
       mirror_capacity_threshold
       mirror_max_capacity
       mirror_max_delay
-      namespace_deletion_settings
       namespace_storage_forks_cost_factor
       notes_create_limit
       notes_create_limit_allowlist

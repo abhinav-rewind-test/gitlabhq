@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: API style guide
 ---
 
@@ -68,6 +68,101 @@ Field types should be defined in the `documentation` hash:
   expose :active, documentation: { type: 'Boolean', example: true }
   expose :project, documentation: { type: 'API::Entities::BasicProject'}
 ```
+
+### High-impact entities and feature-bounded entities
+
+Some foundational entities like `UserBasic`, `ProjectIdentity`, and `Commit`
+are embedded or nested across many API endpoints. Adding a single `expose`
+call to one of these entities inflates the JSON response of every endpoint
+that uses it, directly or transitively. For example, adding a single `expose`
+call to `UserBasic` would affect 212 endpoints, and to `CustomAttribute` 238.
+
+To prevent uncontrolled growth of API response payloads, a set of
+**high-impact entities** is protected by the
+[`API/EntityExposureGrowth`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/rubocop/cop/api/entity_exposure_growth.rb)
+RuboCop cop. The cop maintains an allowlist of permitted fields per entity in
+[`api_entity_exposure_baseline.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/rubocop/cop/api/config/api_entity_exposure_baseline.yml).
+Any new `expose` call added to a protected entity that is not in the allowlist
+triggers an offense.
+
+#### Why this matters
+
+- **Performance**: every additional field is serialized for every response
+  that includes the entity, increasing payload size and serialization time.
+- **Breaking change risk**: removing an existing exposed field is considered a
+  [breaking change](#breaking-changes). Fields added to foundational entities
+  are especially costly to remove because they affect many consumers.
+- **Cascading impact**: entities compose through inheritance (`class User < UserBasic`)
+  and embedding (`expose :author, using: UserBasic`). A single field added to
+  `UserBasic` cascades to `User`, `UserPublic`, and every entity that embeds it.
+
+#### Recommended pattern
+
+Instead of adding fields to a high-impact entity, create a
+**feature-bounded entity**: a new, purpose-built entity class that
+is used only by the endpoints that need the new field.
+
+The simplest approach is to create a new entity that inherits from the
+foundational one and adds the fields you need:
+
+```ruby
+# bad - adds :notification_email to every endpoint using UserBasic (212 endpoints)
+module API
+  module Entities
+    class UserBasic < UserSafe
+      expose :state
+      expose :avatar_url
+      expose :web_url
+      expose :notification_email  # <-- new field inflates 212 endpoint responses
+    end
+  end
+end
+
+# good - create a domain-scoped entity used only by the endpoints that need it
+module API
+  module Entities
+    module Ci
+      class JobOwner < UserBasic
+        expose :notification_email, documentation: { type: 'String', example: 'user@example.com' }
+      end
+    end
+  end
+end
+```
+
+Name the entity after **what it represents** in its domain context (for example,
+`Ci::JobOwner`), not after the fields it contains (for example,
+`UserWithNotificationEmail`). A name like `UserWithNotificationEmail` invites
+reuse across unrelated domains, which re-creates the cascade problem. A
+domain-scoped name keeps the entity focused on a single use case.
+
+Then use the new entity only in the endpoints that need it:
+
+```ruby
+# In your API endpoint file
+desc 'List CI job owners' do
+  detail 'Returns the owners of CI jobs with notification details.'
+  success Entities::Ci::JobOwner
+  tags ['ci']
+end
+get ':id/ci/job_owners' do
+  owners = find_job_owners(params[:id])
+  present owners, with: Entities::Ci::JobOwner
+end
+```
+
+#### Updating the allowlist
+
+The allowlist in
+[`api_entity_exposure_baseline.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/rubocop/cop/api/config/api_entity_exposure_baseline.yml)
+records the permitted field names for each protected entity. You should
+**not** manually edit the allowlist to add new fields; instead, create a
+feature-bounded entity as described above.
+
+If you believe a field genuinely belongs on a high-impact entity (for example,
+it is needed by the vast majority of consumers), open a discussion with the
+[API Platform team](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/developer-experience/api/)
+to evaluate the trade-offs before proceeding.
 
 ## Documentation
 
@@ -150,7 +245,11 @@ The `detail` should describe any additional details not covered by the `desc` su
 
 - The GitLab version when the endpoint was added.
 - If it is behind a feature flag, mention that instead: `This feature is gated by the :feature\_flag\_symbol feature flag.`
-- If the endpoint is deprecated, and if so, its planned removal date
+- If the endpoint is deprecated, and if so, its planned removal date.
+
+Do not include lifecycle terms like "experiment", "experimental", "general availability", "GA", or "beta" in the
+`detail` or `desc` summary strings. Use `route_setting :lifecycle` instead.
+For more information, see [Marking endpoint lifecycle](#marking-endpoint-lifecycle).
 
 ### Defining endpoint success
 
@@ -158,19 +257,116 @@ Every endpoint must have a `success` value for each `desc` block.
 The value should accurately describe a success response for the endpoint.
 
 Do not use the `http_codes` option to document the success response.
-Instead, format the response based on the endpoint response:
 
-- If the endpoint responds with an object, include the `Grape::Entity` class.
-  For example, `success Entities::System::BroadcastMessage`
-- If the endpoint does not respond with an object, include a status code and message.
-  For example, `success code: 204, message: 'Record was deleted'`
+The `success` option accepts either:
+
+- A `Grape::Entity` class directly
+- A hash of options
+
+When using the hash form, the following options are available:
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `code` | Integer | No | The HTTP status code. Although it is not required always specify the intended response code. |
+| `model` | `Entities::*` | Required for JSON responses | The `Grape::Entity` class returned in response body. Without a `model`, no response schema or examples are emitted in the OpenAPI spec. Omit only for responses with no body, such as `204 No Content` or redirects. |
+| `message` | String | No | A short description of the response. |
+| `is_array` | Boolean | No | Set to `true` if the response is an array of the model. Only needed in the hash form. Wrapping the entity class in an array (`success [Entities::MyEntity]`) is equivalent. |
+| `example` | Hash | No | A single inline example of the response body. Mutually exclusive with `examples`. Requires `model`. |
+| `examples` | Hash | No | Named examples of the response body. Mutually exclusive with `example`. Requires `model`. |
+
+Format the `success` value based on what the endpoint returns:
+
+- If the endpoint responds with an object, pass the `Grape::Entity` class directly or using the `model:` option:
+
+  ```ruby
+  # Direct form
+  success Entities::System::BroadcastMessage
+
+  # Hash form
+  success code: 200, model: Entities::System::BroadcastMessage
+  ```
+
+- If the endpoint responds with a collection, either wrap the entity class in an array or use `is_array: true` in the hash form. Both are equivalent:
+
+  ```ruby
+  # Direct form
+  success [Entities::System::BroadcastMessage]
+
+  # Hash form — use when you also need to specify other options
+  success code: 200, model: Entities::System::BroadcastMessage, is_array: true
+  ```
+
+- If the endpoint does not respond with an object, include a status code and message:
+
+  ```ruby
+  success code: 204, message: 'Record was deleted'
+  ```
+
+- If the endpoint returns multiple possible success codes, pass an array:
+
+  ```ruby
+  success [
+    { code: 200, model: Entities::Security::VulnerabilityScanning::SbomScan },
+    { code: 202, message: 'Scan in progress' }
+  ]
+  ```
+
+- If no `example:` or `examples:` is provided, and a `model:` is defined, an example is
+generated automatically — either from `documentation: { example: ... }` values on the
+entity fields, or from field types if no field-level examples are defined.
+- If the endpoint responds with an object and you want to illustrate a complete response
+  body or provide multiple possible response body examples, use `example:` for a single
+  inline value or `examples:` for multiple named scenarios.
+  Both require `model:` and are mutually exclusive:
+
+  ```ruby
+  # Single example
+  success code: 200, model: Entities::System::BroadcastMessage,
+          example: {
+            id: 1,
+            message: 'Scheduled maintenance at 23:00',
+            starts_at: '2024-03-01T23:00:00.000Z',
+            ends_at: '2024-03-02T01:00:00.000Z',
+            active: false
+          }
+
+  # Multiple named examples
+  success code: 200, model: Entities::System::BroadcastMessage,
+          examples: {
+            active_message: {
+              summary: 'An active broadcast message',
+              value: {
+                id: 1,
+                message: 'Scheduled maintenance at 23:00',
+                starts_at: '2024-03-01T23:00:00.000Z',
+                ends_at: '2024-03-02T01:00:00.000Z',
+                active: true
+              }
+            },
+            expired_message: {
+              summary: 'An expired broadcast message',
+              value: {
+                id: 2,
+                message: 'Maintenance complete',
+                starts_at: '2024-03-01T23:00:00.000Z',
+                ends_at: '2024-03-02T01:00:00.000Z',
+                active: false
+              }
+            }
+          }
+  ```
 
 ### Marking endpoints as deprecated
 
 When deprecating an endpoint, add the following to the `desc` block:
 
 - Add a `deprecated true` [option](https://github.com/ruby-grape/grape-swagger?tab=readme-ov-file#deprecating-routes).
-- Add a note on the deprecation timing to the detail option.
+  This sets the standard OpenAPI `deprecated: true` flag on the operation.
+- Add a note on the deprecation timing and any migration guidance to the `detail` option.
+
+Do not use `route_setting :lifecycle` for deprecated endpoints. Unlike experiment and
+beta stages, deprecation is natively supported by the OpenAPI specification through
+the `deprecated` field, which `deprecated true` maps to directly.
 
 ```ruby
 desc 'Get legacy broadcast messages' do
@@ -182,6 +378,45 @@ end
 ```
 
 Together, these make the deprecation programmatically discoverable in the OpenAPI specification.
+
+### Marking endpoint lifecycle
+
+When an endpoint is not yet generally available, use `route_setting :lifecycle` to
+indicate its development stage. Valid values are `:experiment` and `:beta`.
+
+Do not put lifecycle information in the `desc` summary or `detail` strings.
+The `API/LifecycleInDescription` RuboCop cop enforces this rule.
+
+For generally available endpoints, omit `route_setting :lifecycle`.
+
+```ruby
+# bad -- Specifies "experimental" in "detail"
+desc 'Get all widgets' do
+  detail 'This feature is experimental.'
+  tags %w[widgets]
+end
+
+# good -- Specifies "experiment" as route_setting
+route_setting :lifecycle, :experiment
+desc 'Get all widgets' do
+  detail 'Introduced in GitLab 18.10.'
+  tags %w[widgets]
+end
+
+# good -- Specifies "beta" as route_setting
+route_setting :lifecycle, :beta
+desc 'Get all widgets' do
+  detail 'Introduced in GitLab 18.10.'
+  tags %w[widgets]
+end
+```
+
+The `route_setting :lifecycle` value is included in the generated OpenAPI specification
+as the `x-gitlab-lifecycle` vendor extension. This makes the lifecycle status
+programmatically discoverable.
+
+For more information about development stages, see
+[development stages and support](../policy/development_stages_support.md).
 
 ### Choosing a tag
 
@@ -202,6 +437,29 @@ The tags should describe the type of objects being acted upon in the API call, i
 - `epic_management` (coupled to a product category, not an entity)
 
 If the correct name for a tag is not clear, speak to technical writers for guidance.
+
+### Constrain string parameters
+
+Constrain `String` parameters so clients cannot send unbounded payloads. Unbounded
+strings let callers submit large requests that consume server memory and
+processing time, and they widen the surface area for abuse.
+
+Where possible, use one of the following validators on every `String` parameter:
+
+- `values:` when the parameter accepts a fixed set of allowed values.
+- `limit:` to cap the maximum number of characters for free-form strings.
+- `regexp:` when the parameter must match a specific format.
+
+```ruby
+params do
+  optional :state, type: String, values: %w[opened closed], desc: 'Filter by state'
+  optional :name, type: String, limit: 255, desc: 'Name of the resource'
+end
+```
+
+The `limit:` validator is implemented in
+[`API::Validations::Validators::Limit`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/limit.rb)
+and rejects values longer than the configured size.
 
 ## Breaking changes
 
@@ -231,18 +489,29 @@ For example, we renamed the merge request _WIP_ feature to _Draft_. To accomplis
 
 Customers did not experience any disruption to their existing API integrations.
 
-#### Maintain API backwards-compatibility for feature removals
+#### What to do with feature removals
 
-Even when a feature that an endpoint interfaced with is [removed](deprecation_guidelines/_index.md) in a major GitLab version, we must still maintain API backwards-compatibility.
+When a feature that an endpoint interfaced with is [removed](deprecation_guidelines/_index.md) in a major GitLab version, we must maintain a balance
+between API backwards-compatibility and returning a result the user can rely on.
 
-Acceptable solutions for maintaining API backwards-compatibility include:
+Choose the appropriate approach based on the context:
+
+**Silent degradation** - Use when an error would disrupt broader functionality:
 
 - Return a sensible static value from a field, or an empty response (for example,
   `null` or `[]`).
 - Turn an argument into a no-op by continuing to accept the argument but having it
   no longer be operational.
+- Best suited for endpoints like Application Settings where removing one setting
+  should not cause the entire endpoint to fail.
 
-The key principle is that existing customer API integrations must not experience errors.
+**Error response** - Use when a feature has been fully removed:
+
+- Return a `404 Not Found` when the removed feature was the primary purpose of the endpoint.
+- This clearly communicates to users that the feature no longer exists.
+
+The key principle is that existing customer API integrations should degrade gracefully
+where possible, while providing clear feedback when a feature is no longer available.
 The endpoints continue to respond with the same fields and accept the same
 arguments, although the underlying feature interaction is no longer operational.
 
@@ -285,6 +554,7 @@ and can be changed or removed at any time without prior notice.
 
 While in the [experiment status](../policy/development_stages_support.md#experiment):
 
+- Add `route_setting :lifecycle, :experiment` before the endpoint. For more information, see [Marking endpoint lifecycle](#marking-endpoint-lifecycle).
 - Use a feature flag that is [off by default](feature_flags/_index.md#beta-type).
 - When the flag is off:
   - Any added endpoints must return `404 Not Found`.
@@ -295,6 +565,7 @@ While in the [experiment status](../policy/development_stages_support.md#experim
 
 While in the [beta status](../policy/development_stages_support.md#beta):
 
+- Add `route_setting :lifecycle, :beta` before the endpoint. For more information, see [Marking endpoint lifecycle](#marking-endpoint-lifecycle).
 - Use a feature flag that is [on by default](feature_flags/_index.md#beta-type).
 - The [API documentation](../api/api_resources.md) must [document the beta status](documentation/experiment_beta.md) and the feature flag [must be documented](documentation/feature_flags.md).
 - The [OpenAPI documentation](../api/openapi/openapi_interactive.md) must not describe the changes.
@@ -302,6 +573,7 @@ While in the [beta status](../policy/development_stages_support.md#beta):
 When the feature becomes [generally available](../policy/development_stages_support.md#generally-available):
 
 - [Remove](feature_flags/controls.md#cleaning-up) the feature flag.
+- Remove `route_setting :lifecycle` from the endpoint.
 - Remove the [experiment or beta status](documentation/experiment_beta.md) from the [API documentation](../api/api_resources.md).
 - Add the [OpenAPI documentation](../api/openapi/openapi_interactive.md) to make the changes programmatically discoverable.
 
@@ -461,30 +733,25 @@ guide on how you can add a new custom validator.
   `File::Separator` or not, and whether the path is absolute, for example
   `/etc/passwd/`. By default, absolute paths are not allowed. However, you can optionally pass in an allowlist for allowed absolute paths in the following way:
   `requires :file_path, type: String, file_path: { allowlist: ['/foo/bar/', '/home/foo/', '/app/home'] }`
-
 - `Git SHA`:
 
   The [`Git SHA` validator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/git_sha.rb)
   checks whether the Git SHA parameter is a valid SHA.
   It checks by using the regex mentioned in [`commit.rb`](https://gitlab.com/gitlab-org/gitlab/-/commit/b9857d8b662a2dbbf54f46ecdcecb44702affe55#d1c10892daedb4d4dd3d4b12b6d071091eea83df_30_30) file.
-
 - `Absence`:
 
   The [`Absence` validator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/absence.rb)
   checks whether a particular parameter is absent in a given parameters hash.
-
 - `IntegerNoneAny`:
 
   The [`IntegerNoneAny` validator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/integer_none_any.rb)
   checks if the value of the given parameter is either an `Integer`, `None`, or `Any`.
   It allows only either of these mentioned values to move forward in the request.
-
 - `ArrayNoneAny`:
 
   The [`ArrayNoneAny` validator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/array_none_any.rb)
   checks if the value of the given parameter is either an `Array`, `None`, or `Any`.
   It allows only either of these mentioned values to move forward in the request.
-
 - `EmailOrEmailList`:
 
   The [`EmailOrEmailList` validator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators/email_or_email_list.rb)
@@ -498,7 +765,7 @@ them to platform for further processing. It saves some back-and-forth
 from the server to the platform if we identify invalid parameters at the beginning.
 
 If you need to add a custom validator, it would be added to
-it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/api/validations/validators) directory.
+its own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/api/validations/validators) directory.
 Since we use [Grape](https://github.com/ruby-grape/grape) to add our API
 we inherit from the `Grape::Validations::Validators::Base` class in our validator class.
 Now, all you have to do is define the `validate_param!` method which takes
@@ -514,7 +781,7 @@ Grape::Validations.register_validator(<validator name as symbol>, ::API::Helpers
 ```
 
 Once you add the validator, make sure you add the `rspec`s for it into
-it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/spec/lib/api/validations/validators) directory.
+its own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/spec/lib/api/validations/validators) directory.
 
 ## Internal API
 

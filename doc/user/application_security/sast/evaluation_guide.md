@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Static Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to evaluate GitLab SAST by selecting a test codebase, configuring scans, interpreting results, and comparing features with other security tools.
 title: Evaluate GitLab SAST
 ---
@@ -90,10 +90,14 @@ GitLab SAST is not designed to report vulnerabilities in these cases.
 
 ## Conduct the test
 
+Prerequisites:
+
+- The Maintainer or Owner role for the project.
+
 After you choose a codebase to test with, you're ready to conduct the test. You can follow these steps:
 
 1. [Enable SAST](_index.md#configuration) by creating a merge request (MR) that adds SAST to the CI/CD configuration.
-   - Be sure to set the CI/CD variable to [enable GitLab Advanced SAST](gitlab_advanced_sast.md#getting-started) for more accurate results.
+   - Be sure to set the CI/CD variable to [turn on GitLab Advanced SAST](gitlab_advanced_sast.md#turn-on-gitlab-advanced-sast) for more accurate results.
 1. Merge the MR to the repository's default branch.
 1. Open the [vulnerability report](../vulnerability_report/_index.md) to see the vulnerabilities found on the default branch.
    - If you're using GitLab Advanced SAST, you can use the [Scanner filter](../vulnerability_report/_index.md#scanner-filter) to show results only from that scanner.

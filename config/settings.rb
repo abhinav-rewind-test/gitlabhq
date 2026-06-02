@@ -133,7 +133,7 @@ Settings = GitlabSettings.load(file, Rails.env) do
 
   # Don't use this in new code, use db_key_base_keys_32_bytes instead!
   def db_key_base_keys_truncated
-    db_key_base_keys.map do |key| # rubocop:disable Rails/Pluck -- No Rails context
+    db_key_base_keys.map do |key|
       key[0..31]
     end
   end
@@ -167,10 +167,6 @@ Settings = GitlabSettings.load(file, Rails.env) do
       base_key: Gitlab::Application.credentials.encrypted_settings_key_base,
       previous_keys: Gitlab::Application.credentials.rotated_encrypted_settings_key_base || []
     )
-  end
-
-  def load_dynamic_cron_schedules!
-    cron_jobs['gitlab_service_ping_worker']['cron'] ||= cron_for_service_ping
   end
 
   # Route all jobs to 'default' queue. This setting is meant for self-managed instances use to keep things simple.
@@ -211,19 +207,5 @@ Settings = GitlabSettings.load(file, Rails.env) do
     url_without_path = url.sub(%r{(https?://[^/]+)/?.*}, '\1')
 
     URI.parse(url_without_path).host
-  end
-
-  # Runs at a consistent random time of day on a day of the week based on
-  # the instance UUID. This is to balance the load on the service receiving
-  # these pings. The sidekiq job handles temporary http failures.
-  def cron_for_service_ping
-    # Set a default UUID for the case when the UUID hasn't been initialized.
-    uuid = Gitlab::CurrentSettings.uuid || GITLAB_INSTANCE_UUID_NOT_SET
-
-    minute = Digest::SHA256.hexdigest(uuid + 'minute').to_i(16) % 60
-    hour = Digest::SHA256.hexdigest(uuid + 'hour').to_i(16) % 24
-    day_of_week = Digest::SHA256.hexdigest(uuid).to_i(16) % 7
-
-    "#{minute} #{hour} * * #{day_of_week}"
   end
 end

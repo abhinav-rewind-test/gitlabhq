@@ -23,10 +23,6 @@ class IssuableSidebarBasicEntity < Grape::Entity
   expose :current_user, if: ->(_issuable) { current_user } do
     expose :current_user, merge: true, using: ::API::Entities::UserBasic
 
-    expose :todo, using: IssuableSidebarTodoEntity do |issuable|
-      current_user.pending_todo_for(issuable)
-    end
-
     expose :can_edit do |issuable|
       subject = issuable.try(:incident_type_issue?) ? issuable : issuable.project
 
@@ -54,14 +50,6 @@ class IssuableSidebarBasicEntity < Grape::Entity
     end
   end
 
-  expose :namespace_path do |issuable|
-    issuable.project.namespace.full_path
-  end
-
-  expose :project_path do |issuable|
-    issuable.project.path
-  end
-
   expose :project_full_path do |issuable|
     issuable.project.full_path
   end
@@ -75,14 +63,6 @@ class IssuableSidebarBasicEntity < Grape::Entity
     else
       namespace_project_issues_path(namespace, project)
     end
-  end
-
-  expose :create_todo_path do |issuable|
-    project_todos_path(issuable.project)
-  end
-
-  expose :project_milestones_path do |issuable|
-    project_milestones_path(issuable.project, :json)
   end
 
   expose :project_labels_path do |issuable|
@@ -105,11 +85,15 @@ class IssuableSidebarBasicEntity < Grape::Entity
     autocomplete_projects_path(project_id: issuable.project.id)
   end
 
-  expose :project_emails_disabled do |issuable|
-    issuable.project.emails_disabled?
-  end
-
   expose :create_note_email do |issuable|
+    scope_validator = options[:scope_validator]
+    next if scope_validator && !scope_validator.valid_for?([:api])
+    # blocking all granular PATs here since:
+    # - This is non API facing serializer. This is supposed to be only rendered in the UI, and we're not using granular
+    # pats accessing sidebar data
+    # - To enable granular access we would need to expose access key to this presenter
+    next if options[:granular_token]
+
     issuable.creatable_note_email_address(current_user)
   end
 

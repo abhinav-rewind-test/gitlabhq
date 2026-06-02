@@ -24,7 +24,7 @@ RSpec.describe Ci::PipelineVariable, feature_category: :continuous_integration d
       let(:variable) { build(:ci_pipeline_variable, pipeline: pipeline, partition_id: nil) }
 
       it 'copies the partition_id from pipeline' do
-        expect { variable.valid? }.to change(variable, :partition_id).from(nil).to(123)
+        expect { variable.valid? }.to change { variable.partition_id }.from(nil).to(123)
       end
     end
   end
@@ -38,19 +38,11 @@ RSpec.describe Ci::PipelineVariable, feature_category: :continuous_integration d
       end.to change { variable.project_id }.from(nil).to(variable.pipeline.project.id)
     end
 
-    it 'sets the project_id before validation on update if it is nil' do
-      variable = create(:ci_pipeline_variable)
-      variable.project_id = nil
-      expect do
-        variable.save!
-      end.to change { variable.project_id }.from(nil).to(variable.pipeline.project.id)
-    end
-
     it 'does not set the project_id before validation if it is already set' do
       variable = create(:ci_pipeline_variable)
 
       expect do
-        variable.save!
+        variable.validate!
       end.not_to change { variable.project_id }
     end
 
@@ -61,6 +53,34 @@ RSpec.describe Ci::PipelineVariable, feature_category: :continuous_integration d
       expect do
         variable.validate!
       end.not_to change { variable.project_id }.from(another_project.id)
+    end
+  end
+
+  describe '#readonly?' do
+    subject(:readonly) { variable.readonly? }
+
+    context 'when variable is not persisted' do
+      let(:variable) { build(:ci_pipeline_variable) }
+
+      it { is_expected.to be false }
+
+      it 'does not prevent saves' do
+        variable.pipeline.project_id = variable.pipeline.project.id
+        variable.value = 'new_value'
+        variable.save!
+
+        expect(variable.reload.value).to eq('new_value')
+      end
+    end
+
+    context 'when variable is persisted' do
+      let(:variable) { create(:ci_pipeline_variable) }
+
+      it { is_expected.to be true }
+
+      it 'prevents updates' do
+        expect { variable.update!(value: 'new_value') }.to raise_error(ActiveRecord::ReadOnlyRecord)
+      end
     end
   end
 

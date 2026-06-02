@@ -82,17 +82,42 @@ export default {
       required: false,
       default: false,
     },
+    initialDuoSecretDetectionFpEnabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
     initialDuoSastVrWorkflowEnabled: {
       type: Boolean,
       required: false,
       default: false,
     },
-    experimentFeaturesEnabled: {
+    ultimateFeaturesAvailable: {
       type: Boolean,
       required: false,
       default: false,
     },
-    paidDuoTier: {
+    toolApprovalForSessionCascadingSettings: {
+      type: Object,
+      required: false,
+      default: () => ({}),
+    },
+    initialToolApprovalForSessionEnabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    toolApprovalForSessionLocked: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    dapSessionTrackingAvailable: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    initialDapSessionTrackingEnabled: {
       type: Boolean,
       required: false,
       default: false,
@@ -106,7 +131,10 @@ export default {
       duoRemoteFlowsAvailability: this.initialDuoRemoteFlowsAvailability,
       duoFoundationalFlowsAvailability: this.initialDuoFoundationalFlowsAvailability,
       duoSastFpDetectionEnabled: this.initialDuoSastFpDetectionEnabled,
+      duoSecretDetectionFpEnabled: this.initialDuoSecretDetectionFpEnabled,
       duoSastVrWorkflowEnabled: this.initialDuoSastVrWorkflowEnabled,
+      toolApprovalForSessionEnabled: this.initialToolApprovalForSessionEnabled,
+      dapSessionTrackingEnabled: this.initialDapSessionTrackingEnabled,
     };
   },
   computed: {
@@ -128,14 +156,6 @@ export default {
 
       return null;
     },
-    shouldShowExclusionSettings() {
-      return (
-        this.licensedAiFeaturesAvailable &&
-        this.showDuoContextExclusion &&
-        this.experimentFeaturesEnabled &&
-        this.paidDuoTier
-      );
-    },
     showAvailabilityCascadingButton() {
       return (
         this.duoFeaturesLocked &&
@@ -155,9 +175,18 @@ export default {
         this.duoFoundationalFlowsCascadingSettings?.lockedByApplicationSetting
       );
     },
-
-    showDuoContextExclusion() {
-      return this.glFeatures.useDuoContextExclusion;
+    showToolApprovalCascadingLock() {
+      return (
+        this.toolApprovalForSessionLocked &&
+        (this.toolApprovalForSessionCascadingSettings?.lockedByAncestor ||
+          this.toolApprovalForSessionCascadingSettings?.lockedByApplicationSetting)
+      );
+    },
+    showSastFpDetection() {
+      return this.glFeatures.aiExperimentSastFpDetection && this.ultimateFeaturesAvailable;
+    },
+    showSastVrWorkflow() {
+      return this.glFeatures.enableVulnerabilityResolution && this.ultimateFeaturesAvailable;
     },
   },
   watch: {
@@ -180,6 +209,7 @@ export default {
   duoFlowHelpPath,
   i18n: {
     saveChanges: __('Save changes'),
+    saveChangesAriaLabel: __('Save changes for GitLab Duo'),
   },
 };
 </script>
@@ -313,7 +343,59 @@ export default {
           />
         </project-setting-row>
         <project-setting-row
-          v-if="glFeatures.aiExperimentSastFpDetection"
+          :label="s__('AiPowered|Tool approval for sessions')"
+          class="gl-mt-5"
+          :help-text="
+            s__('AiPowered|Allow users to approve tools for a session in the IDE and CLI.')
+          "
+          :locked="showToolApprovalCascadingLock"
+        >
+          <template #label-icon>
+            <cascading-lock-icon
+              v-if="showToolApprovalCascadingLock"
+              data-testid="tool-approval-cascading-lock-icon"
+              :is-locked-by-group-ancestor="
+                toolApprovalForSessionCascadingSettings.lockedByAncestor
+              "
+              :is-locked-by-application-settings="
+                toolApprovalForSessionCascadingSettings.lockedByApplicationSetting
+              "
+              :ancestor-namespace="toolApprovalForSessionCascadingSettings.ancestorNamespace"
+              class="gl-ml-1"
+            />
+          </template>
+          <gl-toggle
+            v-model="toolApprovalForSessionEnabled"
+            class="gl-mt-2"
+            :disabled="duoFeaturesLocked || !duoEnabled || showToolApprovalCascadingLock"
+            :label="s__('AiPowered|Tool approval for sessions')"
+            label-position="hidden"
+            name="project[project_setting_attributes][tool_approval_for_session_enabled]"
+            data-testid="tool-approval-for-session-enabled"
+          />
+        </project-setting-row>
+        <project-setting-row
+          v-if="dapSessionTrackingAvailable"
+          :label="s__('DuoAgentPlatform|Track GitLab Duo Agent Platform sessions in commits')"
+          class="gl-mt-5"
+          :help-text="
+            s__(
+              'DuoAgentPlatform|Add a session URL to commits authored by GitLab Duo Agent Platform, so reviewers can trace AI-assisted changes back to the originating session.',
+            )
+          "
+        >
+          <gl-toggle
+            v-model="dapSessionTrackingEnabled"
+            class="gl-mt-2"
+            :disabled="duoFeaturesLocked || !duoEnabled"
+            :label="s__('DuoAgentPlatform|Track GitLab Duo Agent Platform sessions in commits')"
+            label-position="hidden"
+            name="project[project_setting_attributes][dap_session_tracking_enabled]"
+            data-testid="dap-session-tracking-enabled"
+          />
+        </project-setting-row>
+        <project-setting-row
+          v-if="showSastFpDetection"
           :label="s__('DuoSAST|Turn on SAST false positive detection')"
           class="gl-mt-5"
           :help-text="
@@ -331,7 +413,27 @@ export default {
           />
         </project-setting-row>
         <project-setting-row
-          v-if="glFeatures.enableVulnerabilityResolution"
+          v-if="glFeatures.duoSecretDetectionFalsePositive"
+          :label="s__('DuoSecretDetection|Turn on Secret Detection false positive detection')"
+          class="gl-mt-5"
+          :help-text="
+            s__(
+              'DuoSecretDetection|Use false positive detection for Secret Detection vulnerabilities on the default branch',
+            )
+          "
+        >
+          <gl-toggle
+            v-model="duoSecretDetectionFpEnabled"
+            class="gl-mt-2"
+            :disabled="duoFeaturesLocked || !duoEnabled"
+            :label="s__('DuoSecretDetection|Turn on Secret Detection false positive detection')"
+            label-position="hidden"
+            name="project[project_setting_attributes][duo_secret_detection_fp_enabled]"
+            data-testid="duo-secret-detection-fp-enabled"
+          />
+        </project-setting-row>
+        <project-setting-row
+          v-if="showSastVrWorkflow"
           :label="s__('DuoSAST|Turn on SAST vulnerability resolution workflow')"
           class="gl-mt-5"
           :help-text="
@@ -354,7 +456,6 @@ export default {
     </project-setting-row>
 
     <exclusion-settings
-      v-if="shouldShowExclusionSettings"
       class="gl-mt-6"
       :exclusion-rules="exclusionRules"
       @update="handleExclusionRulesUpdate"
@@ -385,6 +486,7 @@ export default {
       variant="confirm"
       type="submit"
       class="gl-mt-6"
+      :aria-label="$options.i18n.saveChangesAriaLabel"
       data-testid="gitlab-duo-save-button"
       :disabled="duoFeaturesLocked"
     >

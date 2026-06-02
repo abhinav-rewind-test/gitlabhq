@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab.com settings
 description: Configuration for the GitLab.com instance.
 ---
@@ -14,7 +14,7 @@ description: Configuration for the GitLab.com instance.
 {{< /details >}}
 
 These settings are used on GitLab.com, and are available to
-[GitLab SaaS](https://about.gitlab.com/pricing/) customers.
+[GitLab.com](https://about.gitlab.com/pricing/) customers.
 
 See some of these settings on the
 [instance configuration page for GitLab.com](https://gitlab.com/help/instance_configuration).
@@ -50,7 +50,7 @@ If you are near or over the repository size limit, you can:
 To back up an entire project on GitLab.com, you can export it:
 
 - [Through the UI](../project/settings/import_export.md).
-- [Through the API](../../api/project_import_export.md#schedule-an-export). You
+- [Through the API](../../api/project_import_export.md#export-a-project). You
   can also use the API to programmatically upload exports to a storage platform,
   such as Amazon S3.
 
@@ -69,23 +69,24 @@ Any settings or feature limits not listed here use the defaults listed in
 the related documentation:
 
 | Setting                                                                          | GitLab.com                                                                                                 | Default (GitLab Self-Managed) |
-|----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|------------------------|
-| Artifacts maximum size (compressed)                                              | 1 GB                                                                                                       | See [Maximum artifacts size](../../administration/settings/continuous_integration.md#set-maximum-artifacts-size). |
-| Artifacts [expiry time](../../ci/yaml/_index.md#artifactsexpire_in)               | 30 days unless otherwise specified                                                                         | See [Default artifacts expiration](../../administration/settings/continuous_integration.md#set-default-artifacts-expiration). Artifacts created before June 22, 2020 have no expiry. |
-| Scheduled Pipeline Cron                                                          | `*/5 * * * *`                                                                                              | See [Pipeline schedules advanced configuration](../../administration/cicd/_index.md#change-maximum-scheduled-pipeline-frequency). |
-| Maximum jobs in a single pipeline                                                | `500` for Free tier, `1000` for all trial tiers, `1500` for Premium, and `2000` for Ultimate.              | See [Maximum number of jobs in a pipeline](../../administration/instance_limits.md#maximum-number-of-jobs-in-a-pipeline). |
-| Maximum jobs in active pipelines                                                 | `500` for Free tier, `1000` for all trial tiers, `20000` for Premium, and `60000` for Ultimate.            | See [Number of jobs in active pipelines](../../administration/instance_limits.md#number-of-jobs-in-active-pipelines). |
-| Maximum CI/CD subscriptions to a project                                         | `2`                                                                                                        | See [Number of CI/CD subscriptions to a project](../../administration/instance_limits.md#number-of-cicd-subscriptions-to-a-project). |
-| Maximum number of pipeline triggers in a project                                 | `25000`                                                                                                    | See [Limit the number of pipeline triggers](../../administration/instance_limits.md#limit-the-number-of-pipeline-triggers). |
-| Maximum pipeline schedules in projects                                           | `10` for Free tier, `50` for all paid tiers                                                                | See [Number of pipeline schedules](../../administration/instance_limits.md#number-of-pipeline-schedules). |
-| Maximum pipelines for each schedule                                                   | `24` for Free tier, `288` for all paid tiers                                                               | See [Limit the number of pipelines created by a pipeline schedule each day](../../administration/instance_limits.md#limit-the-number-of-pipelines-created-by-a-pipeline-schedule-each-day). |
-| Maximum number of schedule rules defined for each security policy project        | Unlimited for all paid tiers                                                                               | See [Number of schedule rules defined for each security policy project](../../administration/instance_limits.md#limit-the-number-of-schedule-rules-defined-for-security-policy-project). |
-| Scheduled job archiving                                                          | 3 months                                                                                                   | Never. Jobs created before June 22, 2020 were archived after September 22, 2020. |
-| Maximum test cases for each [unit test report](../../ci/testing/unit_test_reports.md) | `500000`                                                                                                   | Unlimited.             |
-| Maximum registered runners                                                       | Free tier: `50` for each group and `50`for each project<br/>All paid tiers: `1000` for each group and `1000` for each project | See [Number of registered runners for each scope](../../administration/instance_limits.md#number-of-registered-runners-for-each-scope). |
-| Limit of dotenv variables                                                        | Free tier: `50`<br>Premium tier: `100`<br>Ultimate tier: `150`                                             | See [Limit dotenv variables](../../administration/instance_limits.md#limit-dotenv-variables). |
-| Maximum downstream pipeline trigger rate (for a given project, user, and commit) | `350` each minute                                                                                           | See [Maximum downstream pipeline trigger rate](../../administration/settings/continuous_integration.md#limit-downstream-pipeline-trigger-rate). |
-| Maximum number of downstream pipelines in a pipeline's hierarchy tree            | `1000`                                                                                                     | See [Limit pipeline hierarchy size](../../administration/instance_limits.md#limit-pipeline-hierarchy-size). |
+|----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|-------------------------------|
+| Artifacts maximum size (compressed)                                              | 1 GB                                                                                                       | See [Maximum artifacts size](../../administration/cicd/limits.md#maximum-artifacts-size). |
+| Artifacts [expiry time](../../ci/yaml/_index.md#artifactsexpire_in)              | 30 days unless otherwise specified                                                                         | See [Default artifacts expiration](../../administration/settings/continuous_integration.md#set-default-artifacts-expiration). Artifacts created before June 22, 2020 have no expiry. |
+| Scheduled Pipeline Cron                                                          | `*/5 * * * *`                                                                                              | See [Pipeline schedules advanced configuration](../../administration/cicd/limits.md#maximum-scheduled-pipeline-frequency). |
+| Maximum jobs in a single pipeline                                                | `500` for Free tier, `1000` for all trial tiers, `1500` for Premium, and `2000` for Ultimate.              | See [Maximum number of jobs in a pipeline](../../administration/cicd/limits.md#maximum-number-of-jobs-in-a-pipeline). |
+| Maximum jobs in active pipelines                                                 | `500` for Free tier, `1000` for all trial tiers, `20000` for Premium, and `60000` for Ultimate.            | See [Number of jobs in active pipelines](../../administration/cicd/limits.md#number-of-jobs-in-active-pipelines). |
+| Maximum CI/CD subscriptions to a project                                         | `2`                                                                                                        | See [Number of CI/CD subscriptions to a project](../../administration/cicd/limits.md#number-of-cicd-subscriptions-to-a-project). |
+| Maximum number of pipeline triggers in a project                                 | `25000`                                                                                                    | See [Limit the number of pipeline triggers](../../administration/cicd/limits.md#limit-the-number-of-pipeline-triggers). |
+| Maximum pipeline schedules in projects                                           | `10` for Free tier, `50` for all paid tiers                                                                | See [Number of pipeline schedules](../../administration/cicd/limits.md#number-of-pipeline-schedules). |
+| Maximum pipelines for each schedule                                              | `24` for Free tier, `288` for all paid tiers                                                               | See [Limit the number of pipelines created by a pipeline schedule each day](../../administration/cicd/limits.md#limit-the-number-of-pipelines-created-by-a-pipeline-schedule-each-day). |
+| Maximum number of schedule rules defined for each security policy project        | Unlimited for all paid tiers                                                                               | See [Number of schedule rules defined for each security policy project](../../administration/cicd/limits.md#limit-the-number-of-schedule-rules-defined-for-security-policy-project). |
+| [Pipeline archival](../../administration/settings/continuous_integration.md#archive-pipelines) | 1 year                                                                                       | Never. Jobs created before June 22, 2020 were archived after September 22, 2020. |
+| Maximum test cases for each [unit test report](../../ci/testing/unit_test_reports.md) | `500000`                                                                                              | Unlimited.                    |
+| Maximum registered runners                                                       | Free tier: `50` for each group and `50`for each project<br/>All paid tiers: `1000` for each group and `1000` for each project | See [Number of registered runners for each scope](../../administration/cicd/limits.md#number-of-registered-runners-for-groups-and-projects). |
+| Limit of dotenv variables                                                        | Free tier: `50`<br>Premium tier: `100`<br>Ultimate tier: `150`                                             | See [Limit dotenv variables](../../administration/cicd/limits.md#limit-dotenv-variables). |
+| Maximum downstream pipeline trigger rate (for a given project, user, and commit) | `350` each minute                                                                                          | See [Maximum downstream pipeline trigger rate](../../administration/cicd/limits.md#limit-downstream-pipeline-trigger-rate). |
+| Maximum number of downstream pipelines in a pipeline's hierarchy tree            | `1000`                                                                                                     | See [Limit pipeline hierarchy size](../../administration/cicd/limits.md#limit-pipeline-hierarchy-size). |
+| Maximum number of pipeline creation requests per project, commit, and user (per minute) | `25`                                                                                                | See [pipeline creation rate limits](../../administration/cicd/limits.md#pipeline-creation-rate-limits). |
 
 ## Container registry
 
@@ -100,7 +101,7 @@ the related documentation:
 To use the GitLab container registry, Docker clients must have access to:
 
 - The registry endpoint and GitLab.com for authorization.
-- Google Cloud Storage or Google Cloud Content Delivery Network to download images.
+- Google Cloud Storage (see [IP ranges that Google makes available to users on the internet](https://knowledge.workspace.google.com/admin/security/obtain-google-ip-address-ranges)) or Google Cloud Content Delivery Network to download images.
 
 GitLab.com is fronted by Cloudflare.
 For incoming connections to GitLab.com, you must allow CIDR blocks of Cloudflare
@@ -288,10 +289,10 @@ which GitLab you use:
 
 ### Import placeholder user limits
 
-Imports into GitLab.com limit the number of [placeholder users](../import/mapping.md#placeholder-users)
+Imports into GitLab.com limit the number of [placeholder users](../import/mapping/post_migration_mapping.md#placeholder-users)
 for each top-level namespace. The limits differ depending on your plan and seat count.
 For more information, see the
-[table of placeholder user limits for GitLab.com](../import/mapping.md#placeholder-user-limits).
+[table of placeholder user limits for GitLab.com](../import/mapping/post_migration_mapping.md#placeholder-user-limits).
 
 ## IP range
 
@@ -333,12 +334,9 @@ Merge requests enforce these maximums:
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/521970) in GitLab 17.10 [with a flag](../../administration/feature_flags/_index.md) named `merge_requests_diffs_limit`. Disabled by default.
 - [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/521970) in GitLab 17.10.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/537447) in GitLab 19.0. Feature flag `merge_requests_diffs_limit` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
 
 GitLab limits each merge request to 1000 [diff versions](../project/merge_requests/versions.md).
 Merge requests that reach this limit cannot be updated further. Instead,
@@ -349,12 +347,9 @@ close the affected merge request and create a new merge request.
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/527036) in GitLab 17.11 [with a flag](../../administration/feature_flags/_index.md) named `merge_requests_diff_commits_limit`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/537446) in GitLab 19.0. Feature flag `merge_requests_diff_commits_limit` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
 
 GitLab limits each merge request to 1,000,000 (one million) diff commits.
 Merge requests that reach this limit cannot be updated further. Instead,
@@ -456,9 +451,12 @@ The following table describes the rate limits for GitLab.com:
 |:-----------------------------------------------------------------|:--------------------------------|
 | Protected paths for an IP address                                | 10 requests each minute         |
 | Raw endpoint traffic for a project, commit, or file path         | 300 requests each minute        |
+| Unauthenticated raw endpoint traffic for a project               | 800 requests each minute        |
 | Unauthenticated traffic from an IP address                       | 500 requests each minute        |
 | Authenticated API traffic for a user                             | 2,000 requests each minute      |
 | Authenticated non-API HTTP traffic for a user                    | 1,000 requests each minute      |
+| Authenticated Git HTTPS traffic for a user                       | 10,000 requests each minute     |
+| Unauthenticated Git HTTPS traffic from an IP address             | 15,000 requests each minute     |
 | All traffic from an IP address                                   | 2,000 requests each minute      |
 | Issue creation                                                   | 200 requests each minute        |
 | Note creation on issues and merge requests                       | 60 requests each minute         |
@@ -472,7 +470,7 @@ The following table describes the rate limits for GitLab.com:
 | GitLab Duo `aiAction`  requests                                  | 160 requests every 8 hours      |
 | [Pull mirroring](../project/repository/mirror/pull.md) intervals | 5 minutes                       |
 | API requests from a user to `/api/v4/users/:id`                  | 300 requests every 10 minutes   |
-| GitLab package cloud requests for an IP address ([introduced](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/24083) in GitLab 16.11) | 3,000 requests each minute      |
+| GitLab package hosting system requests for an IP address (introduced in GitLab 16.11) | 3,000 requests each minute      |
 | GitLab repository files | 500 requests each minute        |
 | User followers requests (`/api/v4/users/:id/followers`)            | 100 requests each minute        |
 | User following requests (`/api/v4/users/:id/following`)            | 100 requests each minute        |
@@ -490,7 +488,7 @@ The following table describes the rate limits for GitLab.com:
 | Groups list requests (`/api/v4/groups`)                            | 200 requests each minute        |
 | Single group requests (`/api/v4/groups/:id`)                       | 400 requests each minute        |
 | Runner jobs requests using a runner token (`/api/v4/jobs/request`) | 2,000 requests each minute      |
-| Runner job trace patch requests using a job token (`/api/v4/jobs/trace`) | 2,000 requests each minute      |
+| Runner job trace patch requests using a job token (`/api/v4/jobs/trace`) | 200 requests each minute      |
 | Runner jobs requests using a job token (`/api/v4/jobs/*`)          | 200 requests each minute        |
 | List all project members in a project                              | 200 requests each minute        |
 
@@ -634,7 +632,7 @@ Go to the current instance configuration to see the SSH host key fingerprints on
 GitLab.com.
 
 1. Sign in to GitLab.
-1. On the left sidebar, select **Help** ({{< icon name="question-o" >}}) > **Help**.
+1. In the left sidebar, select **Help** ({{< icon name="question-o" >}}) > **Help**.
 1. On the Help page, select **Check the current instance configuration**.
 
 In the instance configuration, you see the **SSH host key fingerprints**:
@@ -684,6 +682,10 @@ The limit varies depending on your plan and the number of seats in your subscrip
 
 When the rate limit is reached, all webhooks in the namespace are temporarily disabled and
 automatically re-enabled in the next minute.
+
+When rate limited, a badge appears next to the webhook in the webhook list. On the webhook edit
+page, a message states how many times per minute the namespace limit was exceeded and when webhooks
+are re-enabled.
 
 ### Security policy limits
 

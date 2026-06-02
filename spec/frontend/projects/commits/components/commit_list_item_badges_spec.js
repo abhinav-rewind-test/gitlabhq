@@ -1,6 +1,7 @@
 import { GlBadge, GlTruncate } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import CommitListItemBadges from '~/projects/commits/components/commit_list_item_badges.vue';
+import AgentSessionBadge from '~/commit/components/agent_session_badge.vue';
 import SignatureBadge from '~/commit/components/signature_badge.vue';
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
 import { mockCommit } from './mock_data';
@@ -10,7 +11,7 @@ describe('CommitListItemBadges', () => {
   let narrowScreenContainer;
   let wideScreenContainer;
 
-  const createComponent = (commit = mockCommit) => {
+  const createComponent = ({ commit = mockCommit } = {}) => {
     wrapper = shallowMountExtended(CommitListItemBadges, {
       propsData: {
         commit,
@@ -54,8 +55,20 @@ describe('CommitListItemBadges', () => {
       tagBadges.wrappers.forEach((badge) => {
         expect(badge.props()).toMatchObject({
           icon: 'tag',
-          variant: 'neutral',
         });
+      });
+    });
+
+    it('renders count tag badge with multiple tags in both containers', () => {
+      createComponent({ commit: { ...mockCommit, tags: ['V1.2.3', 'V2.0.0'] } });
+      const tagBadges = wrapper.findAllComponents(GlBadge);
+      expect(tagBadges).toHaveLength(2);
+
+      tagBadges.wrappers.forEach((badge) => {
+        expect(badge.props()).toMatchObject({
+          icon: 'tag',
+        });
+        expect(badge.text()).toContain('tags');
       });
     });
 
@@ -88,6 +101,23 @@ describe('CommitListItemBadges', () => {
       ciIcons.wrappers.forEach((icon) => {
         expect(icon.props('status')).toBe(mockCommit.pipelines.edges[0].node.detailedStatus);
       });
+    });
+  });
+
+  describe('agent session badge', () => {
+    it.each([false, null, undefined])(
+      'does not render when hasAgentSession is %p',
+      (hasAgentSession) => {
+        createComponent({ commit: { ...mockCommit, hasAgentSession } });
+
+        expect(wrapper.findComponent(AgentSessionBadge).exists()).toBe(false);
+      },
+    );
+
+    it('renders in both containers when commit has an agent session', () => {
+      createComponent({ commit: { ...mockCommit, hasAgentSession: true } });
+
+      expect(wrapper.findAllComponents(AgentSessionBadge)).toHaveLength(2);
     });
   });
 });

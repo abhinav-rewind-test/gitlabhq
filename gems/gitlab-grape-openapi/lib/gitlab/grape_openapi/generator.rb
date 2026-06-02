@@ -9,15 +9,13 @@ module Gitlab
         @api_classes = Array(options[:api_classes]).reject do |api_class|
           Gitlab::GrapeOpenapi.configuration.excluded_api_classes.include?(api_class.name)
         end
-        @entity_classes = Array(options[:entity_classes])
         @schema_registry = SchemaRegistry.new
+        @request_body_registry = RequestBodyRegistry.new
         @tag_registry = TagRegistry.new
       end
 
       def generate
         initialize_tags
-        register_explicit_entities
-        register_entities_from_routes
 
         {
           openapi: '3.0.0',
@@ -45,32 +43,17 @@ module Gitlab
         end
       end
 
-      def register_explicit_entities
-        @entity_classes.each do |entity_class|
-          Converters::EntityConverter.register(entity_class, @schema_registry)
-        end
-      end
-
-      def register_entities_from_routes
-        all_routes = @api_classes.flat_map(&:routes)
-
-        all_routes.each do |route|
-          entity = route.options[:entity]
-          next unless entity
-
-          Converters::EntityConverter.register(entity, @schema_registry)
-        end
-      end
-
       def paths
         all_routes = @api_classes.flat_map(&:routes)
-        Converters::PathConverter.convert(all_routes, @schema_registry)
+        Converters::PathConverter.convert(all_routes, @schema_registry, @request_body_registry)
       end
 
       private
 
       def schemas
-        @schema_registry.schemas.transform_values(&:to_h)
+        entity_schemas = @schema_registry.schemas.transform_values(&:to_h)
+        request_body_schemas = @request_body_registry.schemas
+        entity_schemas.merge(request_body_schemas)
       end
     end
   end

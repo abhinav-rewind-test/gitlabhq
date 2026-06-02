@@ -7,6 +7,7 @@ import { COUNT_OF_AVATARS_IN_GUTTER, LENGTH_OF_AVATAR_TOOLTIP } from '../constan
 import { HIDE_COMMENTS } from '../i18n';
 
 export default {
+  name: 'DiffGutterAvatars',
   components: {
     GlIcon,
     UserAvatarImage,
@@ -76,17 +77,16 @@ export default {
       <gl-icon :size="12" name="collapse" />
     </button>
     <template v-else>
-      <user-avatar-image
-        v-for="note in notesInGutter"
-        :key="note.id"
-        :img-src="note.author.avatar_url"
-        :size="24"
-        :tooltip-text="getTooltipText(note)"
-        pseudo
-        class="diff-comment-avatar js-diff-comment-avatar"
-        css-classes="gl-bg-default"
-        @click.native="$emit('toggleLineDiscussions')"
-      />
+      <span v-for="note in notesInGutter" :key="note.id" @click="$emit('toggleLineDiscussions')">
+        <user-avatar-image
+          :img-src="note.author.avatar_url"
+          :size="24"
+          :tooltip-text="getTooltipText(note)"
+          pseudo
+          class="diff-comment-avatar js-diff-comment-avatar"
+          css-classes="gl-bg-default"
+        />
+      </span>
       <span
         v-if="moreText"
         v-gl-tooltip

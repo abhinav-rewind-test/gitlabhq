@@ -96,9 +96,9 @@ The rest of this guide assumes you already have an instance of GitLab up and run
 
 Operating GitLab Duo Self-Hosted requires both a GitLab Ultimate license and a GitLab Duo Enterprise license. The GitLab Ultimate license works with either online or offline licensing options. This documentation assumes that both licenses have been previously obtained and are available for implementation.
 
-![License screenshot](img/self_hosted_model/license_ultimate_onlinelicense_v17_10.png)
+![The GitLab Ultimate license configuration.](img/self_hosted_model/license_ultimate_onlinelicense_v17_10.png)
 
-![License screenshot](img/self_hosted_model/license_duo_enterprise_v17_10.png)
+![The GitLab Duo Enterprise license configuration.](img/self_hosted_model/license_duo_enterprise_v17_10.png)
 
 #### SSL/TLS
 
@@ -110,7 +110,7 @@ A valid SSL certificate (such as Let's Encrypt) must be configured for the GitLa
 
 GitLab provides a convenient automated SSL setup process:
 
-- During the GitLab installation, simply specify your URL with "https://" prefix
+- During the GitLab installation, simply specify your URL with `https://` prefix
 - GitLab will automatically:
   - Obtain a Let's Encrypt SSL certificate
   - Install the certificate
@@ -216,7 +216,6 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
 
    > [!note]
    > Replace the IP address with your actual server's internal IP address.
-
 1. Reload and restart the service:
 
    ```shell
@@ -239,7 +238,6 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
    ```
 
    The `mistral:instruct` model requires approximately 4.1 GB of storage space and will take a while to download depending on your connection speed.
-
 1. Verify the model installation:
 
    ```shell
@@ -247,7 +245,7 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
    ```
 
    The command should show the installed model in the list.
-   ![Installed Model List in Ollama](img/self_hosted_model/ollama_installed_model_v17_10.png)
+   ![The terminal output showing the installed Mistral model in Ollama.](img/self_hosted_model/ollama_installed_model_v17_10.png)
 
 ## Integration
 
@@ -271,7 +269,7 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
    - Toggle the switch in the "GitLab Duo Enterprise" column to enable Duo for the root user
    - The toggle button should turn blue when enabled
 
-![Enable Duo for root user](img/self_hosted_model/duo_enable_root_v17_10.png)
+![The user list showing GitLab Duo Enterprise enabled for the root user.](img/self_hosted_model/duo_enable_root_v17_10.png)
 
 > [!note]
 > Enabling Duo for just the root user is sufficient for initial setup and testing. Additional users can be granted Duo access later if needed, within your seat license limitations.
@@ -284,7 +282,6 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
    - Click "Add self-hosted model" button
 
    ![Configure Self-Hosted Model](img/self_hosted_model/self-hosted-model-initial_v17_10.png)
-
 1. Configure Model Settings
 
    - **Deployment name**: Choose a descriptive name (for example `Mistral-7B-Instruct-v0.3 on AWS Tokyo`)
@@ -300,7 +297,7 @@ During the initial setup and testing phase, you can set AIGW_AUTH__BYPASS_EXTERN
    - **Model identifier**: Enter `custom_openai/mistral:instruct`
    - **API Key**: Enter any placeholder text (for example, `test`) as this field cannot be left blank
 
-![Configure Mistral Model](img/self_hosted_model/self-hosted-model-initial_mistral_v17_10.png)
+![Configuring required parameters to enable the Mistral Model.](img/self_hosted_model/self-hosted-model-initial_mistral_v17_10.png)
 
 1. Enable AI Features
 
@@ -321,4 +318,4 @@ These settings establish the connection between your GitLab instance and the sel
 1. The GitLab Duo Chat icon should appear in the upper-right corner
 1. This indicates successful integration between GitLab and the AI Gateway
 
-![Talk in Duo Chat](img/self_hosted_model/self-hosted-model-talk-in-duochat_v17_10.png)
+![Interacting with Duo Chat to confirm that it is functioning as expected.](img/self_hosted_model/self-hosted-model-talk-in-duochat_v17_10.png)

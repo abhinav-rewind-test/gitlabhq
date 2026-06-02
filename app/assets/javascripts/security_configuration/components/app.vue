@@ -1,5 +1,5 @@
 <script>
-import { GlTab, GlTabs, GlSprintf, GlLink, GlAlert, GlButton } from '@gitlab/ui';
+import { GlTab, GlTabs, GlSprintf, GlLink, GlAlert, GlBadge, GlButton } from '@gitlab/ui';
 import { sprintf, __ } from '~/locale';
 import Api from '~/api';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
@@ -9,7 +9,10 @@ import SafeHtml from '~/vue_shared/directives/safe_html';
 import PageHeading from '~/vue_shared/components/page_heading.vue';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { SERVICE_PING_SECURITY_CONFIGURATION_THREAT_MANAGEMENT_VISIT } from '~/tracking/constants';
-import { REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY } from '~/vue_shared/security_reports/constants';
+import {
+  REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY,
+  REPORT_TYPE_LICENSE_SCANNING_FOR_CYCLONEDX,
+} from '~/vue_shared/security_reports/constants';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import ScanProfileConfiguration from 'ee_else_ce/security_configuration/components/scan_profiles/scan_profile_configuration.vue';
 import {
@@ -19,10 +22,13 @@ import {
   SECRET_PUSH_PROTECTION,
   SECRET_DETECTION,
   LICENSE_INFORMATION_SOURCE,
+  CVS_CONTAINER_SCANNING,
+  CVS_DEPENDENCY_SCANNING,
 } from '../constants';
 import AutoDevOpsAlert from './auto_dev_ops_alert.vue';
 import AutoDevOpsEnabledAlert from './auto_dev_ops_enabled_alert.vue';
 import FeatureCard from './feature_card.vue';
+import MergeRequestsDisabledAlert from './merge_requests_disabled_alert.vue';
 import PipelineSecretDetectionFeatureCard from './pipeline_secret_detection_feature_card.vue';
 import SecretPushProtectionFeatureCard from './secret_push_protection_feature_card.vue';
 import TrainingSection from './training_section.vue';
@@ -30,6 +36,16 @@ import RefTrackingList from './ref_tracking_list.vue';
 
 export default {
   i18n,
+  featureCardComponents: {
+    default: 'feature-card',
+    [SECRET_PUSH_PROTECTION]: 'secret-push-protection-feature-card',
+    [REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY]: 'container-scanning-for-registry-feature-card',
+    [REPORT_TYPE_LICENSE_SCANNING_FOR_CYCLONEDX]: 'license-scanning-for-cyclonedx-feature-card',
+    [SECRET_DETECTION]: 'pipeline-secret-detection-feature-card',
+    [LICENSE_INFORMATION_SOURCE]: 'license-information-source-feature-card',
+    [CVS_CONTAINER_SCANNING]: 'cvs-container-scanning-feature-card',
+    [CVS_DEPENDENCY_SCANNING]: 'cvs-dependency-scanning-feature-card',
+  },
   components: {
     ProjectSecurityAttributesList: () =>
       import(
@@ -38,6 +54,7 @@ export default {
     AutoDevOpsAlert,
     AutoDevOpsEnabledAlert,
     FeatureCard,
+    MergeRequestsDisabledAlert,
     SecretPushProtectionFeatureCard,
     PipelineSecretDetectionFeatureCard,
     GlAlert,
@@ -47,6 +64,7 @@ export default {
     GlTabs,
     LocalStorageSync,
     SectionLayout,
+    GlBadge,
     GlButton,
     UserCalloutDismisser,
     TrainingSection,
@@ -55,6 +73,18 @@ export default {
     ContainerScanningForRegistryFeatureCard: () =>
       import(
         'ee_component/security_configuration/components/container_scanning_for_registry_feature_card.vue'
+      ),
+    CvsContainerScanningFeatureCard: () =>
+      import(
+        'ee_component/security_configuration/components/cvs_container_scanning_feature_card.vue'
+      ),
+    CvsDependencyScanningFeatureCard: () =>
+      import(
+        'ee_component/security_configuration/components/cvs_dependency_scanning_feature_card.vue'
+      ),
+    LicenseScanningForCyclonedxFeatureCard: () =>
+      import(
+        'ee_component/security_configuration/components/license_scanning_for_cyclonedx_feature_card.vue'
       ),
     PageHeading,
     VulnerabilityArchives: () =>
@@ -106,6 +136,11 @@ export default {
       type: Boolean,
       required: true,
     },
+    mergeRequestsEnabled: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   data() {
     return {
@@ -138,6 +173,12 @@ export default {
     shouldShowScannerProfiles() {
       return this.glFeatures?.securityScanProfilesFeature;
     },
+    shouldShowScanProfileUpgradeHint() {
+      return this.shouldShowScannerProfiles && !window.gon?.licensed_features?.securityScanProfiles;
+    },
+    shouldShowMergeRequestsDisabledAlert() {
+      return !this.mergeRequestsEnabled;
+    },
     trackedRefsHelpPagePath() {
       // Once the help page content is available, we can use the anchor to link to the specific section
       // See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/578081
@@ -153,22 +194,6 @@ export default {
     },
   },
   methods: {
-    getComponentName(feature) {
-      if (feature.type === SECRET_PUSH_PROTECTION) {
-        return 'secret-push-protection-feature-card';
-      }
-      if (feature.type === REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY) {
-        return 'container-scanning-for-registry-feature-card';
-      }
-      if (feature.type === SECRET_DETECTION) {
-        return 'pipeline-secret-detection-feature-card';
-      }
-      if (feature.type === LICENSE_INFORMATION_SOURCE) {
-        return 'license-information-source-feature-card';
-      }
-
-      return 'feature-card';
-    },
     dismissAutoDevopsEnabledAlert() {
       const dismissedProjects = new Set(this.autoDevopsEnabledAlertDismissedProjects);
       dismissedProjects.add(this.projectFullPath);
@@ -236,12 +261,15 @@ export default {
           @dismiss="dismissAutoDevopsEnabledAlert"
         />
 
-        <section-layout
-          v-if="shouldShowScannerProfiles"
-          stacked
-          class="gl-border-b-0"
-          :heading="$options.i18n.securityProfiles"
-        >
+        <section-layout v-if="shouldShowScannerProfiles" stacked class="gl-border-b-0">
+          <template #heading>
+            <h2 class="gl-mt-0 gl-flex gl-gap-3 gl-text-size-h2">
+              {{ $options.i18n.securityProfiles }}
+              <gl-badge v-if="shouldShowScanProfileUpgradeHint" variant="tier" icon="license">{{
+                __('Ultimate')
+              }}</gl-badge>
+            </h2>
+          </template>
           <template #description>
             <p>
               {{ $options.i18n.securityProfilesDesc }}
@@ -254,6 +282,11 @@ export default {
 
         <section-layout stacked class="gl-border-b-0" :heading="$options.i18n.securityTesting">
           <template #description>
+            <merge-requests-disabled-alert
+              v-if="shouldShowMergeRequestsDisabledAlert"
+              class="gl-my-4"
+            />
+
             <p>
               <span>
                 <gl-sprintf
@@ -289,7 +322,10 @@ export default {
                 class="md:gl-w-half gl-h-full gl-w-full"
               >
                 <component
-                  :is="getComponentName(feature)"
+                  :is="
+                    $options.featureCardComponents[feature.type] ||
+                    $options.featureCardComponents.default
+                  "
                   :id="feature.anchor"
                   data-testid="security-testing-card"
                   :feature="feature"

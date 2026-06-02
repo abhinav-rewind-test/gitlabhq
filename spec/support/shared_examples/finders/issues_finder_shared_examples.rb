@@ -423,7 +423,7 @@ RSpec.shared_examples 'issues or work items finder' do |factory, execute_context
               item.milestone&.start_date && item.milestone.start_date <= Date.current
             end
 
-            expect(items).to contain_exactly(*target_items)
+            expect(items).to match_array(target_items)
           end
 
           context 'when use_legacy_milestone_filtering is true' do
@@ -501,7 +501,7 @@ RSpec.shared_examples 'issues or work items finder' do |factory, execute_context
           it 'returns items not in the started milestones for each project' do
             target_items = items_model.where(milestone: Milestone.not_started)
 
-            expect(items).to contain_exactly(*target_items)
+            expect(items).to match_array(target_items)
           end
         end
       end
@@ -949,26 +949,20 @@ RSpec.shared_examples 'issues or work items finder' do |factory, execute_context
           end
         end
 
-        context 'objective type' do
-          # As this is spec that runs only in CE and objective type is not available, we should move it to EE
+        context 'objective type', if: Gitlab.ee? do
           let!(:objective) { create(factory, :objective, project: project1) }
           let(:params) { { issue_types: ['objective'] } }
 
           it 'returns objective items' do
-            skip unless Gitlab.ee?
-
             expect(items).to contain_exactly(objective)
           end
         end
 
-        context 'key_result type' do
-          # As this is spec that runs only in CE and available type is not available, we should move it to EE
+        context 'key_result type', if: Gitlab.ee? do
           let!(:key_result) { create(factory, :key_result, project: project1) }
           let(:params) { { issue_types: ['key_result'] } }
 
           it 'returns key_result items' do
-            skip unless Gitlab.ee?
-
             expect(items).to contain_exactly(key_result)
           end
         end
@@ -1002,6 +996,53 @@ RSpec.shared_examples 'issues or work items finder' do |factory, execute_context
 
           it 'returns no items' do
             expect(items.none?).to eq(true)
+          end
+        end
+      end
+
+      context 'filtering by work_item_type_ids' do
+        let_it_be(:incident_item) { create(factory, :incident, project: project1) }
+        let_it_be(:incident_type) { WorkItems::TypesFramework::Provider.new.find_by_base_type(:incident) }
+        let_it_be(:issue_type) { WorkItems::TypesFramework::Provider.new.find_by_base_type(:issue) }
+
+        context 'no type ids given' do
+          let(:params) { { work_item_type_ids: [] } }
+
+          it 'returns all items' do
+            expect(items)
+              .to contain_exactly(incident_item, item1, item2, item3, item4, item5)
+          end
+        end
+
+        context 'single type id' do
+          let(:params) { { work_item_type_ids: [incident_type.id] } }
+
+          it 'returns only matching items' do
+            expect(items).to contain_exactly(incident_item)
+          end
+        end
+
+        context 'multiple type ids' do
+          let(:params) { { work_item_type_ids: [issue_type.id, incident_type.id] } }
+
+          it 'returns items matching any of the type ids' do
+            expect(items).to contain_exactly(incident_item, item1, item2, item3, item4, item5)
+          end
+        end
+
+        context 'invalid type id' do
+          let(:params) { { work_item_type_ids: [0] } }
+
+          it 'returns no items' do
+            expect(items.none?).to eq(true)
+          end
+        end
+
+        context 'with a project scope' do
+          let(:params) { { project_id: project1.id, work_item_type_ids: [incident_type.id] } }
+
+          it 'returns matching items' do
+            expect(items).to contain_exactly(incident_item)
           end
         end
       end
@@ -1399,9 +1440,12 @@ RSpec.shared_examples 'issues or work items finder' do |factory, execute_context
       end
 
       context 'when filtering items assigned to the current user' do
-        let_it_be(:assigned_user) { create(:user) }
-        let_it_be(:assigned_public_item) { create(factory, project: project, assignees: [assigned_user]) }
-        let_it_be(:assigned_confidential_item) do
+        let_it_be(:assigned_user, freeze: false) { create(:user) }
+        let_it_be(:assigned_public_item, freeze: false) do
+          create(factory, project: project, assignees: [assigned_user])
+        end
+
+        let_it_be(:assigned_confidential_item, freeze: false) do
           create(factory, project: project, confidential: true, assignees: [assigned_user])
         end
 

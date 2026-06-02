@@ -170,27 +170,45 @@ module StubObjectStorage
     )
   end
 
+  def stub_npm_metadata_cache_object_storage(**params)
+    stub_object_storage_uploader(
+      config: Gitlab.config.packages.object_store,
+      uploader: ::Packages::Npm::MetadataCacheUploader,
+      **params
+    )
+  end
+
   def stub_object_storage_multipart_init(endpoint, upload_id = "upload_id")
     stub_request(:post, %r{\A#{endpoint}tmp/uploads/[%A-Za-z0-9-]*\?uploads\z})
-      .to_return status: 200, body: <<-EOS.strip_heredoc
+      .to_return status: 200, body: <<~XML
         <?xml version="1.0" encoding="UTF-8"?>
         <InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
           <Bucket>example-bucket</Bucket>
           <Key>example-object</Key>
           <UploadId>#{upload_id}</UploadId>
         </InitiateMultipartUploadResult>
-      EOS
+      XML
   end
 
   def stub_object_storage_multipart_init_with_final_store_path(full_path, upload_id = "upload_id")
     stub_request(:post, %r{\A#{full_path}\?uploads\z})
-      .to_return status: 200, body: <<-EOS.strip_heredoc
+      .to_return status: 200, body: <<~XML
         <?xml version="1.0" encoding="UTF-8"?>
         <InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
           <Bucket>example-bucket</Bucket>
           <Key>example-object</Key>
           <UploadId>#{upload_id}</UploadId>
         </InitiateMultipartUploadResult>
-      EOS
+      XML
+  end
+
+  # @param [Import::Offline::Configuration] configuration
+  def stub_offline_import_object_storage(configuration)
+    stub_object_storage(
+      connection_params: {
+        provider: configuration.provider
+      }.merge(configuration.object_storage_credentials),
+      remote_directory: configuration.bucket
+    )
   end
 end

@@ -26,6 +26,18 @@ RSpec.describe Ci::DropPipelineService, feature_category: :continuous_integratio
       expect(success_pipeline.reload).to be_success
       expect(success_build.reload).to be_success
     end
+
+    context 'when a custom worker_class is provided' do
+      it 'uses the given worker class instead of Ci::DropPipelineWorker' do
+        expect(Ci::DropPipelineForBlockedUserWorker).to receive(:bulk_perform_async_with_contexts)
+        expect(Ci::DropPipelineWorker).not_to receive(:bulk_perform_async_with_contexts)
+
+        described_class.new.execute_async_for_all(
+          user.pipelines, failure_reason, user,
+          worker_class: Ci::DropPipelineForBlockedUserWorker
+        )
+      end
+    end
   end
 
   describe '#execute' do
@@ -52,12 +64,15 @@ RSpec.describe Ci::DropPipelineService, feature_category: :continuous_integratio
       writes_per_build = 2
       load_balancer_queries = 3
       expected_reads_count = control_count - writes_per_build
+      savepoints = 1
 
       create_list(:ci_build, 5, :running, pipeline: cancelable_pipeline)
 
       expect do
         drop_pipeline!(cancelable_pipeline)
-      end.not_to exceed_query_limit(expected_reads_count + (5 * writes_per_build) + load_balancer_queries)
+      end.not_to exceed_query_limit(
+        expected_reads_count + (5 * writes_per_build) + load_balancer_queries + (5 * savepoints)
+      )
     end
   end
 end

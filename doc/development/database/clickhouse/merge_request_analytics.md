@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Merge request analytics with ClickHouse
 ---
 
@@ -150,8 +150,8 @@ CREATE TABLE merge_requests
     `source_branch` String DEFAULT '' NOT NULL,
     `target_branch` String DEFAULT '' NOT NULL,
     `merged_at` DateTime64(6, 'UTC') NOT NULL,
-    `created_at` DateTime64(6, 'UTC') DEFAULT now() NOT NULL,
-    `updated_at` DateTime64(6, 'UTC') DEFAULT now() NOT NULL
+    `created_at` DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC') NOT NULL,
+    `updated_at` DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC') NOT NULL
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (project_id, merged_at, id);

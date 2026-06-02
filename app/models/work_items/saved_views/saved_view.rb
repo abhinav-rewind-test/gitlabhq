@@ -9,6 +9,7 @@ module WorkItems
       belongs_to :namespace
       belongs_to :author, foreign_key: :created_by_id, optional: true, inverse_of: :created_saved_views,
         class_name: 'User'
+      belongs_to :updated_by, optional: true, class_name: 'User'
 
       has_many :user_saved_views, class_name: 'WorkItems::SavedViews::UserSavedView', inverse_of: :saved_view
       has_many :subscribed_users, through: :user_saved_views, source: :user
@@ -40,9 +41,25 @@ module WorkItems
         case attribute
         when :relative_position
           return order_relative_position(user) if user && scoped_to_subscribed
+
+        when :name_asc
+          return reorder(
+            Gitlab::Pagination::Keyset::Order.build(
+              [column_order_name_asc, column_order_id_desc]
+            )
+          )
         end
 
         order(id: :desc)
+      end
+
+      def self.column_order_name_asc
+        Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+          attribute_name: 'name',
+          column_expression: arel_table[:name],
+          order_expression: arel_table[:name].lower.asc,
+          order_direction: :asc
+        )
       end
 
       def self.order_relative_position(user)

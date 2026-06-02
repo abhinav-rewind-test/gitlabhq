@@ -6,9 +6,12 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::ComponentUsage, feature_category: :p
   let_it_be(:project) { create(:project) }
   let_it_be(:user) { create(:user) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
-  let_it_be(:resource) { create(:ci_catalog_resource) }
+  let_it_be(:resource, freeze: false) { create(:ci_catalog_resource) }
 
-  let_it_be(:release) { create(:release, project: resource.project, tag: '1.2.0', sha: 'my_component_sha') }
+  let_it_be(:release, freeze: false) do
+    create(:release, project: resource.project, tag: '1.2.0', sha: 'my_component_sha')
+  end
+
   let_it_be(:version) do
     create(:ci_catalog_resource_version, catalog_resource: resource, release: release, semver: release.tag)
   end
@@ -16,7 +19,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::ComponentUsage, feature_category: :p
   let_it_be(:component) { create(:ci_catalog_resource_component, version: version, name: 'my_component') }
 
   let(:dry_run) { false }
-  let(:command) { Gitlab::Ci::Pipeline::Chain::Command.new(project: project, current_user: user, dry_run: dry_run) }
+  let(:command) do
+    Gitlab::Ci::Pipeline::Chain::Command.new(project: project, current_user: user, dry_run: dry_run,
+      origin_ref: 'refs/heads/main')
+  end
+
   let(:step) { described_class.new(pipeline, command) }
 
   describe '#perform!' do
@@ -93,7 +100,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::ComponentUsage, feature_category: :p
     end
 
     context 'when current_user is nil' do
-      let(:command) { Gitlab::Ci::Pipeline::Chain::Command.new(project: project, current_user: nil, dry_run: dry_run) }
+      let(:command) do
+        Gitlab::Ci::Pipeline::Chain::Command.new(project: project, current_user: nil, dry_run: dry_run,
+          origin_ref: 'refs/heads/main')
+      end
 
       it 'enqueues the worker with nil user_id' do
         serialized_components = [{

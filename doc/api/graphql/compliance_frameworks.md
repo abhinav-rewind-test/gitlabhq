@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Compliance frameworks GraphQL API
 ---
 
@@ -20,6 +20,148 @@ Manage compliance frameworks for top-level groups by using a GraphQL API.
   - Have the Owner role for the top-level group.
   - Be assigned a [custom role](../../user/custom_roles/_index.md) with the `admin_compliance_framework`
     [custom permission](../../user/custom_roles/abilities.md#compliance-management).
+
+## Create a compliance framework from a template
+
+{{< details >}}
+
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/work_items/16808) in GitLab 19.0
+  [with a flag](../../administration/feature_flags/_index.md) named
+  `compliance_framework_templates`. Disabled by default.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+Create a compliance framework from a predefined template. Templates include
+preconfigured requirements and controls aligned to common compliance standards.
+
+### List available templates
+
+To list all available compliance framework templates:
+
+```graphql
+query {
+  complianceFrameworkTemplates {
+    id
+    name
+    description
+    color
+    templateVersion
+  }
+}
+```
+
+To fetch a specific template by ID and view its full JSON structure:
+
+```graphql
+query {
+  complianceFrameworkTemplates(
+    id: "gid://gitlab/ComplianceManagement::Frameworks::TemplateRegistry::Template/soc2"
+  ) {
+    id
+    name
+    description
+    color
+    templateVersion
+    json
+  }
+}
+```
+
+Available template IDs:
+
+| Template ID | Name |
+|-------------|------|
+| `cis_csc_v8-1` | CIS CSC v8.1 |
+| `csa_ccm_v4` | CSA CCM v4 |
+| `cyber_essentials` | Cyber Essentials |
+| `dora` | DORA |
+| `fedramp_high_r5` | FedRAMP High |
+| `fedramp_low_r5` | FedRAMP Low |
+| `fedramp_moderate_r5` | FedRAMP Moderate |
+| `irap_official` | IRAP Official |
+| `irap_protected` | IRAP Protected |
+| `irap_secret` | IRAP Secret |
+| `irap_top_secret` | IRAP Top Secret |
+| `ismap` | ISMAP |
+| `iso_27001:2022` | ISO 27001:2022 |
+| `nis_2` | NIS 2 |
+| `nist_800-171_r3_cmmc` | NIST 800-171 Rev. 3 CMMC |
+| `nist_800-218_v1-1` | NIST SP 800-218 |
+| `nist_800-53_r5` | NIST 800-53 Revision 5 |
+| `soc2` | SOC 2 |
+| `tisax` | TISAX |
+
+### Create a framework from a template
+
+To create a compliance framework from a template, use the
+`createComplianceFrameworkFromTemplate` mutation. The `templateId` and
+`namespacePath` arguments are required. All other arguments are optional
+overrides of the template defaults.
+
+```graphql
+mutation {
+  createComplianceFrameworkFromTemplate(
+    input: {
+      namespacePath: "my-group"
+      templateId: "gid://gitlab/ComplianceManagement::Frameworks::TemplateRegistry::Template/soc2"
+    }
+  ) {
+    framework {
+      id
+      name
+      description
+      color
+    }
+    errors
+  }
+}
+```
+
+You can override the template's default name, description, color, and
+default status:
+
+```graphql
+mutation {
+  createComplianceFrameworkFromTemplate(
+    input: {
+      namespacePath: "my-group"
+      templateId: "gid://gitlab/ComplianceManagement::Frameworks::TemplateRegistry::Template/soc2"
+      name: "Custom SOC 2"
+      description: "Our organization's SOC 2 compliance framework"
+      color: "#FCA121"
+      default: true
+    }
+  ) {
+    framework {
+      id
+      name
+      description
+      color
+    }
+    errors
+  }
+}
+```
+
+The framework is created with all requirements and controls from the template
+pre-populated. The source template ID and version are recorded as immutable
+provenance fields and cannot be changed after creation.
+
+The framework is created if:
+
+- The returned `errors` object is empty.
+- The API responds with `200 OK`.
 
 ## Create a compliance framework
 
@@ -359,22 +501,28 @@ To add a requirement with external controls:
 
 ```graphql
 mutation {
-  complianceFrameworkRequirementCreate(input: {
-    frameworkId: "gid://gitlab/ComplianceManagement::Framework/1",
-    name: "External Approval Requirement",
-    description: "Require external system approval for deployments",
-    externalControls: [{
-      name: "ServiceNow Approval",
-      externalUrl: "https://mycompany.service-now.com/api/approval",
-      hmacSharedSecret: "my-secret-key"
-    }]
-  }) {
+  createComplianceRequirement(
+    input: {
+      complianceFrameworkId: "gid://gitlab/ComplianceManagement::Framework/1",
+      controls: [{
+        controlType: "external",
+        name: "external_control",
+        externalControlName: "ServiceNowApproval",
+        externalUrl: "https://mycompany.service-now.com/api/approval",
+        secretToken: "my-secret-key"
+      }],
+      params: {
+        name: "External Approval Requirement",
+        description: "Require external system approval for deployments"
+      }
+    }
+  ) {
     errors
     requirement {
       id
       name
       description
-      controls {
+      complianceRequirementsControls {
         nodes {
           id
           name
@@ -399,27 +547,35 @@ To update an existing requirement:
 
 ```graphql
 mutation {
-  complianceFrameworkRequirementUpdate(input: {
-    id: "gid://gitlab/ComplianceManagement::Requirement/1",
-    name: "Updated Security Requirement",
-    description: "Updated security scanning requirement with additional controls",
-    controlIds: [
-      "scanner_sast_running",
-      "scanner_dep_scanning_running",
-      "scanner_secret_detection_running",
-      "scanner_container_scanning_running"
-    ]
-  }) {
+  updateComplianceRequirement(input: {
+    id: "gid://gitlab/ComplianceManagement::ComplianceFramework::ComplianceRequirement/1",
+    params: {
+      name: "Updated Security Requirement",
+      description: "Updated security scanning requirement with additional controls"
+    },
+    controls: [{
+        expression: "{\"field\":\"scanner_sast_running\",\"operator\":\"=\",\"value\":true}",
+        name: "scanner_sast_running"
+      },
+      {
+        expression: "{\"field\":\"scanner_dep_scanning_running\",\"operator\":\"=\",\"value\":true}",
+        name: "scanner_dep_scanning_running"
+      },
+      {
+        expression: "{\"field\":\"scanner_secret_detection_running\",\"operator\":\"=\",\"value\":true}",
+        name: "scanner_secret_detection_running"
+      }]
+  })
+  {
     errors
     requirement {
       id
       name
       description
-      controls {
+      complianceRequirementsControls {
         nodes {
           id
           name
-          controlId
         }
       }
     }
@@ -439,8 +595,8 @@ To delete a requirement from a framework:
 
 ```graphql
 mutation {
-  complianceFrameworkRequirementDestroy(input: {
-    id: "gid://gitlab/ComplianceManagement::Requirement/1"
+  destroyComplianceRequirement(input: {
+    id: "gid://gitlab/ComplianceManagement::ComplianceFramework::ComplianceRequirement/1"
   }) {
     errors
   }

@@ -15,6 +15,7 @@ module Gitlab
               value.is_a?(String) || value.nil?
 
             @variable = { key: key, value: value, public: public, file: file, masked: masked, raw: raw }
+            @variable.freeze
           end
 
           def key
@@ -76,11 +77,11 @@ module Gitlab
           def self.fabricate(resource)
             case resource
             when Hash
-              self.new(**resource.symbolize_keys)
+              new(**resource)
             when ::Ci::HasVariable, ::Ci::PipelineVariableItem
-              self.new(**resource.to_hash_variable)
-            when self
-              resource.dup
+              new(**resource.to_hash_variable)
+            when self, LazyItem
+              resource
             else
               raise ArgumentError, "Unknown `#{resource.class}` variable resource!"
             end

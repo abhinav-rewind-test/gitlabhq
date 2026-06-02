@@ -1,7 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Control when jobs run by using rules, conditions, and variable expressions.
 title: Specify when jobs run with `rules`
 ---
 
@@ -119,6 +120,9 @@ The rule for this job compares all files and paths in the current branch
 recursively (`**/*`) against the `main` branch. The rule matches and the
 job runs only when there are changes to the files in the branch.
 
+For `parallel:matrix` jobs, you can [use matrix variables in `rules:changes` paths](job_control.md#use-matrix-variables-in-rules)
+to run each job instance only when files relevant to that matrix value have changed.
+
 ## Run a job when a file is not present
 
 You can use `rules: exists` to configure a job to run only when a specific file does not exist.
@@ -137,6 +141,9 @@ job:
 
 In this example, if the `example_dir/example.yml` file exists in the branch, the job does not run.
 If the file does not exist, the job can run in merge request pipelines.
+
+For `parallel:matrix` jobs, you can [use matrix variables in `rules:exists` paths](job_control.md#use-matrix-variables-in-rules)
+to include a job instance only when a specific file exists.
 
 ## Common `if` clauses with predefined variables
 
@@ -228,7 +235,7 @@ Use the `CI_PIPELINE_SOURCE` variable to control when to add jobs for these pipe
 | `merge_request_event`           | For pipelines created when a merge request is created or updated. Required to enable [merge request pipelines](../pipelines/merge_request_pipelines.md), [merged results pipelines](../pipelines/merged_results_pipelines.md), and [merge trains](../pipelines/merge_trains.md). |
 | `ondemand_dast_scan`            | For [DAST on-demand scan](../../user/application_security/dast/on-demand_scan.md) pipelines. |
 | `ondemand_dast_validation`      | For [DAST on-demand validation](../../user/application_security/dast/profiles.md#site-profile-validation) pipelines |
-| `parent_pipeline`               | For pipelines triggered by a [parent/child pipeline](../pipelines/downstream_pipelines.md#parent-child-pipelines). Use this pipeline source in the child pipeline configuration so that it can be triggered by the parent pipeline. |
+| `parent_pipeline`               | For child pipelines triggered by a [parent pipeline](../pipelines/downstream_pipelines.md#parent-child-pipelines). Use this pipeline source in the child pipeline configuration so that it can be triggered by the parent pipeline. |
 | `pipeline`                      | For [multi-project pipelines](../pipelines/downstream_pipelines.md#multi-project-pipelines). |
 | `push`                          | For pipelines triggered by a Git push event, including for branches and tags. |
 | `schedule`                      | For [scheduled pipelines](../pipelines/schedules.md). |
@@ -290,7 +297,7 @@ job:
 ```
 
 This job does not run when `$CUSTOM_VARIABLE` is false, but it does run in all
-other pipelines, including **both** push (branch) and merge request pipelines. With
+other pipelines, including both push (branch) and merge request pipelines. With
 this configuration, every push to an open merge request's source branch
 causes duplicated pipelines.
 
@@ -312,7 +319,7 @@ You can also avoid duplicate pipelines by changing the job rules to avoid either
 pipelines or merge request pipelines. However, if you use a `- when: always` rule without
 `workflow: rules`, GitLab displays a [pipeline warning](../debugging.md#pipeline-warnings).
 
-For example, the following does not trigger double pipelines, but is not recommended
+For example, the following does not cause double pipelines, but is not recommended
 without `workflow: rules`:
 
 ```yaml
@@ -413,7 +420,10 @@ the expression. For example:
 
 - `if: $VARIABLE`
 
-You can also [use CI/CD inputs in variable expressions](../inputs/examples.md#use-cicd-inputs-in-variable-expressions).
+You can also:
+
+- [Use CI/CD inputs in variable expressions](../inputs/examples.md#use-cicd-inputs-in-variable-expressions).
+- [Use `parallel:matrix` variables in `rules:if` expressions](job_control.md#use-matrix-variables-in-rules).
 
 ### Compare a variable to a regular expression
 
@@ -510,6 +520,106 @@ in parentheses evaluate first. For example:
 - `($VARIABLE1 =~ /^content.*/ || $VARIABLE2) && ($VARIABLE3 =~ /thing$/ || $VARIABLE4)`
 - `($VARIABLE1 =~ /^content.*/ || $VARIABLE2 =~ /thing$/) && $VARIABLE3`
 - `$CI_COMMIT_BRANCH == "my-branch" || (($VARIABLE1 == "thing" || $VARIABLE2 == "thing") && $VARIABLE3)`
+
+### Negate expressions
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/219430) in GitLab 18.11.
+
+{{< /history >}}
+
+You can use the `!` operator to negate an expression, or a part of an expression.
+For example:
+
+- `if: "!$VAR1"`: True when the variable is empty or undefined.
+- `if: !($VAR1 == "my variable")`: True when the variable value does not match `my variable`.
+- `if: $VAR1 && !$VAR2`: True when `VAR1` exists and isn't empty, and `VAR2` doesn't exist or is empty.
+- `if: !($VAR1 || $VAR2)`: True only when both variables don't exist or are empty.
+- `if: !($VAR1 && $VAR2)`: True when either variable doesn't exist or is empty.
+
+> [!warning]
+> The `!` operator checks if a variable is empty or undefined, not whether its value is `false` or `0`. For example:
+>
+> - `!"false"` evaluates to `false` because the string `"false"` is not empty (non-empty strings are truthy).
+> - `!"0"` also evaluates to `false` because the string is not empty.
+> - `!""` evaluates to `true` because the string is empty (empty strings are falsy).
+>
+> To check specific values, use comparison operators, for example `!($VAR == "false")` or `!($VAR == "0")`.
+
+## Migrate from `only` or `except` to `rules`
+
+Use `rules` and CI/CD variable expressions to reproduce the same behavior as the deprecated
+[`only` and `except` keywords](../yaml/deprecated_keywords.md#only--except).
+
+For example, starting with this deprecated configuration:
+
+```yaml
+job1:
+  script: echo
+  only:
+    - main
+    - /^stable-branch.*$/
+    - schedules
+
+job2:
+  script: echo
+  except:
+    - main
+    - /^issue-.*$/
+    - merge_requests
+```
+
+In this example:
+
+- `job1` uses `only` to run in pipelines when:
+  - The branch is the default branch (`main`).
+  - The branch name matches the pattern `/^stable-branch.*$/`.
+  - The pipeline runs on a schedule.
+- `job2` uses `except` to skip pipelines when:
+  - The branch is the default branch (`main`).
+  - The branch name matches the pattern `/^issue-.*$/`.
+  - The pipeline is a merge request pipeline.
+
+To create similar pipeline configuration with `rules`, use CI/CD variable expressions.
+For example, for a direct migration from `only` and `except` to `rules`:
+
+```yaml
+job1:
+  script: echo
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^stable-branch.*$/
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+job2:
+  script: echo
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_BRANCH =~ /^issue-.*$/
+      when: never
+    - when: on_success
+```
+
+Both jobs behave the same way with `rules` as with `only` and `except`.
+However, you can simplify `job2` to avoid `when: never` rules.
+
+Define rules for when `job2` should run instead of when it should not run.
+For example, if `job2` should run for all branches except the default branch, and also for tags:
+
+```yaml
+job2:
+  script: echo
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+```
+
+In this example, `job2` runs when the branch is not the default branch,
+and when a new Git tag is created. Otherwise, the job does not run.
 
 ## Troubleshooting
 

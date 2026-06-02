@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Repository submodules API
 ---
 
@@ -16,7 +16,7 @@ Use this API to update [Git submodules](https://git-scm.com/book/en/v2/Git-Tools
 
 ## Update a submodule reference
 
-Updates a submodule's reference. Used for some workflows, especially automated ones, 
+Updates a submodule's reference. Used for some workflows, especially automated ones,
 to keep up to date other projects that use it.
 
 ```plaintext
@@ -35,7 +35,9 @@ PUT /projects/:id/repository/submodules/:submodule
 curl --request PUT \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/5/repository/submodules/lib%2Fmodules%2Fexample" \
-  --data "branch=main&commit_sha=3ddec28ea23acc5caa5d8331a6ecb2a65fc03e88&commit_message=Update submodule reference"
+  --data "branch=main" \
+  --data "commit_sha=3ddec28ea23acc5caa5d8331a6ecb2a65fc03e88" \
+  --data "commit_message=Update submodule reference"
 ```
 
 Example response:

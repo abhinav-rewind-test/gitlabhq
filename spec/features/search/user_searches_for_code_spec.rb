@@ -71,6 +71,9 @@ RSpec.describe 'User searches for code', :js, :disable_rate_limiter, feature_cat
         end
 
         it 'finds code and links to blame' do
+          # Disable inline_blame so the legacy blame URL is not redirected
+          stub_feature_flags(inline_blame: false)
+
           expect(page).to have_selector('.results', text: expected_result)
 
           find("#blame-L3").click
@@ -119,7 +122,7 @@ RSpec.describe 'User searches for code', :js, :disable_rate_limiter, feature_cat
       end
     end
 
-    it 'no ref switcher shown in issue result summary' do
+    it 'no ref switcher shown in work items result summary' do
       issue = create(:issue, title: 'test', project: project)
       visit(project_tree_path(project))
 
@@ -128,7 +131,7 @@ RSpec.describe 'User searches for code', :js, :disable_rate_limiter, feature_cat
 
       expect(page).to have_selector('.ref-selector')
 
-      select_search_scope('Issue')
+      select_search_scope('Work items')
 
       expect(find(:css, '.results')).to have_link(issue.title)
       expect(page).not_to have_selector('.ref-selector')
@@ -138,6 +141,7 @@ RSpec.describe 'User searches for code', :js, :disable_rate_limiter, feature_cat
   context 'when signed out' do
     context 'when global_search_block_anonymous_searches_enabled is enabled' do
       before do
+        stub_current_organization(project.organization)
         stub_application_setting(global_search_block_anonymous_searches_enabled: true)
       end
 

@@ -1,14 +1,14 @@
 ---
 stage: AI-powered
 group: Agent Foundations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Fix CI/CD Pipeline Flow
 ---
 
 {{< details >}}
 
-- Tier: Premium, Ultimate
-- Offering: GitLab.com, GitLab Self-Managed
+- Tier: [Free](../../../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
 {{< /details >}}
 
@@ -18,6 +18,7 @@ title: Fix CI/CD Pipeline Flow
 - Enabled on GitLab.com and GitLab Self-Managed in GitLab 18.5.
 - Feature flag `ai_duo_agent_fix_pipeline_button` [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/205086) in GitLab 18.5.
 - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/585273) in GitLab 18.8. Feature flag `ai_duo_agent_fix_pipeline_button` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/216681). Feature flag `duo_workflow_in_ci` was removed in GitLab 18.9.
+- Available on the Free tier on GitLab.com with GitLab Credits in GitLab 18.10.
 
 {{< /history >}}
 
@@ -36,30 +37,26 @@ The flow can automatically fix various pipeline issues, including:
 
 This flow is available in the GitLab UI only.
 
-> [!note]
-> The Fix CI/CD Pipeline Flow creates merge requests by using a service account. Organizations with SOC 2, SOX, ISO 27001, or FedRAMP requirements should ensure appropriate peer review policies are in place. For more information, see [compliance considerations for merge requests](../../composite_identity.md#compliance-considerations-for-merge-requests).
-
 ## Prerequisites
 
-To use this flow, you must:
-
+- Meet the [prerequisites for the GitLab Duo Agent Platform](../../_index.md#prerequisites).
+- Turn on **Allow foundational flows** and **Fix CI/CD Pipeline** [for the top-level group](_index.md#turn-foundational-flows-on-or-off).
+- Have the Developer, Maintainer, or Owner role for the project.
 - Have an existing failed pipeline.
-- Have the Developer, Maintainer, or Owner role in the project.
-- Meet [the other prerequisites](../../../duo_agent_platform/_index.md#prerequisites).
-- [Ensure the GitLab Duo service account can create commits and branches](../../troubleshooting.md#session-is-stuck-in-created-state).
-- Ensure that the Fix CI/CD Pipeline Flow is [turned on](../../../gitlab_duo/turn_on_off.md#turn-gitlab-duo-on-or-off).
+- [Configure push rules to allow a service account](../../troubleshooting.md#configure-push-rules-to-allow-a-service-account).
+- [Configure your own runners](../execution.md#configure-runners) or turn on [GitLab hosted runners](../../../../ci/runners/hosted_runners/_index.md) for your project.
 
 ## Fix the pipeline in a merge request
 
 To fix the CI/CD pipeline in a merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and open your merge request.
 1. To fix the pipeline, you can either:
    - Select the **Overview** tab and under the failing pipeline, select **Fix pipeline with Duo**.
    - Select the **Pipelines** tab and in the rightmost column, select **Fix pipeline with Duo** ({{< icon name="tanuki-ai" >}}).
 
-1. To monitor progress, select **Automate** > **Sessions**.
+1. To monitor progress, select **AI** > **Sessions**.
 
 When the session is complete, a comment shows a link to a merge request that contains the fix,
 or a comment describes possible next steps.
@@ -71,7 +68,7 @@ To fix a CI/CD pipeline that is not associated with a merge request:
 1. Select **Build** > **Pipelines**.
 1. Select your failing pipeline.
 1. In the upper-right corner, select **Fix pipeline with Duo**.
-1. To monitor progress, select **Automate** > **Sessions**.
+1. To monitor progress, select **AI** > **Sessions**.
 
 ## What the flow analyzes
 
@@ -81,3 +78,17 @@ The Fix CI/CD Pipeline Flow examines:
 - Merge request changes: Changes that could have caused the failure.
 - The current repository contents: For identifying syntax, linting, or import errors.
 - Script errors: Command failures, missing executables, or permission issues.
+
+## Flow log processing
+
+The Fix CI/CD Pipeline Flow has a known issue related to log processing.
+
+The AI gateway processes only the last 150 KiB of job logs. If your job produces extensive output, the flow might not capture relevant failure information that appears earlier in the log.
+
+To work around this issue, try the following:
+
+- Reduce verbose output by removing debug logging and progress indicators.
+- Redirect non-critical output using shell redirection (`> /dev/null`).
+- Add a summary step at the end of your script that echoes key error messages.
+- Use `after_script` to output diagnostic information after the main script completes.
+- Split verbose jobs into smaller, focused jobs with more concise logs.

@@ -124,6 +124,33 @@ RSpec.describe Ci::PipelineCreation::FindPipelineInputsService, feature_category
         end
       end
 
+      context 'when source does not support inputs' do
+        where(:source, :config_exists?) do
+          [
+            [:security_scan_profiles_source,    true],
+            [:security_scan_profiles_source,    false],
+            [:security_policies_default_source, true],
+            [:security_policies_default_source, false]
+          ]
+        end
+
+        with_them do
+          before do
+            allow(project).to receive(:auto_devops_enabled?).and_return(false)
+            allow_next_instance_of(Gitlab::Ci::ProjectConfig) do |config|
+              allow(config).to receive_messages(exists?: config_exists?, source: source)
+            end
+          end
+
+          it 'returns early success response with empty inputs' do
+            result = service.execute
+
+            expect(result).to be_success
+            expect(result.payload[:inputs].all_inputs).to be_empty
+          end
+        end
+      end
+
       context 'when config is expected in the project' do
         before do
           project.repository.create_file(
@@ -327,8 +354,8 @@ RSpec.describe Ci::PipelineCreation::FindPipelineInputsService, feature_category
       end
 
       context 'with reactive caching' do
-        it 'sets reactive_cache_work_type to external_dependency' do
-          expect(described_class.reactive_cache_work_type).to eq(:external_dependency)
+        it 'sets reactive_cache_work_type to no_dependency' do
+          expect(described_class.reactive_cache_work_type).to eq(:no_dependency)
         end
 
         it 'uses custom reactive_cache_key' do
@@ -337,34 +364,13 @@ RSpec.describe Ci::PipelineCreation::FindPipelineInputsService, feature_category
           )
         end
 
-        context 'when ci_pipeline_inputs_reactive_cache feature flag is disabled' do
+        context 'when cache is not populated' do
           before do
-            stub_feature_flags(ci_pipeline_inputs_reactive_cache: false)
-            project.repository.create_file(
-              project.creator, '.gitlab-ci.yml', config_yaml,
-              message: 'Add CI', branch_name: 'master')
+            allow(service).to receive(:with_reactive_cache).and_return(nil)
           end
 
-          it 'returns inputs directly without caching' do
-            expect(service).not_to receive(:with_reactive_cache)
-            result = service.execute
-            expect(result).to be_success
-          end
-        end
-
-        context 'when ci_pipeline_inputs_reactive_cache feature flag is enabled' do
-          before do
-            stub_feature_flags(ci_pipeline_inputs_reactive_cache: true)
-          end
-
-          context 'when cache is not populated' do
-            before do
-              allow(service).to receive(:with_reactive_cache).and_return(nil)
-            end
-
-            it 'returns nil' do
-              expect(service.execute).to be_nil
-            end
+          it 'returns nil' do
+            expect(service.execute).to be_nil
           end
         end
       end

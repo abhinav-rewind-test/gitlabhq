@@ -4,18 +4,8 @@
   width: 100%;
 
   .container-fluid {
-    --container-padding-x: #{$container-margin};
-    padding: 0 var(--container-padding-x);
-
-    @include gl-container-width-up(xl, panel) {
-      --container-padding-x: #{$container-margin-xl};
-    }
-
-    &.container-blank {
-      background: none;
-      padding: 0;
-      border: 0;
-    }
+    @apply gl-py-0;
+    @apply gl-px-[--container-padding-x];
   }
 }
 
@@ -27,10 +17,10 @@
   padding-right: 0;
 
   &:not(.is-merge-request) {
-    @include media-breakpoint-up(sm) {
+    @include gl-container-width-up(sm, content-panels) {
       @apply gl-border-l;
 
-      &:not(.wiki-sidebar):not(.build-sidebar):not(.issuable-bulk-update-sidebar) .content-wrapper {
+      &:not(.wiki-sidebar):not(.build-sidebar):not(.issuable-bulk-update-sidebar) .panel-content-inner {
         padding-right: $right-sidebar-collapsed-width;
       }
     }
@@ -81,17 +71,9 @@
     }
   }
 
-  @include media-breakpoint-only(sm) {
-    &:not(.wiki-sidebar):not(.build-sidebar):not(.issuable-bulk-update-sidebar):not(.is-merge-request) .content-wrapper {
-      padding-right: $right-sidebar-collapsed-width;
-    }
-  }
-
-  &:not(.is-merge-request):not(.build-sidebar) {
-    @include media-breakpoint-up(sm) {
-      .content-wrapper {
-        padding-right: $right-sidebar-width;
-      }
+  &:not(.wiki-sidebar, .build-sidebar, .is-merge-request) .panel-content-inner {
+    @include gl-container-width-up(sm, content-panels) {
+      padding-right: $right-sidebar-width;
     }
   }
 }
@@ -154,6 +136,10 @@
     border-bottom: 0;
     padding-top: 0;
   }
+}
+
+.issues-bulk-update.right-sidebar.right-sidebar-collapsed {
+  @apply gl-border-l-0;
 }
 
 .issuable-sidebar .labels {
@@ -255,7 +241,7 @@
 @mixin right-sidebar {
   position: fixed;
   bottom: $calc-application-footer-height;
-  right: 0;
+  right: var(--scrollbar-width, 0);
   @apply gl-bg-default;
   z-index: 200;
   overflow: hidden;
@@ -483,7 +469,7 @@
     /* Small devices (tablets, 768px and up) */
 
     &:not(.right-sidebar-merge-requests) {
-      @include gl-container-width-up(sm, panel) {
+      @include gl-container-width-up(sm, content-panels) {
         display: block;
       }
     }
@@ -765,25 +751,5 @@
 
   .compare-display-container {
     font-size: 13px;
-  }
-}
-
-.duo-agent-platform-sidebar-widget {
-  @apply gl-mt-3;
-  @apply gl-mx-3;
-  @apply gl-p-4;
-  @apply gl-bg-default;
-  @apply gl-rounded-base;
-}
-
-:where(.application-chrome) {
-  .duo-agent-platform-sidebar-widget {
-    @apply gl-mt-4;
-
-    border: solid 2px transparent;
-    border-radius: 1rem;
-    background:
-      linear-gradient(var(--gl-background-color-default), var(--gl-background-color-default)) padding-box,
-      linear-gradient(200deg, var(--_shade-4), var(--_shade-3)) border-box;
   }
 }

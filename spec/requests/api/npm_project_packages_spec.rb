@@ -368,18 +368,6 @@ RSpec.describe API::NpmProjectPackages, :aggregate_failures, feature_category: :
 
     subject(:request) { put url, headers: headers, as: :json }
 
-    it_behaves_like 'authorizing granular token permissions', :authorize_npm_package do
-      let(:boundary_object) { project }
-      let(:request) do
-        put api("/projects/#{project.id}/packages/npm/#{encoded_package_name}/authorize", personal_access_token: pat),
-          headers: workhorse_headers, as: :json
-      end
-
-      before do
-        project.add_developer(user)
-      end
-    end
-
     context 'with workhorse headers' do
       let(:headers) { super().merge(workhorse_headers) }
 
@@ -568,6 +556,10 @@ RSpec.describe API::NpmProjectPackages, :aggregate_failures, feature_category: :
 
             expect(response).to have_gitlab_http_status(:forbidden)
           end
+
+          it "does not trigger an internal event for deprecating a npm package" do
+            expect { subject }.not_to trigger_internal_events('deprecate_npm_package')
+          end
         end
 
         context 'when the user is authorized to deprecate the package' do
@@ -588,6 +580,20 @@ RSpec.describe API::NpmProjectPackages, :aggregate_failures, feature_category: :
             expect(package.version).to match(/^0\.0\.0-.+$/)
             expect(package.package_files.first.file.read).to eq(fixture_file_content)
             expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it "triggers an internal event", :clean_gitlab_redis_shared_state do
+            expect { subject }.to trigger_internal_events('deprecate_npm_package').with(
+              category: 'InternalEventTracking',
+              project: project,
+              user: user
+            ).and increment_usage_metrics(
+              'redis_hll_counters.count_distinct_user_id_from_deprecate_npm_package_monthly',
+              'redis_hll_counters.count_distinct_user_id_from_deprecate_npm_package_weekly',
+              'counts.count_total_deprecate_npm_package_monthly',
+              'counts.count_total_deprecate_npm_package_weekly',
+              'counts.count_total_deprecate_npm_package'
+            )
           end
         end
       end

@@ -1,22 +1,25 @@
 <script>
 import { GlIcon, GlSkeletonLoader } from '@gitlab/ui';
 import { STATUS_CLOSED } from '~/issues/constants';
-import { humanTimeframe, isInPast, newDate } from '~/lib/utils/datetime_utility';
+import { getDueDateStatus, humanTimeframe, newDate } from '~/lib/utils/datetime_utility';
 import { __ } from '~/locale';
 import { STATE_CLOSED, METADATA_KEYS } from '~/work_items/constants';
 import {
   findMilestoneWidget,
   findStartAndDueDateWidget,
   findTimeTrackingWidget,
+  findHierarchyWidget,
 } from '~/work_items/utils';
 import IssuableMilestone from '~/vue_shared/issuable/list/components/issuable_milestone.vue';
 import WorkItemAttribute from '~/vue_shared/components/work_item_attribute.vue';
+import WorkItemParentMetadata from '~/work_items/components/shared/work_item_parent_metadata.vue';
 
 export default {
   name: 'IssueCardTimeInfo',
   components: {
     IssuableMilestone,
     WorkItemAttribute,
+    WorkItemParentMetadata,
     GlIcon,
     GlSkeletonLoader,
   },
@@ -41,7 +44,11 @@ export default {
   },
   computed: {
     milestone() {
-      return this.issue.milestone || findMilestoneWidget(this.issue)?.milestone;
+      return (
+        this.issue.milestone ||
+        this.issue?.features?.milestone?.milestone ||
+        findMilestoneWidget(this.issue)?.milestone
+      );
     },
     dueDate() {
       return this.issue.dueDate || findStartAndDueDateWidget(this.issue)?.dueDate;
@@ -56,17 +63,12 @@ export default {
     isClosed() {
       return this.issue.state === STATUS_CLOSED || this.issue.state === STATE_CLOSED;
     },
-    isOverdue() {
-      if (!this.dueDate) {
-        return false;
-      }
-      return isInPast(newDate(this.dueDate)) && !this.isClosed;
+    dueDateStatus() {
+      return getDueDateStatus(this.dueDate, !this.isClosed);
     },
     datesTooltipTitle() {
-      return this.isOverdue ? `${__('Dates')} (${__('overdue')})` : __('Dates');
-    },
-    dateIcon() {
-      return this.isOverdue ? 'calendar-overdue' : 'calendar';
+      const { statusLabel } = this.dueDateStatus;
+      return statusLabel ? `${__('Dates')} (${statusLabel})` : __('Dates');
     },
     startDate() {
       return findStartAndDueDateWidget(this.issue)?.startDate;
@@ -78,12 +80,20 @@ export default {
         this.issue.timeStats?.humanTimeEstimate
       );
     },
+    parent() {
+      return findHierarchyWidget(this.issue)?.parent;
+    },
   },
 };
 </script>
 
 <template>
   <div class="gl-contents">
+    <work-item-parent-metadata
+      v-if="parent && !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.PARENT)"
+      :parent="parent"
+      :icon-size="12"
+    />
     <slot name="weight"></slot>
     <issuable-milestone
       v-if="milestone && !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.MILESTONE)"
@@ -104,8 +114,8 @@ export default {
     >
       <template #icon>
         <gl-icon
-          :variant="isOverdue ? 'danger' : 'current'"
-          :name="dateIcon"
+          :variant="dueDateStatus.iconVariant"
+          :name="dueDateStatus.iconName"
           :size="12"
           class="gl-shrink-0"
         />

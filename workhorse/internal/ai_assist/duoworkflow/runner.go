@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	redsync "github.com/go-redsync/redsync/v4"
@@ -19,15 +20,26 @@ import (
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/log"
 
 	"github.com/gorilla/websocket"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 const wsWriteDeadline = 60 * time.Second
 const wsCloseTimeout = 5 * time.Second
 const wsStopWorkflowTimeout = 10 * time.Second
+
+// wsPingInterval controls how often the server sends WebSocket ping frames to
+// the client. This keeps the connection alive through load-balancer idle
+// timeouts and provides early detection of silently-dropped TCP connections.
+// The value must be less than any intermediate idle-connection timeout (GKE's
+// default is 30s for HTTP/1.1 upgrades).
+const wsPingInterval = 20 * time.Second
+
+// wsPongTimeout is the read deadline set after each pong (or at startup before
+// the first ping). If no pong arrives within this window, ReadMessage returns a
+// timeout error and the connection is treated as dead. It is longer than
+// wsPingInterval to tolerate one missed pong before declaring the connection
+// broken.
+const wsPongTimeout = wsPingInterval + 10*time.Second
 
 type capability string
 
@@ -35,9 +47,14 @@ const (
 	// Client capabilities
 	capabilityIncrementalStreaming capability = "incremental_streaming"
 	capabilityShellCommand         capability = "shell_command"
+	capabilityReadFileChunked      capability = "read_file_chunked"
+	capabilityCommandTimeout       capability = "command_timeout"
+	capabilityWebSearch            capability = "web_search"
 
 	// Server capabilities
-	capabilityAdvancedSearch capability = "advanced_search"
+	capabilityAdvancedSearch     capability = "advanced_search"
+	capabilityToolCallApproval   capability = "tool_call_approval"
+	capabilityJobTracePagination capability = "job_trace_pagination"
 )
 
 // ClientCapabilities is how gitlab-lsp -> workhorse -> Duo Workflow Service communicates
@@ -51,22 +68,26 @@ const (
 var ClientCapabilities = []capability{
 	capabilityIncrementalStreaming,
 	capabilityShellCommand,
+	capabilityReadFileChunked,
+	capabilityCommandTimeout,
+	capabilityWebSearch,
 }
 
 // ServerCapabilities defines the list of allowed server capabilities that
-// can be communicated to Duo Workflow Service. This whitelist ensures only
+// can be communicated to Duo Workflow Service. This allowlist ensures only
 // explicitly approved capabilities are sent.
 //
 // To add a new server capability:
 // 1. Add a constant above (e.g., capabilityNewFeature capability = "new_feature")
 // 2. Add it to this ServerCapabilities list
-// 3. Update get_server_capabilities in ee/lib/api/ai/duo_workflows/workflows.rb
+// 3. Update compute_server_capabilities in ee/lib/api/ai/duo_workflows/workflows.rb
 var ServerCapabilities = []capability{
 	capabilityAdvancedSearch,
+	capabilityToolCallApproval,
+	capabilityJobTracePagination,
 }
 
 var errFailedToAcquireLockError = errors.New("handleWebSocketMessages: failed to acquire lock")
-var errUsageQuotaExceededError = errors.New("handleAgentMessages: usage quota exceeded")
 
 var normalClosureErrCodes = []int{websocket.CloseGoingAway, websocket.CloseNormalClosure}
 
@@ -85,6 +106,7 @@ type websocketConn interface {
 	WriteControl(int, []byte, time.Time) error
 	SetReadDeadline(time.Time) error
 	SetWriteDeadline(time.Time) error
+	SetPongHandler(h func(appData string) error)
 	Close() error
 }
 
@@ -100,41 +122,59 @@ type selfHostedWorkflowStream interface {
 	CloseSend() error
 }
 
+// stopCoordinator manages the graceful stop handshake between workhorse and DWS.
+// When workhorse needs to stop a workflow (WebSocket close, ping failure, server
+// shutdown), it sends a StopWorkflowRequest and waits for DWS to acknowledge by
+// closing the gRPC stream with an Unavailable status code.
+type stopCoordinator struct {
+	// requested is set to true when stopWorkflow sends a StopWorkflowRequest
+	// to DWS. It gates whether an Unavailable gRPC error from DWS should be
+	// treated as a stop acknowledgment.
+	requested atomic.Bool
+
+	// acked is closed when DWS acknowledges a stop request by returning a
+	// gRPC Unavailable error on the Recv stream. stopWorkflow selects on this
+	// channel so it can return immediately instead of waiting for the full
+	// timeout.
+	acked chan struct{}
+
+	// agentDone tracks the lifetime of handleAgentMessages. Close waits on
+	// this before tearing down the gRPC stream so that a pending Recv can
+	// observe the DWS stop acknowledgment before the connection is destroyed.
+	agentDone sync.WaitGroup
+}
+
 type runner struct {
-	rails              *api.API
-	backend            http.Handler
-	token              string
-	originalReq        *http.Request
-	marshalBuf         []byte
-	conn               websocketConn
-	wf                 workflowStream
-	client             *Client
-	sendMu             sync.Mutex
-	mcpManager         mcpManager
-	lockManager        *workflowLockManager
-	workflowID         string
-	mutex              *redsync.Mutex
-	lockFlow           bool
-	serverCapabilities []string
-	cloudServiceClient *Client
-	cloudServiceStream selfHostedWorkflowStream
+	originalReq         *http.Request
+	httpActionHandler   *runHTTPActionHandler
+	marshalBuf          []byte
+	conn                websocketConn
+	lockManager         *workflowLockManager
+	workflowID          string
+	mutex               *redsync.Mutex
+	lockFlow            bool
+	serverCapabilities  []string
+	streamManager       *streamManager
+	mcpManager          mcpManager
+	websocketClosed     atomic.Bool
+	stop                stopCoordinator
+	stopWorkflowTimeout time.Duration
 }
 
 func newRunner(conn websocketConn, rails *api.API, backend http.Handler, r *http.Request, cfg *api.DuoWorkflow, rdb *redis.Client) (*runner, error) {
-	userAgent := r.Header.Get("User-Agent")
-
 	if cfg.Service == nil {
 		return nil, fmt.Errorf("failed to initialize client: Service configuration is nil")
 	}
 
-	client, err := NewClient(cfg.Service, userAgent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize client: %v", err)
+	lockFlow := cfg.LockConcurrentFlow
+	if lockFlow && rdb == nil {
+		log.WithRequest(r).Info("Workflow locking will be skipped as redis is not configured")
+		lockFlow = false
 	}
 
-	wf, err := client.ExecuteWorkflow(r.Context())
+	streamManager, err := newStreamManager(r, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize stream: %v", err)
+		return nil, fmt.Errorf("failed to initialize stream manager: %v", err)
 	}
 
 	mcpManager, err := newMcpManager(rails, r, cfg.McpServers)
@@ -143,52 +183,48 @@ func newRunner(conn websocketConn, rails *api.API, backend http.Handler, r *http
 		log.WithRequest(r).WithError(err).Info("failed to initialize MCP server(s)")
 	}
 
-	lockFlow := cfg.LockConcurrentFlow
-
-	if lockFlow && rdb == nil {
-		log.WithRequest(r).Info("Workflow locking will be skipped as redis is not configured")
-		lockFlow = false
-	}
-
-	var cloudServiceClient *Client
-	var cloudServiceStream selfHostedWorkflowStream
-
-	if cfg.CloudServiceForSelfHosted != nil && cfg.CloudServiceForSelfHosted.URI != "" {
-		cloudServiceClient, err = NewClient(cfg.CloudServiceForSelfHosted, userAgent)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize cloud service client: %v", err)
-		}
-
-		cloudServiceStream, err = cloudServiceClient.TrackSelfHostedExecuteWorkflow(r.Context())
-		if err != nil {
-			_ = cloudServiceClient.Close()
-			return nil, fmt.Errorf("failed to initialize cloud service stream: %v", err)
-		}
+	httpActionHandler := &runHTTPActionHandler{
+		backend:                   backend,
+		token:                     cfg.Service.Headers["x-gitlab-oauth-token"],
+		shouldTimeoutHTTPRequests: cfg.TimeoutHTTPRequests,
+		originalReq:               r,
 	}
 
 	return &runner{
-		rails:              rails,
-		backend:            backend,
-		token:              cfg.Service.Headers["x-gitlab-oauth-token"],
 		originalReq:        r,
+		httpActionHandler:  httpActionHandler,
 		marshalBuf:         make([]byte, ActionResponseBodyLimit),
 		conn:               conn,
-		wf:                 wf,
-		client:             client,
-		mcpManager:         mcpManager,
 		lockManager:        newWorkflowLockManager(rdb),
 		lockFlow:           lockFlow,
 		serverCapabilities: cfg.ServerCapabilities,
-		cloudServiceClient: cloudServiceClient,
-		cloudServiceStream: cloudServiceStream,
+		streamManager:      streamManager,
+		mcpManager:         mcpManager,
+		stop: stopCoordinator{
+			acked: make(chan struct{}),
+		},
 	}, nil
 }
 
 func (r *runner) Execute(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	// Register the pong handler before any goroutine calls ReadMessage.
+	// In gorilla/websocket, pong frames are dispatched inside ReadMessage, so
+	// if a pong arrives before SetPongHandler is called the default no-op
+	// handler runs and the read deadline is never reset.
+	r.conn.SetPongHandler(func(string) error {
+		return r.conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
+	})
+
+	errCh := make(chan error, 3) // one slot per goroutine: WS reader, agent reader, pinger
+
+	r.stop.agentDone.Add(1)
 
 	go r.handleWebSocketMessages(errCh)
-	go r.handleAgentMessages(ctx, errCh)
+	go func() {
+		defer r.stop.agentDone.Done()
+		r.handleAgentMessages(ctx, errCh)
+	}()
+	go r.pingWebSocket(ctx, errCh, wsPingInterval)
 
 	// Unfortunately the lock is acquired in handleWebSocketMessage.  This is
 	// because the workflowID is not known until after we see the startReq. But
@@ -204,18 +240,41 @@ func (r *runner) Execute(ctx context.Context) error {
 	return <-errCh
 }
 
+// pingWebSocket sends periodic WebSocket ping frames. It sets an initial read
+// deadline before the first ping fires; after that the pong handler (registered
+// in Execute) resets the deadline on every pong reply. A missing pong causes
+// ReadMessage to return a timeout error which terminates handleWebSocketMessages.
+func (r *runner) pingWebSocket(ctx context.Context, errCh chan<- error, interval time.Duration) {
+	// Set the initial read deadline before any ping is sent. Subsequent resets
+	// are handled by the pong handler registered in Execute().
+	if err := r.conn.SetReadDeadline(time.Now().Add(wsPongTimeout)); err != nil {
+		errCh <- fmt.Errorf("pingWebSocket: failed to set initial read deadline: %w", err)
+		return
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := r.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteDeadline)); err != nil {
+				r.websocketClosed.Store(true)
+				errCh <- r.stopAndWrapError("pingWebSocket", "WORKHORSE_WEBSOCKET_PING_FAILED", err)
+				return
+			}
+		}
+	}
+}
+
 func (r *runner) handleWebSocketMessages(errCh chan<- error) {
 	for {
 		_, message, err := r.conn.ReadMessage()
 		if err != nil {
-			if e, ok := err.(*websocket.CloseError); ok && slices.Contains(normalClosureErrCodes, e.Code) {
-				reason := fmt.Sprintf("WORKHORSE_WEBSOCKET_CLOSE_%d", e.Code)
-				stopErr := r.stopWorkflow(reason, err)
-				errCh <- fmt.Errorf("handleWebSocketMessages: %v", stopErr)
-				return
-			}
-
-			errCh <- fmt.Errorf("handleWebSocketMessages: failed to read a WS message: %v", err)
+			r.websocketClosed.Store(true)
+			errCh <- r.handleWebSocketReadError(err)
 			return
 		}
 
@@ -226,21 +285,50 @@ func (r *runner) handleWebSocketMessages(errCh chan<- error) {
 	}
 }
 
+// handleWebSocketReadError determines the appropriate response to a WebSocket
+// read failure. For expected closures (normal close, going away, pong timeout)
+// it sends a StopWorkflowRequest to DWS and returns the result. For unexpected
+// errors it wraps and returns them directly.
+func (r *runner) handleWebSocketReadError(err error) error {
+	if e, ok := err.(*websocket.CloseError); ok && slices.Contains(normalClosureErrCodes, e.Code) {
+		reason := fmt.Sprintf("WORKHORSE_WEBSOCKET_CLOSE_%d", e.Code)
+		return r.stopAndWrapError("handleWebSocketMessages", reason, err)
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return r.stopAndWrapError("handleWebSocketMessages", "WORKHORSE_WEBSOCKET_PONG_TIMEOUT", err)
+	}
+
+	return fmt.Errorf("handleWebSocketMessages: failed to read a WS message: %v", err)
+}
+
+// stopAndWrapError sends a StopWorkflowRequest and returns the result. If the
+// stop succeeds (DWS acknowledged) it returns nil; otherwise it wraps the error
+// with the given caller label.
+func (r *runner) stopAndWrapError(caller string, reason string, closeErr error) error {
+	stopErr := r.stopWorkflow(reason, closeErr)
+	if stopErr != nil {
+		return fmt.Errorf("%s: %w", caller, stopErr)
+	}
+	return nil
+}
+
 func (r *runner) handleAgentMessages(ctx context.Context, errCh chan<- error) {
 	for {
-		action, err := r.wf.Recv()
+		action, err := r.streamManager.Recv()
 		if err != nil {
-			if err == io.EOF {
+			switch {
+			case err == io.EOF:
+				log.WithRequest(r.originalReq).Info("handleAgentMessages: EOF, expected when workflow ends")
 				errCh <- nil // Expected error when a workflow ends
-				return
+			case errors.Is(err, errStreamUnavailable) && r.stop.requested.Load():
+				log.WithRequest(r.originalReq).Info("handleAgentMessages: DWS acknowledged stop request")
+				close(r.stop.acked)
+				errCh <- nil
+			default:
+				errCh <- fmt.Errorf("handleAgentMessages: %w", err)
 			}
-
-			if r.isUsageQuotaExceededError(err) {
-				errCh <- errUsageQuotaExceededError
-				return
-			}
-
-			errCh <- fmt.Errorf("handleAgentMessages: failed to read a gRPC message: %w", err)
 			return
 		}
 
@@ -251,22 +339,37 @@ func (r *runner) handleAgentMessages(ctx context.Context, errCh chan<- error) {
 	}
 }
 
+func (r *runner) logClose(name string, err error) error {
+	if err != nil {
+		log.WithRequest(r.originalReq).WithFields(log.Fields{
+			"connection_type": name,
+		}).WithError(err).Error("failed to close")
+	} else {
+		log.WithRequest(r.originalReq).WithFields(log.Fields{
+			"connection_type": name,
+		}).Info("closed")
+	}
+	return err
+}
+
 func (r *runner) Close() error {
-	r.sendMu.Lock()
-	defer r.sendMu.Unlock()
+	// Wait for handleAgentMessages to finish before closing the gRPC stream.
+	// This ensures a pending Recv can observe the DWS stop acknowledgment
+	// (Unavailable) before the connection is torn down.
+	r.stop.agentDone.Wait()
 
-	var cloudServiceErrs error
-	if r.cloudServiceStream != nil {
-		cloudServiceErrs = errors.Join(r.cloudServiceStream.CloseSend())
-	}
-	if r.cloudServiceClient != nil {
-		cloudServiceErrs = errors.Join(cloudServiceErrs, r.cloudServiceClient.Close())
-	}
+	streamManagerCloseErr := r.logClose("stream manager", r.streamManager.Close())
+	wsCloseErr := r.logClose("websocket connection", r.closeWebSocketConnection())
+	mcpManagerCloseErr := r.logClose("mcp manager", r.mcpManager.Close())
 
-	return errors.Join(r.wf.CloseSend(), r.client.Close(), r.closeWebSocketConnection(), r.mcpManager.Close(), cloudServiceErrs)
+	return errors.Join(streamManagerCloseErr, wsCloseErr, mcpManagerCloseErr)
 }
 
 func (r *runner) closeWebSocketConnection() error {
+	if r.websocketClosed.Load() {
+		return nil
+	}
+
 	deadline := time.Now().Add(wsCloseTimeout)
 	if err := r.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), deadline); err != nil {
 		// If we can't send the close message, just close the connection
@@ -306,6 +409,8 @@ func (r *runner) handleWebSocketMessage(message []byte) error {
 			}
 		}
 
+		r.mcpManager.SetWorkflowID(startReq.WorkflowID)
+
 		startReq.McpTools = append(startReq.McpTools, r.mcpManager.Tools()...)
 		startReq.PreapprovedTools = append(startReq.PreapprovedTools, r.mcpManager.PreApprovedTools()...)
 		startReq.ClientCapabilities = append(
@@ -317,13 +422,7 @@ func (r *runner) handleWebSocketMessage(message []byte) error {
 		}).Info("Sending startRequest")
 	}
 
-	log.WithContextFields(r.originalReq.Context(), log.Fields{
-		"payload_size": proto.Size(response),
-		"event_type":   fmt.Sprintf("%T", response.Response),
-		"request_id":   response.GetActionResponse().GetRequestID(),
-	}).Info("Sending action response")
-
-	if err := r.threadSafeSend(response); err != nil {
+	if err := r.streamManager.Send(response); err != nil {
 		if err == io.EOF {
 			// ignore EOF to let Recv() fail and return a meaningful message
 			return nil
@@ -383,31 +482,12 @@ func (r *runner) acquireWorkflowLock(startReq *pb.StartWorkflowRequest) error {
 func (r *runner) handleAgentAction(ctx context.Context, action *pb.Action) error {
 	switch action.Action.(type) {
 	case *pb.Action_RunHTTPRequest:
-		handler := &runHTTPActionHandler{
-			rails:       r.rails,
-			backend:     r.backend,
-			token:       r.token,
-			originalReq: r.originalReq,
-			action:      action,
-		}
-
-		event, err := handler.Execute(ctx)
+		event, err := r.httpActionHandler.Execute(ctx, action)
 		if err != nil {
 			return fmt.Errorf("handleAgentAction: failed to perform API call: %v", err)
 		}
-		statusCode := event.GetActionResponse().GetHttpResponse().StatusCode
 
-		log.WithContextFields(r.originalReq.Context(), log.Fields{
-			"path":                 action.GetRunHTTPRequest().Path,
-			"method":               action.GetRunHTTPRequest().Method,
-			"status_code":          statusCode,
-			"payload_size":         proto.Size(event),
-			"event_type":           fmt.Sprintf("%T", event.Response),
-			"action_response_type": fmt.Sprintf("%T", event.GetActionResponse().GetResponseType()),
-			"request_id":           action.GetRequestID(),
-		}).Info("Sending HTTP response event")
-
-		if err := r.threadSafeSend(event); err != nil {
+		if err := r.streamManager.Send(event); err != nil {
 			return fmt.Errorf("handleAgentAction: failed to send gRPC message: %v", err)
 		}
 
@@ -422,71 +502,17 @@ func (r *runner) handleAgentAction(ctx context.Context, action *pb.Action) error
 		if !r.mcpManager.HasTool(mcpTool.Name) {
 			return r.sendActionToWs(action)
 		}
+
 		event, err := r.mcpManager.CallTool(ctx, action)
 		if err != nil {
 			return fmt.Errorf("handleAgentAction: failed to call MCP tool: %v", err)
 		}
 
-		log.WithContextFields(ctx, log.Fields{
-			"request_id":           action.GetRequestID(),
-			"name":                 mcpTool.Name,
-			"args_size":            len(mcpTool.Args),
-			"payload_size":         proto.Size(event),
-			"event_type":           fmt.Sprintf("%T", event.Response),
-			"action_response_type": fmt.Sprintf("%T", event.GetActionResponse().GetResponseType()),
-		}).Info("Sending MCP tool response")
-
-		if err := r.threadSafeSend(event); err != nil {
+		if err := r.streamManager.Send(event); err != nil {
 			return fmt.Errorf("handleAgentAction: failed to send gRPC message: %v", err)
 		}
 	case *pb.Action_TrackLlmCallForSelfHosted:
-		if r.cloudServiceStream == nil {
-			return fmt.Errorf("handleAgentAction: cloud service stream not initialized")
-		}
-
-		trackAction := action.GetTrackLlmCallForSelfHosted()
-
-		log.WithContextFields(ctx, log.Fields{
-			"request_id":  action.GetRequestID(),
-			"workflow_id": trackAction.WorkflowID,
-		}).Info("Sending TrackLlmCallForSelfHosted to cloud service")
-
-		clientEvent := &pb.TrackSelfHostedClientEvent{
-			RequestID:            action.GetRequestID(),
-			WorkflowID:           trackAction.WorkflowID,
-			FeatureQualifiedName: trackAction.FeatureQualifiedName,
-			FeatureAiCatalogItem: trackAction.FeatureAiCatalogItem,
-		}
-
-		if err := r.cloudServiceStream.Send(clientEvent); err != nil {
-			return fmt.Errorf("handleAgentAction: failed to send to cloud service: %v", err)
-		}
-
-		selfHostedAction, err := r.cloudServiceStream.Recv()
-		if err != nil {
-			return fmt.Errorf("handleAgentAction: failed to receive from cloud service: %v", err)
-		}
-
-		log.WithContextFields(ctx, log.Fields{
-			"request_id": selfHostedAction.GetRequestID(),
-		}).Info("Received acknowledgment from cloud service")
-
-		event := &pb.ClientEvent{
-			Response: &pb.ClientEvent_ActionResponse{
-				ActionResponse: &pb.ActionResponse{
-					RequestID: action.GetRequestID(),
-					ResponseType: &pb.ActionResponse_PlainTextResponse{
-						PlainTextResponse: &pb.PlainTextResponse{
-							Response: "authenticated",
-						},
-					},
-				},
-			},
-		}
-
-		if err := r.threadSafeSend(event); err != nil {
-			return fmt.Errorf("handleAgentAction: failed to send gRPC message: %v", err)
-		}
+		return r.streamManager.HandleCloudServiceTracking(ctx, action)
 	default:
 		return r.sendActionToWs(action)
 	}
@@ -495,6 +521,11 @@ func (r *runner) handleAgentAction(ctx context.Context, action *pb.Action) error
 }
 
 func (r *runner) sendActionToWs(action *pb.Action) error {
+	if r.websocketClosed.Load() {
+		log.WithRequest(r.originalReq).Info("sendActionToWs: skipping sending WS message because websocket already closed")
+		return nil
+	}
+
 	var err error
 	r.marshalBuf, err = marshaler.MarshalAppend(r.marshalBuf[:0], action)
 	if err != nil {
@@ -507,41 +538,29 @@ func (r *runner) sendActionToWs(action *pb.Action) error {
 	}
 
 	if err = r.conn.WriteMessage(websocket.BinaryMessage, r.marshalBuf); err != nil {
-		if err != websocket.ErrCloseSent {
-			return fmt.Errorf("sendActionToWs: failed to send WS message: %v", err)
+		if err == websocket.ErrCloseSent {
+			log.WithRequest(r.originalReq).Info("sendActionToWs: failed to send WS message because websocket closed, ignoring")
+			return nil
 		}
+
+		return fmt.Errorf("sendActionToWs: failed to send WS message: %v", err)
+	}
+
+	// Clear the write deadline after a successful write so it does not affect
+	// subsequent operations (including reads on the same net.Conn).
+	if deadlineErr := r.conn.SetWriteDeadline(time.Time{}); deadlineErr != nil {
+		return fmt.Errorf("sendActionToWs: failed to clear write deadline: %v", deadlineErr)
 	}
 
 	return nil
-}
-
-func (r *runner) threadSafeSend(event *pb.ClientEvent) error {
-	r.sendMu.Lock()
-	defer r.sendMu.Unlock()
-	return r.wf.Send(event)
-}
-
-// isUsageQuotaExceededError checks if the error is a gRPC RESOURCE_EXHAUSTED error
-// indicating that the consumer has exceeded their usage quota.
-func (r *runner) isUsageQuotaExceededError(err error) bool {
-	// Extract gRPC status from the error
-	st, ok := status.FromError(err)
-	if !ok {
-		return false
-	}
-
-	// Check if the error code is RESOURCE_EXHAUSTED and contains the quota exceeded message
-	if st.Code() == codes.ResourceExhausted {
-		return strings.Contains(st.Message(), "USAGE_QUOTA_EXCEEDED")
-	}
-
-	return false
 }
 
 func (r *runner) stopWorkflow(reason string, closeErr error) error {
 	log.WithRequest(r.originalReq).WithFields(log.Fields{
 		"close_error": closeErr.Error(),
 	}).Info("stopWorkflow: sending stop workflow request...")
+
+	r.stop.requested.Store(true)
 
 	stopRequest := &pb.ClientEvent{
 		Response: &pb.ClientEvent_StopWorkflow{
@@ -551,41 +570,75 @@ func (r *runner) stopWorkflow(reason string, closeErr error) error {
 		},
 	}
 
-	if err := r.threadSafeSend(stopRequest); err != nil {
+	if err := r.streamManager.Send(stopRequest); err != nil {
 		return fmt.Errorf("failed to send stop request: %v", err)
 	}
 
+	timeout := r.stopWorkflowTimeout
+	if timeout == 0 {
+		timeout = wsStopWorkflowTimeout
+	}
+
 	select {
-	case <-r.originalReq.Context().Done():
+	case <-r.stop.acked:
 		return nil
-	case <-time.After(wsStopWorkflowTimeout):
+	case <-time.After(timeout):
 		return fmt.Errorf("workflow didn't stop on time")
 	}
 }
 
 // Shutdown gracefully stops the workflow runner during server shutdown.
-// It sends a stop workflow request to the agent platform and waits for acknowledgment.
-// If the original request context is already canceled, it returns immediately.
+// It first waits for the workflow to finish naturally within the shutdown grace
+// period. If either the request context or the shutdown context expires before
+// the workflow completes, it sends a StopWorkflowRequest to DWS, releases the
+// distributed lock, and sends a CloseGoingAway frame to the WebSocket client so
+// the executor can reconnect to a new workhorse instance and resume from the
+// last DWS checkpoint.
 // Errors during shutdown are logged but not returned to allow other runners to proceed.
 func (r *runner) Shutdown(ctx context.Context) error {
+	// requestContextDone is set to true when the original request context fires
+	// first. In that case the client is already gone, so we skip sending
+	// CloseGoingAway — there is no one to receive it.
+	var requestContextDone bool
+
 	select {
 	case <-r.originalReq.Context().Done():
-		return nil
+		requestContextDone = true
+		log.WithRequest(r.originalReq).Info("Shutdown: request context done, sending stop workflow")
 	case <-ctx.Done():
-		err := r.stopWorkflow(
-			"WORKHORSE_SERVER_SHUTDOWN",
-			fmt.Errorf("duoworkflow: stopping workflow due to server shutdown"),
-		)
-		if err == nil {
-			log.WithRequest(r.originalReq).WithError(
-				fmt.Errorf("duoworkflow: stopped gracefully due to server shutdown"),
-			).Error()
-		} else {
-			log.WithRequest(r.originalReq).WithError(
-				fmt.Errorf("duoworkflow: failed to gracefully stop a workflow: %v", err),
-			).Error()
-		}
-
-		return err
+		log.WithRequest(r.originalReq).Info("Shutdown: shutdown context done, sending stop workflow")
 	}
+
+	err := r.stopWorkflow(
+		"WORKHORSE_SERVER_SHUTDOWN",
+		fmt.Errorf("duoworkflow: stopping workflow due to server shutdown"),
+	)
+	if err != nil {
+		log.WithRequest(r.originalReq).WithError(err).Info("Shutdown: failed to stop workflow gracefully")
+	} else {
+		log.WithRequest(r.originalReq).Info("Shutdown: workflow stopped gracefully")
+	}
+
+	// Always release the lock so the executor can acquire it on the new
+	// workhorse instance. Even if the stop request failed or timed out, the
+	// instance is going away and holding the lock would block reconnection
+	// for up to 2 hours (the lock TTL).
+	if r.lockFlow {
+		// Use a detached context because the request context may already be
+		// canceled during shutdown, but we still need to reach Redis.
+		r.lockManager.releaseLock(context.Background(), r.mutex, r.workflowID) // lint:allow context.Background
+	}
+
+	// Send CloseGoingAway (1001) to signal the client to reconnect. Skip this
+	// when the request context fired first — the client is already gone and
+	// there is no WebSocket connection to write to.
+	if !requestContextDone {
+		deadline := time.Now().Add(wsCloseTimeout)
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutdown")
+		if wsErr := r.conn.WriteControl(websocket.CloseMessage, closeMsg, deadline); wsErr != nil {
+			log.WithRequest(r.originalReq).WithError(wsErr).Info("Shutdown: failed to send CloseGoingAway to client")
+		}
+	}
+
+	return nil
 }

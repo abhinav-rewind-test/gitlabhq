@@ -1,11 +1,12 @@
-import { GlLink, GlButton } from '@gitlab/ui';
+import { GlButton } from '@gitlab/ui';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
-import { PROMO_URL } from '~/constants';
 import ScanProfileConfiguration from '~/security_configuration/components/scan_profiles/scan_profile_configuration.vue';
 import ScanProfileTable from '~/security_configuration/components/scan_profiles/scan_profile_table.vue';
 import {
   SCAN_PROFILE_CATEGORIES,
   SCAN_PROFILE_TYPE_SECRET_DETECTION,
+  SCAN_PROFILE_TYPE_SAST,
+  SCAN_PROFILE_TYPE_DEPENDENCY_SCANNING,
 } from '~/security_configuration/constants';
 
 describe('ScanProfileConfiguration', () => {
@@ -23,7 +24,6 @@ describe('ScanProfileConfiguration', () => {
   };
 
   const findTable = () => wrapper.findComponent(ScanProfileTable);
-  const findLink = () => wrapper.findComponent(GlLink);
   const findButtonAt = (i) => wrapper.findAllComponents(GlButton).at(i);
 
   describe('table rendering', () => {
@@ -39,6 +39,14 @@ describe('ScanProfileConfiguration', () => {
           scanType: SCAN_PROFILE_TYPE_SECRET_DETECTION,
           isConfigured: false,
         },
+        {
+          scanType: SCAN_PROFILE_TYPE_SAST,
+          isConfigured: false,
+        },
+        {
+          scanType: SCAN_PROFILE_TYPE_DEPENDENCY_SCANNING,
+          isConfigured: false,
+        },
       ]);
     });
 
@@ -50,12 +58,6 @@ describe('ScanProfileConfiguration', () => {
         SCAN_PROFILE_CATEGORIES[SCAN_PROFILE_TYPE_SECRET_DETECTION].name,
       );
       expect(wrapper.text()).toContain('No profile applied');
-    });
-
-    it('renders a link to learn more about scan profiles', () => {
-      expect(wrapper.text()).toContain('Available with Ultimate');
-      expect(findLink().text()).toBe('Learn more about the Ultimate security suite');
-      expect(findLink().props('href')).toBe(`${PROMO_URL}/solutions/application-security-testing/`);
     });
 
     it('renders disabled buttons', () => {

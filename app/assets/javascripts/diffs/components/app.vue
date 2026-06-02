@@ -1,6 +1,6 @@
 <script>
-import { GlLoadingIcon, GlPagination, GlSprintf, GlAlert } from '@gitlab/ui';
-import { debounce, throttle } from 'lodash';
+import { GlLoadingIcon, GlKeysetPagination, GlSprintf, GlAlert } from '@gitlab/ui';
+import { debounce, throttle } from 'lodash-es';
 import { mapState, mapActions } from 'pinia';
 import FindingsDrawer from 'ee_component/diffs/components/shared/findings_drawer.vue';
 import {
@@ -10,6 +10,7 @@ import {
   MR_COMMITS_NEXT_COMMIT,
   MR_COMMITS_PREVIOUS_COMMIT,
   MR_TOGGLE_REVIEW,
+  MR_TOGGLE_DIFF_VIEW_TYPE,
   ISSUABLE_COMMENT_OR_REPLY,
 } from '~/behaviors/shortcuts/keybindings';
 import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
@@ -39,6 +40,7 @@ import {
   ALERT_MERGE_CONFLICT,
   ALERT_COLLAPSED_FILES,
   INLINE_DIFF_VIEW_TYPE,
+  PARALLEL_DIFF_VIEW_TYPE,
   TRACKING_DIFF_VIEW_INLINE,
   TRACKING_DIFF_VIEW_PARALLEL,
   TRACKING_FILE_BROWSER_TREE,
@@ -88,7 +90,7 @@ export default {
     CollapsedFilesWarning,
     CommitWidget,
     GlLoadingIcon,
-    GlPagination,
+    GlKeysetPagination,
     GlSprintf,
     GlAlert,
   },
@@ -248,6 +250,7 @@ export default {
       'isBatchLoading',
       'isBatchLoadingError',
       'linkedFile',
+      'gitalyErrorMessage',
     ]),
     ...mapState(useLegacyDiffs, { diffFiles: 'diffFilesFiltered' }),
     ...mapState(useNotes, ['discussions', 'isNotesFetched', 'getNoteableData']),
@@ -284,15 +287,11 @@ export default {
     currentFileNumber() {
       return this.currentDiffIndex + 1;
     },
-    previousFileNumber() {
-      const { currentDiffIndex } = this;
-
-      return currentDiffIndex >= 1 ? currentDiffIndex : null;
-    },
-    nextFileNumber() {
-      const { currentFileNumber, flatBlobsList } = this;
-
-      return currentFileNumber < flatBlobsList.length ? currentFileNumber + 1 : null;
+    fileNavigationPageInfo() {
+      return {
+        hasPreviousPage: this.currentDiffIndex > 0,
+        hasNextPage: this.currentDiffIndex < this.flatBlobsList.length - 1,
+      };
     },
     visibleWarning() {
       let visible = false;
@@ -560,8 +559,12 @@ export default {
         this.fetchFileByFile();
       }
     },
-    navigateToDiffFileNumber(number) {
-      this.navigateToDiffFileIndex(number - 1);
+    handleFilePaginationChange(direction) {
+      if (direction === 'prev' && this.currentDiffIndex > 0) {
+        this.navigateToDiffFileIndex(this.currentDiffIndex - 1);
+      } else if (direction === 'next' && this.currentDiffIndex < this.flatBlobsList.length - 1) {
+        this.navigateToDiffFileIndex(this.currentDiffIndex + 1);
+      }
     },
     refetchDiffData({ refetchMeta = true } = {}) {
       this.fetchData({ toggleTree: false, fetchMeta: refetchMeta });
@@ -664,6 +667,7 @@ export default {
         this.moveToNeighboringCommit({ direction: 'previous' }),
       );
       Mousetrap.bind(keysFor(MR_TOGGLE_REVIEW), () => this.toggleActiveFileReview());
+      Mousetrap.bind(keysFor(MR_TOGGLE_DIFF_VIEW_TYPE), () => this.toggleDiffViewType());
       Mousetrap.bind(['mod+f', 'mod+g'], () => {
         this.keydownTime = new Date().getTime();
       });
@@ -679,6 +683,7 @@ export default {
       Mousetrap.unbind(keysFor(MR_COMMITS_NEXT_COMMIT));
       Mousetrap.unbind(keysFor(MR_COMMITS_PREVIOUS_COMMIT));
       Mousetrap.unbind(keysFor(MR_TOGGLE_REVIEW));
+      Mousetrap.unbind(keysFor(MR_TOGGLE_DIFF_VIEW_TYPE));
       Mousetrap.unbind(keysFor(ISSUABLE_COMMENT_OR_REPLY));
       Mousetrap.unbind(['ctrl+f', 'command+f', 'mod+f', 'mod+g']);
       window.removeEventListener('blur', this.handleBrowserFindActivation);
@@ -779,6 +784,13 @@ export default {
     toggleFileByFile() {
       this.setFileByFile({ fileByFile: !this.viewDiffsFileByFile });
     },
+    toggleDiffViewType() {
+      const newViewType =
+        this.diffViewType === INLINE_DIFF_VIEW_TYPE
+          ? PARALLEL_DIFF_VIEW_TYPE
+          : INLINE_DIFF_VIEW_TYPE;
+      this.setDiffViewType(newViewType);
+    },
     toggleWhitespace(updatedSetting) {
       this.setShowWhitespace({ showWhitespace: updatedSetting });
     },
@@ -857,7 +869,7 @@ export default {
             :primary-button-text="__('Reload page')"
             @primaryAction="reloadPage"
           >
-            {{ __("Error: Couldn't load some or all of the changes.") }}
+            {{ gitalyErrorMessage || __("Error: Couldn't load some or all of the changes.") }}
           </gl-alert>
           <div v-if="isBatchLoading && !isBatchLoadingError" class="loading">
             <gl-loading-icon size="lg" />
@@ -930,12 +942,11 @@ export default {
               data-testid="file-by-file-navigation"
               class="gl-grid gl-text-center"
             >
-              <gl-pagination
+              <gl-keyset-pagination
                 class="gl-mx-auto"
-                :value="currentFileNumber"
-                :prev-page="previousFileNumber"
-                :next-page="nextFileNumber"
-                @input="navigateToDiffFileNumber"
+                v-bind="fileNavigationPageInfo"
+                @prev="handleFilePaginationChange('prev')"
+                @next="handleFilePaginationChange('next')"
               />
               <gl-sprintf :message="__('File %{current} of %{total}')">
                 <template #current>{{ currentFileNumber }}</template>

@@ -143,7 +143,7 @@ RSpec.describe BulkImports::Entity, type: :model, feature_category: :importers d
 
     context 'when associated with an organization and no group or project' do
       let_it_be(:organization) { build(:organization) }
-      let_it_be(:bulk_import) { build(:bulk_import, organization:) }
+      let_it_be(:bulk_import, freeze: false) { build(:bulk_import, organization:) }
 
       let(:associations) { { project: nil, group: nil, organization: organization, bulk_import: bulk_import } }
 
@@ -178,7 +178,7 @@ RSpec.describe BulkImports::Entity, type: :model, feature_category: :importers d
     end
 
     context 'validate destination namespace of a group_entity' do
-      let_it_be(:bulk_import) do
+      let_it_be(:bulk_import, freeze: false) do
         create(:bulk_import, configuration: create(:bulk_import_configuration, url: 'http://example.gitlab.com'))
       end
 
@@ -350,19 +350,49 @@ RSpec.describe BulkImports::Entity, type: :model, feature_category: :importers d
   end
 
   describe '#pipelines' do
-    context 'when entity is group' do
-      it 'returns group pipelines' do
-        entity = build(:bulk_import_entity, :group_entity)
+    context 'when bulk_import is offline', :aggregate_failures do
+      let(:offline_import) { build(:bulk_import, :with_offline_configuration) }
 
-        expect(entity.pipelines.collect { _1[:pipeline] }).to include(BulkImports::Groups::Pipelines::GroupPipeline)
+      context 'when entity is group' do
+        it 'returns group pipelines' do
+          entity = build(:bulk_import_entity, :group_entity, bulk_import: offline_import)
+          pipelines = entity.pipelines
+
+          expect(pipelines).to contain_exactly(
+            hash_including(pipeline: Import::Offline::Groups::Pipelines::GroupPipeline, stage: 0),
+            hash_including(pipeline: BulkImports::Common::Pipelines::EntityFinisher, stage: 1)
+          )
+        end
+      end
+
+      context 'when entity is project' do
+        it 'returns project pipelines' do
+          entity = build(:bulk_import_entity, :project_entity, bulk_import: offline_import)
+          pipelines = entity.pipelines
+
+          expect(pipelines).to contain_exactly(
+            hash_including(pipeline: Import::Offline::Projects::Pipelines::ProjectPipeline, stage: 0),
+            hash_including(pipeline: BulkImports::Common::Pipelines::EntityFinisher, stage: 1)
+          )
+        end
       end
     end
 
-    context 'when entity is project' do
-      it 'returns project pipelines' do
-        entity = build(:bulk_import_entity, :project_entity)
+    context 'when bulk_import is not offline' do
+      context 'when entity is group' do
+        it 'returns group pipelines' do
+          entity = build(:bulk_import_entity, :group_entity)
 
-        expect(entity.pipelines.collect { _1[:pipeline] }).to include(BulkImports::Projects::Pipelines::ProjectPipeline)
+          expect(entity.pipelines.collect { _1[:pipeline] }).to include(BulkImports::Groups::Pipelines::GroupPipeline)
+        end
+      end
+
+      context 'when entity is project' do
+        it 'returns project pipelines' do
+          entity = build(:bulk_import_entity, :project_entity)
+
+          expect(entity.pipelines.collect { _1[:pipeline] }).to include(BulkImports::Projects::Pipelines::ProjectPipeline)
+        end
       end
     end
   end

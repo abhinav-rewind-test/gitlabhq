@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI/CD YAML syntax reference
 description: Pipeline configuration keywords, syntax, examples, and inputs.
 ---
@@ -33,7 +33,7 @@ Use [CI/CD expressions](expressions.md) for more dynamic pipeline configuration 
 
 <!--
 If you are editing content on this page, follow the instructions for documenting keywords:
-https://docs.gitlab.com/development/cicd/cicd_reference_documentation_guide/
+<https://docs.gitlab.com/development/cicd/cicd_reference_documentation_guide/>
 -->
 
 ## Keywords
@@ -134,8 +134,6 @@ the job keyword takes precedence and the default configuration for that keyword 
 - [`retry`](#retry)
 - [`services`](#services)
 - [`tags`](#tags)
-- [`timeout`](#timeout), though due to [issue 213634](https://gitlab.com/gitlab-org/gitlab/-/issues/213634)
-  this keyword has no effect.
 
 **Example of `default`**:
 
@@ -218,7 +216,7 @@ And optionally:
     pipeline run, the new pipeline uses the changed configuration.
 - You can have up to 150 includes per pipeline by default, including [nested](includes.md#use-nested-includes). Additionally:
   - In [GitLab 16.0 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/207270) users on GitLab Self-Managed can
-    change the [maximum includes](../../administration/settings/continuous_integration.md#set-maximum-includes) value.
+    change the [maximum includes](../../administration/cicd/limits.md#maximum-number-of-includes) value.
   - In [GitLab 15.10 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/367150) you can have up to 150 includes.
     In nested includes, the same file can be included multiple times, but duplicated includes
     count towards the limit.
@@ -396,11 +394,7 @@ Use `include:template` to include [`.gitlab-ci.yml` templates](https://gitlab.co
 
 **Supported values**:
 
-A [CI/CD template](../examples/_index.md#cicd-templates):
-
-- All templates can be viewed in [`lib/gitlab/ci/templates`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates).
-  Not all templates are designed to be used with `include:template`, so check template
-  comments before using one.
+- The filename of a CI/CD template, for example `Auto-DevOps.gitlab-ci.yml`.
 - You can use [certain CI/CD variables](includes.md#use-variables-with-include).
 
 **Example of `include:template`**:
@@ -421,6 +415,9 @@ include:
 
 **Additional details**:
 
+- All templates can be viewed in [`lib/gitlab/ci/templates`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates).
+  Not all templates are designed to be used with `include:template`, so check template
+  comments before using one.
 - All [nested includes](includes.md#use-nested-includes) are executed without context as a public user,
   so you can only include public projects or templates. No variables are available in the `include` section of nested includes.
 
@@ -538,22 +535,15 @@ include:
 
 #### `include:cache`
 
-{{< details >}}
-
-- Status: Experiment
-
-{{< /details >}}
-
 {{< history >}}
 
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351252) in GitLab 18.9 as an [experiment](../../policy/development_stages_support.md#experiment) with a [feature flag](../../administration/feature_flags/_index.md) named `ci_cache_remote_includes`. Disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351252) in GitLab 18.9 as an
+  [experiment](../../policy/development_stages_support.md#experiment) with a
+  [feature flag](../../administration/feature_flags/_index.md) named `ci_cache_remote_includes`.
+  Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235028) in GitLab 19.0. Feature flag `ci_cache_remote_includes` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
 
 Use `cache` with `include:remote` to cache the fetched remote file content and reduce HTTP requests.
 When enabled, the remote file is cached for a specified time-to-live (TTL), improving pipeline performance
@@ -1151,6 +1141,7 @@ spec:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/393401) in GitLab 16.6.
+- Support for array type inputs [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/566155) in GitLab 19.0.
 
 {{< /history >}}
 
@@ -1160,7 +1151,7 @@ The limit is 50 options per input.
 **Keyword type**: Header keyword. `spec` must be declared at the top of the configuration file,
 in a header section.
 
-**Supported values**: An array of input options. Only string and number [`type`](#specinputstype) inputs can be used with options.
+**Supported values**: An array of input options.
 
 **Example of `spec:inputs:options`**:
 
@@ -1385,7 +1376,7 @@ deploy:
 - You cannot use `spec:include` in [CI/CD components](../components/_index.md#component-spec-section).
 - External input files must contain only the `inputs` key. Other keys cause validation errors.
 - External inputs are merged first, then inline inputs are applied.
-- Inline inputs take precedence over external inputs with the same name.
+- Inline inputs cannot have the same name as included inputs.
 - When you include multiple input files, they are merged in the order specified.
 - Supports [`local`](#includelocal), [`remote`](#includeremote), and [`project`](#includeproject) include types.
   Does not support `template`, `component`, or `artifact` includes.
@@ -1433,11 +1424,12 @@ in a header section.
 spec:
   component: [name, version, reference]
   inputs:
-    image_tag:
-      default: latest
+    stage:
+      default: build
 ---
 
 build-image:
+  stage: $[[ inputs.stage ]]
   image: registry.example.com/$[[ component.name ]]:$[[ component.version ]]
   script:
     - echo "Building with component version $[[ component.version ]]"
@@ -1458,6 +1450,38 @@ build-image:
 **Related topics**:
 
 - [Use component context in components](../components/_index.md#use-component-context-in-components).
+
+---
+
+#### `spec:description`
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/588286) in GitLab 18.10.
+
+{{< /history >}}
+
+Use `spec:description` to provide a short description of the component. The description
+is displayed in the CI/CD Catalog on the component details page, above the inputs table.
+
+**Keyword type**: Header keyword. `spec` must be declared at the top of the configuration file,
+in a header section.
+
+**Supported values**: A string describing the component.
+
+**Example of `spec:description`**:
+
+```yaml
+spec:
+  description: "A description of the component visible to users in the CI/CD Catalog."
+  inputs:
+    stage:
+      default: test
+---
+scan-job:
+  stage: $[[ inputs.stage ]]
+  script: ./run-scan.sh
+```
 
 ---
 
@@ -1522,10 +1546,6 @@ Scripts you specify in `after_script` execute in a new shell, separate from any
   In GitLab 16.3 and earlier, the timeout is hard-coded to 5 minutes.
 - Don't affect the job's exit code. If the `script` section succeeds and the
   `after_script` times out or fails, the job exits with code `0` (`Job Succeeded`).
-- There is a known issue with using [CI/CD job tokens](../jobs/ci_job_token.md) with `after_script`.
-  You can use a job token for authentication in `after_script` commands, but the token
-  immediately becomes invalid if the job is canceled. See [issue](https://gitlab.com/gitlab-org/gitlab/-/issues/473376)
-  for more details.
 - For jobs that time out:
   - `after_script` commands do not execute by default.
   - You can [configure timeout values](../runners/configure_runners.md#ensuring-after_script-execution) to ensure `after_script` runs by setting appropriate `RUNNER_SCRIPT_TIMEOUT` and `RUNNER_AFTER_SCRIPT_TIMEOUT` values that don't exceed the job's timeout.
@@ -1575,7 +1595,7 @@ For more information, see [job execution flow](../jobs/job_execution.md).
 - You can [ignore non-zero exit codes](script.md#ignore-non-zero-exit-codes).
 - [Use color codes with `after_script`](script.md#add-color-codes-to-script-output)
   to make job logs easier to review.
-- [Create custom collapsible sections](../jobs/job_logs.md#custom-collapsible-sections)
+- [Create custom collapsible sections](../jobs/job_logs.md#create-custom-collapsible-sections)
   to simplify job log output.
 - You can [ignore errors in `after_script`](../runners/configure_runners.md#ignore-errors-in-after_script).
 
@@ -2040,8 +2060,8 @@ rspec:
 
 **Additional details**:
 
-- Combining reports in parent pipelines using [artifacts from child pipelines](#needspipelinejob) is
-  not supported. Track progress on adding support in [this issue](https://gitlab.com/gitlab-org/gitlab/-/issues/215725).
+- Combining reports in parent pipelines using [artifacts from child pipelines](#needspipelinejob)
+  is not supported. For more information, see [epic 8205](https://gitlab.com/groups/gitlab-org/-/work_items/8205).
 - To be able to browse and download the report output files, include the [`artifacts:paths`](#artifactspaths) keyword. This uploads and stores the artifact twice.
 - Artifacts created for `artifacts: reports` are always uploaded, regardless of the job results (success or failure).
   You can use [`artifacts:expire_in`](#artifactsexpire_in) to set an expiration
@@ -2151,7 +2171,7 @@ job:
 - You can [ignore non-zero exit codes](script.md#ignore-non-zero-exit-codes).
 - [Use color codes with `before_script`](script.md#add-color-codes-to-script-output)
   to make job logs easier to review.
-- [Create custom collapsible sections](../jobs/job_logs.md#custom-collapsible-sections)
+- [Create custom collapsible sections](../jobs/job_logs.md#create-custom-collapsible-sections)
   to simplify job log output.
 
 ---
@@ -2268,10 +2288,8 @@ cache-job:
 - If you use **Windows Batch** to run your shell scripts you must replace
   `$` with `%`. For example: `key: %CI_COMMIT_REF_SLUG%`
 - The `cache:key` value can't contain:
-
   - The `/` character, or the equivalent URI-encoded `%2F`.
   - Only the `.` character (any number), or the equivalent URI-encoded `%2E`.
-
 - The cache is shared between jobs, so if you're using different
   paths for different jobs, you should also set a different `cache:key`.
   Otherwise cache content can be overwritten.
@@ -2326,8 +2344,8 @@ use the new cache, instead of rebuilding the dependencies.
 
 - The cache `key` is a SHA computed from the content of the listed files. If a file doesn't exist, it's ignored in the key calculation.
   If none of the specified files exist, the fallback key is `default`.
-- Wildcard patterns like `**/package.json` can be used. An [issue](https://gitlab.com/gitlab-org/gitlab/-/issues/301161)
-  exists to increase the number of paths or patterns allowed for a cache key.
+- Wildcard patterns like `**/package.json` can be used.
+- A maximum of two files can be specified. For updates on increasing the number of allowed paths or patterns, see [issue 301161](https://gitlab.com/gitlab-org/gitlab/-/work_items/301161).
 
 ---
 
@@ -2614,11 +2632,8 @@ rspec:
 ### `coverage`
 
 Use `coverage` with a custom regular expression to configure how code coverage
-is extracted from the job output. The coverage is shown in the UI if at least one
-line in the job output matches the regular expression.
-
-To extract the code coverage value from the match, GitLab uses
-this smaller regular expression: `\d+(?:\.\d+)?`.
+is extracted from the job output. GitLab displays the matched percentage in the
+MR widget, pipeline job list, and analytics graphs.
 
 **Supported values**:
 
@@ -2638,22 +2653,26 @@ job1:
 In this example:
 
 1. GitLab checks the job log for a match with the regular expression. A line
-   like `Code coverage: 67.89% of lines covered` would match.
-1. GitLab then checks the matched fragment to find a match to the regular expression: `\d+(?:\.\d+)?`.
-   The sample regex can match a code coverage of `67.89`.
+   like `Code coverage: 67.89% of lines covered` matches.
+1. GitLab then checks the matched fragment against `\d+(?:\.\d+)?` to extract
+   the number. The sample regex matches `67.89`.
 
 **Additional details**:
 
-- You can find regex examples in [Code Coverage](../testing/code_coverage/_index.md#coverage-regex-patterns).
-- If there is more than one matched line in the job output, the last line is used
-  (the first result of reverse search).
-- If there are multiple matches in a single line, the last match is searched
-  for the coverage number.
-- If there are multiple coverage numbers found in the matched fragment, the first number is used.
+- If there is more than one matched line in the job output, the last line is used.
+- If there are multiple matches in a single line, the last match is used.
+- If there are multiple coverage numbers in the matched fragment, the first number is used.
 - Leading zeros are removed.
 - Coverage output from [child pipelines](../pipelines/downstream_pipelines.md#parent-child-pipelines)
-  is not recorded or displayed. Check [the related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/280818)
-  for more details.
+  is not recorded. See [issue 280818](https://gitlab.com/gitlab-org/gitlab/-/issues/280818).
+- To display line-by-line diff annotations in the MR diff, configure
+  [`artifacts:reports:coverage_report`](artifacts_reports.md#artifactsreportscoverage_report)
+  separately. Configuring one does not enable the other.
+
+**Related topics**:
+
+- [Coverage regex patterns](../testing/code_coverage/coverage_reporting.md#coverage-regex-patterns)
+- [Coverage visualization](../testing/code_coverage/coverage_visualization.md)
 
 ---
 
@@ -2729,9 +2748,9 @@ You should not combine `dependencies` with `needs` in the same job.
 **Example of `dependencies`**:
 
 ```yaml
-build osx:
+build mac:
   stage: build
-  script: make build:osx
+  script: make build:mac
   artifacts:
     paths:
       - binaries/
@@ -2743,11 +2762,11 @@ build linux:
     paths:
       - binaries/
 
-test osx:
+test mac:
   stage: test
-  script: make test:osx
+  script: make test:mac
   dependencies:
-    - build osx
+    - build mac
 
 test linux:
   stage: test
@@ -2761,8 +2780,8 @@ deploy:
   environment: production
 ```
 
-In this example, two jobs have artifacts: `build osx` and `build linux`. When `test osx` is executed,
-the artifacts from `build osx` are downloaded and extracted in the context of the build.
+In this example, two jobs have artifacts: `build mac` and `build linux`. When `test mac` is executed,
+the artifacts from `build mac` are downloaded and extracted in the context of the build.
 The same thing happens for `test linux` and artifacts from `build linux`.
 
 The `deploy` job downloads artifacts from all previous jobs because of
@@ -2770,7 +2789,8 @@ the [stage](#stages) precedence.
 
 **Additional details**:
 
-- The job status does not matter. If a job fails or it's a manual job that isn't triggered, no error occurs.
+- If the earlier job does not generate artifacts, or is a manual job that didn't run,
+  the dependent job still runs and does not generate an error.
 - If the artifacts of a dependent job are [expired](#artifactsexpire_in) or
   [deleted](../jobs/job_artifacts.md#delete-job-log-and-artifacts), then the job fails.
 
@@ -3259,7 +3279,7 @@ This feature is in [beta](../../policy/development_stages_support.md).
 
 Use `identity` to authenticate with third party services using identity federation.
 
-**Keyword type**: Job keyword. You can use it only as part of a job or in the [`default:` section](#default).
+**Keyword type**: Job keyword. You can use it only as part of a job.
 
 **Supported values**: An identifier. Supported providers:
 
@@ -3576,6 +3596,186 @@ job2:
 
 ---
 
+### `inputs`
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/17833) in GitLab 18.10.
+
+{{< /history >}}
+
+Use `inputs` to define typed and validated inputs for a job. [Job inputs](../jobs/job_inputs.md)
+can be overridden when manually running or retrying a job.
+
+Job inputs are parameters that provide type safety and validation. Unlike [CI/CD variables](../variables/_index.md),
+only inputs explicitly defined in the job can be specified when running or retrying the job.
+All job input names must be predefined.
+
+Reference job input values with the `${{ job.inputs.INPUT_NAME }}` [Moa expression](../functions/moa.md) syntax.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**:
+
+A hash of input names, where each input is configured with one or more subkeys:
+
+- [`default`](#inputsdefault) (required)
+- [`type`](#inputstype)
+- [`options`](#inputsoptions)
+- [`description`](#inputsdescription)
+- [`regex`](#inputsregex)
+
+**Example of `inputs`**:
+
+```yaml
+test_job:
+  inputs:
+    test_suite:
+      default: unit
+      description: Which test suite to run
+      options: [unit, integration, e2e]
+    parallel_count:
+      type: number
+      default: 5
+      description: Number of parallel test runners
+    verbose:
+      type: boolean
+      default: false
+      description: Enable verbose test output
+  script:
+    - 'echo "Running ${{ job.inputs.test_suite }} tests"'
+    - 'if [ "${{ job.inputs.verbose }}" == "true" ]; then export TEST_VERBOSE=1; fi'
+    - ./run_tests.sh --suite ${{ job.inputs.test_suite }} --parallel ${{ job.inputs.parallel_count }}
+```
+
+**Additional details**:
+
+- Job inputs are validated when the job is created and when you try to retry a job with new input values.
+  If validation fails, the job does not start.
+- Job inputs are scoped to the job where they are defined and cannot be accessed by other jobs.
+- For a complete list of keywords that support job inputs, see [where you can use job inputs](../jobs/job_inputs.md#where-you-can-use-job-inputs).
+
+---
+
+#### `inputs:default`
+
+All job inputs must have a default value defined with `default`.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**: Any value matching the input's [`type`](#inputstype).
+
+**Example of `inputs:default`**:
+
+```yaml
+test_job:
+  inputs:
+    environment:
+      default: staging
+    timeout:
+      type: number
+      default: 30
+```
+
+---
+
+#### `inputs:type`
+
+Use `type` to define the data type of the input value.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**:
+
+- `string` (default)
+- `number`
+- `boolean`
+- `array`.
+
+**Example of `inputs:type`**:
+
+```yaml
+test_job:
+  inputs:
+    count:
+      type: number
+      default: 5
+    enabled:
+      type: boolean
+      default: true
+```
+
+---
+
+#### `inputs:description`
+
+Use `description` to provide information about the input's purpose.
+The description does not affect the input's behavior.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**: A string.
+
+**Example of `inputs:description`**:
+
+```yaml
+deploy_job:
+  inputs:
+    environment:
+      default: staging
+      description: Target deployment environment
+```
+
+---
+
+#### `inputs:options`
+
+Use `options` to specify a list of allowed values for an input.
+
+The input value must match one of the listed options exactly (case-sensitive).
+Validation fails if the value does not match an option.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**: An array of allowed values.
+
+**Example of `inputs:options`**:
+
+```yaml
+deploy_job:
+  inputs:
+    environment:
+      default: staging
+      options: [development, staging, production]
+```
+
+---
+
+#### `inputs:regex`
+
+Use `regex` to specify a regular expression pattern that the input value must match.
+
+Validation fails if the value does not match the regular expression.
+
+**Keyword type**: Job keyword. You can use it only as part of a job.
+
+**Supported values**: A regular expression string.
+
+**Example of `inputs:regex`**:
+
+```yaml
+deploy_job:
+  inputs:
+    version:
+      default: v1.0.0
+      regex: ^v\d+\.\d+\.\d+$
+```
+
+In this example, an input value of `v1.1.1` passes the regex validation, but an input of
+`v1.1.1-beta` does not.
+
+---
+
 ### `inherit`
 
 Use `inherit` to [control inheritance of default keywords and variables](../jobs/_index.md#control-the-inheritance-of-default-keywords-and-variables).
@@ -3838,7 +4038,7 @@ This example creates four paths of execution:
 - The maximum number of jobs that a single job can have in the `needs` array is limited:
   - For GitLab.com, the limit is 50. For more information, see
     [issue 350398](https://gitlab.com/gitlab-org/gitlab/-/issues/350398).
-  - For GitLab Self-Managed and GitLab Dedicated, the default limit is 50. This limit can be changed by [updating the CI/CD limits in the Admin area](../../administration/settings/continuous_integration.md#set-cicd-limits).
+  - For GitLab Self-Managed and GitLab Dedicated, the default limit is 50. This limit can be changed by [updating the CI/CD limits in the Admin area](../../administration/cicd/limits.md#maximum-number-of-needs-dependencies).
 - If `needs` refers to a job that uses the [`parallel`](#parallel) keyword,
   it depends on all jobs created in parallel, not just one job. It also downloads
   artifacts from all the parallel jobs by default. If the artifacts have the same
@@ -4492,7 +4692,7 @@ This example creates 5 jobs that run in parallel, named `test 1/5` to `test 5/5`
   - Create more jobs running in parallel than available runners. Excess jobs are queued
     and marked `pending` while waiting for an available runner.
   - Fail with a `job_activity_limit_exceeded` error if creating the pipeline would cause
-    the total number of jobs across all active pipelines to [exceed the instance limit](../../administration/instance_limits.md#number-of-jobs-in-active-pipelines).
+    the total number of jobs across all active pipelines to [exceed the instance limit](../../administration/cicd/limits.md#number-of-jobs-in-active-pipelines).
 
 **Related topics**:
 
@@ -4554,10 +4754,10 @@ for `PROVIDER` and `STACK`:
 **Additional details**:
 
 - `parallel:matrix` jobs add the matrix values to the job names to differentiate
-  the jobs from each other, but [large values can cause names to exceed limits](https://gitlab.com/gitlab-org/gitlab/-/issues/362262):
-  - [Job names](../jobs/_index.md#job-names) must be 255 characters or fewer.
-  - When using [`needs`](#needs), job names must be 128 characters or fewer.
-- You cannot use the matrix values as variables for [`rules:if`](#rulesif).
+  the jobs from each other. However, long values can cause job names to exceed the
+  255-character limit. For more information, see [epic 11791](https://gitlab.com/groups/gitlab-org/-/work_items/11791).
+- Matrix variable values are available as CI/CD variables in [`rules:if`](#rulesif) expressions.
+  For more information, see [Use matrix variables in `rules:if`](../jobs/job_control.md#use-matrix-variables-in-rulesif).
 - You cannot create multiple matrix configurations with the same values but different names.
   Job names are generated from the matrix values, not the names, so matrix entries
   with identical values generate identical job names that overwrite each other.
@@ -4580,6 +4780,7 @@ for `PROVIDER` and `STACK`:
 - [Run a one-dimensional matrix of parallel jobs](../jobs/job_control.md#run-a-one-dimensional-matrix-of-parallel-jobs).
 - [Run a matrix of triggered parallel jobs](../jobs/job_control.md#run-a-matrix-of-parallel-trigger-jobs).
 - [Select different runner tags for each parallel matrix job](../jobs/job_control.md#select-different-runner-tags-for-each-parallel-matrix-job).
+- [Use matrix variables in rules](../jobs/job_control.md#use-matrix-variables-in-rules).
 - [Matrix expressions in `needs:parallel:matrix`](matrix_expressions.md#matrix-expressions-in-needsparallelmatrix).
 
 ---
@@ -4633,7 +4834,7 @@ This example creates a release:
 
 **Additional details**:
 
-- All release jobs, except [trigger](#trigger) jobs, must include the `script` keyword. A release
+- Release jobs must include the `script` keyword. A release
   job can use the output from script commands. If you don't need the script, you can use a placeholder:
 
   ```yaml
@@ -4641,7 +4842,7 @@ This example creates a release:
     - echo "release job"
   ```
 
-  An [issue](https://gitlab.com/gitlab-org/gitlab/-/issues/223856) exists to remove this requirement.
+  For more details, see [issue 223856](https://gitlab.com/gitlab-org/gitlab/-/issues/223856), which aims to remove this restriction.
 
 - The `release` section executes after the `script` keyword and before the `after_script`.
 - A release is created only if the job's main script succeeds.
@@ -4688,7 +4889,7 @@ job:
 ```
 
 To create a release and a new tag at the same time, your [`rules`](#rules)
-should **not** configure the job to run only for new tags. A semantic versioning example:
+should not configure the job to run only for new tags. A semantic versioning example:
 
 ```yaml
 job:
@@ -5111,7 +5312,7 @@ job:
   with `if`. See [issue 327780](https://gitlab.com/gitlab-org/gitlab/-/issues/327780) for more details.
 - If a rule matches and has no `when` defined, the rule uses the `when`
   defined for the job, which defaults to `on_success` if not defined.
-- You can [mix `when` at the job-level with `when` in rules](https://gitlab.com/gitlab-org/gitlab/-/issues/219437).
+- You can mix `when` at the job-level with `when` in rules.
   `when` configuration in `rules` takes precedence over `when` at the job-level.
 - Unlike variables in [`script`](../variables/job_scripts.md)
   sections, variables in rules expressions are always formatted as `$VARIABLE`.
@@ -5133,7 +5334,7 @@ to specific files.
 
 For new branch pipelines or when there is no Git `push` event, `rules: changes` always evaluates to true
 and the job always runs. Pipelines like tag pipelines, scheduled pipelines,
-and manual pipelines, all do **not** have a Git `push` event associated with them.
+and manual pipelines, all do not have a Git `push` event associated with them.
 To cover these cases, use [`rules: changes: compare_to`](#ruleschangescompare_to) to specify
 the branch to compare against the pipeline ref.
 
@@ -5687,7 +5888,7 @@ job:
 > [!note]
 > This feature is available for testing, but not ready for production use.
 
-Use `run` to define a series of [steps](../steps/_index.md) to be executed in a job. Each step can be either a script or a predefined step.
+Use `run` to define a series of [steps](../functions/_index.md) to be executed in a job. Each step can be either a script or a predefined step.
 
 You can also provide optional environment variables and inputs.
 
@@ -5769,7 +5970,7 @@ job2:
 - You can [ignore non-zero exit codes](script.md#ignore-non-zero-exit-codes).
 - [Use color codes with `script`](script.md#add-color-codes-to-script-output)
   to make job logs easier to review.
-- [Create custom collapsible sections](../jobs/job_logs.md#custom-collapsible-sections)
+- [Create custom collapsible sections](../jobs/job_logs.md#create-custom-collapsible-sections)
   to simplify job log output.
 
 ---
@@ -5998,6 +6199,11 @@ Job configuration and default configuration does not merge together.
 If the pipeline has [`default:services`](#default) defined, and the job also has `services`,
 the job configuration takes precedence and the default configuration is not used.
 
+> [!warning]
+> To enable inter-service networking, set `FF_NETWORK_PER_BUILD` to `true`.
+> Without this flag, services may not work properly. For more information, see
+> [feature flags](https://docs.gitlab.com/runner/configuration/feature-flags)
+
 **Keyword type**: Job keyword. You can use it only as part of a job or in the
 [`default` section](#default).
 
@@ -6007,7 +6213,8 @@ the job configuration takes precedence and the default configuration is not used
 - `<image-name>:<tag>`
 - `<image-name>@<digest>`
 
-CI/CD variables [are supported](../variables/where_variables_can_be_used.md#gitlab-ciyml-file), but [not for `alias`](https://gitlab.com/gitlab-org/gitlab/-/issues/19561).
+CI/CD variables [are supported](../variables/where_variables_can_be_used.md#gitlab-ciyml-file), but not for `alias`.
+To customize `alias` dynamically, use [CI/CD inputs](../inputs/_index.md) instead.
 
 **Example of `services`**:
 
@@ -6517,8 +6724,7 @@ than the timeout, the job fails.
 The job-level timeout can be longer than the [project-level timeout](../pipelines/settings.md#set-a-limit-for-how-long-jobs-can-run),
 but can't be longer than the [runner's timeout](../runners/configure_runners.md#set-the-maximum-job-timeout).
 
-**Keyword type**: Job keyword. You can use it only as part of a job or in the
-[`default` section](#default).
+**Keyword type**: Job keyword. You can use it only as part of a job.
 
 **Supported values**: A period of time written in natural language. For example, these are all equivalent:
 
@@ -6537,6 +6743,11 @@ test:
   script: rspec
   timeout: 3h 30m
 ```
+
+**Additional details**:
+
+- The `timeout` keyword is not supported in the `default` configuration. Define `timeout` in individual job configurations instead.
+  For more information, see [issue 213634](https://gitlab.com/gitlab-org/gitlab/-/issues/213634).
 
 ---
 
@@ -6566,7 +6777,7 @@ The keywords available for use in trigger jobs are:
 - [`stage`](#stage).
 - [`trigger`](#trigger).
 - [`variables`](#variables).
-- [`when`](#when) (only with a value of `on_success`, `on_failure`, or `always`).
+- [`when`](#when) (only with a value of `on_success`, `on_failure`, `always`, or `manual`).
 - [`resource_group`](#resource_group).
 - [`environment`](#environment).
 

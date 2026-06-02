@@ -7,19 +7,8 @@ module Tasks
         PERMISSION_DIR = ::Authz::Permission::BASE_PATH
         PERMISSION_TODO_FILE = "#{PERMISSION_DIR}/definitions_todo.txt".freeze
         JSON_SCHEMA_FILE = 'config/authz/permissions/type_schema.json'
-        PERMISSION_NAME_REGEX = /\A[a-z]+_[a-z_]+[a-z]\z/
-
-        DISALLOWED_ACTIONS = {
-          admin: 'a granular action',
-          change: 'update',
-          destroy: 'delete',
-          edit: 'update',
-          list: 'read',
-          manage: 'a granular action',
-          modify: 'update',
-          set: 'update',
-          view: 'read'
-        }.freeze
+        PERMISSION_NAME_REGEX = ::Authz::Validation::PERMISSION_NAME_REGEX
+        DISALLOWED_ACTIONS = ::Authz::Validation::DISALLOWED_ACTIONS
 
         attr_reader :declarative_policy_permissions
 
@@ -33,7 +22,8 @@ module Tasks
             file: {},
             unknown_permission: [],
             missing_resource_metadata: [],
-            resource_metadata_schema: {}
+            resource_metadata_schema: {},
+            empty_resource_directory: []
           }
           @declarative_policy_permissions = load_declarative_policy_permissions
           @resources = []
@@ -47,6 +37,7 @@ module Tasks
           declarative_policy_permissions.each { |permission| validate_permission(permission) }
           validate_unknown_permissions
           validate_resources
+          validate_empty_resource_directories
 
           super
         end
@@ -54,13 +45,15 @@ module Tasks
         def load_declarative_policy_permissions
           require_policy_files
 
-          permissions = []
+          @permission_policies = {}
 
           DeclarativePolicy::Base.descendants.each do |policy_class|
-            permissions += policy_class.ability_map.map.keys
+            policy_class.ability_map.map.each_key do |permission|
+              (@permission_policies[permission] ||= []) << policy_class
+            end
           end
 
-          permissions.sort.uniq
+          @permission_policies.keys.sort.uniq
         end
 
         def require_policy_files
@@ -73,7 +66,8 @@ module Tasks
           permission = Authz::Permission.get(permission_name)
 
           unless permission.present?
-            violations[:definition] << permission_name unless excluded
+            add_definition_violation(permission_name) unless excluded
+
             return
           end
 
@@ -86,16 +80,15 @@ module Tasks
           @resources << permission.resource
         end
 
-        def validate_action(permission)
-          return unless DISALLOWED_ACTIONS.has_key?(permission.action.to_sym)
-
-          violations[:action][permission.name] = permission.action.to_sym
+        def add_definition_violation(permission_name)
+          policies = @permission_policies[permission_name]
+            &.filter_map { |p| policy_source_path(p, permission_name) }
+            &.uniq
+          violations[:definition] << { name: permission_name, sources: policies || [] }
         end
 
-        def validate_name(permission)
-          return if PERMISSION_NAME_REGEX.match?(permission.name)
-
-          violations[:name] << permission.name
+        def permission_source_paths(permission_name)
+          [permission_source_path(permission_name), todo_source_path(permission_name)].compact
         end
 
         def validate_file(permission)
@@ -150,39 +143,88 @@ module Tasks
           end
         end
 
-        def format_all_errors
-          out = format_error_list(:definition)
-          out += format_error_list(:excluded)
-          out += format_schema_errors
-          out += format_error_list(:name)
-          out += format_action_errors
-          out += format_file_errors
-          out += format_error_list(:unknown_permission)
-          out += format_error_list(:missing_resource_metadata)
-          out + format_schema_errors(:resource_metadata_schema)
+        def validate_empty_resource_directories
+          violations[:empty_resource_directory] = find_empty_directories("#{PERMISSION_DIR}/*/")
         end
 
-        def format_action_errors
-          return '' if violations[:action].empty?
+        def format_all_errors
+          out = format_definition_errors
+          out += format_error_list_with_source(:excluded)
+          out += format_schema_errors { |name| permission_source_path(name) }
+          out += format_error_list_with_source(:name)
+          out += format_action_errors
+          out += format_file_errors
+          out += format_error_list_with_source(:unknown_permission)
+          out += format_error_list(:missing_resource_metadata)
+          out += format_schema_errors(:resource_metadata_schema)
+          out + format_error_list(:empty_resource_directory)
+        end
 
-          out = "#{error_messages[:action]}\n\n"
+        def format_definition_errors
+          return '' if violations[:definition].empty?
 
-          violations[:action].each_key do |permission|
-            action = violations[:action][permission]
-            preferred = DISALLOWED_ACTIONS[action]
+          out = "#{error_messages[:definition]}\n\n"
 
-            out += "  - #{permission}: Prefer #{preferred} over #{action}.\n"
+          violations[:definition].each do |violation|
+            out += "  - #{violation[:name]}"
+            out += " (#{violation[:sources].join(', ')})" if violation[:sources].any?
+            out += "\n"
           end
 
           "#{out}\n"
         end
 
+        def todo_source_path(permission_name)
+          line = @exclusion_line_numbers&.[](permission_name.to_sym)
+          "#{PERMISSION_TODO_FILE}:#{line}" if line
+        end
+
+        def permission_source_path(permission_name)
+          permission = Authz::Permission.get(permission_name.to_sym)
+          return unless permission&.source_file
+
+          relative_path(permission.source_file)
+        end
+
+        def policy_source_path(policy_class, permission_name = nil)
+          return unless policy_class.name
+
+          file, _line = Object.const_source_location(policy_class.name)
+          return unless file
+
+          path = relative_path(file)
+
+          if permission_name
+            line = find_permission_line(file, permission_name)
+            return "#{path}:#{line}" if line
+          end
+
+          path
+        end
+
+        def find_permission_line(file, permission_name)
+          needle = "enable :#{permission_name}"
+          match = File.foreach(file).with_index(1).find { |line, _| line.include?(needle) }
+          match&.last
+        end
+
         def exclusion_list
-          @excludes ||= if File.exist?(exclusion_file)
-                          File.read(exclusion_file).split("\n").reject(&:empty?).map { |p| p.strip.to_sym }
-                        else
-                          []
-                        end
+          @excludes ||= begin
+            @exclusion_line_numbers = {}
+
+            if File.exist?(exclusion_file)
+              File.readlines(exclusion_file).each_with_index.filter_map do |line, index|
+                stripped = line.strip
+                next if stripped.empty?
+
+                sym = stripped.to_sym
+                @exclusion_line_numbers[sym] = index + 1
+                sym
+              end
+            else
+              []
+            end
+          end
         end
 
         def exclusion_file
@@ -192,19 +234,31 @@ module Tasks
         def error_messages
           {
             definition: "The following permissions are missing a definition file." \
-              "\nRun bundle exec rails generate authz:permission <NAME> to generate definition files.",
+              "\nRun bin/permission <NAME> to generate definition files." \
+              "\n#{permission_definitions_link(anchor: 'permission-definition-file')}",
             excluded: "The following permissions have a definition file." \
               "\nRemove them from config/authz/permissions/definitions_todo.txt.",
-            schema: "The following permissions failed schema validation.",
-            action: "The following permissions contain a disallowed action.",
+            schema: "The following permissions failed schema validation." \
+              "\n#{permission_definitions_link(anchor: 'permission-definition-fields')}",
+            action: "The following permissions contain a disallowed action." \
+              "\n#{conventions_link(anchor: 'disallowed-actions')}",
             name: "The following permissions have invalid names." \
-              "\nPermission name must be in the format action_resource[_subresource].",
-            file: "The following permission definitions do not exist at the expected path.",
+              "\nPermission name must be in the format action_resource[_subresource]." \
+              "\n#{conventions_link(anchor: 'naming-permissions')}",
+            file: "The following permission definitions do not exist at the expected path." \
+              "\n#{permission_definitions_link(anchor: 'permission-naming-and-validation')}",
             unknown_permission: "The following permissions have a definition file but are not found in " \
-              "declarative policy.\nRemove the definition files for the unknown permissions.",
+              "declarative policy.\nRemove the definition files for the unknown permissions." \
+              "\n#{permission_definitions_link(anchor: 'permission-definition-file')}",
             missing_resource_metadata:
-              "The following permission resource directories are missing a _metadata.yml file.",
-            resource_metadata_schema: "The following resource metadata files failed schema validation."
+              "The following permission resource directories are missing a .metadata.yml file." \
+              "\n#{permission_definitions_link(anchor: 'resource-metadata-fields')}",
+            resource_metadata_schema: "The following resource metadata files failed schema validation." \
+              "\n#{permission_definitions_link(anchor: 'resource-metadata-fields')}",
+            empty_resource_directory:
+              "The following resource directories contain only a .metadata.yml file with no permission definitions." \
+              "\nEither add permission definitions or remove the directory." \
+              "\n#{permission_definitions_link(anchor: 'permission-naming-and-validation')}"
           }
         end
 

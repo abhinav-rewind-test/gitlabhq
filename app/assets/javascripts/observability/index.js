@@ -25,6 +25,8 @@ export default () => {
           path: dataset.path,
           authTokens,
           title: dataset.title,
+          pollingEndpoint: dataset.pollingEndpoint,
+          queryParams: JSON.parse(dataset.queryParams || '{}'),
         },
       });
     },

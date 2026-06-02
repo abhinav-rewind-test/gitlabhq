@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: GitLab Licensing and Compatibility
 ---
 
@@ -55,7 +55,7 @@ legal-approved before the software can be installed. More on this can be [found 
 
 To get legal approval, follow these steps:
 
-1. Create a new [legal issue](https://gitlab.com/gitlab-com/legal-and-compliance/-/issues/new?issuable_template=general-legal-template). Make sure to include as many details as possible:
+1. Create a new [legal issue](https://gitlab.com/gitlab-com/legal-and-compliance/-/issues/new?description_template=general-legal-template). Make sure to include as many details as possible:
    - What license is the software using?
    - How and where will it be used?
    - Is it being vendored or forked, or will we be using the upstream project?

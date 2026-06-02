@@ -5,16 +5,16 @@ require 'spec_helper'
 RSpec.describe TodoService, feature_category: :notifications do
   include AfterNextHelpers
 
-  let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:author) { create(:user, developer_of: project) }
-  let_it_be(:assignee) { create(:user, developer_of: project) }
-  let_it_be(:non_member) { create(:user) }
-  let_it_be(:member) { create(:user, developer_of: project) }
-  let_it_be(:guest) { create(:user, guest_of: project) }
-  let_it_be(:admin) { create(:admin) }
-  let_it_be(:john_doe) { create(:user, developer_of: project) }
-  let_it_be(:skipped) { create(:user, developer_of: project) }
+  let_it_be(:group, freeze: false) { create(:group) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:author, freeze: false) { create(:user, developer_of: project) }
+  let_it_be(:assignee, freeze: false) { create(:user, developer_of: project) }
+  let_it_be(:non_member, freeze: false) { create(:user) }
+  let_it_be(:member, freeze: false) { create(:user, developer_of: project) }
+  let_it_be(:guest, freeze: false) { create(:user, guest_of: project) }
+  let_it_be(:admin, freeze: false) { create(:admin) }
+  let_it_be(:john_doe, freeze: false) { create(:user, developer_of: project) }
+  let_it_be(:skipped, freeze: false) { create(:user, developer_of: project) }
 
   let(:skip_users) { [skipped] }
   let(:mentions) { 'FYI: ' + [author, assignee, john_doe, member, guest, non_member, admin, skipped].map(&:to_reference).join(' ') }
@@ -525,7 +525,7 @@ RSpec.describe TodoService, feature_category: :notifications do
         end
 
         context 'leaving a note on a commit in a public project with private code' do
-          let_it_be(:project) { create(:project, :repository, :public, :repository_private) }
+          let_it_be(:project, freeze: false) { create(:project, :repository, :public, :repository_private) }
 
           before_all do
             project.add_guest(guest)
@@ -570,7 +570,7 @@ RSpec.describe TodoService, feature_category: :notifications do
         end
 
         context 'leaving a note on a commit in a private project' do
-          let_it_be(:project) { create(:project, :repository, :private) }
+          let_it_be(:project, freeze: false) { create(:project, :repository, :private) }
 
           before_all do
             project.add_guest(guest)
@@ -663,7 +663,7 @@ RSpec.describe TodoService, feature_category: :notifications do
     it 'creates a MENTIONED todo even if user already has a pending MENTIONED todo' do
       create(:todo, :mentioned, user: member, project: project, target: issue, author: author)
 
-      expect { service.update_issue(issue, author) }.to change(member.todos, :count)
+      expect { service.update_issue(issue, author) }.to change { member.todos.count }
     end
 
     it 'creates a DIRECTLY_ADDRESSED todo even if user already has a pending DIRECTLY_ADDRESSED todo' do
@@ -671,19 +671,19 @@ RSpec.describe TodoService, feature_category: :notifications do
 
       issue.update!(description: "#{member.to_reference}, what do you think?")
 
-      expect { service.update_issue(issue, author) }.to change(member.todos, :count)
+      expect { service.update_issue(issue, author) }.to change { member.todos.count }
     end
 
     it 'creates an ASSIGNED todo even if user already has a pending MARKED todo' do
       create(:todo, :marked, user: john_doe, project: project, target: assigned_issue, author: author)
 
-      expect { service.reassigned_assignable(assigned_issue, author) }.to change(john_doe.todos, :count)
+      expect { service.reassigned_assignable(assigned_issue, author) }.to change { john_doe.todos.count }
     end
 
     it 'does not create an ASSIGNED todo if user already has an ASSIGNED todo' do
       create(:todo, :assigned, user: john_doe, project: project, target: assigned_issue, author: author)
 
-      expect { service.reassigned_assignable(assigned_issue, author) }.not_to change(john_doe.todos, :count)
+      expect { service.reassigned_assignable(assigned_issue, author) }.not_to change { john_doe.todos.count }
     end
 
     it 'creates multiple todos if a user is assigned and mentioned in a new issue' do
@@ -955,34 +955,132 @@ RSpec.describe TodoService, feature_category: :notifications do
     end
 
     describe '#close_merge_request' do
-      it 'marks related pending todos to the target for the user as done' do
+      it 'marks all todos as done for the current user regardless of action' do
+        todo = create(:todo, :mentioned, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.close_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'calls GraphqlTriggers.issuable_todo_updated' do
+        expect(GraphqlTriggers).to receive(:issuable_todo_updated).with(mentioned_mr)
+
+        service.close_merge_request(mentioned_mr, john_doe)
+      end
+
+      it 'marks assigned todos as done for all users' do
         first_todo = create(:todo, :assigned, user: john_doe, project: project, target: mentioned_mr, author: author)
-        second_todo = create(:todo, :assigned, user: john_doe, project: project, target: mentioned_mr, author: author)
+        second_todo = create(:todo, :assigned, user: author, project: project, target: mentioned_mr, author: john_doe)
         service.close_merge_request(mentioned_mr, john_doe)
 
         expect(first_todo.reload).to be_done
         expect(second_todo.reload).to be_done
       end
+
+      it 'marks review_requested todos as done for all users' do
+        todo = create(:todo, :review_requested, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.close_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'marks approval_required todos as done for all users' do
+        todo = create(:todo, :approval_required, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.close_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'marks added_approver todos as done for all users' do
+        todo = create(:todo, action: Todo::ADDED_APPROVER, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.close_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'does not mark todos with non-qualifying actions as done for other users' do
+        todo = create(:todo, :mentioned, user: author, project: project, target: mentioned_mr, author: john_doe)
+        service.close_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_pending
+      end
+
+      context 'when merge_request_resolve_all_user_todos feature flag is disabled' do
+        before do
+          stub_feature_flags(merge_request_resolve_all_user_todos: false)
+        end
+
+        it 'does not mark todos with qualifying actions as done for other users' do
+          todo = create(:todo, :assigned, user: author, project: project, target: mentioned_mr, author: john_doe)
+          service.close_merge_request(mentioned_mr, john_doe)
+
+          expect(todo.reload).to be_pending
+        end
+      end
     end
 
     describe '#merge_merge_request' do
-      it 'marks related pending todos to the target for the user as done' do
+      it 'marks all todos as done for the current user regardless of action' do
+        todo = create(:todo, :mentioned, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.merge_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'calls GraphqlTriggers.issuable_todo_updated' do
+        expect(GraphqlTriggers).to receive(:issuable_todo_updated).with(mentioned_mr)
+
+        service.merge_merge_request(mentioned_mr, john_doe)
+      end
+
+      it 'marks assigned todos as done for all users' do
         first_todo = create(:todo, :assigned, user: john_doe, project: project, target: mentioned_mr, author: author)
-        second_todo = create(:todo, :assigned, user: john_doe, project: project, target: mentioned_mr, author: author)
+        second_todo = create(:todo, :assigned, user: author, project: project, target: mentioned_mr, author: john_doe)
         service.merge_merge_request(mentioned_mr, john_doe)
 
         expect(first_todo.reload).to be_done
         expect(second_todo.reload).to be_done
       end
 
-      it 'does not create todo for guests' do
+      it 'marks review_requested todos as done for all users' do
+        todo = create(:todo, :review_requested, user: john_doe, project: project, target: mentioned_mr, author: author)
         service.merge_merge_request(mentioned_mr, john_doe)
-        should_not_create_todo(user: guest, target: mentioned_mr, action: Todo::MENTIONED)
+
+        expect(todo.reload).to be_done
       end
 
-      it 'does not create directly addressed todo for guests' do
-        service.merge_merge_request(addressed_mr, john_doe)
-        should_not_create_todo(user: guest, target: addressed_mr, action: Todo::DIRECTLY_ADDRESSED)
+      it 'marks approval_required todos as done for all users' do
+        todo = create(:todo, :approval_required, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.merge_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'marks added_approver todos as done for all users' do
+        todo = create(:todo, action: Todo::ADDED_APPROVER, user: john_doe, project: project, target: mentioned_mr, author: author)
+        service.merge_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_done
+      end
+
+      it 'does not mark todos with non-qualifying actions as done for other users' do
+        todo = create(:todo, :mentioned, user: author, project: project, target: mentioned_mr, author: john_doe)
+        service.merge_merge_request(mentioned_mr, john_doe)
+
+        expect(todo.reload).to be_pending
+      end
+
+      context 'when merge_request_resolve_all_user_todos feature flag is disabled' do
+        before do
+          stub_feature_flags(merge_request_resolve_all_user_todos: false)
+        end
+
+        it 'does not mark todos with qualifying actions as done for other users' do
+          todo = create(:todo, :assigned, user: author, project: project, target: mentioned_mr, author: john_doe)
+          service.merge_merge_request(mentioned_mr, john_doe)
+
+          expect(todo.reload).to be_pending
+        end
       end
     end
 
@@ -1023,7 +1121,7 @@ RSpec.describe TodoService, feature_category: :notifications do
     end
 
     describe '#ssh_key_expiring_soon' do
-      let_it_be(:ssh_key) { create(:key, user: author) }
+      let_it_be(:ssh_key, freeze: false) { create(:key, user: author) }
 
       context 'when given a single key' do
         it 'creates a pending todo for the user' do
@@ -1034,8 +1132,8 @@ RSpec.describe TodoService, feature_category: :notifications do
       end
 
       context 'when given an array of keys' do
-        let_it_be(:ssh_key_of_member) { create(:key, user: member) }
-        let_it_be(:ssh_key_of_guest) { create(:key, user: guest) }
+        let_it_be(:ssh_key_of_member, freeze: false) { create(:key, user: member) }
+        let_it_be(:ssh_key_of_guest, freeze: false) { create(:key, user: guest) }
 
         it 'creates a pending todo for each key with the correct user' do
           service.ssh_key_expiring_soon([ssh_key, ssh_key_of_member, ssh_key_of_guest])
@@ -1048,7 +1146,7 @@ RSpec.describe TodoService, feature_category: :notifications do
     end
 
     describe '#ssh_key_expired' do
-      let_it_be(:ssh_key) { create(:key, user: author) }
+      let_it_be(:ssh_key, freeze: false) { create(:key, user: author) }
 
       context 'when given a single key' do
         it 'creates a pending todo for the user' do
@@ -1059,8 +1157,8 @@ RSpec.describe TodoService, feature_category: :notifications do
       end
 
       context 'when given an array of keys' do
-        let_it_be(:ssh_key_of_member) { create(:key, user: member) }
-        let_it_be(:ssh_key_of_guest) { create(:key, user: guest) }
+        let_it_be(:ssh_key_of_member, freeze: false) { create(:key, user: member) }
+        let_it_be(:ssh_key_of_guest, freeze: false) { create(:key, user: guest) }
 
         it 'creates a pending todo for each key with the correct user' do
           service.ssh_key_expired([ssh_key, ssh_key_of_member, ssh_key_of_guest])
@@ -1072,9 +1170,9 @@ RSpec.describe TodoService, feature_category: :notifications do
       end
 
       describe 'auto-resolve behavior' do
-        let_it_be(:ssh_key_2) { create(:key, user: author) }
-        let_it_be(:todo_for_expiring_key_1) { create(:todo, target: ssh_key, action: Todo::SSH_KEY_EXPIRING_SOON, user: author) }
-        let_it_be(:todo_for_expiring_key_2) { create(:todo, target: ssh_key_2, action: Todo::SSH_KEY_EXPIRING_SOON, user: author) }
+        let_it_be(:ssh_key_2, freeze: false) { create(:key, user: author) }
+        let_it_be(:todo_for_expiring_key_1, freeze: false) { create(:todo, target: ssh_key, action: Todo::SSH_KEY_EXPIRING_SOON, user: author) }
+        let_it_be(:todo_for_expiring_key_2, freeze: false) { create(:todo, target: ssh_key_2, action: Todo::SSH_KEY_EXPIRING_SOON, user: author) }
 
         it 'resolves the "expiring soon" todo for the same key' do
           service.ssh_key_expired(ssh_key)
@@ -1145,7 +1243,7 @@ RSpec.describe TodoService, feature_category: :notifications do
     end
 
     describe '#new_note' do
-      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
       let(:mention) { john_doe.to_reference }
       let(:diff_note_on_merge_request) { create(:diff_note_on_merge_request, project: project, noteable: unassigned_mr, author: author, note: "Hey #{mention}") }
       let(:addressed_diff_note_on_merge_request) { create(:diff_note_on_merge_request, project: project, noteable: unassigned_mr, author: author, note: "#{mention}, hey!") }
@@ -1261,7 +1359,7 @@ RSpec.describe TodoService, feature_category: :notifications do
   end
 
   describe '#update_note' do
-    let_it_be(:noteable) { create(:issue, project: project) }
+    let_it_be(:noteable, freeze: false) { create(:issue, project: project) }
 
     let(:note) { create(:note, project: project, note: mentions, noteable: noteable) }
     let(:addressed_note) { create(:note, project: project, note: directly_addressed.to_s, noteable: noteable) }
@@ -1419,16 +1517,16 @@ RSpec.describe TodoService, feature_category: :notifications do
   end
 
   describe '#resolve_access_request_todos' do
-    let_it_be(:group) { create(:group, :public) }
-    let_it_be(:group_requester) { create(:group_member, :access_request, group: group, user: assignee) }
-    let_it_be(:project_requester) { create(:project_member, :access_request, project: project, user: non_member) }
-    let_it_be(:another_pending_todo) { create(:todo, state: :pending, user: john_doe) }
+    let_it_be(:group, freeze: false) { create(:group, :public) }
+    let_it_be(:group_requester, freeze: false) { create(:group_member, :access_request, group: group, user: assignee) }
+    let_it_be(:project_requester, freeze: false) { create(:project_member, :access_request, project: project, user: non_member) }
+    let_it_be(:another_pending_todo, freeze: false) { create(:todo, state: :pending, user: john_doe) }
     # access request by another user
-    let_it_be(:another_group_todo) do
+    let_it_be(:another_group_todo, freeze: false) do
       create(:todo, state: :pending, target: group, action: Todo::MEMBER_ACCESS_REQUESTED)
     end
 
-    let_it_be(:another_project_todo) do
+    let_it_be(:another_project_todo, freeze: false) do
       create(:todo, state: :pending, target: project, action: Todo::MEMBER_ACCESS_REQUESTED)
     end
 
@@ -1479,9 +1577,8 @@ RSpec.describe TodoService, feature_category: :notifications do
       expect(another_project_todo.reload).to be_pending
     end
 
-    it 'fetches the pending todos with users preloaded' do
-      expect(PendingTodosFinder).to receive(:new)
-                                      .with(a_hash_including(preload_user_association: true)).and_call_original
+    it 'updates the todo count cache via Users::UpdateTodoCountCacheService' do
+      expect_next(Users::UpdateTodoCountCacheService).to receive(:execute)
 
       service.resolve_access_request_todos(project_requester)
     end
@@ -1521,8 +1618,8 @@ RSpec.describe TodoService, feature_category: :notifications do
   end
 
   describe '#create_member_access_request_todos' do
-    let_it_be(:group) { create(:group, :public) }
-    let_it_be(:project) { create(:project, :public, group: group) }
+    let_it_be(:group, freeze: false) { create(:group, :public) }
+    let_it_be(:project, freeze: false) { create(:project, :public, group: group) }
 
     shared_examples 'member access request is raised' do
       context 'when the source has more than 10 owners' do
@@ -1588,17 +1685,61 @@ RSpec.describe TodoService, feature_category: :notifications do
 
     context 'when request is raised for group' do
       it_behaves_like 'member access request is raised' do
-        let_it_be(:source) { create(:group, :public) }
-        let_it_be(:requester1) { create(:group_member, :access_request, group: source, user: assignee) }
-        let_it_be(:requester2) { create(:group_member, :access_request, group: source, user: non_member) }
+        let_it_be(:source, freeze: false) { create(:group, :public) }
+        let_it_be(:requester1, freeze: false) { create(:group_member, :access_request, group: source, user: assignee) }
+        let_it_be(:requester2, freeze: false) { create(:group_member, :access_request, group: source, user: non_member) }
       end
     end
 
     context 'when request is raised for project' do
       it_behaves_like 'member access request is raised' do
-        let_it_be(:source) { create(:project, :public) }
-        let_it_be(:requester1) { create(:project_member, :access_request, project: source, user: assignee) }
-        let_it_be(:requester2) { create(:project_member, :access_request, project: source, user: non_member) }
+        let_it_be(:source, freeze: false) { create(:project, :public) }
+        let_it_be(:requester1, freeze: false) { create(:project_member, :access_request, project: source, user: assignee) }
+        let_it_be(:requester2, freeze: false) { create(:project_member, :access_request, project: source, user: non_member) }
+      end
+    end
+  end
+
+  describe 'composite identity attribution', :request_store do
+    let_it_be(:service_account, freeze: false) { create(:user, :service_account, composite_identity_enforced: true, developer_of: project) }
+    let_it_be(:human, freeze: false) { create(:user, developer_of: project) }
+    let_it_be(:assignee_user, freeze: false) { create(:user, developer_of: project) }
+    let_it_be_with_reload(:issue) { create(:issue, project: project, author: author, assignees: []) }
+
+    context 'when service account acts via OAuth token (authentication context)' do
+      before do
+        ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, human, context: :authentication)
+      end
+
+      it 'attributes assignment todo to the service account' do
+        issue.assignees = [assignee_user]
+        service.reassigned_assignable(issue, human)
+
+        todo = Todo.find_by(user: assignee_user, target: issue, action: Todo::ASSIGNED)
+        expect(todo.author).to eq(service_account)
+      end
+
+      it 'attributes mention todo to the service account' do
+        note = create(:note, project: project, noteable: issue, author: service_account,
+          note: "FYI #{assignee_user.to_reference}")
+        service.new_note(note, human)
+
+        todo = Todo.find_by(user: assignee_user, target: issue, action: Todo::MENTIONED)
+        expect(todo.author).to eq(service_account)
+      end
+    end
+
+    context 'when human assigns a service account (permission_check context)' do
+      before do
+        ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, human, context: :permission_check)
+      end
+
+      it 'attributes assignment todo to the human user' do
+        issue.assignees = [service_account]
+        service.reassigned_assignable(issue, human)
+
+        todo = Todo.find_by(user: service_account, target: issue, action: Todo::ASSIGNED)
+        expect(todo.author).to eq(human)
       end
     end
   end
@@ -1624,6 +1765,6 @@ RSpec.describe TodoService, feature_category: :notifications do
   end
 
   def should_not_create_any_todo
-    expect { yield }.not_to change(Todo, :count)
+    expect { yield }.not_to change { Todo.count }
   end
 end

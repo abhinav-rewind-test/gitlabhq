@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe 'getting a repository in a project', feature_category: :source_code_management do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:repository) { project.repository }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:repository, freeze: false) { project.repository }
 
   let(:current_user) { project.first_owner }
   let(:fields) { all_graphql_fields_for('Repository') }
@@ -24,6 +24,62 @@ RSpec.describe 'getting a repository in a project', feature_category: :source_co
     expect(graphql_data['project']['repository']).to be_present
   end
 
+  context 'when authorizing granular token permissions' do
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_code do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:query) do
+        graphql_query_for(
+          'project',
+          { fullPath: project.full_path },
+          query_graphql_field('repository', {}, 'rootRef')
+        )
+      end
+
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_repository_tree do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:query) do
+        graphql_query_for(
+          'project',
+          { fullPath: project.full_path },
+          query_graphql_field('repository', {}, <<~QUERY)
+            tree(path:"", ref:"#{project.default_branch}") {
+              permalinkPath
+            }
+          QUERY
+        )
+      end
+
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_repository_blob do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:query) do
+        graphql_query_for(
+          'project',
+          { fullPath: project.full_path },
+          query_graphql_field('repository', {}, <<~QUERY)
+            tree(path:"", ref:"#{project.default_branch}") {
+              blobs {
+                nodes {
+                  webPath
+                }
+              }
+            }
+          QUERY
+        )
+      end
+
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+  end
+
   context 'as a non-authorized user' do
     let(:current_user) { create(:user) }
 
@@ -38,7 +94,7 @@ RSpec.describe 'getting a repository in a project', feature_category: :source_co
     let(:current_user) { create(:user) }
 
     before do
-      project.add_role(current_user, :developer) # rubocop:disable RSpec/BeforeAllRoleAssignment -- This incorrectly flags because the let_it_be(:current_user) has been overridden by let(:current_user)
+      project.add_role(current_user, :developer)
     end
 
     it 'does not return diskPath' do
@@ -188,10 +244,10 @@ RSpec.describe 'getting a repository in a project', feature_category: :source_co
         expect(commit_nodes.pluck('sha')).to eq(repository.list_commits(ref: ref).commits.map(&:sha))
       end
 
-      it 'includes end_cursor for pagination' do
-        expect(page_info['hasNextPage']).to be(true)
+      it 'does not include cursor or hasNextPage if all commits were returned' do
+        expect(page_info['hasNextPage']).to be(false)
         expect(page_info['startCursor']).to be_nil
-        expect(page_info['endCursor']).to eq(Base64.encode64(commit_nodes.last['sha']))
+        expect(page_info['endCursor']).to be_nil
       end
 
       describe 'query' do
@@ -226,7 +282,7 @@ RSpec.describe 'getting a repository in a project', feature_category: :source_co
         context 'with a page size exceeding the max_page_size' do
           let(:first) { max_page_size + 1 }
 
-          it 'respects the default_max_page_size' do
+          it 'respects the max_page_size' do
             expect(repository)
               .to have_received(:list_commits)
               .with(a_hash_including(pagination_params: { limit: max_page_size }))

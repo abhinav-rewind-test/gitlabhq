@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 description: Configure project templates and make them available to all projects on your GitLab instance.
 title: Custom project templates for your instance
@@ -36,7 +36,7 @@ Prerequisites:
 To select the group to manage the project templates for your instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Templates**.
+1. In the left sidebar, select **Settings** > **Templates**.
 1. Expand **Custom project templates**.
 1. Select a group to use.
 1. Select **Save changes**.
@@ -66,8 +66,9 @@ Prerequisites:
    **GitLab Pages** and **Security and compliance**.
 
 Repository and database information that are copied over to each new project are
-identical to the data exported with the [GitLab Project Import/Export](../user/project/settings/import_export.md).
+identical to the data exported with GitLab project import and export.
 This includes the full Git commit history from the template project.
+For more information, see [migrate GitLab data by using file exports](../user/project/settings/import_export.md).
 
 To create a template without commit history, initialize your template project with a single commit
 that contains all the files you want to include.

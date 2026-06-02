@@ -2,7 +2,7 @@
 
 RSpec.shared_examples 'creates work item with widgets from a modal' do |work_item_type, expected_widgets|
   it "creates #{work_item_type} work item with expected widgets", :aggregate_failures do
-    select_work_item_type(work_item_type.to_s.capitalize)
+    select_work_item_type(work_item_type)
 
     expect_work_item_widgets(expected_widgets)
 
@@ -18,7 +18,7 @@ RSpec.shared_examples 'creates work item in a particular namespace' do |work_ite
   it "creates #{work_item_type} work item with expected widgets", :aggregate_failures do
     select_namespace(default_namespace.name, namespace.full_name)
 
-    select_work_item_type(work_item_type.to_s.capitalize)
+    select_work_item_type(work_item_type)
 
     fill_work_item_title("#{work_item_type} work item")
 
@@ -40,7 +40,7 @@ RSpec.shared_examples 'creates work item with widgets from new page' do |work_it
 
     fill_work_item_title("#{work_item_type} work item")
 
-    create_work_item_with_type(work_item_type)
+    create_work_item_with_type(work_item_type.to_s.capitalize)
 
     expect(page).to have_css('h1', text: "#{work_item_type} work item")
   end

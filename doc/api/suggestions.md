@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Suggest Changes API
 ---
 
@@ -21,7 +21,7 @@ this API. Every API call to suggestions must be authenticated.
 ## Create a suggestion
 
 To create a suggestion through the API, use the Discussions API to
-[create a new thread in the merge request diff](discussions.md#create-new-merge-request-thread).
+[create a new thread in the merge request diff](discussions.md#create-a-merge-request-thread).
 The format for suggestions is:
 
 ````markdown

@@ -31,7 +31,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     describe '.with_repository_storage_moves' do
       subject { described_class.with_repository_storage_moves }
 
-      let_it_be(:snippet) { create(:project_snippet) }
+      let_it_be(:snippet, freeze: false) { create(:project_snippet) }
 
       it { is_expected.to be_empty }
 
@@ -45,14 +45,14 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     describe '.in_organization' do
       let_it_be(:organization) { create(:organization) }
       let_it_be(:other_organization) { create(:organization) }
-      let_it_be(:project) { create(:project, organization: organization) }
+      let_it_be(:project, freeze: false) { create(:project, organization: organization) }
       let_it_be(:other_project) { create(:project, organization: other_organization) }
 
-      # Personal snippets for the organization
+      # Personal snippets
       let_it_be(:personal_snippet_in_org) { create(:personal_snippet, organization: organization) }
       let_it_be(:personal_snippet_other_org) { create(:personal_snippet, organization: other_organization) }
 
-      # Project snippets (should always be included regardless of organization)
+      # Project snippets
       let_it_be(:project_snippet) { create(:project_snippet, project: project) }
       let_it_be(:project_snippet_other_org) { create(:project_snippet, project: other_project) }
 
@@ -66,17 +66,16 @@ RSpec.describe Snippet, feature_category: :source_code_management do
         expect(subject).not_to include(personal_snippet_other_org)
       end
 
-      it 'returns all project snippets regardless of organization' do
-        expect(subject).to include(project_snippet, project_snippet_other_org)
+      it 'returns project snippets for the specified organization' do
+        expect(subject).to include(project_snippet)
       end
 
-      it 'returns the correct snippets' do
-        # This combines the expectations above for clarity
-        expect(subject).to contain_exactly(
-          personal_snippet_in_org,
-          project_snippet,
-          project_snippet_other_org
-        )
+      it 'does not return project snippets from other organizations' do
+        expect(subject).not_to include(project_snippet_other_org)
+      end
+
+      it 'returns only snippets belonging to the organization' do
+        expect(subject).to contain_exactly(personal_snippet_in_org, project_snippet)
       end
     end
   end
@@ -189,7 +188,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     describe 'project or organization validation' do
       # Test using both subclasses to ensure the parent validation works
 
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
       let_it_be(:organization) { create(:organization) }
 
       context 'with ProjectSnippet' do
@@ -319,7 +318,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe '.search' do
-    let_it_be(:snippet) { create(:project_snippet, title: 'test snippet', description: 'description') }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet, title: 'test snippet', description: 'description') }
 
     it 'returns snippets with a matching title' do
       expect(described_class.search(snippet.title)).to eq([snippet])
@@ -440,8 +439,8 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe 'only_include_projects_with_snippets_enabled' do
-    let_it_be(:project, reload: true) { create(:project_empty_repo) }
-    let_it_be(:snippet) { create(:project_snippet, project: project) }
+    let_it_be_with_reload(:project) { create(:project_empty_repo) }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet, project: project) }
 
     let(:access_level) { ProjectFeature::ENABLED }
 
@@ -561,7 +560,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe '.find_by_project_title_trunc_created_at' do
-    let_it_be(:snippet) { create(:project_snippet) }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet) }
     let_it_be(:created_at_without_ms) { snippet.created_at.change(usec: 0) }
 
     it 'returns a record if arguments match' do
@@ -609,7 +608,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     let_it_be(:user) { create(:user) }
     let_it_be(:banned_user) { create(:user, :banned) }
 
-    let_it_be(:snippet) { create(:project_snippet, author: user) }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet, author: user) }
     let_it_be(:snippet_by_banned_user) { create(:project_snippet, author: banned_user) }
 
     subject(:without_created_by_banned_user) { described_class.without_created_by_banned_user }
@@ -627,10 +626,10 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe '#participants' do
-    let_it_be(:project) { create(:project, :public) }
-    let_it_be(:snippet) { create(:project_snippet, content: 'foo', project: project) }
+    let_it_be(:project, freeze: false) { create(:project, :public) }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet, content: 'foo', project: project) }
 
-    let_it_be(:note1) do
+    let_it_be(:note1, freeze: false) do
       create(
         :note_on_project_snippet,
         noteable: snippet,
@@ -800,7 +799,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
 
     context 'when a snippet repository entry does not exist' do
       it 'creates a new entry' do
-        expect { subject }.to change(snippet, :snippet_repository)
+        expect { subject }.to change { snippet.snippet_repository }
       end
 
       it 'tracks the snippet storage location' do
@@ -819,7 +818,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
       let(:shard_name) { 'bar' }
 
       it 'does not create a new entry in the database' do
-        expect { subject }.not_to change(snippet, :snippet_repository)
+        expect { subject }.not_to change { snippet.snippet_repository }
       end
 
       it 'updates the snippet storage location' do
@@ -860,7 +859,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     it 'tracks snippet repository' do
       expect do
         subject
-      end.to change(SnippetRepository, :count).by(1)
+      end.to change { SnippetRepository.count }.by(1)
     end
 
     it 'sets same shard in snippet repository as in the repository storage' do
@@ -887,7 +886,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
         it 'does not create a new snippet repository' do
           expect do
             snippet.create_repository
-          end.not_to change(SnippetRepository, :count)
+          end.not_to change { SnippetRepository.count }
         end
       end
 
@@ -898,7 +897,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
 
           expect do
             snippet.create_repository
-          end.to change(SnippetRepository, :count).by(1)
+          end.to change { SnippetRepository.count }.by(1)
         end
       end
     end
@@ -945,7 +944,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe '#hook_attrs' do
-    let_it_be(:snippet) { create(:personal_snippet) }
+    let_it_be(:snippet, freeze: false) { create(:personal_snippet) }
 
     subject(:attrs) { snippet.hook_attrs }
 
@@ -967,7 +966,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
     end
 
     context 'when snippet is for a project' do
-      let_it_be(:snippet) { create(:project_snippet) }
+      let_it_be(:snippet, freeze: false) { create(:project_snippet) }
 
       it { is_expected.to include(project_id: snippet.project.id) }
     end
@@ -1020,7 +1019,7 @@ RSpec.describe Snippet, feature_category: :source_code_management do
   end
 
   describe '#list_files' do
-    let_it_be(:snippet) { create(:project_snippet, :repository) }
+    let_it_be(:snippet, freeze: false) { create(:project_snippet, :repository) }
 
     let(:ref) { 'test-ref' }
 

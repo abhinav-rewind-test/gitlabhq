@@ -1,6 +1,6 @@
 <script>
 import { GlBadge, GlIcon, GlCollapsibleListbox, GlTooltipDirective } from '@gitlab/ui';
-import { debounce, isArray } from 'lodash';
+import { debounce, isArray } from 'lodash-es';
 // eslint-disable-next-line no-restricted-imports
 import { mapActions, mapGetters, mapState } from 'vuex';
 import { sprintf, __ } from '~/locale';
@@ -157,7 +157,6 @@ export default {
     extendedToggleButtonClass() {
       const classes = [
         {
-          '!gl-shadow-inner-1-red-500': !this.state,
           'gl-font-monospace': Boolean(this.selectedRef),
         },
         'gl-mb-0',
@@ -310,6 +309,7 @@ export default {
       :search-placeholder="i18n.searchPlaceholder"
       :toggle-class="extendedToggleButtonClass"
       :toggle-text="buttonText"
+      :state="state"
       :icon="dropdownIcon"
       :disabled="disabled"
       v-bind="$attrs"

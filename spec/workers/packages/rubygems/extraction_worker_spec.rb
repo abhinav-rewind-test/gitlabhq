@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_category: :package_registry do
   describe '#perform' do
-    let_it_be(:package) { create(:rubygems_package, :processing) }
+    let_it_be(:package, freeze: false) { create(:rubygems_package, :processing) }
 
     let(:package_file) { package.package_files.first }
     let(:package_file_id) { package_file.id }
@@ -15,7 +15,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
     subject { described_class.new.perform(*job_args) }
 
     context 'without errors' do
-      let_it_be(:package_for_processing) { create(:rubygems_package, :processing) }
+      let_it_be(:package_for_processing, freeze: false) { create(:rubygems_package, :processing) }
       let(:package_file) { package_for_processing.package_files.first }
 
       it 'processes the gem', :aggregate_failures do
@@ -48,7 +48,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
     end
 
     context 'with controlled errors' do
-      context 'handling metadata with invalid size' do
+      context 'when handling metadata with invalid size' do
         include_context 'with invalid Rubygems metadata'
 
         it_behaves_like 'handling error',
@@ -56,7 +56,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
           error_message: 'Invalid metadata'
       end
 
-      context 'handling a file error' do
+      context 'when handling a file error' do
         before do
           package_file.file = nil
         end
@@ -69,7 +69,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
 
     context 'with uncontrolled errors' do
       [Zip::Error, StandardError].each do |exception|
-        context "handling #{exception}", :aggregate_failures do
+        context "when handling #{exception}", :aggregate_failures do
           before do
             allow(::Packages::Rubygems::ProcessGemService).to receive(:new).and_raise(exception)
           end
@@ -81,7 +81,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
       end
     end
 
-    context 'returns when there is no package file' do
+    context 'when there is no package file' do
       let(:package_file_id) { 999999 }
 
       it 'returns without action' do

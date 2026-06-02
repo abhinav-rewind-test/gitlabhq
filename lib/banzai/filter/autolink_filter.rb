@@ -4,8 +4,8 @@ require 'uri'
 
 # This filter handles autolinking when a pipeline does not
 # use the MarkdownFilter, which handles it's own autolinking.
-# This happens in particular for the SingleLinePipeline and the
-# CommitDescriptionPipeline.
+# This happens in particular for the SingleLinePipeline,
+# CommitDescriptionPipeline, and org-mode markup rendering.
 #
 # rubocop:disable Rails/OutputSafety -- this is legacy/unused, no need fixing.
 # rubocop:disable Gitlab/NoCodeCoverageComment -- no coverage needed for a legacy filter
@@ -32,15 +32,21 @@ module Banzai
       #
       # See http://en.wikipedia.org/wiki/URI_scheme
       #
-      # The negative lookbehind ensures that users can paste a URL followed by
-      # punctuation without those characters being included in the generated
-      # link. It matches the behaviour of Rinku 2.0.1:
+      # Trailing punctuation characters (?!.,: ) are excluded from the end of
+      # the matched URL. This matches the behaviour of Rinku 2.0.1:
       # https://github.com/vmg/rinku/blob/v2.0.1/ext/rinku/autolink.c#L65
       #
-      # Rubular: https://rubular.com/r/M2sruz0iNaUxDA
-      # Note that it's not possible to use Gitlab::UntrustedRegexp for LINK_PATTERN,
-      # as `(?<!` is unsupported in `re2`, see https://github.com/google/re2/wiki/Syntax
-      LINK_PATTERN = %r{([a-z][a-z0-9\+\.-]{1,30}://[^\s>]{1,2000})(?<!\?|!|\.|,|:)}
+      # The original pattern used a negative lookbehind `(?<!\?|!|\.|,|:)` to
+      # strip trailing punctuation, but that caused timeouts
+      # on long inputs because Ruby's regex engine would retry the
+      # bounded `{1,2000}` quantifier up to 2000 times per position when the
+      # match ended in punctuation. The rewritten pattern avoids this by
+      # consuming up to 1999 arbitrary non-whitespace/non-> chars followed by
+      # exactly one char that is also not in the trailing-punctuation set,
+      # making the match unambiguous and backtrack-free.
+      #
+      # Rubular: https://rubular.com/r/LT0TSJCmrnPN1o
+      LINK_PATTERN = %r{([a-z][a-z0-9\+\.-]{1,30}://[^\s>]{0,1999}[^\s>?!.,:])}
 
       ENTITY_UNTRUSTED = '((?:&[\w#]+;)+)\z'
       ENTITY_UNTRUSTED_REGEX = Gitlab::UntrustedRegexp.new(ENTITY_UNTRUSTED, multiline: false)
@@ -62,10 +68,16 @@ module Banzai
         '}' => '{'
       }.freeze
 
+      # Maximum length of a text node to process for autolinking.
+      # Longer text nodes are skipped to avoid O(N) position mapping
+      # overhead in StringRangeMarker. See https://gitlab.com/gitlab-org/gitlab/-/issues/598970
+      TEXT_LENGTH_LIMIT = 50.kilobytes
+
       def call
         if MarkdownFilter.glfm_markdown?(context) &&
             context[:pipeline] != :single_line &&
-            context[:pipeline] != :commit_description
+            context[:pipeline] != :commit_description &&
+            context[:pipeline] != :org_markup
           return doc
         end
 
@@ -75,6 +87,8 @@ module Banzai
 
         doc.xpath(TEXT_QUERY).each do |node|
           break if Banzai::Filter.filter_item_limit_exceeded?(@link_count, limit: Banzai::Filter::FILTER_ITEM_LIMIT)
+
+          next if node.content.bytesize > TEXT_LENGTH_LIMIT
 
           content = node.to_html
 
@@ -93,6 +107,8 @@ module Banzai
       private
 
       def autolink_match(match)
+        return match.to_s unless match
+
         # start by stripping out dangerous links
         begin
           uri = Addressable::URI.parse(match)

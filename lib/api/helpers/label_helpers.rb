@@ -60,7 +60,7 @@ module API
         priority = params.delete(:priority)
         label_params = declared_params(include_missing: false)
 
-        label = ::Labels::CreateService.new(label_params).execute(create_service_params(parent))
+        label = ::Labels::CreateService.new(current_user, label_params).execute(create_service_params(parent))
 
         if label.persisted?
           if parent.is_a?(Project)
@@ -83,14 +83,13 @@ module API
         # params is used to update the label so we need to remove this field here
         params.delete(:label_id)
         params.delete(:name)
-        params.delete(:archived) unless Feature.enabled?(:labels_archive, label.group || label.project.group)
 
         update_params = declared_params(include_missing: false)
 
         if update_params.present?
           authorize! :admin_label, label
 
-          label = ::Labels::UpdateService.new(update_params).execute(label)
+          label = ::Labels::UpdateService.new(current_user, update_params).execute(label)
           render_validation_error!(label) unless label.valid?
         end
 
@@ -110,9 +109,11 @@ module API
 
         authorize! :admin_label, label
 
-        return if destroy_conditionally!(label)
+        destroy_conditionally!(label) do |label_to_destroy|
+          ::Labels::DestroyService.new(current_user, label_to_destroy).execute
+        end
 
-        render_api_error!('Label is locked and was not removed', 400)
+        render_api_error!('Label is locked and was not removed', 400) unless label.destroyed?
       end
 
       def promote_label(parent)

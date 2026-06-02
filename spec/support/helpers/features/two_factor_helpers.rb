@@ -48,7 +48,6 @@ module Features
       webauthn_device ||= FakeWebauthnDevice.new(page, name)
       webauthn_device.respond_to_webauthn_registration
       click_on _('Register device')
-      wait_for_requests
       click_on _('Set up new device')
       webauthn_fill_form_and_submit(name: name, password: password)
       webauthn_device
@@ -65,7 +64,7 @@ module Features
       end
     end
 
-    # Adds webauthn device directly via database
+    # Adds webauthn device to the database and returns FakeWebauthnDevice to simulate the browser response
     def add_webauthn_device(app_id, user, fake_device = nil, name: 'My device')
       fake_device ||= WebAuthn::FakeClient.new(app_id)
 
@@ -119,16 +118,9 @@ module Features
     ## Passkeys
     #
     # Registers a passkey via the UI
-    #
-    # (Optional) Accepts a block to mock bad authenticator responses (`:device_response`)
-    #
-    def passkey_registration(name: 'My Passkey', password: 'fake')
+    def passkey_registration(name: 'My Passkey', password: 'fake', respond_to_webauthn_registration_proc: nil)
       click_on _('Add passkey')
-
-      wait_for_requests
-
-      # Redirect to passkeys#new
-      expect(page).to have_content(_('Add passkey'))
+      expect(page).to have_current_path(new_profile_passkey_path, ignore_query: true)
 
       # Since the onRegister() Vue function is called immediately in passkeys#new page,
       # we need to re-send the request options to have authenticator's response (`device_response`)
@@ -140,13 +132,15 @@ module Features
       # - On clicking "Add passkey", immediately mock `navigator.credentials.create`
       # - In passkey#new, handle the success() state & show name/password form
       #
-      passkey ||= FakeWebauthnDevice.new(page, name)
-      block_given? ? yield : passkey.respond_to_webauthn_registration
+      passkey = FakeWebauthnDevice.new(page, name)
+
+      if respond_to_webauthn_registration_proc
+        respond_to_webauthn_registration_proc.call
+      else
+        passkey.respond_to_webauthn_registration
+      end
 
       click_button _('Try again') # Start of user interaction
-
-      wait_for_requests
-
       passkey_fill_form_and_submit(name: name, password: password)
 
       passkey
@@ -163,21 +157,21 @@ module Features
       end
     end
 
-    # Adds a passkey to the database & sends the browser response for authentication
-    def add_passkey(app_id, user, fake_device = nil, name: 'My passkey', save_passkey: true)
+    # Adds passkey to the database and returns FakeWebauthnDevice to simulate the browser response
+    def add_passkey(app_id, user, fake_device = nil, name: 'My passkey', save: true)
       fake_device ||= WebAuthn::FakeClient.new(app_id)
 
       options_for_create = passkey_webauthn_options(user)
       challenge = options_for_create.challenge
       options = {
         challenge: challenge,
-        user_verified: true,
-        extensions: { "credProps" => { "rk" => true } }
+        extensions: { "credProps" => { "rk" => true } },
+        user_verified: true
       }
       device_response = fake_device.create(**options).to_json # rubocop:disable Rails/SaveBang
       device_registration_params = { device_response: device_response, name: name }
 
-      Authn::Passkey::RegisterService.new(user, device_registration_params, challenge).execute if save_passkey
+      Authn::Passkey::RegisterService.new(user, device_registration_params, challenge).execute if save
 
       FakeWebauthnDevice.new(page, name, fake_device) # Simulates the browser
     end
@@ -208,6 +202,36 @@ module Features
         rp: { name: 'GitLab' },
         extensions: { credProps: true }
       )
+    end
+
+    # Drives the email-OTP fallback after the user has reached the
+    # 2FA challenge page: clicks "send code to email address", reads
+    # the code from the delivered mail, submits it, and asserts the
+    # post-login content. Requires `include EmailHelpers` in the spec.
+    def verify_email_otp_fallback_workflow(user)
+      perform_enqueued_jobs do
+        click_button 'send code to email address'
+
+        expect(page).to have_content('Verification code')
+
+        # WebAuthn UI should be hidden
+        expect(page).not_to have_content('Trying to communicate with your device')
+
+        # TOTP form should be hidden
+        expect(page).not_to have_content('Enter verification code')
+
+        mail = wait_for('mail found for user') { find_email_for(user) }
+        expect(mail.to).to match_array([user.email])
+        expect(mail.subject).to eq(s_('IdentityVerification|Verify your identity'))
+
+        code = mail.body.parts.first.to_s[/\d{#{Users::EmailVerification::GenerateTokenService::TOKEN_LENGTH}}/o]
+        fill_in s_('IdentityVerification|Verification code'), with: code
+
+        expect { click_button s_('IdentityVerification|Verify code') }
+          .to change { user.reload.sign_in_count }
+
+        expect(page).to have_content('Welcome to GitLab')
+      end
     end
   end
 end

@@ -22,11 +22,7 @@ module Gitlab
             private
 
             def assign_pipeline_variables
-              @pipeline.variables_attributes = variables_attributes
-
-              if Feature.enabled?(:ci_write_pipeline_variables_artifact, project)
-                Gitlab::Ci::Pipeline::Build::PipelineVariablesArtifactBuilder.new(@pipeline, variables_attributes).run
-              end
+              Gitlab::Ci::Pipeline::Build::PipelineVariablesArtifactBuilder.new(@pipeline, variables_attributes).run
             rescue ActiveModel::ValidationError => e
               error("Failed to build pipeline variables: #{e}", failure_reason: :config_error)
             end
@@ -70,8 +66,12 @@ module Gitlab
               #   - if variables other than TRIGGER_PAYLOAD are specified, we return an error.
               #   - if only TRIGGER_PAYLOAD is specified, we allow it.
               # See https://gitlab.com/gitlab-org/gitlab/-/issues/557381
-              user_defined_variables = if @command.source.to_sym == :trigger
-                                         # This variable is defined by GitLab when triggering webhooks
+              # The trigger_api_request flag is explicitly set by PipelineTriggerService to identify
+              # requests from the trigger API where CI_JOB_TOKEN is used (to support source: :pipeline).
+              source = @command.source.to_sym
+              trigger_api_source = source == :trigger || (source == :pipeline && @command.trigger_api_request)
+              user_defined_variables = if trigger_api_source
+                                         # This variable is defined by GitLab when triggering via the API,
                                          # so it should be allowlisted.
                                          variables.reject { |v| v[:key] == 'TRIGGER_PAYLOAD' }
                                        else
@@ -89,7 +89,7 @@ module Gitlab
 
             def validate_uniqueness(variables)
               duplicated_keys = variables
-                .map { |var| var[:key] } # rubocop: disable Rails/Pluck -- Pluck raises error too
+                .map { |var| var[:key] }
                 .tally
                 .filter_map { |key, count| key if count > 1 }
 

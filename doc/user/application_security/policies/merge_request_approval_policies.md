@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Policies
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to enforce security rules in GitLab using merge request approval policies to automate scans, approvals, and compliance across your projects.
 title: Merge request approval policies
 ---
@@ -228,12 +228,93 @@ This rule enforces the defined actions based on security scan findings.
 | `branches`                 | `array` of `string` | true if `branch_type` field does not exist | `[]` or the branch's name                                                                                          | Applicable only to protected target branches. An empty array, `[]`, applies the rule to all protected target branches. Cannot be used with the `branch_type` field. |
 | `branch_type`              | `string`            | true if `branches` field does not exist    | `default` or `protected`                                                                                           | The types of protected branches the given policy applies to. Cannot be used with the `branches` field. Default branches must also be `protected`. |
 | `branch_exceptions`        | `array` of `string` | false                                      | Names of branches                                                                                                  | Target branches to exclude from this rule. |
-| `scanners`                 | `array` of `string` | true                                       | `[]` or `sast`, `secret_detection`, `dependency_scanning`, `container_scanning`, `dast`, `coverage_fuzzing`, `api_fuzzing` | The security scanners for this rule to consider. `sast` includes results from both SAST and SAST IaC scanners. An empty array, `[]`, applies the rule to all security scanners.|
+| `scanners`                 | `array` of `string` or [`scanner_with_attributes`](#scanner_with_attributes-object) objects | true | `[]` or `sast`, `secret_detection`, `dependency_scanning`, `container_scanning`, `dast`, `coverage_fuzzing`, `api_fuzzing` | The security scanners for this rule to consider. `sast` includes results from both SAST and SAST IaC scanners. An empty array, `[]`, applies the rule to all security scanners. Specify the scanner either as a string (to apply rule-level settings) or as an object (with per-scanner overrides for `severity_levels`, `vulnerabilities_allowed`, and `vulnerability_attributes`). |
 | `vulnerabilities_allowed`  | `integer`           | true                                       | Greater than or equal to zero                                                                                      | Number of vulnerabilities allowed before this rule is considered. |
 | `severity_levels`          | `array` of `string` | true                                       | `info`, `unknown`, `low`, `medium`, `high`, `critical`                                                             | The severity levels for this rule to consider. |
 | `vulnerability_states`     | `array` of `string` | true                                       | `[]` or `detected`, `confirmed`, `resolved`, `dismissed`, `new_needs_triage`, `new_dismissed`                      | All vulnerabilities fall into two categories:<br><br>**Newly Detected Vulnerabilities** - Vulnerabilities identified in the merge request branch itself but that do not currently exist on the MR's target branch. This policy option requires a pipeline to complete before the rule is evaluated so that it knows whether vulnerabilities are newly detected or not. Merge requests are blocked until the pipeline and necessary security scans are complete. The `new_needs_triage` option considers the status<br><br> • Detected<br><br> The `new_dismissed` option considers the status<br><br> • Dismissed<br><br>**Pre-Existing Vulnerabilities** - these policy options are evaluated immediately and do not require a pipeline complete as they consider only vulnerabilities previously detected in the default branch.<br><br> • `Detected` - the policy looks for vulnerabilities in the detected state.<br> • `Confirmed` - the policy looks for vulnerabilities in the confirmed state.<br> • `Dismissed` - the policy looks for vulnerabilities in the dismissed state.<br> • `Resolved` - the policy looks for vulnerabilities in the resolved state. <br><br>An empty array, `[]`, covers the same statuses as `['new_needs_triage', 'new_dismissed']`. |
-| `vulnerability_attributes` | `object`            | false                                      | `{false_positive: boolean, fix_available: boolean}`                                                                | All vulnerability findings are considered by default. But filters can be applied for attributes to consider only vulnerability findings: <br><br> • With a fix available (`fix_available: true`)<br><br> • With no fix available (`fix_available: false`)<br> • That are false positive (`false_positive: true`)<br> • That are not false positive (`false_positive: false`)<br> • Or a combination of both. For example (`fix_available: true, false_positive: false`) |
+| `vulnerability_attributes` | `object`            | false                                      | [`vulnerability_attributes`](#vulnerability_attributes-object) object | All vulnerability findings are considered by default. Apply these filters to consider only vulnerability findings that match specific criteria. See [`vulnerability_attributes` object](#vulnerability_attributes-object) for details. |
 | `vulnerability_age`        | `object`            | false                                      | N/A                                                                                                                | Filter pre-existing vulnerability findings by age. A vulnerability's age is calculated as the time since it was detected in the project. The criteria are `operator`, `value`, and `interval`.<br>- The `operator` criterion specifies if the age comparison used is older than (`greater_than`) or younger than (`less_than`).<br>- The `value` criterion specifies the numeric value representing the vulnerability's age.<br>- The `interval` criterion specifies the unit of measure of the vulnerability's age: `day`, `week`, `month`, or `year`.<br><br>Example: `operator: greater_than`, `value: 30`, `interval: day`. |
+
+### `vulnerability_attributes` object
+
+{{< history >}}
+
+- `known_exploited`, `epss_score`, and `enrichment_data_unavailable` fields [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/576860) in GitLab 18.11 [with a feature flag](../../../administration/feature_flags/_index.md) named `security_policies_kev_filter`. Disabled by default.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+| Field                        | Type                 | Required | Possible values                                              | Description |
+|------------------------------|----------------------|----------|--------------------------------------------------------------|-------------|
+| `false_positive`             | `boolean`            | false    | `true`, `false`                                              | Filter by false positive status. `true` includes only false positives; `false` excludes them. |
+| `fix_available`              | `boolean`            | false    | `true`, `false`                                              | Filter by fix availability. `true` includes only vulnerabilities with a fix available; `false` includes only those without. |
+| `known_exploited`            | `boolean` | false    | `true`, `false`                               | Filter based on the [CISA Known Exploited Vulnerabilities (KEV)](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog. When true, includes only vulnerabilities that are actively exploited in the wild. When false, does not filter vulnerabilities based on known exploit status. |
+| `epss_score`                 | `object` | false    | `{operator, value}` object                    | Filter based on the [Exploit Prediction Scoring System (EPSS)](https://www.first.org/epss/) score. EPSS estimates the probability (0 to 1) that a vulnerability will be exploited. As an object: `operator` can be `greater_than`, or `less_than`; `value` is a number between `0.0` and `1.0`. Example: `{operator: greater_than, value: 0.8}`.  |
+| `enrichment_data_unavailable`| `object`             | false    | `{action: "block"}` or `{action: "ignore"}`                  | Define how to handle CVE vulnerabilities with unavailable enrichment data (missing EPSS score or known exploit status). When 'block', vulnerabilities without enrichment data are evaluated according to the rule-level criteria. When 'ignore', vulnerabilities without enrichment data are excluded from policy evaluation. |
+
+### `scanner_with_attributes` object
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/584704) in GitLab 18.10 [with a flag](../../../administration/feature_flags/_index.md) named `atomic_scanner_rule_criteria`. Enabled by default. [Generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230346) in GitLab 18.11. Feature flag removed.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+When a scanner is specified as an object instead of a string, each scanner type is evaluated independently with its own criteria. Any field not specified at the scanner level falls back to the setting defined by the rule-level value.
+
+| Field                      | Type                | Required | Possible values                                                                   | Description |
+|----------------------------|---------------------|----------|-----------------------------------------------------------------------------------|-------------|
+| `type`                     | `string`            | true     | `sast`, `secret_detection`, `dependency_scanning`, `container_scanning`, `dast`, `coverage_fuzzing`, `api_fuzzing` | The scanner type. |
+| `severity_levels`          | `array` of `string` | false    | `info`, `unknown`, `low`, `medium`, `high`, `critical`                            | Overrides the rule-level `severity_levels` for this scanner. |
+| `vulnerabilities_allowed`  | `integer`           | false    | Greater than or equal to zero                                                     | Overrides the rule-level `vulnerabilities_allowed` for this scanner. |
+| `vulnerability_attributes` | `object`            | false    | [`vulnerability_attributes`](#vulnerability_attributes-object) object              | Overrides the rule-level `vulnerability_attributes` for this scanner. |
+
+Example using per-scanner criteria:
+
+```yaml
+rules:
+  - type: scan_finding
+    branches: []
+    scanners:
+      - type: dependency_scanning
+        vulnerability_attributes:
+          fix_available: true
+        vulnerabilities_allowed: 0
+        severity_levels:
+          - critical
+          - high
+      - type: container_scanning
+        vulnerability_attributes:
+          known_exploited: true
+          epss_score:
+             value: 0.5
+             operator: greater_than
+          enrichment_data_unavailable:
+             action: block
+        vulnerabilities_allowed: 0
+        severity_levels:
+          - critical
+    vulnerabilities_allowed: 5
+    severity_levels:
+      - critical
+      - high
+      - medium
+    vulnerability_states:
+      - new_needs_triage
+```
+
+In this example:
+
+- **Dependency scanning** requires approval if any critical or high severity vulnerability with a fix available is detected.
+- **Container scanning** requires approval if any critical and known-exploited vulnerability is detected.
+- Each scanner is evaluated independently against its own thresholds. The rule-level `vulnerabilities_allowed: 5` and `severity_levels` serve as defaults for any scanner without explicit overrides.
 
 ## `license_finding` rule type
 
@@ -268,12 +349,26 @@ This rule enforces the defined actions based on license findings.
 
 ### `licenses_with_package_exclusion` object
 
+Use the `licenses_with_package_exclusion` object to define a license name and optional
+package exclusions.
+
 | Field  | Type     | Required | Possible values   | Description                                        |
 |--------|----------|----------|-------------------|----------------------------------------------------|
 | `name` | `string` | true     | SPDX license name | [SPDX license name](https://spdx.org/licenses).    |
 | `packages` | `object` | false    | `packages` object | List of packages exceptions for the given license. |
 
+> [!note]
+> The `name` field must be a valid [SPDX license name](https://spdx.org/licenses).
+> The value `unknown` is not a recognized SPDX license name, and is not supported in
+> the `licenses` field. Package-level exclusions configured for `unknown` licenses are
+> ignored during merge request approval evaluation. To manage packages with `unknown`
+> licenses, use the [`license_types`](#license_finding-rule-type) field, or allow
+> `unknown` as a license in your policy. For more information, see
+> [license approval policies block merge requests due to `unknown` licenses](../../compliance/license_approval_policies.md#license-approval-policies-block-merge-requests-due-to-unknown-licenses).
+
 ### `packages` object
+
+Use the `packages` object to define package URL exclusions for a license entry.
 
 | Field  | Type     | Required | Possible values                                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 |--------|----------|----------|-------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -306,7 +401,7 @@ This rule enforces the defined actions for any merge request based on the commit
   - [Added](https://gitlab.com/groups/gitlab-org/-/epics/12319) in GitLab 17.7 [with a flag](../../../administration/feature_flags/_index.md) named `multiple_approval_actions`.
   - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/505374) in GitLab 17.8. Feature flag `multiple_approval_actions` removed.
 - Support for specifying custom roles as `role_approvers`:
-  - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/13550)  in GitLab 17.9 [with a flag](../../../administration/feature_flags/_index.md) named `security_policy_custom_roles`. Enabled by default.
+  - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/13550) in GitLab 17.9 [with a flag](../../../administration/feature_flags/_index.md) named `security_policy_custom_roles`. Enabled by default.
   - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/505742) in GitLab 17.10. Feature flag `security_policy_custom_roles` removed.
 
 {{< /history >}}
@@ -324,7 +419,7 @@ If you specify multiple approvers in the same `require_approval` block, any of t
 | `user_approvers_ids` | `array` of `integer` | Conditional <sup>1</sup> | ID of one of more users | The IDs of users to consider as approvers. Users must have access to the project to be eligible to approve. |
 | `group_approvers` | `array` of `string` | Conditional <sup>1</sup> | Path of one of more groups | The groups to consider as approvers. Users with [direct membership in the group](../../project/merge_requests/approvals/rules.md#group-approvers) are eligible to approve. |
 | `group_approvers_ids` | `array` of `integer` | Conditional <sup>1</sup> | ID of one of more groups | The IDs of groups to consider as approvers. Users with [direct membership in the group](../../project/merge_requests/approvals/rules.md#group-approvers) are eligible to approve. |
-| `role_approvers` | `array` of `string` | Conditional <sup>1</sup> | One or more [roles](../../permissions.md#roles) (for example: `owner`, `maintainer`). You can also specify custom roles (or custom role identifiers in YAML mode) as `role_approvers` if the custom roles have the permission to approve merge requests. The custom roles can be selected along with user and group approvers. | The roles that are eligible to approve. Only users with the exact role you specify can approve. Roles with higher privileges are not automatically included. For example, if you select `developer`, only users with the Developer role can approve. Maintainers and Owners cannot approve unless you also add them. |
+| `role_approvers` | `array` of `string` | Conditional <sup>1</sup> | One or more [roles](../../permissions.md#roles) (for example: `owner`, `maintainer`). You can also specify custom roles (or custom role identifiers in YAML mode) as `role_approvers` if the custom roles have the permission to approve merge requests. The custom roles can be selected along with user and group approvers. | The roles that are eligible to approve. Only users with the exact role you specify, or users with a custom role based on that role, can approve. Roles with higher privileges cannot approve. For example, if you select `developer`, users with the Developer role can approve. If a custom role based on `developer` exists, users with that custom role can also approve. Maintainers and Owners cannot approve unless you also add them. |
 
 **Footnotes:**
 
@@ -512,8 +607,27 @@ The settings set in the policy overwrite settings in the project.
 | `prevent_approval_by_author`        | `boolean`             | false    | `true`, `false`                                               | `Any merge request`  | When enabled, merge request authors cannot approve their own MRs. This ensures code authors cannot introduce vulnerabilities and approve code to merge. |
 | `prevent_approval_by_commit_author` | `boolean`             | false    | `true`, `false`                                               | `Any merge request`  | When enabled, users who have contributed code to the MR are ineligible for approval. This ensures code committers cannot introduce vulnerabilities and approve code to merge. |
 | `remove_approvals_with_new_commit`  | `boolean`             | false    | `true`, `false`                                               | `Any merge request`  | When enabled, if an MR receives all necessary approvals to merge, but then a new commit is added, new approvals are required. This ensures new commits that may include vulnerabilities cannot be introduced. |
-| `require_password_to_approve`       | `boolean`             | false    | `true`, `false`                                               | `Any merge request`  | When enabled, there will be password confirmation on approvals. Password confirmation adds an extra layer of security. |
-| `prevent_pushing_and_force_pushing` | `boolean`             | false    | `true`, `false`                                               | All                  | When enabled, prevents users from pushing and force pushing to a protected branch if that branch is included in the security policy. This ensures users do not bypass the merge request process to add vulnerable code to a branch. |
+| `require_password_to_approve`       | `boolean`             | false    | `true`, `false`                                               | `Any merge request`  | When enabled, approvers must authenticate again before approving. The approver can re-authenticate using their password or SAML, depending on their configured authentication method. This adds an extra layer of security to ensure the approver's identity. For more information, see [require user re-authentication to approve](../../project/merge_requests/approvals/settings.md#require-user-re-authentication-to-approve). |
+| `prevent_pushing_and_force_pushing` | `boolean`             | false    | `true`, `false`                                               | All                  | When enabled, prevents users from pushing and force pushing to a protected branch if that branch is included in the security policy. This ensures users do not bypass the merge request process to add vulnerable code to a branch. Creation of a branch that does not yet exist is governed by the standard [protected branch](../../project/repository/branches/protected.md) rules; this setting applies to subsequent pushes and force-pushes once the branch exists. |
+
+### Enforcement scope of approval settings
+
+These settings are enforced only on merge requests that have violations against the policy:
+
+- `prevent_approval_by_author`
+- `prevent_approval_by_commit_author`
+- `remove_approvals_with_new_commit`
+- `require_password_to_approve`
+
+If a merge request has no policy violations, the settings have no effect on that
+merge request.
+
+These settings are always enforced if the policy is active, regardless of whether a merge request has
+policy violations:
+
+- `block_branch_modification`
+- `block_group_branch_modification`
+- `prevent_pushing_and_force_pushing` settings
 
 ## `fallback_behavior`
 
@@ -543,7 +657,7 @@ The settings set in the policy overwrite settings in the project.
 
 | Field  | Type     | Required | Possible values    | Description                                                                                                          |
 |--------|----------|----------|--------------------|----------------------------------------------------------------------------------------------------------------------|
-| `unblock_rules_using_execution_policies` | `boolean` | false    | `true`, `false` | When enabled, approval rules do not block merge requests when a scan is required by a scan execution policy or a pipeline execution policy but a required scan artifact is missing from the target branch. This option only works when the project or group has an existing scan execution policy or pipeline execution policy with matching scanners. |
+| `unblock_rules_using_execution_policies` | `boolean` | false    | `true`, `false` | When enabled, approval rules do not block merge requests when a scan is required by a scan execution policy or a pipeline execution policy but a required scan artifact is missing from the source branch. This option only works when the project or group has an existing scan execution policy or pipeline execution policy with matching scanners. |
 
 You can only exclude [license finding rules](#license_finding-rule-type) if they target newly detected states only (`license_states` is set to `newly_detected`).
 
@@ -641,7 +755,7 @@ To recreate a pipeline execution policy:
 <!-- markdownlint-disable MD044 -->
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Policies**.
+1. In the left sidebar, select **Secure** > **Policies**.
 1. Select the pipeline execution policy you want to recreate.
 1. In the right sidebar, select the **YAML** tab and copy the contents of the entire policy file.
 1. Next to the policies table, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}), and select **Delete**.
@@ -673,6 +787,12 @@ In busy projects, the most recent pipeline may not have completed security scans
 To customize policy enforcement, you can define a policy's scope to either include or exclude
 specified projects, groups, or compliance framework labels. For more details, see
 [Scope](_index.md#configure-the-policy-scope).
+
+> [!note]
+> Setting a `policy_scope` field to an empty collection (for example, `including: []`) is treated
+> the same as omitting the field, so the policy applies to all projects for that scope dimension.
+> To disable a policy entirely, use `enabled: false`. For more details, see
+> [Empty collections in `policy_scope`](_index.md#empty-collections-in-policy_scope).
 
 ## `bypass_settings`
 
@@ -1076,7 +1196,7 @@ To resolve these issues:
 - For new projects, set up and run the necessary security scans on the default branch before creating merge requests.
 - Consider using scan execution policies or pipeline execution policies to ensure consistent execution of security scans across all branches.
 - Consider using [`fallback_behavior`](#fallback_behavior) with `open` to prevent invalid or unenforceable rules in a policy from requiring approval.
-- Consider using the [`policy tuning`](#policy_tuning) setting `unblock_rules_using_execution_policies` to address scenarios where security scan artifacts are missing, and scan execution policies are enforced. When enabled, this setting makes approval rules optional when scan artifacts are missing from the target branch and a scan is required by a scan execution policy. This feature only works with an existing scan execution policy that has matching scanners. It offers flexibility in the merge request process when certain security scans cannot be performed due to missing artifacts.
+- Consider using the [`policy tuning`](#policy_tuning) setting `unblock_rules_using_execution_policies` to address scenarios where security scan artifacts are missing, and scan execution policies are enforced. When enabled, this setting makes approval rules optional when scan artifacts are missing from the source branch and a scan is required by a scan execution policy. This feature only works with an existing scan execution policy that has matching scanners. It offers flexibility in the merge request process when certain security scans cannot be performed due to missing artifacts.
 
 ### `Target: none` in security bot comments
 
@@ -1101,7 +1221,7 @@ Potential solutions:
 
 ### Support request for debugging of merge request approval policy
 
-GitLab.com users may submit a [support ticket](https://about.gitlab.com/support/) titled "Merge request approval policy debugging". Provide the following details:
+GitLab.com users may submit a [support ticket](https://support.gitlab.com/) titled "Merge request approval policy debugging". Provide the following details:
 
 - Group path, project path and optionally merge request ID
 - Severity

@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_projects do
-  let_it_be(:user, reload: true) { create(:user) }
-  let_it_be(:organization) { create(:organization, users: [user]) }
+  let_it_be_with_reload(:user) { create(:user) }
+  let_it_be(:organization, freeze: false) { create(:organization, users: [user]) }
   let(:current_user) { user }
   let(:group_params) do
     { path: 'group_path', visibility_level: Gitlab::VisibilityLevel::PUBLIC,
@@ -83,12 +83,6 @@ RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_
     let(:extra_params) { { default_branch_protection_defaults: branch_protection } }
 
     context 'for users who have the ability to create a group with `default_branch_protection`' do
-      before do
-        allow(Ability).to receive(:allowed?).and_call_original
-        allow(Ability)
-          .to receive(:allowed?).with(user, :update_default_branch_protection, an_instance_of(Group)).and_return(true)
-      end
-
       it 'creates group with the specified default branch protection settings' do
         expect(created_group.default_branch_protection_defaults).to eq(branch_protection)
       end
@@ -100,6 +94,23 @@ RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_
         allow(Ability).to receive(:allowed?).with(user, :create_group_with_default_branch_protection).and_return(false)
 
         expect(created_group.default_branch_protection_defaults).not_to eq(Gitlab::Access::PROTECTION_NONE)
+      end
+    end
+
+    context 'when creating group without prior ownership' do
+      let(:branch_protection) do
+        {
+          "allowed_to_push" => [{ "access_level" => 40 }],
+          "allowed_to_merge" => [{ "access_level" => 30 }, { "access_level" => 40 }],
+          "developer_can_initial_push" => true
+        }
+      end
+
+      let(:extra_params) { { default_branch_protection_defaults: branch_protection } }
+
+      it 'applies default_branch_protection_defaults on first creation without requiring prior ownership' do
+        expect(created_group).to be_persisted
+        expect(created_group.default_branch_protection_defaults).to eq(branch_protection)
       end
     end
   end
@@ -140,16 +151,6 @@ RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_
             expect(created_group.allow_runner_registration_token?).to eq true
           end
         end
-
-        context 'when instance is dedicated' do
-          before do
-            stub_application_setting(gitlab_dedicated_instance: true, allow_immediate_namespaces_deletion: false)
-          end
-
-          it 'does not disallow runner registration token' do
-            expect(created_group.allow_runner_registration_token?).to eq true
-          end
-        end
       end
     end
 
@@ -166,7 +167,7 @@ RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_
     let_it_be(:other_organization) { create(:organization, name: 'Other Organization') }
 
     context 'when organization is provided' do
-      let_it_be(:organization) { create(:organization) }
+      let_it_be(:organization, freeze: false) { create(:organization) }
       let(:extra_params) { { organization_id: organization.id } }
 
       context 'when user can create the group' do
@@ -333,7 +334,7 @@ RSpec.describe Groups::CreateService, '#execute', feature_category: :groups_and_
       let(:extra_params) { { parent_id: group.id } }
       let_it_be(:group) { create(:group, organization: organization) { |g| g.add_owner(user) } }
       let_it_be(:group_integration) do
-        create(:beyond_identity_integration, group: group, instance: false, active: false)
+        create(:beyond_identity_integration, project: nil, group: group, active: false)
       end
 
       it 'creates a service from the group-level integration' do

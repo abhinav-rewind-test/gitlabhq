@@ -9,6 +9,7 @@ import { sortableStart, sortableEnd } from '~/sortable/utils';
 import Tracking from '~/tracking';
 import { getParameterByName } from '~/lib/utils/url_utility';
 import { getWorkItemTypeAllowedStatusMap } from '~/work_items/utils';
+import toast from '~/vue_shared/plugins/global_toast';
 import listQuery from 'ee_else_ce/boards/graphql/board_lists_deferred.query.graphql';
 import setActiveBoardItemMutation from 'ee_else_ce/boards/graphql/client/set_active_board_item.mutation.graphql';
 import BoardNewIssue from 'ee_else_ce/boards/components/board_new_issue.vue';
@@ -20,7 +21,6 @@ import {
   listIssuablesQueries,
   ListType,
   WIP_WEIGHT,
-  INCIDENT,
 } from 'ee_else_ce/boards/constants';
 import { DETAIL_VIEW_QUERY_PARAM_NAME } from '~/work_items/constants';
 import {
@@ -30,7 +30,7 @@ import {
   updateIssueCountAndWeight,
   setError,
 } from '../graphql/cache_updates';
-import { shouldCloneCard, moveItemVariables } from '../boards_util';
+import { getBoardListTitleId, shouldCloneCard, moveItemVariables } from '../boards_util';
 import BoardCard from './board_card.vue';
 import BoardCutLine from './board_cut_line.vue';
 
@@ -85,10 +85,15 @@ export default {
       type: Number,
       required: true,
     },
-    draggedType: {
+    draggedItemId: {
       type: String,
       required: false,
       default: null,
+    },
+    focused: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
   },
   data() {
@@ -103,6 +108,7 @@ export default {
       dragCancelled: false,
       hasMadeDrawerAttempt: false,
       workItemTypeAllowedStatusMap: {},
+      toastMessage: null,
     };
   },
   apollo: {
@@ -332,7 +338,7 @@ export default {
       return shouldCloneCard(this.list.listType, this.toList.listType);
     },
     isInapplicable() {
-      if (!this.draggedType || !this.list?.status?.id) {
+      if (!this.draggedItemId || !this.list?.status?.id) {
         return false;
       }
 
@@ -343,16 +349,14 @@ export default {
 
       const listStatusId = this.list.status.id;
 
-      // Incidents are always inapplicable for status lists
-      if (this.draggedType === INCIDENT) {
-        return true;
-      }
-
       // Check if the dragged work item type supports the current list status
-      const allowedStatuses = this.workItemTypeAllowedStatusMap[this.draggedType] || [];
+      const allowedStatuses = this.workItemTypeAllowedStatusMap[this.draggedItemId] || [];
       const hasMatchingStatus = allowedStatuses.some((status) => status.id === listStatusId);
 
       return !hasMatchingStatus;
+    },
+    listTitleId() {
+      return getBoardListTitleId(this.list.id);
     },
   },
   watch: {
@@ -361,12 +365,20 @@ export default {
         this.showCount = this.scrollHeight() > Math.ceil(this.listHeight());
       });
     },
+    focused(newVal) {
+      if (newVal) {
+        this.$nextTick(() => {
+          this.$el.focus();
+        });
+      }
+    },
   },
   created() {
     window.addEventListener('popstate', this.checkDrawerParams);
   },
   beforeDestroy() {
     window.removeEventListener('popstate', this.checkDrawerParams);
+    this.clearPendingMoveToast();
   },
   methods: {
     listHeight() {
@@ -405,12 +417,15 @@ export default {
         return;
       }
       const draggedItem = this.boardListItems.find((item) => item.id === itemId);
-      this.$emit('dragStart', { itemType: draggedItem?.type || null });
+      this.$emit('dragStart', { itemId: draggedItem?.workItemType?.id || null });
 
       // Reset dragCancelled flag
       this.dragCancelled = false;
       // Attach listener to detect `ESC` key press to cancel drag.
       document.addEventListener('keyup', this.handleKeyUp.bind(this));
+
+      // Clear any pending move toast and action when drag starts
+      this.clearPendingMoveToast();
 
       sortableStart();
       this.track('drag_card', { label: 'board' });
@@ -431,6 +446,10 @@ export default {
 
       // Detach listener as soon as drag ends.
       document.removeEventListener('keyup', this.handleKeyUp.bind(this));
+
+      // Clear any pending move toast and action when drag ends
+      this.clearPendingMoveToast();
+
       // Drag was cancelled, prevent reordering.
       if (this.dragCancelled) return;
 
@@ -498,6 +517,13 @@ export default {
         // We need to manually trigger it to simulate cancel behaviour as VueDraggable doesn't
         // natively support it, see https://github.com/SortableJS/Vue.Draggable/issues/968.
         document.dispatchEvent(new Event('mouseup'));
+      }
+    },
+    clearPendingMoveToast() {
+      // Clear any pending move toast and action
+      if (this.toastMessage) {
+        this.toastMessage.hide();
+        this.toastMessage = null;
       }
     },
     isItemInTheList(itemIid) {
@@ -603,6 +629,9 @@ export default {
       }
     },
     async moveToPosition(positionInList, oldIndex, item) {
+      const itemBeforeOldPosition = oldIndex === 0 ? null : this.boardListItems[oldIndex - 1]?.id;
+      const itemAfterOldPosition = this.boardListItems[oldIndex + 1]?.id;
+
       try {
         await this.$apollo.mutate({
           mutation: listIssuablesQueries[this.issuableType].moveMutation,
@@ -649,6 +678,23 @@ export default {
             }
           },
         });
+
+        const message =
+          positionInList === 0
+            ? s__('Boards|Item moved to start of list.')
+            : s__('Boards|Item moved to end of list.');
+
+        // Show toast with undo action
+        this.toastMessage = toast(message, {
+          action: {
+            text: __('Undo'),
+            onClick: () =>
+              this.undoMoveToPosition(item, oldIndex, {
+                moveAfterId: itemAfterOldPosition,
+                moveBeforeId: itemBeforeOldPosition,
+              }),
+          },
+        });
       } catch (error) {
         setError({
           error,
@@ -658,6 +704,33 @@ export default {
               issuableType: this.isEpicBoard ? 'epic' : 'issue',
             },
           ),
+        });
+      }
+    },
+    async undoMoveToPosition(item, previousIndex, previousPosition = {}) {
+      if (!item || Number.isNaN(previousIndex) || previousIndex < 0) {
+        return;
+      }
+
+      this.clearPendingMoveToast();
+
+      try {
+        // Use moveBoardItem to revert to previous position
+        await this.moveBoardItem(
+          {
+            itemId: item.id,
+            iid: item.iid,
+            fromListId: this.currentList.id,
+            toListId: this.currentList.id,
+            moveAfterId: previousPosition.moveAfterId,
+            moveBeforeId: previousPosition.moveBeforeId,
+          },
+          previousIndex,
+        );
+      } catch (error) {
+        setError({
+          error,
+          message: s__('Boards|An error occurred while undoing the move. Please try again.'),
         });
       }
     },
@@ -761,9 +834,14 @@ export default {
 <template>
   <div
     v-show="!list.collapsed"
+    :tabindex="focused ? 0 : -1"
+    role="group"
+    :aria-labelledby="listTitleId"
     class="board-list-component gl-relative gl-flex gl-h-full gl-min-h-0 gl-flex-col"
     :class="{ 'board-column-not-applicable': isInapplicable }"
     data-testid="board-list-cards-area"
+    @keydown.left.self.exact.prevent="$emit('focus-adjacent', -1)"
+    @keydown.right.self.exact.prevent="$emit('focus-adjacent', 1)"
   >
     <div
       v-if="isInapplicable"

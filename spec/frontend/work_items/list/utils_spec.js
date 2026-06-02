@@ -14,66 +14,123 @@ import {
   savedViewFilterTokens,
   saveSavedViewParams,
   saveSavedViewResponse,
+  saveSavedViewWithSearchParams,
+  saveSavedViewWithSearchResponse,
   editSavedViewParams,
   editSavedViewResponse,
   editSavedViewFormOnlyParams,
   editSavedViewFormOnlyResponse,
+  savedViewFiltersWithWildcards,
+  savedViewFilterTokensWithWildcards,
+  savedViewFiltersWithNotParent,
+  savedViewFilterTokensWithNotParent,
+  savedViewFiltersWithSingleIn,
+  savedViewFilterTokensWithSingleIn,
+  savedViewFiltersWithHierarchyParent,
+  savedViewFilterTokensWithHierarchyParent,
+  savedViewFiltersWithHierarchyParentWildcard,
+  savedViewFilterTokensWithHierarchyParentWildcard,
+  savedViewFiltersWithMultipleSearchTokens,
+  savedViewFilterTokensWithMultipleSearchTokens,
 } from 'jest/work_items/list/mock_data';
+import { createAlert } from '~/alert';
 import { STATUS_CLOSED } from '~/issues/constants';
 import { CREATED_DESC, UPDATED_DESC, urlSortParams } from '~/work_items/list/constants';
+import getSubscribedSavedViewsQuery from '~/work_items/list/graphql/work_item_saved_views_namespace.query.graphql';
 import {
+  convertOldTypeTokenEnumToGid,
   convertToApiParams,
   convertToSearchQuery,
   convertToUrlParams,
   deriveSortKey,
-  getDefaultWorkItemTypes,
   getFilterTokens,
   getInitialPageParams,
   getSortOptions,
-  getTypeTokenOptions,
   groupMultiSelectFilterTokens,
   getSavedViewFilterTokens,
   saveSavedView,
   handleEnforceSubscriptionLimit,
+  updateCacheAfterViewReorder,
+  reorderSavedView,
+  convertNumberToGid,
+  convertLegacyTypeFormat,
 } from 'ee_else_ce/work_items/list/utils';
-import { DEFAULT_PAGE_SIZE } from '~/vue_shared/issuable/list/constants';
 import {
-  WORK_ITEM_TYPE_ENUM_INCIDENT,
-  WORK_ITEM_TYPE_ENUM_ISSUE,
-  WORK_ITEM_TYPE_ENUM_TASK,
-  WORK_ITEM_TYPE_ENUM_TICKET,
-} from '~/work_items/constants';
+  TOKEN_TYPE_AUTHOR,
+  TOKEN_TYPE_TYPE,
+} from '~/vue_shared/components/filtered_search_bar/constants';
+import { DEFAULT_PAGE_SIZE } from '~/vue_shared/issuable/list/constants';
 
-describe('getDefaultWorkItemTypes', () => {
-  it('returns default work item types', () => {
-    const types = getDefaultWorkItemTypes({
-      hasEpicsFeature: false,
-      hasOkrsFeature: false,
-      hasQualityManagementFeature: false,
+jest.mock('~/alert');
+
+describe('convertOldTypeTokenEnumToGid', () => {
+  const workItemTypesConfiguration = [
+    { id: 'gid://gitlab/WorkItems::Type/1', name: 'Issue' },
+    { id: 'gid://gitlab/WorkItems::Type/2', name: 'Incident' },
+    { id: 'gid://gitlab/WorkItems::Type/3', name: 'Test Case' },
+    { id: 'gid://gitlab/WorkItems::Type/4', name: 'Requirement' },
+    { id: 'gid://gitlab/WorkItems::Type/5', name: 'Task' },
+    { id: 'gid://gitlab/WorkItems::Type/6', name: 'Objective' },
+    { id: 'gid://gitlab/WorkItems::Type/7', name: 'Key Result' },
+    { id: 'gid://gitlab/WorkItems::Type/8', name: 'Epic' },
+    { id: 'gid://gitlab/WorkItems::Type/9', name: 'Ticket' },
+  ];
+
+  it('converts lowercase epic to 6, and shows alert telling user to update their bookmarks', () => {
+    const tokens = [
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: 'epic' } },
+    ];
+    expect(convertOldTypeTokenEnumToGid(tokens, workItemTypesConfiguration)).toEqual([
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: '8' } },
+    ]);
+    expect(createAlert).toHaveBeenCalledWith({
+      message:
+        'The Type filter URL has been changed. Please update any bookmarks or links that reference the old URL.',
+      variant: 'info',
     });
+  });
 
-    expect(types).toEqual([
-      WORK_ITEM_TYPE_ENUM_ISSUE,
-      WORK_ITEM_TYPE_ENUM_INCIDENT,
-      WORK_ITEM_TYPE_ENUM_TASK,
-      WORK_ITEM_TYPE_ENUM_TICKET,
+  it('converts screaming snake case KEY_RESULT to 7', () => {
+    const tokens = [
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: 'KEY_RESULT' } },
+    ];
+    expect(convertOldTypeTokenEnumToGid(tokens, workItemTypesConfiguration)).toEqual([
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: '7' } },
     ]);
   });
-});
 
-describe('getTypeTokenOptions', () => {
-  it('returns options for the Type token', () => {
-    const options = getTypeTokenOptions({
-      hasEpicsFeature: false,
-      hasOkrsFeature: false,
-      hasQualityManagementFeature: false,
-    });
-
-    expect(options).toEqual([
-      { icon: 'work-item-issue', title: 'Issue', value: 'issue' },
-      { icon: 'work-item-incident', title: 'Incident', value: 'incident' },
-      { icon: 'work-item-task', title: 'Task', value: 'task' },
+  it('converts multiSelect values', () => {
+    const tokens = [
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '!=', data: ['ISSUE', 'INCIDENT'] } },
+    ];
+    expect(convertOldTypeTokenEnumToGid(tokens, workItemTypesConfiguration)).toEqual([
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '!=', data: ['1', '2'] } },
     ]);
+  });
+
+  it('removes type token when enum value does not exist', () => {
+    const tokens = [
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: 'NON_EXISTENT_TYPE' } },
+    ];
+    expect(convertOldTypeTokenEnumToGid(tokens, workItemTypesConfiguration)).toEqual([
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+    ]);
+  });
+
+  it('makes no changes when type token is already number, and does not show alert', () => {
+    const tokens = [
+      { type: TOKEN_TYPE_AUTHOR, value: { operator: '=', data: 'root' } },
+      { type: TOKEN_TYPE_TYPE, value: { operator: '=', data: '8' } },
+    ];
+    expect(convertOldTypeTokenEnumToGid(tokens, workItemTypesConfiguration)).toEqual(tokens);
+    expect(createAlert).not.toHaveBeenCalled();
   });
 });
 
@@ -247,6 +304,80 @@ describe('getSavedViewFilterTokens', () => {
   it('returns valid filter tokens given a saved view filters object', () => {
     expect(getSavedViewFilterTokens(savedViewFiltersObject)).toEqual(savedViewFilterTokens);
   });
+
+  it('capitalizes wildcard filter values', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithWildcards)).toEqual(
+      savedViewFilterTokensWithWildcards,
+    );
+  });
+
+  it('handles not[parentIds] filter', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithNotParent)).toEqual(
+      savedViewFilterTokensWithNotParent,
+    );
+  });
+
+  it('handles single value in filter', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithSingleIn)).toEqual(
+      savedViewFilterTokensWithSingleIn,
+    );
+  });
+
+  it('handles hierarchyFilters with parentIds', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithHierarchyParent)).toEqual(
+      savedViewFilterTokensWithHierarchyParent,
+    );
+  });
+
+  it('handles hierarchyFilters with parentWildcardId', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithHierarchyParentWildcard)).toEqual(
+      savedViewFilterTokensWithHierarchyParentWildcard,
+    );
+  });
+
+  it('splits saved view search string into multiple tokens', () => {
+    expect(getSavedViewFilterTokens(savedViewFiltersWithMultipleSearchTokens)).toEqual(
+      savedViewFilterTokensWithMultipleSearchTokens,
+    );
+  });
+});
+
+describe('convertNumberToGid', () => {
+  it('converts a number to a gid', () => {
+    expect(convertNumberToGid('1')).toBe('gid://gitlab/WorkItems::Type/1');
+  });
+});
+
+describe('convertLegacyTypeFormat', () => {
+  const getWorkItemTypeConfiguration = jest
+    .fn()
+    .mockReturnValue({ id: 'gid://gitlab/WorkItems::Type/1' });
+  const createTokens = (data) => [{ type: 'type', value: { data } }];
+
+  it.each`
+    data                                | expected
+    ${'issue'}                          | ${'1'}
+    ${'KEY_RESULT'}                     | ${'1'}
+    ${['task']}                         | ${['1']}
+    ${['issue', 'task']}                | ${['1', '1']}
+    ${'gid://gitlab/WorkItems::Type/5'} | ${'5'}
+  `('converts enums and gids to a number', ({ data, expected }) => {
+    const tokens = createTokens(data);
+    const expectedTokens = createTokens(expected);
+    expect(convertLegacyTypeFormat(tokens, getWorkItemTypeConfiguration)).toEqual(expectedTokens);
+  });
+
+  it('converts when there are multiple type tokens', () => {
+    const tokens = [
+      { type: 'type', value: { data: 'gid://gitlab/WorkItems::Type/1001' } },
+      { type: 'type', value: { data: 'gid://gitlab/WorkItems::Type/1002' } },
+    ];
+    const expectedTokens = [
+      { type: 'type', value: { data: '1001' } },
+      { type: 'type', value: { data: '1002' } },
+    ];
+    expect(convertLegacyTypeFormat(tokens, getWorkItemTypeConfiguration)).toEqual(expectedTokens);
+  });
 });
 
 describe('handleEnforceSubscriptionLimit', () => {
@@ -295,7 +426,7 @@ describe('handleEnforceSubscriptionLimit', () => {
     expect(mockMutate).not.toHaveBeenCalled();
   });
 
-  it('unsubscribes from second-to-last view when over the limit', async () => {
+  it('unsubscribes from second-to-last view when over the limit when creating a view', async () => {
     mockQuery.mockResolvedValue({
       data: {
         namespace: {
@@ -316,6 +447,7 @@ describe('handleEnforceSubscriptionLimit', () => {
       subscribedSavedViewLimit: 3,
       apolloClient: mockApolloClient,
       namespacePath: 'my-group',
+      creating: true,
     });
 
     expect(mockMutate).toHaveBeenCalledWith(
@@ -323,6 +455,41 @@ describe('handleEnforceSubscriptionLimit', () => {
         variables: {
           input: {
             id: 'gid://gitlab/SavedView/3', // Second-to-last view
+          },
+        },
+      }),
+    );
+  });
+
+  it('unsubscribes from second-to-last view when over the limit not creating a view', async () => {
+    mockQuery.mockResolvedValue({
+      data: {
+        namespace: {
+          savedViews: {
+            nodes: [
+              { id: 'gid://gitlab/SavedView/1', name: 'View 1' },
+              { id: 'gid://gitlab/SavedView/2', name: 'View 2' },
+              { id: 'gid://gitlab/SavedView/3', name: 'View 3' },
+              { id: 'gid://gitlab/SavedView/4', name: 'View 4' },
+            ],
+          },
+        },
+      },
+    });
+    mockMutate.mockResolvedValue({});
+
+    await handleEnforceSubscriptionLimit({
+      subscribedSavedViewLimit: 3,
+      apolloClient: mockApolloClient,
+      namespacePath: 'my-group',
+      creating: false,
+    });
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: {
+          input: {
+            id: 'gid://gitlab/SavedView/4', // Second-to-last view
           },
         },
       }),
@@ -373,7 +540,7 @@ describe('saveSavedView', () => {
               namespacePath: 'my-group',
               name: 'My View',
               description: 'A test view',
-              private: false,
+              isPrivate: false,
               filters: { state: 'opened' },
               sort: 'CREATED_DESC',
               displaySettings: { groupBy: 'assignee' },
@@ -382,6 +549,44 @@ describe('saveSavedView', () => {
         }),
       );
       expect(result.data.workItemSavedViewCreate.savedView.id).toBe('gid://gitlab/SavedView/1');
+    });
+
+    it('joins search filters before calling mutate', async () => {
+      const params = {
+        ...saveSavedViewWithSearchParams,
+        apolloClient: mockApolloClient,
+        subscribedSavedViewLimit: 5,
+      };
+
+      mockMutate.mockResolvedValue(saveSavedViewWithSearchResponse);
+
+      mockQuery.mockResolvedValue({
+        data: {
+          namespace: {
+            savedViews: {
+              nodes: [{ id: 'gid://gitlab/SavedView/1', name: 'View 1' }],
+            },
+          },
+        },
+      });
+
+      await saveSavedView(params);
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variables: {
+            input: {
+              namespacePath: 'my-group',
+              name: 'My View',
+              description: 'A test view',
+              isPrivate: false,
+              filters: { in: 'TITLE', search: 'work__SV__items' },
+              sort: 'CREATED_DESC',
+              displaySettings: { groupBy: 'assignee' },
+            },
+          },
+        }),
+      );
     });
 
     it('calls handleEnforceSubscriptionLimit when enforceSubscriptionLimit is true', async () => {
@@ -441,6 +646,44 @@ describe('saveSavedView', () => {
 
       expect(mockQuery).not.toHaveBeenCalled();
     });
+
+    it('does not update cache when mutation returns errors', async () => {
+      const errorResponse = {
+        data: {
+          workItemSavedViewCreate: {
+            savedView: null,
+            errors: ['You do not have permission to create this saved view.'],
+          },
+        },
+      };
+
+      mockMutate.mockResolvedValue(errorResponse);
+
+      mockQuery.mockResolvedValue({
+        data: {
+          namespace: {
+            savedViews: {
+              nodes: [],
+            },
+          },
+        },
+      });
+
+      const params = {
+        ...saveSavedViewParams,
+        apolloClient: mockApolloClient,
+        subscribedSavedViewLimit: 5,
+      };
+
+      await saveSavedView(params);
+
+      const { update } = mockMutate.mock.calls[0][0];
+      const mockCache = { readQuery: jest.fn(), writeQuery: jest.fn() };
+      update(mockCache, { data: errorResponse.data });
+
+      expect(mockCache.readQuery).not.toHaveBeenCalled();
+      expect(mockCache.writeQuery).not.toHaveBeenCalled();
+    });
   });
 
   describe('when editing a saved view', () => {
@@ -462,7 +705,7 @@ describe('saveSavedView', () => {
               id: 'gid://gitlab/SavedView/1',
               name: 'Updated View',
               description: 'Updated description',
-              private: false,
+              isPrivate: false,
               filters: { state: 'closed' },
               sort: 'UPDATED_DESC',
               displaySettings: { groupBy: 'status' },
@@ -508,11 +751,315 @@ describe('saveSavedView', () => {
         id: 'gid://gitlab/SavedView/1',
         name: 'Updated View',
         description: 'Updated description',
-        private: false,
+        isPrivate: false,
       });
       expect(callArgs.variables.input.filters).toBeUndefined();
       expect(callArgs.variables.input.sort).toBeUndefined();
       expect(callArgs.variables.input.displaySettings).toBeUndefined();
     });
+
+    it('does not update cache when mutation returns errors', async () => {
+      const errorResponse = {
+        data: {
+          workItemSavedViewUpdate: {
+            savedView: null,
+            errors: ['Only the author can change visibility settings'],
+          },
+        },
+      };
+
+      mockMutate.mockResolvedValue(errorResponse);
+
+      const params = {
+        ...editSavedViewParams,
+        apolloClient: mockApolloClient,
+        subscribedSavedViewLimit: 5,
+      };
+
+      await saveSavedView(params);
+
+      const { update } = mockMutate.mock.calls[0][0];
+      const mockCache = { readQuery: jest.fn(), writeQuery: jest.fn() };
+      update(mockCache, { data: errorResponse.data });
+
+      expect(mockCache.readQuery).not.toHaveBeenCalled();
+      expect(mockCache.writeQuery).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('alphabetical cache ordering (subscribedOnly: false)', () => {
+    const buildCacheData = (views) => ({
+      namespace: {
+        savedViews: {
+          nodes: views.map((v) => ({ ...v })),
+        },
+      },
+    });
+    const buildSubscribedAwareCache = (existingViews) => ({
+      readQuery: jest
+        .fn()
+        .mockImplementation(({ variables }) =>
+          variables.subscribedOnly ? null : buildCacheData(existingViews),
+        ),
+      writeQuery: jest.fn(),
+    });
+
+    const existingViews = [
+      { id: 'gid://gitlab/SavedView/1', name: 'Alpha View' },
+      { id: 'gid://gitlab/SavedView/2', name: 'Beta View' },
+      { id: 'gid://gitlab/SavedView/3', name: 'Gamma View' },
+    ];
+
+    it.each`
+      description                                        | newView                                                      | savedViewFixture       | mutationKey                  | expectedOrder
+      ${'inserts a new view in alphabetical position'}   | ${{ id: 'gid://gitlab/SavedView/4', name: 'Beta-ish View' }} | ${saveSavedViewParams} | ${'workItemSavedViewCreate'} | ${['Alpha View', 'Beta View', 'Beta-ish View', 'Gamma View']}
+      ${'appends a view at end when name sorts last'}    | ${{ id: 'gid://gitlab/SavedView/4', name: 'Zeta View' }}     | ${saveSavedViewParams} | ${'workItemSavedViewCreate'} | ${['Alpha View', 'Beta View', 'Gamma View', 'Zeta View']}
+      ${'re-inserts a renamed view in correct position'} | ${{ id: 'gid://gitlab/SavedView/1', name: 'Zeta View' }}     | ${editSavedViewParams} | ${'workItemSavedViewUpdate'} | ${['Beta View', 'Gamma View', 'Zeta View']}
+    `('$description', async ({ newView, savedViewFixture, mutationKey, expectedOrder }) => {
+      const mockCache = buildSubscribedAwareCache(existingViews);
+      const mutationData = { [mutationKey]: { savedView: newView, errors: [] } };
+
+      mockMutate.mockResolvedValue({ data: mutationData });
+      mockQuery.mockResolvedValue({ data: { namespace: { savedViews: { nodes: [] } } } });
+
+      await saveSavedView({
+        ...savedViewFixture,
+        apolloClient: mockApolloClient,
+        subscribedSavedViewLimit: 5,
+      });
+
+      const { update } = mockMutate.mock.calls[0][0];
+      update(mockCache, { data: mutationData });
+
+      expect(mockCache.writeQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: getSubscribedSavedViewsQuery,
+          variables: expect.objectContaining({ subscribedOnly: false, sort: 'NAME_ASC' }),
+          data: {
+            namespace: {
+              savedViews: {
+                nodes: expectedOrder.map((name) => expect.objectContaining({ name })),
+              },
+            },
+          },
+        }),
+      );
+    });
+  });
+});
+
+describe('updateCacheAfterViewReorder', () => {
+  let mockCache;
+  const fullPath = 'test-group';
+
+  const mockViews = [
+    { id: 'gid://gitlab/SavedView/1', name: 'View 1' },
+    { id: 'gid://gitlab/SavedView/2', name: 'View 2' },
+    { id: 'gid://gitlab/SavedView/3', name: 'View 3' },
+  ];
+
+  const buildCacheData = (views) => ({
+    namespace: {
+      savedViews: {
+        nodes: views.map((v) => ({ ...v })),
+      },
+    },
+  });
+
+  beforeEach(() => {
+    mockCache = {
+      readQuery: jest.fn(),
+      writeQuery: jest.fn(),
+    };
+  });
+
+  it('moves a view after a reference view', () => {
+    mockCache.readQuery.mockReturnValue(buildCacheData(mockViews));
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: mockViews[2],
+      referenceView: mockViews[0],
+      position: 'after',
+      fullPath,
+    });
+
+    const writtenData = mockCache.writeQuery.mock.calls[0][0].data;
+    const reorderedIds = writtenData.namespace.savedViews.nodes.map((v) => v.id);
+
+    expect(reorderedIds).toEqual([
+      'gid://gitlab/SavedView/1',
+      'gid://gitlab/SavedView/3',
+      'gid://gitlab/SavedView/2',
+    ]);
+  });
+
+  it('moves a view before a reference view', () => {
+    mockCache.readQuery.mockReturnValue(buildCacheData(mockViews));
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: mockViews[2],
+      referenceView: mockViews[0],
+      position: 'before',
+      fullPath,
+    });
+
+    const writtenData = mockCache.writeQuery.mock.calls[0][0].data;
+    const reorderedIds = writtenData.namespace.savedViews.nodes.map((v) => v.id);
+
+    expect(reorderedIds).toEqual([
+      'gid://gitlab/SavedView/3',
+      'gid://gitlab/SavedView/1',
+      'gid://gitlab/SavedView/2',
+    ]);
+  });
+
+  it('appends to end when reference view is not found', () => {
+    mockCache.readQuery.mockReturnValue(buildCacheData(mockViews));
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: mockViews[0],
+      referenceView: { id: 'gid://gitlab/SavedView/999' },
+      position: 'after',
+      fullPath,
+    });
+
+    const writtenData = mockCache.writeQuery.mock.calls[0][0].data;
+    const reorderedIds = writtenData.namespace.savedViews.nodes.map((v) => v.id);
+
+    expect(reorderedIds).toEqual([
+      'gid://gitlab/SavedView/2',
+      'gid://gitlab/SavedView/3',
+      'gid://gitlab/SavedView/1',
+    ]);
+  });
+
+  it('does not write to cache when moved view is not found', () => {
+    mockCache.readQuery.mockReturnValue(buildCacheData(mockViews));
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: { id: 'gid://gitlab/SavedView/999' },
+      referenceView: mockViews[0],
+      position: 'after',
+      fullPath,
+    });
+
+    // writeQuery is still called but data should be unchanged
+    const writtenData = mockCache.writeQuery.mock.calls[0][0].data;
+    const reorderedIds = writtenData.namespace.savedViews.nodes.map((v) => v.id);
+
+    expect(reorderedIds).toEqual([
+      'gid://gitlab/SavedView/1',
+      'gid://gitlab/SavedView/2',
+      'gid://gitlab/SavedView/3',
+    ]);
+  });
+
+  it('does not write to cache when source data is null', () => {
+    mockCache.readQuery.mockReturnValue(null);
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: mockViews[2],
+      referenceView: mockViews[0],
+      position: 'after',
+      fullPath,
+    });
+
+    expect(mockCache.writeQuery).not.toHaveBeenCalled();
+  });
+
+  it('updates both subscribedOnly true and false cache variants', () => {
+    mockCache.readQuery.mockReturnValue(buildCacheData(mockViews));
+
+    updateCacheAfterViewReorder({
+      cache: mockCache,
+      movedView: mockViews[2],
+      referenceView: mockViews[0],
+      position: 'after',
+      fullPath,
+    });
+
+    expect(mockCache.readQuery).toHaveBeenCalledTimes(2);
+    expect(mockCache.writeQuery).toHaveBeenCalledTimes(2);
+
+    const firstCallVars = mockCache.readQuery.mock.calls[0][0].variables;
+    const secondCallVars = mockCache.readQuery.mock.calls[1][0].variables;
+
+    expect(firstCallVars.subscribedOnly).toBe(true);
+    expect(firstCallVars.sort).toBe('RELATIVE_POSITION');
+    expect(secondCallVars.subscribedOnly).toBe(false);
+    expect(secondCallVars.sort).toBe('NAME_ASC');
+  });
+});
+
+describe('reorderSavedView', () => {
+  let mockApolloClient;
+  let mockMutate;
+
+  const movedView = { id: 'gid://gitlab/SavedView/3', name: 'View 3' };
+  const referenceView = { id: 'gid://gitlab/SavedView/1', name: 'View 1' };
+
+  beforeEach(() => {
+    mockMutate = jest.fn().mockResolvedValue({});
+    mockApolloClient = { mutate: mockMutate };
+  });
+
+  it('calls mutate with moveAfterId when position is after', async () => {
+    await reorderSavedView({
+      apolloClient: mockApolloClient,
+      movedView,
+      referenceView,
+      position: 'after',
+      fullPath: 'test-group',
+    });
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: {
+          input: {
+            id: movedView.id,
+            moveAfterId: referenceView.id,
+          },
+        },
+      }),
+    );
+  });
+
+  it('calls mutate with moveBeforeId when position is before', async () => {
+    await reorderSavedView({
+      apolloClient: mockApolloClient,
+      movedView,
+      referenceView,
+      position: 'before',
+      fullPath: 'test-group',
+    });
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: {
+          input: {
+            id: movedView.id,
+            moveBeforeId: referenceView.id,
+          },
+        },
+      }),
+    );
+  });
+
+  it('passes an update function for cache update', async () => {
+    await reorderSavedView({
+      apolloClient: mockApolloClient,
+      movedView,
+      referenceView,
+      position: 'after',
+      fullPath: 'test-group',
+    });
+
+    const mutateCall = mockMutate.mock.calls[0][0];
+    expect(mutateCall.update).toBeInstanceOf(Function);
   });
 });

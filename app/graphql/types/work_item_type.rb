@@ -9,6 +9,8 @@ module Types
     implements Types::TodoableInterface
     connection_type_class Types::CountableConnectionType
 
+    authorize_granular_token permissions: :read_work_item, boundary: :project, boundary_type: :project
+
     authorize :read_work_item
 
     def self.authorization_scopes
@@ -59,7 +61,6 @@ module Types
     field :project, Types::ProjectType, null: true,
       scopes: [:api, :read_api, :ai_workflows],
       description: 'Project the work item belongs to.',
-      skip_type_authorization: [:read_project],
       experiment: { milestone: '15.3' }
     field :state, WorkItemStateEnum, null: false,
       scopes: [:api, :read_api, :ai_workflows],
@@ -71,8 +72,11 @@ module Types
       scopes: [:api, :read_api, :ai_workflows],
       description: 'Timestamp of when the work item was last updated.'
 
-    field :create_note_email, GraphQL::Types::String,
-      null: true,
+    field :create_note_email, GraphQL::Types::String, null: true,
+      scopes: [:api],
+      directives: granular_scope_directive(
+        permissions: :create_issue_note, boundary: :project, boundary_type: :project
+      ),
       description: 'User specific email address for the work item.'
     field :user_discussions_count, GraphQL::Types::Int, null: false,
       scopes: [:api, :read_api, :ai_workflows],
@@ -137,7 +141,7 @@ module Types
     field :web_path, GraphQL::Types::String, null: true,
       description: 'Web path of the object.'
 
-    markdown_field :title_html, null: true
+    markdown_field :title_html, null: true, description: "HTML rendering of `title`"
     markdown_field :description_html, null: true
 
     def work_item_type

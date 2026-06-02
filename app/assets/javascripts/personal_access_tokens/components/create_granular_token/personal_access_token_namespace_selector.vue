@@ -1,6 +1,6 @@
 <script>
 import { GlButton, GlCollapsibleListbox, GlIcon, GlSprintf } from '@gitlab/ui';
-import { keyBy } from 'lodash';
+import { keyBy } from 'lodash-es';
 import { createAlert } from '~/alert';
 import {
   MINIMUM_SEARCH_LENGTH,
@@ -24,6 +24,11 @@ export default {
     GlSprintf,
   },
   props: {
+    value: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
     error: {
       type: String,
       required: false,
@@ -64,11 +69,18 @@ export default {
     return {
       groupsAndProjects: { groups: [], projects: [] },
       searchTerm: '',
-      selectedIds: [],
-      selectedItems: [],
+      selectedIds: this.value.map((namespace) => namespace.id),
     };
   },
   computed: {
+    selectedItems: {
+      get() {
+        return this.value;
+      },
+      set(val) {
+        this.$emit('input', val);
+      },
+    },
     isLoading() {
       return this.$apollo.queries.groupsAndProjects.loading;
     },
@@ -134,8 +146,6 @@ export default {
     },
     removeNamespace(namespaceId) {
       this.selectedIds = this.selectedIds.filter((item) => item !== namespaceId);
-
-      this.$emit('input', this.selectedIds);
     },
     isGroup(item) {
       // eslint-disable-next-line no-underscore-dangle
@@ -154,6 +164,7 @@ export default {
     },
   },
   i18n: {
+    title: s__('AccessTokens|Group or project'),
     selected: __('%{count} selected'),
     noMatches: __('No matches found'),
     groups: __('Groups'),
@@ -172,8 +183,8 @@ export default {
 
 <template>
   <div>
-    <crud-component class="gl-mt-0">
-      <template #title>
+    <crud-component :title="$options.i18n.title" class="gl-mt-0">
+      <template #actions>
         <gl-collapsible-listbox
           v-model="selectedIds"
           :items="listboxItems"
@@ -185,16 +196,15 @@ export default {
           :searching="isLoading"
           :toggle-text="$options.i18n.addButton"
           @search="onSearch"
-          @select="$emit('input', $event)"
         />
       </template>
 
       <ul
         v-if="selectedIds.length"
-        class="gl-flex gl-list-none gl-flex-col gl-gap-3 gl-pl-2"
+        class="gl-mb-2 gl-flex gl-list-none gl-flex-col gl-gap-3 gl-pl-2"
         data-testid="selected-namespaces"
       >
-        <li v-for="item in selectedItems" :key="item.id" class="gl-mb-2 gl-flex gl-items-center">
+        <li v-for="item in selectedItems" :key="item.id" class="gl-mt-2 gl-flex gl-items-center">
           <gl-icon :name="namespaceIcon(item)" />
           <div class="gl-ml-3">
             {{ item.fullPath }}
@@ -224,8 +234,6 @@ export default {
       </div>
     </crud-component>
 
-    <div v-if="error" class="gl-font-sm gl-mt-2 gl-text-red-500">
-      {{ error }}
-    </div>
+    <div v-if="error" class="invalid-feedback gl-block">{{ error }}</div>
   </div>
 </template>

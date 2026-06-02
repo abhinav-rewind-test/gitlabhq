@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Internal users
 description: Enable automated system operations through internal bot users for GitLab functionality.
 ---
@@ -44,7 +44,7 @@ Other examples of internal users:
 - [Alert Bot](../operations/incident_management/alerts.md#trigger-actions-from-alerts)
 - [Ghost User](../user/profile/account/delete_account.md#associated-records)
 - [Support Bot](../user/project/service_desk/configure.md#support-bot-user)
-- [Placeholder User](../user/import/mapping.md#placeholder-users) created during imports
+- [Placeholder User](../user/import/mapping/post_migration_mapping.md#placeholder-users) created during imports
 - Visual Review Bot
 - Resource access tokens, including [project access tokens](../user/project/settings/project_access_tokens.md)
   and [group access tokens](../user/group/settings/group_access_tokens.md), which are
@@ -72,3 +72,16 @@ GitLab Security Bot is an internal user responsible for commenting on merge requ
 GitLab Security Policy Bot is an internal user responsible for triggering scheduled pipelines
 defined in [security policies](../user/application_security/policies/_index.md#gitlab-security-policy-bot-user). This account is
 created in every project on which a security policy is enforced.
+
+For scheduled pipeline execution policies, this bot can read CI/CD configuration from private
+projects when project owners explicitly allow access.
+
+Bot access has these limits:
+
+- The target project must enable **Security policy bot access**.
+- The requested file path must match the project's allowed file patterns.
+- The bot project must be in the allowed group hierarchy. If no group is configured, GitLab uses
+  the root ancestor group.
+
+To set up Security Policy Bot access, see
+[scheduled pipeline execution policies](../user/application_security/policies/scheduled_pipeline_execution_policies.md#option-2-allow-security-policy-bot-access-to-private-projects).

@@ -8,7 +8,7 @@ RSpec.describe 'GraphQL', feature_category: :shared do
   let(:query) { graphql_query_for('echo', text: 'Hello world') }
   let(:mutation) { 'mutation { echoCreate(input: { messages: ["hello", "world"] }) { echoes } }' }
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   describe 'logging' do
     shared_examples 'logging a graphql query' do
@@ -177,6 +177,28 @@ RSpec.describe 'GraphQL', feature_category: :shared do
         resp = json_response
 
         expect(resp.dig('errors', 0, 'message')).to include "Mutations are forbidden"
+      end
+
+      it 'fails when operationName does not match any operation in a document containing a mutation' do
+        get_graphql(mutation, current_user: user, params: { operationName: 'NonExistent' })
+
+        expect(graphql_errors).to include(a_hash_including('message' => /Mutations are forbidden/))
+      end
+
+      it 'fails when operationName is absent and the document contains an unnamed mutation' do
+        unnamed_mutation = 'mutation { echoCreate(input: { messages: ["hello", "world"] }) { echoes } }'
+
+        get_graphql(unnamed_mutation, current_user: user)
+
+        expect(graphql_errors).to include(a_hash_including('message' => /Mutations are forbidden/))
+      end
+
+      it 'fails when operationName does not match and the document contains an unnamed mutation' do
+        unnamed_mutation = 'mutation { echoCreate(input: { messages: ["hello", "world"] }) { echoes } }'
+
+        get_graphql(unnamed_mutation, current_user: user, params: { operationName: 'NonExistent' })
+
+        expect(graphql_errors).to include(a_hash_including('message' => /Mutations are forbidden/))
       end
     end
   end
@@ -425,7 +447,7 @@ RSpec.describe 'GraphQL', feature_category: :shared do
       end
 
       context 'with group or project access token' do
-        let_it_be(:user) { create(:user, :project_bot) }
+        let_it_be(:user, freeze: false) { create(:user, :project_bot) }
         let_it_be(:project_access_token) { create(:personal_access_token, user: user) }
 
         let(:token) { project_access_token.token }
@@ -515,7 +537,7 @@ RSpec.describe 'GraphQL', feature_category: :shared do
       end
 
       context 'when user with expired password' do
-        let_it_be(:user) { create(:user, password_expires_at: 2.minutes.ago) }
+        let_it_be(:user, freeze: false) { create(:user, password_expires_at: 2.minutes.ago) }
 
         it 'does not authenticate user' do
           post_graphql(query, headers: { 'PRIVATE-TOKEN' => token.token })
@@ -528,7 +550,9 @@ RSpec.describe 'GraphQL', feature_category: :shared do
 
       context 'when password expiration is not applicable' do
         context 'when ldap user' do
-          let_it_be(:user) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
+          let_it_be(:user, freeze: false) do
+            create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago)
+          end
 
           it 'authenticates user' do
             post_graphql(query, headers: { 'PRIVATE-TOKEN' => token.token })

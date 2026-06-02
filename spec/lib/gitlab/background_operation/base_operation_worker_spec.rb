@@ -127,6 +127,103 @@ RSpec.describe Gitlab::BackgroundOperation::BaseOperationWorker, feature_categor
     end
   end
 
+  describe '.scope_to' do
+    let(:test_table) { table(:_test_table) }
+
+    let(:job_instance) do
+      job_class.new(
+        min_cursor: [1],
+        max_cursor: [10],
+        batch_table: '_test_table',
+        batch_column: 'id',
+        sub_batch_size: 10,
+        pause_ms: 0,
+        connection: connection
+      )
+    end
+
+    before do
+      allow(job_instance).to receive(:sleep)
+
+      connection.create_table :_test_table do |t|
+        t.timestamps_with_timezone null: false
+        t.text :bar
+      end
+
+      [['value'], ['other'], ['value'], ['other']].each { |bar| test_table.create!(bar: bar.first) }
+    end
+
+    after do
+      connection.drop_table(:_test_table)
+    end
+
+    context 'with scope_to' do
+      let(:job_class) do
+        Class.new(described_class) do
+          operation_name :delete_all
+          cursor :id
+          scope_to ->(relation) { relation.where(bar: 'value') }
+
+          def perform
+            each_sub_batch do |sub_batch|
+              sub_batch.delete_all
+            end
+          end
+        end
+      end
+
+      it 'only deletes matching rows' do
+        expect { job_instance.perform }.to change { test_table.count }.from(4).to(2)
+
+        expect(test_table.pluck(:bar)).to all(eq('other'))
+      end
+    end
+
+    context 'with reset_cursor!' do
+      let(:job_class) do
+        Class.new(described_class) do
+          operation_name :delete_all
+          cursor :id
+          scope_to ->(relation) { relation.where(bar: 'value') }
+          reset_cursor!
+
+          def perform
+            each_sub_batch do |sub_batch|
+              sub_batch.delete_all
+            end
+          end
+        end
+      end
+
+      it 'resets cursor' do
+        expect(job_class).to be_reset_cursor
+      end
+    end
+
+    context 'without scope_to' do
+      let(:job_class) do
+        Class.new(described_class) do
+          operation_name :delete_all
+          cursor :id
+
+          def perform
+            each_sub_batch do |sub_batch|
+              sub_batch.delete_all
+            end
+          end
+        end
+      end
+
+      it 'deletes all rows' do
+        expect { job_instance.perform }.to change { test_table.count }.from(4).to(0)
+      end
+
+      it 'does not reset cursor by default' do
+        expect(job_class).not_to be_reset_cursor
+      end
+    end
+  end
+
   describe '#perform' do
     let(:job_class) { Class.new(described_class) }
 
@@ -289,6 +386,80 @@ RSpec.describe Gitlab::BackgroundOperation::BaseOperationWorker, feature_categor
         perform_job
 
         expect(job_instance.batch_metrics.affected_rows[:update]).to contain_exactly(2, 2)
+      end
+    end
+
+    context 'when the worker uses a multi-column cursor' do
+      let(:job_class) do
+        Class.new(described_class) do
+          operation_name :update
+          cursor :id_a, :id_b
+
+          def perform(*)
+            each_sub_batch do |sub_batch|
+              sub_batch.update_all('id_b = id_b')
+            end
+          end
+        end
+      end
+
+      let(:job_instance) do
+        job_class.new(
+          min_cursor: [0, 0],
+          max_cursor: [9, 9],
+          batch_table: '_test_cursor_batching',
+          batch_column: 'id_a',
+          sub_batch_size: 3,
+          pause_ms: 1000,
+          connection: connection
+        )
+      end
+
+      before do
+        connection.execute(<<~SQL)
+          CREATE TABLE _test_cursor_batching (
+            id_a bigint NOT NULL,
+            id_b bigint NOT NULL,
+            PRIMARY KEY (id_a, id_b)
+          );
+          INSERT INTO _test_cursor_batching(id_a, id_b)
+            SELECT i / 10, i % 10 FROM generate_series(0, 99) g(i);
+        SQL
+
+        allow(job_instance).to receive(:sleep)
+      end
+
+      after do
+        connection.execute('DROP TABLE _test_cursor_batching')
+      end
+
+      it 'first sub-batch uses inclusive `>= min_cursor`, later sub-batches use strict `> prev_cursor` only' do
+        queries = []
+        subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*args|
+          event = ActiveSupport::Notifications::Event.new(*args)
+          queries << event.payload[:sql]
+        end
+
+        begin
+          job_instance.perform
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+
+        table_queries = queries.select { |q| q.include?('_test_cursor_batching') }
+        tuple_gteq = /\("_test_cursor_batching"\."id_a", "_test_cursor_batching"\."id_b"\) >=/
+        tuple_gt   = /\("_test_cursor_batching"\."id_a", "_test_cursor_batching"\."id_b"\) > \(/
+
+        expect(table_queries.any? { |q| q.match?(tuple_gteq) }).to be(true),
+          'expected first sub-batch SQL to use `(id_a, id_b) >=` against min_cursor'
+        expect(table_queries.any? { |q| q.match?(tuple_gt) && !q.match?(tuple_gteq) }).to be(true),
+          'expected later sub-batches SQL to use strict `(id_a, id_b) >` without `>=`'
+
+        # #599681 regression guard: no sub-batch query should combine both `>=` and `>` on the
+        # cursor tuple. That is the row-comparison folding bug this fix targets.
+        mixed = table_queries.select { |q| q.match?(tuple_gteq) && q.match?(tuple_gt) }
+        expect(mixed).to be_empty,
+          'expected no sub-batch SQL to stack `>= min_cursor` and `> prev_cursor` (#599681)'
       end
     end
   end

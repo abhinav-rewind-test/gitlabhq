@@ -160,7 +160,9 @@ RSpec.describe API::NugetGroupPackages, feature_category: :package_registry do
 
     context 'with a reporter of subgroup' do
       let_it_be(:package_name) { 'Dummy.Package' }
-      let_it_be(:package) { create(:nuget_package, :with_metadatum, name: package_name, project: project) }
+      let_it_be(:package, freeze: false) do
+        create(:nuget_package, :with_metadatum, name: package_name, project: project)
+      end
 
       let(:headers) { basic_auth_header(user.username, personal_access_token.token) }
 
@@ -205,6 +207,28 @@ RSpec.describe API::NugetGroupPackages, feature_category: :package_registry do
         let(:url) do
           "/groups/#{target.id}/-/packages/nuget/symbolfiles/#{filename}/#{signature}/#{filename}"
         end
+      end
+    end
+
+    describe 'X-NuGet-Warning header' do
+      context 'with an unauthorized request' do
+        let(:url) { "/groups/#{target.id}/-/packages/nuget/metadata/Dummy.Package/index.json" }
+        let(:expected_status) { :unauthorized }
+
+        subject { get api(url) }
+
+        it_behaves_like 'setting the X-NuGet-Warning header on error responses',
+          expected_warning: '401 Unauthorized'
+      end
+
+      context 'with a not found request' do
+        let(:url) { "/groups/#{non_existing_record_id}/-/packages/nuget/metadata/Dummy.Package/index.json" }
+        let(:expected_status) { :not_found }
+
+        subject { get api(url), headers: basic_auth_header(user.username, personal_access_token.token) }
+
+        it_behaves_like 'setting the X-NuGet-Warning header on error responses',
+          expected_warning: '404 Not Found'
       end
     end
 

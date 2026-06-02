@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Create a project
 description: New project and project templates.
 ---
@@ -24,18 +24,18 @@ To create a blank project:
 1. Select **Create blank project**.
 1. Enter the project details:
    1. **Project name**: Enter the name of your project.
-   For more information, see [naming rules](../reserved_names.md#rules-for-usernames-project-and-group-names-and-slugs).
+      For more information, see [naming rules](../reserved_names.md#rules-for-usernames-project-and-group-names-and-slugs).
    1. **Project slug**: Enter the path to your project. GitLab uses the slug as the URL path.
    1. **Project deployment target (optional)**: If you want to deploy your project to specific environment,
-   select the relevant deployment target.
+      select the relevant deployment target.
    1. **Visibility Level**: Select the appropriate visibility level.
-   See the [viewing and access rights](../public_access.md) for users.
+      See the [viewing and access rights](../public_access.md) for users.
    1. **Initialize repository with a README**: Select this option to initialize the Git repository,
-   create a default branch, and enable cloning of this project's repository.
+      create a default branch, and enable cloning of this project's repository.
    1. **Enable Static Application Security Testing (SAST)**: Select this option to analyze the
-   source code for known security vulnerabilities.
+      source code for known security vulnerabilities.
    1. **Enable Secret Detection**: Select this option to analyze the
-   source code for secrets and credentials to prevent unauthorized access.
+      source code for secrets and credentials to prevent unauthorized access.
 1. Select **Create project**.
 
 ## Create a project from a built-in template
@@ -57,9 +57,9 @@ To create a project from a built-in template:
    - **Project name**: Enter the name of your project.
    - **Project slug**: Enter the path to your project. GitLab uses the slug as the URL path.
    - **Project description (optional)** Enter a description for your project.
-   The character limit is 500.
+     The character limit is 500.
    - **Visibility Level**: Select the appropriate visibility level.
-   See the [viewing and access rights](../public_access.md) for users.
+     See the [viewing and access rights](../public_access.md) for users.
 1. Select **Create project**.
 
 > [!note]
@@ -87,12 +87,20 @@ To create a project from the HIPAA Audit Protocol template:
    - **Project name**: Enter the name of your project.
    - **Project slug**: Enter the path to your project. GitLab uses the slug as the URL path.
    - **Project description (optional)** Enter a description for your project.
-   The character limit is 500.
+     The character limit is 500.
    - **Visibility Level**: Select the appropriate visibility level.
-   See the [viewing and access rights](../public_access.md) for users.
+     See the [viewing and access rights](../public_access.md) for users.
 1. Select **Create project**.
 
 ## Create a project from a custom template
+
+{{< history >}}
+
+- Group selector for browsing group templates outside a group context [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/590012)
+  in GitLab 18.11 [with a feature flag](../../administration/feature_flags/_index.md) named `constrain_group_project_templates`. Disabled by default.
+- Group selector for browsing group templates outside a group context [generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/586332) in GitLab 19.0. Feature flag `constrain_group_project_templates` removed.
+
+{{< /history >}}
 
 Custom project templates are available for your [instance](../../administration/custom_project_templates.md)
 and [group](../group/custom_project_templates.md).
@@ -102,6 +110,8 @@ To create a project from a custom template:
 1. In the upper-right corner, select **Create new** ({{< icon name="plus" >}}) and **New project/repository**.
 1. Select **Create from template**.
 1. Select the **Instance** or **Group** tab.
+   - On the **Group** tab, if you are not in a group context and no group is pre-selected,
+     a group dropdown list is displayed. Select a group to load its templates.
 1. From the list of templates:
    - To preview the template, select **Preview**.
    - To use a template, select **Use template**.
@@ -110,7 +120,7 @@ To create a project from a custom template:
    - **Project slug**: Enter the path to your project. GitLab uses the slug as the URL path.
    - **Project description (optional)** Enter a description for your project. The character limit is 500.
    - **Visibility Level**: Select the appropriate visibility level.
-   See the [viewing and access rights](../public_access.md) for users.
+     See the [viewing and access rights](../public_access.md) for users.
 1. Select **Create project**.
 
 ## Create a project that uses SHA-256 hashing
@@ -143,7 +153,7 @@ To create a project that uses SHA-256 hashing:
    - **Project slug**: Enter the path to your project. GitLab uses the slug as the URL path.
    - **Project description (optional)** Enter a description for your project. The character limit is 500.
    - **Visibility Level**: Select the appropriate visibility level.
-   See the [viewing and access rights](../public_access.md) for users.
+     See the [viewing and access rights](../public_access.md) for users.
 1. In the **Project Configuration** area, expand the **Experimental settings**.
 1. Select **Use SHA-256 as the repository hashing algorithm**.
 1. Select **Create project**.

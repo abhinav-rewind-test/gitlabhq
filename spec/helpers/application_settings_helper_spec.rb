@@ -72,12 +72,26 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
       expect(helper.visible_attributes).to include(:can_create_organization)
     end
 
+    describe ':mcp_server_enabled' do
+      context 'when self-managed' do
+        it 'is included' do
+          expect(helper.visible_attributes).to include(:mcp_server_enabled)
+        end
+      end
+
+      context 'when on SaaS', :saas do
+        it 'is not included' do
+          expect(helper.visible_attributes).not_to include(:mcp_server_enabled)
+        end
+      end
+    end
+
     it 'contains rate limit parameters' do
       expect(helper.visible_attributes).to include(
         *%i[
           issues_create_limit notes_create_limit project_export_limit
           project_download_export_limit project_export_limit project_import_limit
-          raw_blob_request_limit group_export_limit group_download_export_limit
+          raw_blob_request_limit raw_blob_request_limit_unauthenticated group_export_limit group_download_export_limit
           group_import_limit users_get_by_id_limit search_rate_limit search_rate_limit_unauthenticated
           members_delete_limit downstream_pipeline_trigger_limit_per_project_user_sha
           group_api_limit group_projects_api_limit groups_api_limit project_api_limit projects_api_limit
@@ -102,7 +116,7 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
       expected_fields = %i[
         global_search_snippet_titles_enabled
         global_search_users_enabled
-        global_search_issues_enabled
+        global_search_work_items_enabled
         global_search_merge_requests_enabled
         global_search_block_anonymous_searches_enabled
         anonymous_searches_allowed
@@ -154,6 +168,42 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
 
     it 'contains :inactive_resource_access_tokens_delete_after_days' do
       expect(helper.visible_attributes).to include(:inactive_resource_access_tokens_delete_after_days)
+    end
+
+    it 'includes :enforce_granular_tokens' do
+      expect(helper.visible_attributes).to include(:enforce_granular_tokens)
+    end
+
+    it 'includes :granular_tokens_enforced_after' do
+      expect(helper.visible_attributes).to include(:granular_tokens_enforced_after)
+    end
+  end
+
+  describe '.mcp_server_setting_available?', feature_category: :mcp_server do
+    subject { helper.mcp_server_setting_available? }
+
+    context 'on self-managed with the feature flag enabled' do
+      before do
+        stub_feature_flags(mcp_server_availability_setting: true)
+      end
+
+      it { is_expected.to be(true) }
+    end
+
+    context 'on SaaS', :saas do
+      before do
+        stub_feature_flags(mcp_server_availability_setting: true)
+      end
+
+      it { is_expected.to be(false) }
+    end
+
+    context 'when the feature flag is disabled' do
+      before do
+        stub_feature_flags(mcp_server_availability_setting: false)
+      end
+
+      it { is_expected.to be(false) }
     end
   end
 
@@ -404,10 +454,10 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
   end
 
   describe '#global_search_settings_checkboxes', feature_category: :global_search do
-    let_it_be(:application_setting) { build(:application_setting) }
+    let_it_be(:application_setting, freeze: false) { build(:application_setting) }
 
     before do
-      application_setting.global_search_issues_enabled = true
+      application_setting.global_search_work_items_enabled = true
       application_setting.global_search_merge_requests_enabled = false
       application_setting.global_search_users_enabled = false
       application_setting.global_search_snippet_titles_enabled = true
@@ -420,7 +470,7 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
         result = helper.global_search_settings_checkboxes(form)
         expect(result[0]).to have_checked_field('Allow unauthenticated users to use search', with: 1)
         expect(result[1]).to have_checked_field('Restrict global search to authenticated users only', with: 1)
-        expect(result[2]).to have_checked_field('Show issues in global search results', with: 1)
+        expect(result[2]).to have_checked_field('Show work items in global search results', with: 1)
         expect(result[3]).not_to have_checked_field('Show merge requests in global search results', with: 1)
         expect(result[4]).to have_checked_field('Show snippets in global search results', with: 1)
         expect(result[5]).not_to have_checked_field('Show users in global search results', with: 1)
@@ -429,7 +479,7 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
   end
 
   describe '#restricted_level_checkboxes' do
-    let_it_be(:application_setting) { build_stubbed(:application_setting) }
+    let_it_be(:application_setting, freeze: false) { build_stubbed(:application_setting) }
 
     before do
       allow(current_user).to receive(:can_admin_all_resources?).and_return(true)
@@ -477,7 +527,7 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
   end
 
   describe '.deletion_protection_data' do
-    let_it_be(:application_setting) { build(:application_setting) }
+    let_it_be(:application_setting, freeze: false) { build(:application_setting) }
 
     before do
       application_setting.deletion_adjourned_period = 1
@@ -535,9 +585,8 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
       # Extract values (second element of each pair), excluding the first "system default"
       values = options[1..].map(&:last)
 
-      expected_order = %w[projects blobs work_items epics issues merge_requests wiki_blobs commits notes milestones
+      expected_order = %w[projects blobs work_items merge_requests wiki_blobs commits notes milestones
         users snippet_titles]
-      expected_order.delete('epics') unless Gitlab.ee?
 
       expect(values).to eq(expected_order)
     end
@@ -548,8 +597,8 @@ RSpec.describe ApplicationSettingsHelper, feature_category: :shared do
       projects_option = options.find { |_label, value| value == 'projects' }
       expect(projects_option.first).to eq('Projects')
 
-      issues_option = options.find { |_label, value| value == 'issues' }
-      expect(issues_option.first).to eq('Issues')
+      work_items_option = options.find { |_label, value| value == 'work_items' }
+      expect(work_items_option.first).to eq('Work items')
     end
   end
 end

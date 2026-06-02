@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group-level protected environments API
 ---
 
@@ -36,9 +36,9 @@ Currently, these levels are recognized:
 60 => Admin access
 ```
 
-## List group-level protected environments
+## List all group-level protected environments
 
-Gets a list of protected environments from a group.
+Lists all protected environments for a specified group.
 
 ```plaintext
 GET /groups/:id/protected_environments
@@ -74,9 +74,9 @@ Example response:
 ]
 ```
 
-## Get a single protected environment
+## Retrieve a single protected environment
 
-Gets a single protected environment.
+Retrieves a specified protected environment from a group.
 
 ```plaintext
 GET /groups/:id/protected_environments/:name

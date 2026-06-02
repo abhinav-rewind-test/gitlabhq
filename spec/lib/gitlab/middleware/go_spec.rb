@@ -106,10 +106,11 @@ RSpec.describe Gitlab::Middleware::Go, feature_category: :source_code_management
                 end
 
                 context 'when the project accessed by a redirect' do
-                  let!(:redirect_route) { create(:redirect_route, source: project, path: 'redirect/project') }
+                  let!(:redirect_route) { create(:redirect_route, source: project, path: path) }
+                  let(:path) { 'redirect/project' }
 
-                  it 'returns the full project path' do
-                    expect_response_with_path(go, enabled_protocol, project.full_path)
+                  it 'returns the requested path as import prefix but repo URL points to actual location' do
+                    expect_response_with_path(go, enabled_protocol, project.full_path, import_prefix: path)
                   end
                 end
               end
@@ -240,6 +241,29 @@ RSpec.describe Gitlab::Middleware::Go, feature_category: :source_code_management
                     expect_404_response(go)
                   end
                 end
+
+                context 'using a deploy token' do
+                  let(:deploy_token) { create(:deploy_token, projects: [project], read_repository: true, read_registry: false) }
+
+                  before do
+                    env['REMOTE_ADDR'] = '192.168.0.1'
+                    env['HTTP_AUTHORIZATION'] = ActionController::HttpAuthentication::Basic.encode_credentials(deploy_token.username, deploy_token.token)
+                  end
+
+                  context 'with read_repository scope' do
+                    it 'returns the full project path' do
+                      expect_response_with_path(go, enabled_protocol, project.full_path)
+                    end
+                  end
+
+                  context 'without read_repository scope' do
+                    let!(:deploy_token) { create(:deploy_token, projects: [project], read_repository: false, read_registry: true) }
+
+                    it 'returns 404' do
+                      expect_404_response(go)
+                    end
+                  end
+                end
               end
             end
           end
@@ -324,7 +348,7 @@ RSpec.describe Gitlab::Middleware::Go, feature_category: :source_code_management
       expect(response[0]).to eq(404)
     end
 
-    def expect_response_with_path(response, protocol, path, url_based: false)
+    def expect_response_with_path(response, protocol, path, import_prefix: path, url_based: false)
       root_url = url_based ? Gitlab.config.gitlab.url.gsub(%r{\Ahttps?://}, '') : Gitlab.config.gitlab.host
 
       repository_url = case protocol
@@ -337,7 +361,7 @@ RSpec.describe Gitlab::Middleware::Go, feature_category: :source_code_management
 
       expect(response[0]).to eq(200)
       expect(response[1]['Content-Type']).to eq('text/html')
-      expected_body = %(<html><head><meta name="go-import" content="#{root_url}/#{path} git #{repository_url}"></head><body>go get #{root_url}/#{path}</body></html>)
+      expected_body = %(<html><head><meta name="go-import" content="#{root_url}/#{import_prefix} git #{repository_url}"></head><body>go get #{root_url}/#{import_prefix}</body></html>)
       expect(response[2]).to eq([expected_body])
     end
   end

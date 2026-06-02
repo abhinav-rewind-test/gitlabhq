@@ -127,7 +127,8 @@ RSpec.describe IdeHelper, feature_category: :web_ide do
             'extension-marketplace-settings' => settings.to_json,
             'settings-context-hash' => expected_settings_hash,
             'extension-host-domain' => 'web-ide.net',
-            'extension-host-domain-changed' => "true"
+            'extension-host-domain-changed' => "true",
+            "is-single-origin-fallback-enabled" => "true"
           })
         end
       end
@@ -135,7 +136,7 @@ RSpec.describe IdeHelper, feature_category: :web_ide do
   end
 
   describe '#show_web_ide_oauth_callback_mismatch_callout?' do
-    let_it_be(:oauth_application) { create(:oauth_application, owner: nil) }
+    let_it_be(:oauth_application, freeze: false) { create(:oauth_application, owner: nil) }
 
     it 'returns false if no Web IDE OAuth application found' do
       expect(helper.show_web_ide_oauth_callback_mismatch_callout?).to be false
@@ -154,7 +155,7 @@ RSpec.describe IdeHelper, feature_category: :web_ide do
   end
 
   describe '#web_ide_oauth_application_id' do
-    let_it_be(:oauth_application) { create(:oauth_application, owner: nil) }
+    let_it_be(:oauth_application, freeze: false) { create(:oauth_application, owner: nil) }
 
     it 'returns Web IDE OAuth application ID' do
       stub_application_setting({ web_ide_oauth_application: oauth_application })

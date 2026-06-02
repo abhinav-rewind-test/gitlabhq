@@ -12,6 +12,8 @@ module Mutations
           include FindsProject
 
           authorize :admin_container_image
+          authorize_granular_token permissions: :create_container_registry_protection_tag_rule,
+            boundary_argument: :project_path, boundary_type: :project
 
           argument :project_path,
             GraphQL::Types::ID,
@@ -46,7 +48,6 @@ module Mutations
           field :container_protection_tag_rule,
             Types::ContainerRegistry::Protection::TagRuleType,
             null: true,
-            experiment: { milestone: '17.8' },
             description: 'Protection rule for container image tags after creation.'
 
           def resolve(project_path:, **kwargs)

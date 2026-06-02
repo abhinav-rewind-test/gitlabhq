@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group milestones API
 ---
 
@@ -56,7 +56,9 @@ Parameters:
 | `end_date`                  | datetime | no | Return only milestones where `start_date <=` the provided `end_date`. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). Note: only valid if `start_date` is also provided. Introduced in GitLab 12.8. |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/milestones"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/milestones"
 ```
 
 Example Response:
@@ -146,7 +148,7 @@ Parameters:
 | Attribute | Type   | Required | Description |
 | --------- | ------ | -------- | ----------- |
 | `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
-| `milestone_id` | integer | yes | The ID of the group's milestone |
+| `milestone_id` | integer | yes | The ID of the group milestone |
 
 ## Get all issues assigned to a single milestone
 

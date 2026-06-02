@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Import API
 description: "Import repositories from GitHub or Bitbucket Server with the REST API."
 ---
@@ -91,7 +91,7 @@ The following keys are available for `optional_stages`:
 - `single_endpoint_issue_events_import`, for issue and pull request events import. This optional stage was removed in GitLab 16.9.
 - `single_endpoint_notes_import`, for an alternative and more thorough comments import.
 
-For more information, see [Select additional items to import](../user/project/import/github.md#select-additional-items-to-import).
+For more information, see [select additional items to import](../user/project/import/github.md#select-additional-items-to-import).
 
 Example response:
 
@@ -197,6 +197,12 @@ Returns the following status codes:
 
 ## Import repository from Bitbucket Server
 
+{{< history >}}
+
+- Validation of `bitbucket_server_project` and `bitbucket_server_repo` [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/429234) in GitLab 19.1.
+
+{{< /history >}}
+
 Imports a repository from Bitbucket Server to GitLab.
 
 The Bitbucket Project Key is only used for finding the repository in Bitbucket.
@@ -213,8 +219,8 @@ POST /import/bitbucket_server
 
 | Attribute                   | Type   | Required | Description |
 |-----------------------------|--------|----------|-------------|
-| `bitbucket_server_project`  | string | Yes      | Bitbucket project key. |
-| `bitbucket_server_repo`     | string | Yes      | Bitbucket repository name. |
+| `bitbucket_server_project`  | string | Yes      | Bitbucket project key. Must contain only letters, numbers, hyphens, underscores, periods, or whitespace characters. Personal project keys start with `~`. |
+| `bitbucket_server_repo`     | string | Yes      | Bitbucket repository name. Must contain only letters, numbers, hyphens, underscores, periods, or whitespace characters. |
 | `bitbucket_server_url`      | string | Yes      | Bitbucket Server URL. |
 | `bitbucket_server_username` | string | Yes      | Bitbucket Server username. |
 | `personal_access_token`     | string | Yes      | Bitbucket Server personal access token or password. |
@@ -243,6 +249,7 @@ curl --request POST \
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/215036) in GitLab 17.0.
 - Support for Bitbucket Cloud API tokens [added](https://gitlab.com/gitlab-org/gitlab/-/work_items/575583) in GitLab 18.9.
+- Support for Bitbucket Cloud app passwords [removed](https://gitlab.com/gitlab-org/gitlab/-/work_items/588961) in GitLab 19.0.
 
 {{< /history >}}
 
@@ -251,26 +258,19 @@ Imports a repository from Bitbucket Cloud to GitLab.
 Prerequisites:
 
 - The [prerequisites for Bitbucket Cloud importer](../user/import/bitbucket_cloud.md).
-- One of the following:
-  - A [Bitbucket Cloud app password](../user/import/bitbucket_cloud.md#generate-a-bitbucket-cloud-app-password). Bitbucket Cloud app passwords
-    [are deprecated](https://www.atlassian.com/blog/bitbucket/bitbucket-cloud-transitions-to-api-tokens-enhancing-security-with-app-password-deprecation).
-  - A [Bitbucket Cloud API token](#bitbucket-cloud-api-token-scopes) with the required scopes.
+- A [Bitbucket Cloud API token](#bitbucket-cloud-api-token-scopes) with the required scopes.
 
 ```plaintext
 POST /import/bitbucket
 ```
 
-| Attribute                | Type   | Required | Description |
-|:-------------------------|:-------|:---------|:------------|
-| `bitbucket_api_token`    | string | No       | Bitbucket Cloud API token. Required when using API token authentication. |
-| `bitbucket_email`        | string | No       | Bitbucket Cloud email. Required when using API token authentication. |
-| `bitbucket_username`     | string | No       | [Deprecated](https://gitlab.com/gitlab-org/gitlab/-/work_items/588961). Bitbucket Cloud username. Required when using app password authentication. |
-| `bitbucket_app_password` | string | No       | [Deprecated](https://gitlab.com/gitlab-org/gitlab/-/work_items/588961). Bitbucket Cloud app password. Required when using app password authentication. |
-| `repo_path`              | string | Yes      | Path to repository. |
-| `target_namespace`       | string | Yes      | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. |
-| `new_name`               | string | No       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. |
-
-Example using API token:
+| Attribute             | Type   | Required | Description |
+|:----------------------|:-------|:---------|:------------|
+| `bitbucket_api_token` | string | Yes      | Bitbucket Cloud API token. |
+| `bitbucket_email`     | string | Yes      | Bitbucket Cloud email. |
+| `repo_path`           | string | Yes      | Path to repository. |
+| `target_namespace`    | string | Yes      | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. |
+| `new_name`            | string | No       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. |
 
 ```shell
 curl --request POST \

@@ -76,7 +76,14 @@ const mockWorkItemNoteResponse = {
       id: mockDiscussions[0].notes.nodes[0].id,
       noteableType: ISSUE_NOTEABLE_TYPE,
       noteableId: getIdFromGraphQLId(mockWorkItemId),
-      discussion: { id: mockDiscussions[0].id, notes: mockDiscussions[0].notes },
+      discussion: {
+        id: mockDiscussions[0].id,
+        resolved: mockDiscussions[0].resolved,
+        resolvable: mockDiscussions[0].resolvable,
+        resolvedBy: mockDiscussions[0].resolvedBy,
+        userPermissions: mockDiscussions[0].userPermissions,
+        notes: mockDiscussions[0].notes,
+      },
     },
   },
 };
@@ -337,8 +344,9 @@ describe('WorkItemNotes component', () => {
         after: undefined,
         fullPath: 'test-path',
         iid: '1',
-        pageSize: 20,
+        pageSize: DEFAULT_PAGE_SIZE_NOTES,
         sort: DISCUSSIONS_SORT_ENUM[ASC],
+        useWorkItemFeatures: false,
       });
       expect(findAllSystemNotes()).toHaveLength(mockNotesWidgetResponse.discussions.nodes.length);
     });
@@ -373,6 +381,7 @@ describe('WorkItemNotes component', () => {
           iid: '1',
           pageSize: DEFAULT_PAGE_SIZE_NOTES,
           sort: DISCUSSIONS_SORT_ENUM[ASC],
+          useWorkItemFeatures: false,
         });
 
         await nextTick();
@@ -383,12 +392,14 @@ describe('WorkItemNotes component', () => {
           pageSize: DEFAULT_PAGE_SIZE_NOTES,
           after: mockMoreNotesWidgetResponse.discussions.pageInfo.endCursor,
           sort: DISCUSSIONS_SORT_ENUM[ASC],
+          useWorkItemFeatures: false,
         });
       });
 
       describe('when sort order is set to newest first by default', () => {
+        useLocalStorageSpy();
+
         it('fetches notes in descending order', async () => {
-          useLocalStorageSpy();
           localStorage.setItem(WORK_ITEM_NOTES_SORT_ORDER_KEY, DESC);
 
           createComponent({ defaultWorkItemNotesQueryHandler: workItemMoreNotesQueryHandler });
@@ -399,6 +410,7 @@ describe('WorkItemNotes component', () => {
             iid: '1',
             pageSize: DEFAULT_PAGE_SIZE_NOTES,
             sort: DISCUSSIONS_SORT_ENUM[DESC],
+            useWorkItemFeatures: false,
           });
 
           await nextTick();
@@ -409,6 +421,7 @@ describe('WorkItemNotes component', () => {
             pageSize: DEFAULT_PAGE_SIZE_NOTES,
             after: mockMoreNotesWidgetResponse.discussions.pageInfo.endCursor,
             sort: DISCUSSIONS_SORT_ENUM[DESC],
+            useWorkItemFeatures: false,
           });
         });
       });

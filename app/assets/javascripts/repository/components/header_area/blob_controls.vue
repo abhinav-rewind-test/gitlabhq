@@ -54,6 +54,34 @@ export default {
     GlTooltip: GlTooltipDirective,
   },
   mixins: [getRefMixin, glFeatureFlagMixin(), InternalEvents.mixin()],
+  inject: ['currentRef', 'showWebIdeButton'],
+  provide() {
+    return {
+      blobInfo: computed(() => this.blobInfo ?? DEFAULT_BLOB_INFO.repository.blobs.nodes[0]),
+      currentRef: computed(() => this.currentRef ?? this.blobInfo.ref),
+    };
+  },
+  props: {
+    projectPath: {
+      type: String,
+      required: true,
+    },
+    projectIdAsNumber: {
+      type: Number,
+      required: true,
+    },
+    refType: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    isBinary: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+  },
+  emits: ['lockedFile'],
   apollo: {
     project: {
       query: blobControlsQuery,
@@ -101,33 +129,6 @@ export default {
       },
     },
   },
-  inject: ['currentRef', 'showWebIdeButton', 'showPipelineEditorButton'],
-  provide() {
-    return {
-      blobInfo: computed(() => this.blobInfo ?? DEFAULT_BLOB_INFO.repository.blobs.nodes[0]),
-      currentRef: computed(() => this.currentRef ?? this.blobInfo.ref),
-    };
-  },
-  props: {
-    projectPath: {
-      type: String,
-      required: true,
-    },
-    projectIdAsNumber: {
-      type: Number,
-      required: true,
-    },
-    refType: {
-      type: String,
-      required: false,
-      default: null,
-    },
-    isBinary: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-  },
   data() {
     return {
       project: {},
@@ -160,6 +161,7 @@ export default {
       return this.project?.userPermissions || DEFAULT_BLOB_INFO.userPermissions;
     },
     showBlameButton() {
+      if (this.glFeatures.inlineBlame) return false;
       return showBlameButton(this.blobInfo);
     },
     isUsingLfs() {
@@ -310,7 +312,7 @@ export default {
       :web-ide-url="blobInfo.ideEditPath"
       :needs-to-fork="shouldShowSingleFileEditorForkSuggestion"
       :needs-to-fork-with-web-ide="shouldShowWebIdeForkSuggestion"
-      :show-pipeline-editor-button="showPipelineEditorButton"
+      :show-pipeline-editor-button="Boolean(blobInfo.pipelineEditorPath)"
       :pipeline-editor-url="blobInfo.pipelineEditorPath"
       :gitpod-url="blobInfo.gitpodBlobUrl"
       :is-gitpod-enabled-for-instance="gitpodEnabled"

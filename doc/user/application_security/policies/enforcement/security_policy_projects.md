@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Policies
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to enforce security rules in GitLab using merge request approval policies to automate scans, approvals, and compliance across your projects.
 title: Security policy projects
 ---
@@ -152,7 +152,7 @@ Prerequisites:
 
 To link a group, subgroup, or project to a security policy project:
 
-1. On the top bar, select **Search or go to** and find your project, subgroup, or group.
+1. In the top bar, select **Search or go to** and find your project, subgroup, or group.
 1. Select **Secure** > **Policies**.
 1. Select **Edit Policy Project**, then search for and select the project you would like to link
    from the dropdown list.
@@ -211,7 +211,7 @@ Prerequisites:
 To change the maximum number of policies your organization can store in a security policy project:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Security and compliance**.
+1. In the left sidebar, select **Settings** > **Security and compliance**.
 1. Expand the **Security policies** section.
 1. For each type of policy you want to change, set a new value for **Maximum number of {policy type} allowed per security policy configuration**.
 1. Select **Save changes**.
@@ -230,7 +230,7 @@ Prerequisites:
 To adjust the limit for a top-level group:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Groups**.
+1. In the left sidebar, select **Overview** > **Groups**.
 1. In the row of the top-level group you want to modify, select **Edit**.
 1. For each type of policy you want to change, set a new value for **Maximum number of {policy type} allowed per security policy configuration**.
 1. Select **Save changes**.

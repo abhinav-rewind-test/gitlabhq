@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: irker (IRC gateway)
 description: "Configure the irker integration to send GitLab push notifications to IRC channels."
 ---
@@ -39,15 +39,15 @@ If the irker server runs on the same machine, you are done. If not, you
 need to follow the first steps of the next section.
 
 > [!warning]
-> irker does **not** have built-in authentication, which makes it vulnerable to spamming IRC channels if
+> irker does not have built-in authentication, which makes it vulnerable to spamming IRC channels if
 > it is hosted outside of a firewall. To prevent abuse, make sure you run the daemon on a secured
 > network. For more details, read
 > [Security analysis of irker](http://www.catb.org/~esr/irker/security.html).
 
 ## Complete these steps in GitLab
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Integrations**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Integrations**.
 1. Select **irker (IRC gateway)**.
 1. Ensure that the **Active** toggle is enabled.
 1. Optional. Under **Server host**, enter the server host address where `irkerd` runs. If empty,
@@ -73,7 +73,7 @@ To send messages:
   `#chan`.
 - To a password-protected channel, append `?key=thesecretpassword` to the channel name,
   with the channel password instead of `thesecretpassword`. For example, `chan?key=hunter2`.
-  Do **not** put the `#` sign in front of the channel name. If you do, irker tries to join a
+  Do not put the `#` sign in front of the channel name. If you do, irker tries to join a
   channel named `#chan?key=password` and so it can leak the channel password through the
   `/whois` IRC command. This is due to a long-standing irker bug.
 - In a user query, add `,isnick` after the user name. For example, `UserSmith,isnick`.

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Emails on push
 ---
 
@@ -25,8 +25,8 @@ Prerequisites:
 
 To set up emails on push:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Integrations**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Integrations**.
 1. Select **Emails on push**.
 1. Under **Enable integration**, select the **Active** checkbox.
 1. In **Recipients**, enter a list of email addresses separated by spaces or newlines.

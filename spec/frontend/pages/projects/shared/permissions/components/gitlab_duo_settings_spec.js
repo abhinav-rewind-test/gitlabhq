@@ -12,14 +12,14 @@ const defaultProps = {
   amazonQAutoReviewEnabled: false,
   duoFeaturesLocked: false,
   licensedAiFeaturesAvailable: true,
-  experimentFeaturesEnabled: true,
-  paidDuoTier: true,
+  ultimateFeaturesAvailable: true,
   duoContextExclusionSettings: {
     exclusionRules: ['*.log', 'node_modules/'],
   },
   initialDuoRemoteFlowsAvailability: false,
   initialDuoFoundationalFlowsAvailability: false,
   initialDuoSastFpDetectionEnabled: false,
+  initialDuoSecretDetectionFpEnabled: false,
   initialDuoSastVrWorkflowEnabled: false,
 };
 
@@ -36,8 +36,8 @@ describe('GitlabDuoSettings', () => {
       propsData,
       provide: {
         glFeatures: {
-          useDuoContextExclusion: true,
           aiExperimentSastFpDetection: true,
+          duoSecretDetectionFalsePositive: true,
           ...provide,
         },
       },
@@ -65,8 +65,14 @@ describe('GitlabDuoSettings', () => {
   const findDuoFoundationalFlowsCascadingLockIcon = () =>
     wrapper.findByTestId('duo-foundational-flows-cascading-lock-icon');
   const findDuoSastFpDetectionToggle = () => wrapper.findByTestId('duo-sast-fp-detection-enabled');
+  const findDuoSecretDetectionFpToggle = () =>
+    wrapper.findByTestId('duo-secret-detection-fp-enabled');
   const findDuoSastVrWorkflowToggle = () => wrapper.findByTestId('duo-sast-vr-workflow-enabled');
   const findAutoReviewToggle = () => wrapper.findByTestId('amazon-q-auto-review-enabled');
+  const findToolApprovalToggle = () => wrapper.findByTestId('tool-approval-for-session-enabled');
+  const findToolApprovalCascadingLockIcon = () =>
+    wrapper.findByTestId('tool-approval-cascading-lock-icon');
+  const findDapSessionTrackingToggle = () => wrapper.findByTestId('dap-session-tracking-enabled');
 
   beforeEach(() => {
     wrapper = createWrapper();
@@ -312,6 +318,15 @@ describe('GitlabDuoSettings', () => {
           expect(findDuoSastFpDetectionToggle().exists()).toBe(false);
         });
 
+        it('does not show SAST FP Detection toggle when ultimateFeaturesAvailable is false', () => {
+          wrapper = createWrapper(
+            { duoFeaturesEnabled: true, amazonQAvailable: false, ultimateFeaturesAvailable: false },
+            { aiExperimentSastFpDetection: true },
+          );
+
+          expect(findDuoSastFpDetectionToggle().exists()).toBe(false);
+        });
+
         it('disables SAST FP Detection toggle when Duo features are locked', () => {
           wrapper = createWrapper(
             {
@@ -360,6 +375,185 @@ describe('GitlabDuoSettings', () => {
         });
       });
 
+      describe('Duo Secret Detection FP Detection settings', () => {
+        it('shows Secret Detection FP Detection toggle when feature flag is enabled', () => {
+          wrapper = createWrapper(
+            { duoFeaturesEnabled: true, amazonQAvailable: false },
+            { duoSecretDetectionFalsePositive: true },
+          );
+
+          expect(findDuoSecretDetectionFpToggle().exists()).toBe(true);
+          expect(findDuoSecretDetectionFpToggle().props('disabled')).toBe(false);
+        });
+
+        it('does not show Secret Detection FP Detection toggle when feature flag is disabled', () => {
+          wrapper = createWrapper(
+            { duoFeaturesEnabled: true, amazonQAvailable: false },
+            { duoSecretDetectionFalsePositive: false },
+          );
+
+          expect(findDuoSecretDetectionFpToggle().exists()).toBe(false);
+        });
+
+        it('disables Secret Detection FP Detection toggle when Duo features are locked', () => {
+          wrapper = createWrapper(
+            {
+              duoFeaturesEnabled: true,
+              duoFeaturesLocked: true,
+              amazonQAvailable: false,
+            },
+            { duoSecretDetectionFalsePositive: true },
+          );
+
+          expect(findDuoSecretDetectionFpToggle().props('disabled')).toBe(true);
+        });
+
+        it('does not render Secret Detection FP Detection toggle when Duo features are not enabled', () => {
+          wrapper = createWrapper(
+            {
+              duoFeaturesEnabled: false,
+              amazonQAvailable: false,
+            },
+            { duoSecretDetectionFalsePositive: true },
+          );
+
+          expect(findDuoSecretDetectionFpToggle().exists()).toBe(false);
+        });
+
+        it('updates the hidden input value when toggled', async () => {
+          wrapper = createWrapper(
+            {
+              duoFeaturesEnabled: true,
+              amazonQAvailable: false,
+              initialDuoSecretDetectionFpEnabled: true,
+            },
+            { duoSecretDetectionFalsePositive: true },
+          );
+
+          const findHiddenInput = () =>
+            wrapper.find(
+              'input[name="project[project_setting_attributes][duo_secret_detection_fp_enabled]"]',
+            );
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(true);
+
+          await findDuoSecretDetectionFpToggle().vm.$emit('change', false);
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(false);
+        });
+      });
+
+      describe('Tool approval for session settings', () => {
+        it('renders the tool approval toggle when Duo features are enabled', () => {
+          wrapper = createWrapper({ duoFeaturesEnabled: true, amazonQAvailable: false });
+
+          expect(findToolApprovalToggle().exists()).toBe(true);
+          expect(findToolApprovalToggle().props('disabled')).toBe(false);
+        });
+
+        it('does not render the tool approval toggle when Duo features are disabled', () => {
+          wrapper = createWrapper({ duoFeaturesEnabled: false });
+
+          expect(findToolApprovalToggle().exists()).toBe(false);
+        });
+
+        it('does not render the tool approval toggle when Amazon Q is available', () => {
+          wrapper = createWrapper({ duoFeaturesEnabled: true, amazonQAvailable: true });
+
+          expect(findToolApprovalToggle().exists()).toBe(false);
+        });
+
+        it('disables the toggle when Duo features are locked', () => {
+          wrapper = createWrapper({
+            duoFeaturesEnabled: true,
+            duoFeaturesLocked: true,
+            amazonQAvailable: false,
+          });
+
+          expect(findToolApprovalToggle().props('disabled')).toBe(true);
+        });
+
+        it('disables the toggle when cascading lock is active', () => {
+          wrapper = createWrapper({
+            duoFeaturesEnabled: true,
+            amazonQAvailable: false,
+            toolApprovalForSessionLocked: true,
+            toolApprovalForSessionCascadingSettings: {
+              lockedByAncestor: true,
+              lockedByApplicationSetting: false,
+            },
+          });
+
+          expect(findToolApprovalToggle().props('disabled')).toBe(true);
+          expect(findToolApprovalCascadingLockIcon().exists()).toBe(true);
+        });
+
+        it('does not show cascading lock icon when not locked', () => {
+          wrapper = createWrapper({
+            duoFeaturesEnabled: true,
+            amazonQAvailable: false,
+          });
+
+          expect(findToolApprovalCascadingLockIcon().exists()).toBe(false);
+        });
+
+        it('updates the hidden input value when toggled', async () => {
+          wrapper = createWrapper({
+            duoFeaturesEnabled: true,
+            amazonQAvailable: false,
+            initialToolApprovalForSessionEnabled: true,
+          });
+
+          const findHiddenInput = () =>
+            wrapper.find(
+              'input[name="project[project_setting_attributes][tool_approval_for_session_enabled]"]',
+            );
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(true);
+
+          await findToolApprovalToggle().vm.$emit('change', false);
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(false);
+        });
+      });
+
+      describe('DAP session tracking settings', () => {
+        it.each`
+          scenario                       | props                                                                                       | exists   | disabled
+          ${'available and Duo enabled'} | ${{ duoFeaturesEnabled: true, dapSessionTrackingAvailable: true }}                          | ${true}  | ${false}
+          ${'not available'}             | ${{ duoFeaturesEnabled: true, dapSessionTrackingAvailable: false }}                         | ${false} | ${undefined}
+          ${'Duo features disabled'}     | ${{ duoFeaturesEnabled: false, dapSessionTrackingAvailable: true }}                         | ${false} | ${undefined}
+          ${'Duo features locked'}       | ${{ duoFeaturesEnabled: true, dapSessionTrackingAvailable: true, duoFeaturesLocked: true }} | ${true}  | ${true}
+        `('renders correctly when $scenario', ({ props, exists, disabled }) => {
+          wrapper = createWrapper({ amazonQAvailable: false, ...props });
+
+          expect(findDapSessionTrackingToggle().exists()).toBe(exists);
+          if (exists) {
+            expect(findDapSessionTrackingToggle().props('disabled')).toBe(disabled);
+          }
+        });
+
+        it('updates the hidden input value when toggled', async () => {
+          wrapper = createWrapper({
+            duoFeaturesEnabled: true,
+            amazonQAvailable: false,
+            dapSessionTrackingAvailable: true,
+            initialDapSessionTrackingEnabled: true,
+          });
+
+          const findHiddenInput = () =>
+            wrapper.find(
+              'input[name="project[project_setting_attributes][dap_session_tracking_enabled]"]',
+            );
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(true);
+
+          await findDapSessionTrackingToggle().vm.$emit('change', false);
+
+          expect(parseBoolean(findHiddenInput().attributes('value'))).toBe(false);
+        });
+      });
+
       describe('Duo SAST VR Workflow settings', () => {
         it('shows SAST VR Workflow toggle when feature flag is enabled', () => {
           wrapper = createWrapper(
@@ -375,6 +569,15 @@ describe('GitlabDuoSettings', () => {
           wrapper = createWrapper(
             { duoFeaturesEnabled: true, amazonQAvailable: false },
             { enableVulnerabilityResolution: false },
+          );
+
+          expect(findDuoSastVrWorkflowToggle().exists()).toBe(false);
+        });
+
+        it('does not show SAST VR Workflow toggle when ultimateFeaturesAvailable is false', () => {
+          wrapper = createWrapper(
+            { duoFeaturesEnabled: true, amazonQAvailable: false, ultimateFeaturesAvailable: false },
+            { enableVulnerabilityResolution: true },
           );
 
           expect(findDuoSastVrWorkflowToggle().exists()).toBe(false);
@@ -499,90 +702,15 @@ describe('GitlabDuoSettings', () => {
   });
 
   describe('ExclusionSettings', () => {
-    it('renders ExclusionSettings component when duo features are available', () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: true },
-      );
+    it('renders ExclusionSettings component', () => {
+      wrapper = createWrapper();
 
       expect(findExclusionSettings().exists()).toBe(true);
       expect(findExclusionSettings().props('exclusionRules')).toEqual(['*.log', 'node_modules/']);
     });
 
-    it('does not render ExclusionSettings when duo features are not available', () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: false },
-        { useDuoContextExclusion: true },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(false);
-    });
-
-    it('does not render ExclusionSettings when feature flag is disabled', () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: false },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(false);
-    });
-
-    it('does not render ExclusionSettings when experiment features are disabled', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: false,
-        },
-        { useDuoContextExclusion: true },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(false);
-    });
-
-    it('renders ExclusionSettings when experiment features are enabled', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: true,
-          paidDuoTier: true,
-        },
-        { useDuoContextExclusion: true },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(true);
-    });
-
-    it('does not render ExclusionSettings when paidDuoTier is false', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: true,
-          paidDuoTier: false,
-        },
-        { useDuoContextExclusion: true },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(false);
-    });
-
-    it('renders ExclusionSettings when paidDuoTier is true', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: true,
-          paidDuoTier: true,
-        },
-        { useDuoContextExclusion: true },
-      );
-
-      expect(findExclusionSettings().exists()).toBe(true);
-    });
-
     it('updates exclusion rules when ExclusionSettings emits update', async () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper();
       const newRules = ['*.log', 'node_modules/', '*.tmp'];
 
       const exclusionSettings = findExclusionSettings();
@@ -594,10 +722,7 @@ describe('GitlabDuoSettings', () => {
     });
 
     it('renders hidden inputs for exclusion rules form submission', () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper();
       const hiddenInputs = findExclusionRulesHiddenInputs();
 
       expect(hiddenInputs).toHaveLength(2);
@@ -606,10 +731,7 @@ describe('GitlabDuoSettings', () => {
     });
 
     it('updates hidden inputs when exclusion rules change', async () => {
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper();
       const newRules = ['*.tmp', 'cache/'];
 
       const exclusionSettings = findExclusionSettings();
@@ -627,14 +749,9 @@ describe('GitlabDuoSettings', () => {
     });
 
     it('handles empty exclusion rules', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: true,
-          duoContextExclusionSettings: { exclusionRules: [] },
-        },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper({
+        duoContextExclusionSettings: { exclusionRules: [] },
+      });
 
       expect(findExclusionSettings().exists()).toBe(true);
       expect(findExclusionSettings().props('exclusionRules')).toEqual([]);
@@ -646,14 +763,9 @@ describe('GitlabDuoSettings', () => {
     });
 
     it('handles missing duo context exclusion settings', () => {
-      wrapper = createWrapper(
-        {
-          licensedAiFeaturesAvailable: true,
-          experimentFeaturesEnabled: true,
-          duoContextExclusionSettings: {},
-        },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper({
+        duoContextExclusionSettings: {},
+      });
 
       expect(findExclusionSettings().exists()).toBe(true);
       expect(findExclusionSettings().props('exclusionRules')).toEqual([]);
@@ -668,10 +780,7 @@ describe('GitlabDuoSettings', () => {
       // Mock the closest method to return our mock form
       const mockClosest = jest.fn().mockReturnValue(mockForm);
 
-      wrapper = createWrapper(
-        { licensedAiFeaturesAvailable: true },
-        { useDuoContextExclusion: true },
-      );
+      wrapper = createWrapper();
 
       // Mock the $el.closest method
       wrapper.vm.$el.closest = mockClosest;

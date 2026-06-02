@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: 'Tutorial: Use GitLab to facilitate Scrum'
 description: Sprints, backlog, user stories, and scrum lifecycle.
 ---
@@ -151,8 +151,8 @@ the previous one is removed.
 
 To create each label:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Select **New label**.
 1. In the **Title** field, enter the name of the label. Start with `priority::now`.
 1. Optional. Select a color by selecting from the available colors, or enter a hex color value for
@@ -193,8 +193,8 @@ Prerequisites:
 
 To create an iteration cadence:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. Select **New iteration cadence**.
 1. Enter the title and description of the iteration cadence.
 1. Make sure the **Enable automatic scheduling** checkbox is selected.
@@ -276,7 +276,7 @@ Epic["Epic: When using the application,<br>I need to create an account,<br> so I
     Epic --> Issue3["Issue: When creating my account<br> and entering the required info,<br> I need to finalize creating my account,<br> so I can sign in"]
 ```
 
-You've taken the feature of an unmodified account sign-up for an application and broke it down into
+You've taken the feature of an unmodified account creation for an application and broke it down into
 three discrete stories:
 
 1. Entering an email address.
@@ -306,8 +306,8 @@ The next step is to create an epic board that you will use to develop and mainta
 
 To create a new epic board:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epic boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Epic boards**.
 1. In the upper-left corner, select the dropdown list with the current board name.
 1. Select **Create new board**.
 1. Enter the new board's title: `Release Planning`.
@@ -372,8 +372,8 @@ Let's break that down into stories.
 
 To create your first stories:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epic boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Epic boards**.
 1. In the upper-left corner, make sure the dropdown list with the current board name shows **Release Planning**.
    If not, from the dropdown list, select that board.
 1. Open an epic by clicking the title of the epic card.
@@ -404,8 +404,8 @@ Next, set up an issue board to serve as your canonical location for managing and
 In your group, create a new issue board titled **Backlog**.
 You will use this board to sequence and schedule your stories into upcoming sprints (iterations):
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Issue boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Issue boards**.
 1. In the upper-left corner, select the dropdown list with the current board name.
 1. Select **Create new board**.
 1. Enter the new board's title: `Backlog`.
@@ -479,7 +479,7 @@ the current sprint.
 Provide all team members the appropriate time to contribute and collaborate.
 
 1. Open the **Backlog** issue board:
-   1. On the top bar, select **Search or go to** and find your group.
+   1. In the top bar, select **Search or go to** and find your group.
    1. Select **Plan** > **Issue boards**.
    1. In the upper-left corner, select the dropdown list with the current board name.
    1. Select **Backlog**.
@@ -503,7 +503,6 @@ Provide all team members the appropriate time to contribute and collaborate.
    For example:
 
    ![Three discussion threads for sprint planning stories with checklist items.](img/story_threads_v16_10.png)
-
 1. After every story has a thread, edit the issue description and [mention each team member](../../user/discussions/_index.md#mentions).
    Mentioning team members automatically creates a to-do item for them in their respective [to-do lists](../../user/todos.md).
 1. Then, asynchronously, before the start of the upcoming sprint, team members should:
@@ -531,8 +530,8 @@ Teams can also use iteration analytics for additional visibility through burndow
 
 In your group, create a new issue board titled **Current Sprint**:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Issue boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Issue boards**.
 1. In the upper-left corner, select the dropdown list with the current board name.
 1. Select **Create new board**.
 1. Enter the new board's title: `Current Sprint`.
@@ -569,6 +568,6 @@ Iteration reports provide progress metrics and burndown and burnup charts.
 
 To view your iteration report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations** and select an iteration cadence.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations** and select an iteration cadence.
 1. Select an iteration.

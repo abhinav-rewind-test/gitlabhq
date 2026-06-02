@@ -50,7 +50,7 @@ export const getSuperSidebarData = () => {
   const el = document.querySelector('.js-super-sidebar');
   if (!el) return false;
 
-  const { rootPath, sidebar, forceDesktopExpandedSidebar, commandPalette, isSaas } = el.dataset;
+  const { rootPath, sidebar, commandPalette, isSaas } = el.dataset;
   const sidebarData = JSON.parse(sidebar);
   const searchData = convertObjectPropsToCamelCase(sidebarData.search);
   const { searchPath, issuesPath, mrPath, autocompletePath, settingsPath, searchContext } =
@@ -71,7 +71,6 @@ export const getSuperSidebarData = () => {
     el,
     rootPath,
     currentPath,
-    forceDesktopExpandedSidebar,
     isSaas,
     sidebarData,
     searchPath,
@@ -96,7 +95,6 @@ export const initSuperSidebar = ({
   el,
   rootPath,
   currentPath,
-  forceDesktopExpandedSidebar,
   isSaas,
   sidebarData,
   searchPath,
@@ -117,8 +115,8 @@ export const initSuperSidebar = ({
 }) => {
   if (!el) return false;
 
-  bindSuperSidebarCollapsedEvents(forceDesktopExpandedSidebar);
-  initSuperSidebarCollapsedState(parseBoolean(forceDesktopExpandedSidebar));
+  bindSuperSidebarCollapsedEvents();
+  initSuperSidebarCollapsedState();
 
   return new Vue({
     el,
@@ -147,9 +145,6 @@ export const initSuperSidebar = ({
       issuesListPath: sidebarData.work_items?.issues_list_path,
       canAdminLabel: parseBoolean(sidebarData.work_items?.can_admin_label),
       labelsManagePath: sidebarData.work_items?.labels_manage_path,
-      workItemPlanningViewEnabled: parseBoolean(
-        sidebarData.work_items?.work_item_planning_view_enabled,
-      ),
       isGroup,
       isSaas: parseBoolean(isSaas),
     },
@@ -219,9 +214,6 @@ export const initSuperTopbar = ({
       groupPath: groupsPath,
       fullPath: sidebarData.work_items?.full_path,
       canAdminLabel: parseBoolean(sidebarData.work_items?.can_admin_label),
-      workItemPlanningViewEnabled: parseBoolean(
-        sidebarData.work_items?.work_item_planning_view_enabled,
-      ),
       isGroup,
       isSaas: parseBoolean(isSaas),
     },

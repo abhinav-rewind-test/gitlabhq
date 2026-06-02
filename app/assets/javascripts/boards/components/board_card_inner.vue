@@ -1,6 +1,6 @@
 <script>
 import { GlLabel, GlTooltipDirective, GlIcon, GlLoadingIcon } from '@gitlab/ui';
-import { sortBy, uniqueId } from 'lodash';
+import { sortBy, uniqueId } from 'lodash-es';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import boardCardInner from 'ee_else_ce/boards/mixins/board_card_inner';
 import { isScopedLabel, convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
@@ -35,6 +35,8 @@ export default {
       import('ee_else_ce/vue_shared/components/epic_countables/epic_countables.vue'),
     WorkItemStatusBadge: () =>
       import('ee_component/work_items/components/shared/work_item_status_badge.vue'),
+    BoardCardSessionBadge: () =>
+      import('ee_component/boards/components/board_card_session_badge.vue'),
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -175,6 +177,12 @@ export default {
     },
     workItemType() {
       return this.isEpicBoard ? WORK_ITEM_TYPE_NAME_EPIC : this.item.type;
+    },
+    workItemTypeIconName() {
+      return this.item.workItemType?.iconName;
+    },
+    workItemTypeName() {
+      return this.item.workItemType?.name;
     },
     workItemFullPath() {
       return this.item.namespace?.fullPath || this.item.referencePath?.split(this.itemPrefix)[0];
@@ -328,7 +336,8 @@ export default {
             <work-item-type-icon
               v-if="showWorkItemTypeIcon"
               :aria-label="createIssueNumberAriaLabel()"
-              :work-item-type="item.type"
+              :work-item-type="workItemTypeName"
+              :type-icon-name="workItemTypeIconName"
               class="gl-text-subtle"
               icon-class="gl-flex-shrink-0 gl-fill-icon-subtle"
               variant="subtle"
@@ -424,6 +433,12 @@ export default {
             >{{ assigneeCounterLabel }}</span
           >
         </div>
+        <board-card-session-badge
+          v-if="!isEpicBoard"
+          :item="item"
+          class="gl-isolate gl-whitespace-nowrap"
+          @view-all-sessions="$emit('view-all-sessions')"
+        />
         <work-item-relationship-icons
           v-if="hasBlockingRelationships"
           class="gl-isolate gl-whitespace-nowrap"

@@ -75,9 +75,9 @@ RSpec.describe Gitlab::Tracking::Destinations::DestinationConfiguration, feature
           stub_config_setting(https: true)
         end
 
-        it 'returns configuration with https scheme' do
+        it 'returns configuration with http scheme' do
           expect(configuration.hostname).to eq('127.0.0.1:9091')
-          expect(configuration.protocol).to eq('https')
+          expect(configuration.protocol).to eq('http')
         end
       end
     end
@@ -88,8 +88,8 @@ RSpec.describe Gitlab::Tracking::Destinations::DestinationConfiguration, feature
       end
 
       it 'returns configuration with default localhost URI' do
-        expect(configuration.hostname).to eq('localhost:9090')
-        expect(configuration.port).to eq(9090)
+        expect(configuration.hostname).to eq('localhost:9091')
+        expect(configuration.port).to eq(9091)
         expect(configuration.protocol).to eq('http')
         expect(configuration.uri.to_s).to eq(described_class::SNOWPLOW_MICRO_DEFAULT_URI)
       end

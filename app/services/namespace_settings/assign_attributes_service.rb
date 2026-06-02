@@ -27,22 +27,18 @@ module NamespaceSettings
         param_key: :new_user_signups_cap,
         user_policy: :change_new_user_signups_cap
       )
-      validate_settings_param_for_admin(
-        param_key: :default_branch_protection,
-        user_policy: :update_default_branch_protection
-      )
-      validate_settings_param_for_admin(
-        param_key: :default_branch_protection_defaults,
-        user_policy: :update_default_branch_protection
-      )
       validate_settings_param_for_root_group(
         param_key: :enabled_git_access_protocol,
         user_policy: :update_git_access_protocol
       )
 
       handle_default_branch_name
+      # Authorization for :default_branch_protection and :default_branch_protection_defaults
+      # is handled by the calling services (Groups::CreateService and Groups::UpdateService)
+      # in their respective remove_unallowed_params methods.
       handle_default_branch_protection unless settings_params[:default_branch_protection].blank?
       handle_jwt_ci_cd_job_token_enabled
+      handle_granular_tokens_enforcement
 
       if group.namespace_settings
         group.namespace_settings.attributes = settings_params
@@ -86,6 +82,19 @@ module NamespaceSettings
 
       jwt_enabled = Gitlab::Utils.to_boolean(settings_params[:jwt_ci_cd_job_token_enabled])
       settings_params[:jwt_ci_cd_job_token_opted_out] = !jwt_enabled
+    end
+
+    def handle_granular_tokens_enforcement
+      return if settings_params[:enforce_granular_tokens].nil? &&
+        settings_params[:granular_tokens_enforced_after].nil?
+
+      return if group.root?
+
+      settings_params.delete(:enforce_granular_tokens)
+      settings_params.delete(:granular_tokens_enforced_after)
+      group.namespace_settings.errors.add(
+        :personal_access_token_settings, _('can only be configured on a top-level group.')
+      )
     end
 
     def validate_resource_access_token_creation_allowed_param

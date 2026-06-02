@@ -1,15 +1,17 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'a redacted search results' do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
-  let_it_be(:accessible_group) { create(:group, :private) }
-  let_it_be(:accessible_project) { create(:project, :repository, :private, name: 'accessible_project') }
+  let_it_be(:accessible_group, freeze: false) { create(:group, :private) }
+  let_it_be(:accessible_project, freeze: false) { create(:project, :repository, :private, name: 'accessible_project') }
 
-  let_it_be(:group_member) { create(:group_member, group: accessible_group, user: user) }
+  let_it_be(:group_member, freeze: false) { create(:group_member, group: accessible_group, user: user) }
 
-  let_it_be(:inaccessible_group) { create(:group, :private) }
-  let_it_be(:inaccessible_project) { create(:project, :repository, :private, name: 'inaccessible_project') }
+  let_it_be(:inaccessible_group, freeze: false) { create(:group, :private) }
+  let_it_be(:inaccessible_project, freeze: false) do
+    create(:project, :repository, :private, name: 'inaccessible_project')
+  end
 
   let(:search) { 'anything' }
 
@@ -31,9 +33,11 @@ RSpec.shared_examples 'a redacted search results' do
     Kaminari.paginate_array(objects).page(1).per(20)
   end
 
-  before do
+  before_all do
     accessible_project.add_maintainer(user)
+  end
 
+  before do
     allow(search_service)
       .to receive_message_chain(:search_results, :objects)
             .and_return(unredacted_results)
@@ -60,6 +64,30 @@ RSpec.shared_examples 'a redacted search results' do
             filtered: array_including(
               [
                 { class_name: 'Issue', id: unreadable.id, ability: :read_issue }
+              ]
+            )
+          )
+        )
+
+      expect(result).to contain_exactly(readable)
+    end
+  end
+
+  context 'for work_items' do
+    let(:readable) { create(:work_item, project: accessible_project) }
+    let(:unreadable) { create(:work_item, project: inaccessible_project) }
+    let(:unredacted_results) { ar_relation(WorkItem, readable, unreadable) }
+    let(:scope) { 'work_items' }
+
+    it 'redacts the inaccessible work item' do
+      expect(search_service.send(:logger))
+        .to receive(:error)
+        .with(
+          hash_including(
+            message: "redacted_search_results",
+            filtered: array_including(
+              [
+                { class_name: 'WorkItem', id: unreadable.id, ability: :read_work_item }
               ]
             )
           )
@@ -324,7 +352,7 @@ RSpec.shared_examples 'a redacted search results' do
 end
 
 RSpec.shared_examples "redaction limits N+1 queries" do |limit:|
-  it 'does not exceed the query limit' do
+  it 'does not exceed the query limit', :request_store do
     # issuing the query to remove the data loading call
     unredacted_results.to_a
 

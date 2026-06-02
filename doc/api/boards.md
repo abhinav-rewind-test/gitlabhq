@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project issue boards API
 ---
 
@@ -18,9 +18,9 @@ Every call to this API requires authentication.
 If a user is not a member of a private project,
 a `GET` request on that project results in a `404` status code.
 
-## List project issue boards
+## List all project issue boards
 
-Lists project issue boards in the given project.
+Lists all issue boards in a specified project.
 
 ```plaintext
 GET /projects/:id/boards
@@ -100,15 +100,15 @@ Example response:
 ]
 ```
 
-Another example response when no board has been activated or exist in the project:
+Another example response when no board has been activated or exists in the project:
 
 ```json
 []
 ```
 
-## Show a single issue board
+## Retrieve an issue board
 
-Get a single project issue board.
+Retrieves a specified issue board in a project.
 
 ```plaintext
 GET /projects/:id/boards/:board_id
@@ -189,7 +189,7 @@ Example response:
 
 ## Create an issue board
 
-Creates a project issue board.
+Creates an issue board in a specified project.
 
 ```plaintext
 POST /projects/:id/boards
@@ -235,7 +235,7 @@ Example response:
 
 ## Update an issue board
 
-Updates a project issue board.
+Updates a specified issue board in a project.
 
 ```plaintext
 PUT /projects/:id/boards/:board_id
@@ -322,7 +322,7 @@ Example response:
 
 ## Delete an issue board
 
-Deletes a project issue board.
+Deletes a specified issue board in a project.
 
 ```plaintext
 DELETE /projects/:id/boards/:board_id
@@ -339,9 +339,9 @@ curl --request DELETE \
   --url "https://gitlab.example.com/api/v4/projects/5/boards/1"
 ```
 
-## List board lists in a project issue board
+## List all board lists in an issue board
 
-Get a list of the board's lists.
+Lists all lists in a specified issue board.
 Does not include `open` and `closed` lists.
 
 ```plaintext
@@ -402,9 +402,9 @@ Example response:
 ]
 ```
 
-## Show a single board list
+## Retrieve a board list
 
-Get a single board list.
+Retrieves a specified list from an issue board.
 
 ```plaintext
 GET /projects/:id/boards/:board_id/lists/:list_id
@@ -454,11 +454,11 @@ POST /projects/:id/boards/:board_id/lists
 | `label_id` | integer | no | The ID of a label. |
 | `assignee_id` | integer | no | The ID of a user. Premium and Ultimate only. |
 | `milestone_id` | integer | no | The ID of a milestone. Premium and Ultimate only. |
-| `iteration_id` | integer | no | The ID of a iteration. Premium and Ultimate only. |
+| `iteration_id` | integer | no | The ID of an iteration. Premium and Ultimate only. |
 
 > [!note]
 > Label, assignee and milestone arguments are mutually exclusive,
-> that is, only one of them are accepted in a request.
+> that is, only one of them is accepted in a request.
 > Check the [issue board documentation](../user/project/issue_board.md)
 > for more information regarding the required license for each list type.
 
@@ -486,9 +486,9 @@ Example response:
 }
 ```
 
-## Reorder a list in a board
+## Update a board list
 
-Updates an existing issue board list. This call is used to change list position.
+Updates the position of a specified list from an issue board.
 
 ```plaintext
 PUT /projects/:id/boards/:board_id/lists/:list_id
@@ -527,7 +527,13 @@ Example response:
 
 ## Delete a board list from a board
 
-Only for administrators and project owners. Deletes a board list.
+Deletes a specified list from an issue board.
+
+Prerequisites:
+
+- Either:
+  - The Planner, Reporter, Security Manager, Developer, Maintainer, or Owner role for the project.
+  - Administrator access.
 
 ```plaintext
 DELETE /projects/:id/boards/:board_id/lists/:list_id

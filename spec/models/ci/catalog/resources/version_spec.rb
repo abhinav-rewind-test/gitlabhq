@@ -8,7 +8,10 @@ RSpec.describe Ci::Catalog::Resources::Version, type: :model, feature_category: 
   let_it_be(:current_user) { create(:user) }
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
-  let_it_be(:minor_release) { create(:release, project: project, tag: '1.1.0', created_at: Date.yesterday - 1.day) }
+  let_it_be(:minor_release, freeze: false) do
+    create(:release, project: project, tag: '1.1.0', created_at: Date.yesterday - 1.day)
+  end
+
   let_it_be(:major_release) { create(:release, project: project, tag: '2.0.0', created_at: Date.yesterday) }
   let_it_be(:patch) { create(:release, project: project, tag: 'v1.1.3', created_at: Date.today, sha: 'patch_sha') }
   let!(:v1_1_0) do
@@ -203,6 +206,37 @@ RSpec.describe Ci::Catalog::Resources::Version, type: :model, feature_category: 
 
       expect(versions.count).to eq(1)
       expect(versions.first.sha).to eq('patch_sha')
+    end
+  end
+
+  describe '.search_by_version' do
+    let_it_be(:release_v2_beta) { create(:release, project: project, tag: '2.0.0-beta') }
+    let_it_be(:v2_0_0_beta) do
+      create(:ci_catalog_resource_version, catalog_resource: resource, release: release_v2_beta, semver: '2.0.0-beta')
+    end
+
+    it 'finds versions matching the search term' do
+      versions = described_class.for_catalog_resources(resource).search_by_version('1.1.0')
+      expect(versions).to contain_exactly(v1_1_0)
+    end
+
+    it 'finds multiple versions with partial match' do
+      versions = described_class.for_catalog_resources(resource).search_by_version('2.0')
+      expect(versions).to contain_exactly(v2_0_0, v2_0_0_beta)
+    end
+
+    it 'is case-insensitive' do
+      versions = described_class.for_catalog_resources(resource).search_by_version('BETA')
+      expect(versions).to contain_exactly(v2_0_0_beta)
+    end
+
+    it 'sanitizes SQL special characters' do
+      expect { described_class.search_by_version('%_%') }.not_to raise_error
+    end
+
+    it 'returns empty result when no versions match' do
+      versions = described_class.for_catalog_resources(resource).search_by_version('9.9.9')
+      expect(versions).to be_empty
     end
   end
 

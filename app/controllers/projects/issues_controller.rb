@@ -9,7 +9,8 @@ class Projects::IssuesController < Projects::ApplicationController
   include RecordUserLastActivity
   include IssueBuildParameters
 
-  ISSUES_EXCEPT_ACTIONS = %i[index calendar new create bulk_update import_csv export_csv service_desk can_create_branch].freeze
+  ISSUES_EXCEPT_ACTIONS = %i[index calendar new create bulk_update import_csv export_csv service_desk
+    can_create_branch].freeze
   SET_ISSUABLES_INDEX_ONLY_ACTIONS = %i[index calendar service_desk].freeze
   WORK_ITEM_REDIRECT_EXCEPT_ACTIONS = (ISSUES_EXCEPT_ACTIONS + [
     :discussions,                # it's a JSON action, but not always passed on the tests requests
@@ -55,20 +56,23 @@ class Projects::IssuesController < Projects::ApplicationController
 
   before_action do
     push_frontend_feature_flag(:notifications_todos_buttons, current_user)
-    push_force_frontend_feature_flag(:work_item_planning_view, !!project&.work_items_consolidated_list_enabled?(current_user))
     push_force_frontend_feature_flag(:glql_load_on_click, !!project&.glql_load_on_click_feature_flag_enabled?)
     push_frontend_feature_flag(:hide_incident_management_features, project)
-    push_force_frontend_feature_flag(:work_item_features_field, Feature.enabled?(:work_item_features_field, current_user))
+    push_force_frontend_feature_flag(:work_item_features_field,
+      Feature.enabled?(:work_item_features_field, current_user))
+    push_frontend_feature_flag(:vue3_migrate_work_items, current_user)
   end
 
   after_action :log_issue_show, only: :show
 
+  prepend_around_action :track_load_comments_sli, only: [:discussions]
   around_action :allow_gitaly_ref_name_caching, only: [:discussions]
 
   respond_to :html
 
+  feature_category :portfolio_management, [:index, :calendar]
   feature_category :team_planning, [
-    :index, :calendar, :show, :new, :create, :edit, :update,
+    :show, :new, :create, :edit, :update,
     :destroy, :move, :reorder, :designs, :toggle_subscription,
     :discussions, :bulk_update, :realtime_changes,
     :toggle_award_emoji, :mark_as_spam, :related_branches,
@@ -106,41 +110,24 @@ class Projects::IssuesController < Projects::ApplicationController
   end
 
   def new
-    service = ::Issues::BuildService.new(
-      container: project,
-      current_user: current_user,
-      params: build_params
-    )
-
-    @issue = @noteable = service.execute
-    @add_related_issue = add_related_issue
-    @merge_request_to_resolve_discussions_of = service.merge_request_to_resolve_discussions_of
-
-    if service.discussion_to_resolve_id.present?
-      @discussion_to_resolve = service.discussions_to_resolve.first
-      Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter
-        .track_resolve_thread_in_issue_action(user: current_user)
-    end
-
-    respond_with(@issue)
+    redirect_to new_project_work_item_url(project, params.except(
+      :controller,
+      :action,
+      :namespace_id,
+      :project_id
+    ).permit!)
   end
 
   def show
     return super if issue.require_legacy_views? || !html_request?
 
-    if project&.work_items_consolidated_list_enabled?(current_user)
-      if params[:vueroute].present? && request.path.include?('/designs/')
-        # Only redirect to designs path if both vueroute param exists and path contains /designs/
-        # Needed since designs are aliased to show in this controller
-        redirect_to designs_project_work_item_path(project, issue.iid, vueroute: params[:vueroute], params: request.query_parameters)
-      else
-        redirect_to project_work_item_path(project, issue.iid, params: request.query_parameters)
-      end
+    if params[:vueroute].present? && request.path.include?('/designs/')
+      # Only redirect to designs path if both vueroute param exists and path contains /designs/
+      # Needed since designs are aliased to show in this controller
+      redirect_to designs_project_work_item_path(project, issue.iid, vueroute: params[:vueroute],
+        params: request.query_parameters)
     else
-      @right_sidebar = false
-      @work_item = issue.becomes(::WorkItem) # rubocop:disable Cop/AvoidBecomes -- We need the instance to be a work item
-
-      render 'projects/work_items/show'
+      redirect_to project_work_item_path(project, issue.iid, params: request.query_parameters)
     end
   end
 
@@ -186,8 +173,9 @@ class Projects::IssuesController < Projects::ApplicationController
 
       redirect_to project_issue_path(@project, @issue)
     else
-      # NOTE: this CAPTCHA support method is indirectly included via IssuableActions
-      with_captcha_check_html_format(spammable: spammable) { render :new }
+      with_captcha_check_json_format(spammable: spammable) do
+        render json: { errors: @issue.errors.full_messages }, status: :unprocessable_entity
+      end
     end
   end
 
@@ -254,7 +242,8 @@ class Projects::IssuesController < Projects::ApplicationController
 
     create_params = params.slice(:branch_name, :ref).merge(issue_iid: issue.iid)
     create_params[:target_project_id] = params[:target_project_id]
-    result = ::MergeRequests::CreateFromIssueService.new(project: project, current_user: current_user, mr_params: create_params).execute
+    result = ::MergeRequests::CreateFromIssueService.new(project: project, current_user: current_user,
+      mr_params: create_params).execute
 
     if result[:status] == :success
       render json: MergeRequestCreateSerializer.new.represent(result[:merge_request])
@@ -295,6 +284,12 @@ class Projects::IssuesController < Projects::ApplicationController
   end
 
   protected
+
+  def track_load_comments_sli
+    Labkit::UserExperienceSli.start(:load_comments) do
+      yield
+    end
+  end
 
   def index_html_request?
     action_name.to_sym == :index && html_request?
@@ -435,7 +430,7 @@ class Projects::IssuesController < Projects::ApplicationController
   # Overridden in EE
   def create_vulnerability_issue_feedback(issue); end
 
-  # Overriden in EE
+  # Overridden in EE
   def work_item_redirect_except_actions
     WORK_ITEM_REDIRECT_EXCEPT_ACTIONS
   end
@@ -452,7 +447,7 @@ class Projects::IssuesController < Projects::ApplicationController
   end
 
   def redirect_index_to_work_items
-    return unless index_html_request? && project&.work_items_consolidated_list_enabled?(current_user)
+    return unless index_html_request?
 
     redirect_to project_work_items_path(project, params: work_items_redirect_params(request.query_parameters))
   end

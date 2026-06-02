@@ -26,10 +26,6 @@ module Gitlab
         DiffViewer::Image
       ].sort_by { |v| v.binary? ? 0 : 1 }.freeze
 
-      # Diff file with more than 200 diff line rows could slow down the page interactions
-      # we enable content visibility on every row if it reaches this threshold to reduce diff impact on page reflows
-      ROWS_CONTENT_VISIBILITY_THRESHOLD = 200
-
       def initialize(
         diff,
         repository:,
@@ -214,7 +210,11 @@ module Gitlab
 
       def highlighted_diff_lines
         @highlighted_diff_lines ||=
-          Gitlab::Diff::Highlight.new(self, repository: self.repository).highlight
+          Gitlab::Diff::Highlight.new(self, repository: self.repository, plain: !!@prevent_syntax_highlighting).highlight
+      end
+
+      def prevent_syntax_highlighting!
+        @prevent_syntax_highlighting = true
       end
 
       # Array[<Hash>] with right/left keys that contains Gitlab::Diff::Line objects which text is highlighted
@@ -247,6 +247,11 @@ module Gitlab
       end
       strong_memoize_attr :file_hash
 
+      def short_file_hash
+        file_hash[0..8]
+      end
+      strong_memoize_attr :short_file_hash
+
       def added_lines
         strong_memoize(:added_lines) do
           @stats&.additions || diff_lines.count(&:added?)
@@ -268,7 +273,7 @@ module Gitlab
       end
 
       def code_review_id
-        Digest::SHA1.hexdigest("#{file_identifier}-#{blob&.id}")
+        Digest::SHA1.hexdigest("#{file_identifier}-#{blob_id}")
       end
       strong_memoize_attr :code_review_id
 
@@ -453,7 +458,11 @@ module Gitlab
             prev_line = index == 0 ? nil : diff_lines_with_match_tail[index - 1]
             next_line = diff_lines_with_match_tail[index + 1]
             start_index = prev_line ? prev_line.new_pos : 0
-            end_index = next_line ? next_line.new_pos - 1 : blob_lines.count
+            # end_index is offset by -2:
+            # * -1 to convert 1-based new_pos to 0-based index,
+            # * -1 to exclude the next diff line
+            end_index = next_line ? next_line.new_pos - 2 : blob_lines.count
+
             expanded_lines = blob_lines[start_index..end_index]
             if prev_line
               expanded_lines.each_with_index do |expanded_line, line_index|
@@ -534,6 +543,10 @@ module Gitlab
 
       def old_blob_lazy
         fetch_blob(old_content_sha, old_path)
+      end
+
+      def blob_id
+        diff.to_id.presence || diff.from_id.presence || blob&.id
       end
 
       def simple_viewer_class

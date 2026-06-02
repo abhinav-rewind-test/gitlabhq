@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Due dates
 ---
 
@@ -30,7 +30,7 @@ Due dates are supported in:
 - [Incidents](../../../operations/incident_management/incidents.md)
 
 The day before an open item is due, an email is sent to all participants.
-<!-- For issue due timing source, see 'issue_due_scheduler_worker' in https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/initializers/1_settings.rb -->
+<!-- For issue due timing source, see 'issue_due_scheduler_worker' in <https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/initializers/1_settings.rb> -->
 The notification is sent at 00:50 in the server's time zone (for GitLab.com this is UTC)
 for all open items with a due date of the next calendar day.
 
@@ -38,7 +38,7 @@ Due dates also appear in your [to-do items](../../todos.md).
 
 ## View issues with due dates
 
-You can see issues with their due dates on the **Issues** page.
+You can see issues with their due dates on the **Work items** page.
 If an issue contains a due date,
 it is shown below the issue title:
 
@@ -48,8 +48,8 @@ Issue dates in the past are shown with a red icon ({{< icon name="calendar-overd
 
 To view and sort issues containing due dates in your project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Work items** and filter by **Type** = **Issue**.
 1. To sort by due date, select the current sort method, then select **Due date**.
 1. Optional. To reverse the sort order, select **Sort direction** ({{< icon name="sort-lowest" >}}).
 
@@ -59,7 +59,7 @@ All users with permission to view the issue can view its due date.
 
 ### When creating an issue
 
-If you have at least the Planner role, when creating an issue, select **Due date** to show a calendar.
+If you have the Planner, Reporter, Developer, Maintainer, or Owner role, when creating an issue, select **Due date** to show a calendar.
 This date uses the server's time zone, not the current user's time zone.
 
 To remove the date, select the date text, then delete the text.
@@ -68,14 +68,14 @@ To remove the date, select the date text, then delete the text.
 
 Prerequisites:
 
-- You must have at least the Planner role.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role.
 
 To do this:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**, then select the title of your issue to view it.
-1. In the right sidebar, next to **Due date**, select **Edit** to display a calendar.
-1. Select your desired date, then select again, outside the calendar, to save your changes.
+1. In the left sidebar, select **Plan** > **Work items**, then filter by **Type** = **Issue** and select your issue.
+1. In the right sidebar, in the **Dates** section, select **Edit**.
+1. Select your desired date, then select **Apply** to save your changes.
 
 ### With a quick action
 
@@ -89,8 +89,8 @@ To set a due date with quick actions in an issue's description or comment:
 Issues with due dates can also be exported as an iCalendar feed. The URL of the
 feed can be added to calendar applications.
 
-- The **Project Issues** page
-- The **Group Issues** page
+- The **Project work items** page
+- The **Group work items** page
 
 1. Go to the page that contains the list of issues you want to subscribe to.
    For example:

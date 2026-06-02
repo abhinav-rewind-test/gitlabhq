@@ -8,7 +8,7 @@ import {
   GlSprintf,
   GlTooltipDirective,
 } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import HiddenBadge from '~/issuable/components/hidden_badge.vue';
 import LockedBadge from '~/issuable/components/locked_badge.vue';
@@ -114,7 +114,13 @@ export default {
       required: false,
       default: '',
     },
+    typeIconName: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
+  emits: ['toggle'],
   data() {
     return {
       isTicketCalloutDismissed: localStorage.getItem(TICKET_CALLOUT_DISMISSED_KEY) === 'true',
@@ -210,6 +216,7 @@ export default {
         :id="$options.iconId"
         show-text
         :work-item-type="issuableType"
+        :type-icon-name="typeIconName"
         icon-class="gl-fill-icon-subtle"
       />
       <gl-popover
@@ -237,9 +244,9 @@ export default {
         </template>
         <template #author>
           <gl-link
-            class="js-user-link gl-font-bold"
+            :class="['gl-font-bold', { 'js-user-link': !isAuthorExternal }]"
             :href="author.webUrl"
-            :data-user-id="authorId"
+            :data-user-id="isAuthorExternal ? undefined : authorId"
             data-testid="issue-author"
           >
             <span :class="[{ 'gl-hidden': !isAuthorExternal }, '@sm/panel:gl-inline']">
@@ -270,7 +277,7 @@ export default {
       >
       <gl-button
         icon="chevron-double-lg-left"
-        class="js-sidebar-toggle gl-ml-auto gl-block @sm/panel:!gl-hidden"
+        class="js-sidebar-toggle gl-ml-auto gl-block @sm/content-panels:!gl-hidden"
         :aria-label="__('Expand sidebar')"
         @click="handleRightSidebarToggleClick"
       />

@@ -5,18 +5,18 @@ require 'spec_helper'
 RSpec.describe Integrations::GroupMentionService, feature_category: :integrations do
   subject(:execute) { described_class.new(mentionable, hook_data: hook_data, is_confidential: is_confidential).execute }
 
-  let_it_be(:author) { create(:user) }
-  let_it_be(:member) { create(:user) }
-  let_it_be(:group_1) { create(:group) }
-  let_it_be(:group_2) { create(:group) }
-  let_it_be(:group_3) { create(:group) }
-  let_it_be(:groups) { nil }
-  let_it_be(:all_groups) { [group_1, group_2, group_3] }
-  let_it_be(:groups_with_integrations) { [group_1, group_2] }
-  let_it_be(:public_project_with_group) { create(:project, :public) }
-  let_it_be(:public_project_without_group) { create(:project, :public) }
-  let_it_be(:private_project_with_group) { create(:project, :private) }
-  let_it_be(:private_project_without_group) { create(:project, :private) }
+  let_it_be(:author, freeze: false) { create(:user) }
+  let_it_be(:member, freeze: false) { create(:user) }
+  let_it_be(:group_1, freeze: false) { create(:group) }
+  let_it_be(:group_2, freeze: false) { create(:group) }
+  let_it_be(:group_3, freeze: false) { create(:group) }
+  let_it_be(:groups, freeze: false) { nil }
+  let_it_be(:all_groups, freeze: false) { [group_1, group_2, group_3] }
+  let_it_be(:groups_with_integrations, freeze: false) { [group_1, group_2] }
+  let_it_be(:public_project_with_group, freeze: false) { create(:project, :public) }
+  let_it_be(:public_project_without_group, freeze: false) { create(:project, :public) }
+  let_it_be(:private_project_with_group, freeze: false) { create(:project, :private) }
+  let_it_be(:private_project_without_group, freeze: false) { create(:project, :private) }
 
   before_all do
     group_1.add_developer(member)
@@ -36,6 +36,14 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
     allow(mentionable).to receive(:referenced_groups).with(author).and_return(groups)
   end
 
+  def group_mention_data_matcher(group, event_type:)
+    satisfy("be group mention hook data for #{group.full_path}") do |data|
+      data[:object_kind] == 'group_mention' &&
+        data[:event_type] == event_type &&
+        data[:mentioned] == { object_kind: 'group', name: group.full_path, url: group.web_url }
+    end
+  end
+
   shared_examples 'public_group_mention_hooks' do
     let(:groups) { groups_with_integrations }
 
@@ -46,10 +54,12 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
       expect(groups).to receive_message_chain(:with_integrations,
         :merge).with(Integration.group_mention_hooks).and_return(groups)
 
-      expect(group_1).to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_1).to receive(:execute_integrations)
+        .with(group_mention_data_matcher(group_1, event_type: 'group_mention'), :group_mention_hooks)
       expect(group_1).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
 
-      expect(group_2).to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_2).to receive(:execute_integrations)
+        .with(group_mention_data_matcher(group_2, event_type: 'group_mention'), :group_mention_hooks)
       expect(group_2).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
 
       expect(group_3).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
@@ -70,10 +80,14 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
         :merge).with(Integration.group_confidential_mention_hooks).and_return(groups)
 
       expect(group_1).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
-      expect(group_1).to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
+      expect(group_1).to receive(:execute_integrations)
+        .with(group_mention_data_matcher(group_1, event_type: 'group_confidential_mention'),
+          :group_confidential_mention_hooks)
 
       expect(group_2).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
-      expect(group_2).to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
+      expect(group_2).to receive(:execute_integrations)
+        .with(group_mention_data_matcher(group_2, event_type: 'group_confidential_mention'),
+          :group_confidential_mention_hooks)
 
       expect(group_3).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
       expect(group_3).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
@@ -383,7 +397,7 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
           it_behaves_like 'confidential_group_mention_hooks'
 
           context 'for groups with a Guest member' do
-            let_it_be(:member_guest) { create(:user) }
+            let_it_be(:member_guest, freeze: false) { create(:user) }
 
             before_all do
               group_1.add_guest(member_guest)
@@ -418,7 +432,8 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
       expect(groups).to receive_message_chain(:with_integrations,
         :merge).with(Integration.group_mention_hooks).and_return(groups)
 
-      expect(group_1).to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_1).to receive(:execute_integrations)
+        .with(group_mention_data_matcher(group_1, event_type: 'group_mention'), :group_mention_hooks)
       expect(group_1).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
 
       expect(group_2).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
@@ -432,9 +447,9 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
   end
 
   context 'for invalid mentionables' do
-    let_it_be(:mentionable) { Object.new }
-    let_it_be(:hook_data) { {} }
-    let_it_be(:is_confidential) { false }
+    let_it_be(:mentionable, freeze: false) { Object.new }
+    let_it_be(:hook_data, freeze: false) { {} }
+    let_it_be(:is_confidential, freeze: false) { false }
 
     it_behaves_like 'no_success'
 
@@ -442,6 +457,25 @@ RSpec.describe Integrations::GroupMentionService, feature_category: :integration
       expect(Gitlab::IntegrationsLogger).to receive(:error).with('Mentionable without to_ability_name: Object')
 
       execute
+    end
+  end
+
+  context 'when mentionable is nil' do
+    let_it_be(:mentionable, freeze: false) { nil }
+    let_it_be(:hook_data, freeze: false) { {} }
+    let_it_be(:is_confidential, freeze: false) { false }
+
+    it 'returns success without executing any integrations' do
+      expect(group_1).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_1).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
+
+      expect(group_2).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_2).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
+
+      expect(group_3).not_to receive(:execute_integrations).with(anything, :group_mention_hooks)
+      expect(group_3).not_to receive(:execute_integrations).with(anything, :group_confidential_mention_hooks)
+
+      expect(execute).to be_success
     end
   end
 end

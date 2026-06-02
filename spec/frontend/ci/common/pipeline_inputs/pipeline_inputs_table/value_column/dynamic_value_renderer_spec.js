@@ -50,10 +50,12 @@ describe('DynamicValueRenderer', () => {
         expect(findInput().attributes('type')).toBe('text');
       });
 
-      it('renders text input for number type', () => {
+      it('renders number input for number type', () => {
         createComponent({ props: { item: { ...defaultProps.item, type: 'NUMBER' } } });
         expect(findInput().exists()).toBe(true);
-        expect(findInput().attributes('type')).toBe('text');
+        expect(findInput().attributes('type')).toBe('number');
+        expect(findInput().attributes('min')).toBe(String(Number.MIN_SAFE_INTEGER));
+        expect(findInput().attributes('max')).toBe(String(Number.MAX_SAFE_INTEGER));
       });
 
       it('renders boolean cell component for boolean type', () => {
@@ -72,7 +74,25 @@ describe('DynamicValueRenderer', () => {
           },
         });
         expect(findDropdown().exists()).toBe(true);
+        expect(findDropdown().props('multiple')).toBe(false);
         expect(findInput().exists()).toBe(false);
+      });
+
+      it('converts numeric options to string text', () => {
+        createComponent({
+          props: {
+            item: {
+              ...defaultProps.item,
+              options: [1, 50, 100],
+            },
+          },
+        });
+
+        const dropdownItems = findDropdown().props('items');
+        expect(dropdownItems).toHaveLength(3);
+        expect(dropdownItems[0]).toEqual({ value: 1, text: '1' });
+        expect(dropdownItems[1]).toEqual({ value: 50, text: '50' });
+        expect(dropdownItems[2]).toEqual({ value: 100, text: '100' });
       });
     });
 
@@ -91,7 +111,7 @@ describe('DynamicValueRenderer', () => {
         expect(findInput().exists()).toBe(false);
       });
 
-      it('renders dropdown for array type when options are provided', () => {
+      it('renders multi select dropdown for array type when options are provided', () => {
         createComponent({
           props: {
             item: {
@@ -104,6 +124,7 @@ describe('DynamicValueRenderer', () => {
         });
 
         expect(findDropdown().exists()).toBe(true);
+        expect(findDropdown().props('multiple')).toBe(true);
         expect(findInput().exists()).toBe(false);
 
         const dropdownItems = findDropdown().props('items');
@@ -111,6 +132,51 @@ describe('DynamicValueRenderer', () => {
         expect(dropdownItems[0].value).toBe('option1');
         expect(dropdownItems[1].value).toBe('option2');
         expect(dropdownItems[2].value).toBe('option3');
+      });
+
+      it('displays selected value in dropdown toggle text', () => {
+        createComponent({
+          props: {
+            item: {
+              ...defaultProps.item,
+              type: 'ARRAY',
+              value: ['option2'],
+              options: ['option1', 'option2', 'option3'],
+            },
+          },
+        });
+
+        expect(findDropdown().props('toggleText')).toBe('option2');
+      });
+
+      it('displays multiple selected values in dropdown toggle text', () => {
+        createComponent({
+          props: {
+            item: {
+              ...defaultProps.item,
+              type: 'ARRAY',
+              value: ['option1', 'option2'],
+              options: ['option1', 'option2', 'option3'],
+            },
+          },
+        });
+
+        expect(findDropdown().props('toggleText')).toBe('2 options selected');
+      });
+
+      it('displays placeholder in dropdown toggle text when array value is empty', () => {
+        createComponent({
+          props: {
+            item: {
+              ...defaultProps.item,
+              type: 'ARRAY',
+              value: '',
+              options: ['option1', 'option2', 'option3'],
+            },
+          },
+        });
+
+        expect(findDropdown().props('toggleText')).toBe('Select option');
       });
     });
   });
@@ -284,22 +350,6 @@ describe('DynamicValueRenderer', () => {
         expect(findValidationFeedback().text()).toContain('This is required and must be defined.');
       });
 
-      it('displays validation feedback for non-numeric value in number field', async () => {
-        createComponent({
-          props: {
-            item: {
-              ...defaultProps.item,
-              type: 'NUMBER',
-            },
-          },
-        });
-
-        await setInputValue('not-a-number');
-
-        expect(findValidationFeedback().exists()).toBe(true);
-        expect(findValidationFeedback().text()).toContain('The value must contain only numbers.');
-      });
-
       it('includes pattern information in validation feedback for regex errors', async () => {
         const regex = '[a-z]+';
         createComponent({
@@ -319,6 +369,56 @@ describe('DynamicValueRenderer', () => {
         );
         expect(findValidationFeedback().text()).toContain(`Pattern: ${regex}`);
       });
+    });
+  });
+
+  describe('dropdown search filtering', () => {
+    beforeEach(() => {
+      createComponent({
+        props: {
+          item: {
+            ...defaultProps.item,
+            options: ['production', 'staging', 'development', 'preview'],
+          },
+        },
+      });
+    });
+
+    it('filters options based on search term', async () => {
+      findDropdown().vm.$emit('search', 'prod');
+      await nextTick();
+
+      const items = findDropdown().props('items');
+      expect(items).toHaveLength(1);
+      expect(items[0].text).toBe('production');
+    });
+
+    it('filters options case-insensitively', async () => {
+      findDropdown().vm.$emit('search', 'PROD');
+      await nextTick();
+
+      const items = findDropdown().props('items');
+      expect(items).toHaveLength(1);
+      expect(items[0].text).toBe('production');
+    });
+
+    it('handles no matches', async () => {
+      findDropdown().vm.$emit('search', 'xyz');
+      await nextTick();
+
+      expect(findDropdown().props('items')).toHaveLength(0);
+    });
+
+    it('restores all options when search is cleared', async () => {
+      findDropdown().vm.$emit('search', 'prod');
+      await nextTick();
+
+      expect(findDropdown().props('items')).toHaveLength(1);
+
+      findDropdown().vm.$emit('search', '');
+      await nextTick();
+
+      expect(findDropdown().props('items')).toHaveLength(4);
     });
   });
 });

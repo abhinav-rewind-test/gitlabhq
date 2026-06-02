@@ -1,7 +1,7 @@
 ---
 stage: Developer Experience
-group: API
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+group: API Platform
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Backend GraphQL API guide
 ---
 
@@ -28,23 +28,7 @@ version, that future node is stripped out from the query.
 
 This does not mitigate the problem on GitLab.com. New GraphQL fields still need to be deployed to GitLab.com by the backend before the frontend.
 
-You can use the `@gl_introduced` directive any field, for example:
-
-<table>
-<thead>
-  <tr>
-    <td>
-      Query
-    </td>
-    <td>
-      Response
-    </td>
-  </tr>
-</thead>
-
-<tbody>
-<tr>
-<td>
+You can use the `@gl_introduced` directive on any field, for example:
 
 ```graphql
 fragment otherFieldsWithFuture on Namespace {
@@ -62,8 +46,7 @@ query namespaceWithFutureFields {
 }
 ```
 
-</td>
-<td>
+Response:
 
 ```json
 {
@@ -79,32 +62,11 @@ query namespaceWithFutureFields {
 }
 ```
 
-</td>
-</tr>
-</tbody>
-</table>
-
 You shouldn't use the directive with:
 
 - Arguments: Executable directives don't support arguments.
 - Fragments: Instead, use the directive in the fragment nodes.
-- Single future fields, in the query or in objects:
-
-<table>
-<thead>
-  <tr>
-    <td>
-      Query
-    </td>
-    <td>
-      Response
-    </td>
-  </tr>
-</thead>
-
-<tbody>
-<tr>
-<td>
+- Single future fields, in the query or in objects, for example:
 
   ```graphql
   query fetchData {
@@ -112,8 +74,7 @@ You shouldn't use the directive with:
   }
   ```
 
-</td>
-<td>
+  Response:
 
   ```json
   {
@@ -147,11 +108,7 @@ You shouldn't use the directive with:
   }
   ```
 
-</td>
-</tr>
-
-<tr>
-<td>
+  Query:
 
   ```graphql
   query fetchData {
@@ -161,8 +118,7 @@ You shouldn't use the directive with:
   }
   ```
 
-</td>
-<td>
+  Response:
 
   ```json
   {
@@ -196,11 +152,7 @@ You shouldn't use the directive with:
   }
   ```
 
-</td>
-</tr>
-
-<tr>
-<td>
+  Query:
 
   ```graphql
   query fetchData {
@@ -210,8 +162,7 @@ You shouldn't use the directive with:
   }
   ```
 
-</td>
-<td>
+  Response:
 
   ```json
   {
@@ -245,12 +196,6 @@ You shouldn't use the directive with:
     ]
   }
   ```
-
-</td>
-</tr>
-
-</tbody>
-</table>
 
 ##### Non-nullable fields
 
@@ -1567,7 +1512,7 @@ Before you make use of these methods, consider if it would be simpler to either:
 - Write a concern that abstracts out the query.
 
 Using `BaseResolver.single` too freely is an anti-pattern. It can lead to
-non-sensical fields, such as a `Project.mergeRequest` field that just returns
+nonsensical fields, such as a `Project.mergeRequest` field that just returns
 the first MR if no arguments are given. Whenever we derive a single resolver
 from a collection resolver, it must have more restrictive arguments.
 
@@ -1700,29 +1645,27 @@ class MyThingResolver < BaseResolver
 end
 ```
 
-The `LooksAhead` concern also provides basic support for preloading associations based on nested GraphQL field
-definitions. The [WorkItemsResolver](https://gitlab.com/gitlab-org/gitlab/-/blob/e824a7e39e08a83fb162db6851de147cf0bfe14a/app/graphql/resolvers/work_items_resolver.rb#L46)
-is a good example for this. `nested_preloads` is another method you can define to return a hash, but unlike the
-`preloads` method, the value for each hash key is another hash and not the list of associations to preload. So in
-the previous example, you could override `nested_preloads` like this:
+The `LooksAhead` concern also provides support for preloading associations based on nested GraphQL field
+definitions. Use an array of field names as the hash key to preload the given associations when the nested field is selected.
+For example:
 
 ```ruby
 class MyThingResolver < BaseResolver
   # ...
 
-  def nested_preloads
+  def preloads
     {
-      root_field: {
-        nested_field1: :association_to_preload,
-        nested_field2: [:association1, :association2]
-      }
+      [:root_field, :nested_field1] => :association_to_preload,
+      [:root_field, :nested_field2] => [:association1, :association2],
+      [:root_field, :nested_field2, :nested_field3] => :association3,
+      other_root_field: :other_association,
     }
   end
 end
 ```
 
 For an example of real world use,
-see [`ResolvesMergeRequests`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/resolvers/concerns/resolves_merge_requests.rb).
+see [`WorkItems::LookAheadPreloads`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/resolvers/concerns/work_items/look_ahead_preloads.rb).
 
 #### `before_connection_authorization`
 
@@ -1804,7 +1747,7 @@ end
 
 ### Metadata
 
-When using resolvers, they can and should serve as the SSoT for field metadata.
+When using resolvers, they can and should serve as the single source of truth for field metadata.
 All field options (apart from the field name) can be declared on the resolver.
 These include:
 
@@ -2064,10 +2007,13 @@ Alternatively, we can add a `find_object` method that loads the
 object on the mutation. This would allow you to use the
 `authorized_find!` helper method.
 
-When a user is not allowed to perform the action, or an object is not
-found, we should raise a
+When a user is not allowed to perform the action, or a resource is not
+found due to authorization (the user cannot access it), we should raise a
 `Gitlab::Graphql::Errors::ResourceNotAvailable` by calling `raise_resource_not_available_error!`
-from in the `resolve` method.
+from in the `resolve` method. For user-input validation errors (for example, an invalid
+project path or malformed identifier), return errors in the mutation payload `errors`
+array instead, so the client can display a meaningful message to the user. See
+[Errors in mutations](#errors-in-mutations) for details.
 
 ### Errors in mutations
 
@@ -2258,9 +2204,12 @@ This class runs during the initial subscription request and subsequent updates. 
 
 You should implement the `#authorized?` method of the subscription class so that the initial subscription and subsequent updates are authorized.
 
-When a user is not authorized, you should call the `unauthorized!` helper so that execution is halted and the user is unsubscribed. Returning `false`
-results in redaction of the response, but we leak information that some updates are happening. This leakage is due to a
-[bug in the GraphQL gem](https://github.com/rmosolgo/graphql-ruby/issues/3390).
+When a user is not authorized, you should call the `unauthorized!` helper so that execution is halted and the user is unsubscribed.
+
+Use the `#authorize_object_or_gid!` helper for the typical case where we check permissions based on the Global ID or the object being subscribed to.
+For the initial subscription, the object will not be present, so this fetches the object using the given Global ID. But for subsequent updates, it uses the
+object we are returning to the user so that we do not fetch another instance of the same object. The `object` argument can also be used to specify
+the object to authorize.
 
 ### Triggering subscriptions
 
@@ -2282,6 +2231,13 @@ argument :my_arg, GraphQL::Types::String,
          required: true,
          description: "A description of the argument."
 ```
+
+### Do not use `loads:`
+
+Do not use the `loads:` option in argument definitions. It leaks information about resource existence by returning
+different errors for "not found" and "not authorized." Instead, accept the Global ID and load the object manually
+with `authorized_find!`. See [Do not use `loads:` in argument definitions](graphql_guide/authorization.md#do-not-use-loads-in-argument-definitions)
+for details and examples.
 
 ### Nullability
 
@@ -2617,7 +2573,6 @@ end
 
 - Become familiar with the methods in the `GraphqlHelpers` support module.
   Many of these methods make writing GraphQL tests easier.
-
 - Use traversal helpers like `GraphqlHelpers#graphql_data_at` and
   `GraphqlHelpers#graphql_dig_at` to access result fields. For example:
 
@@ -2662,6 +2617,17 @@ end
 
   # bad
   let(:query) { double('Query', schema: GitlabSchema) }
+  ```
+
+- Use `GraphqlHelpers#get_graphql_query_as_string` to test a query used by the frontend. For example:
+
+  ```ruby
+  let(:query) { get_graphql_query_as_string('work_items/graphql/project_work_items.query.graphql') }
+  let(:variables) { { 'fullPath' => project.full_path } }
+
+  ...
+
+  post_graphql(query, variables: variables)
   ```
 
 - Avoid false positives:

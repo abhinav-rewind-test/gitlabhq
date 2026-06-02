@@ -1,6 +1,6 @@
 <script>
 import { computePosition, autoUpdate, offset, flip, shift } from '@floating-ui/dom';
-import { throttle } from 'lodash';
+import { throttle } from 'lodash-es';
 import NavItem from './nav_item.vue';
 
 // Flyout menus are shown when the MenuSection's title is hovered with the mouse.
@@ -196,7 +196,7 @@ export default {
   <div
     :id="`${targetId}-flyout`"
     :style="flyoutStyle"
-    class="nav-flyout-menu gl-fixed gl-z-9999 -gl-mx-1"
+    class="nav-flyout-menu gl-fixed -gl-mx-1"
     @mouseover="$emit('mouseover')"
     @mouseleave="$emit('mouseleave')"
   >

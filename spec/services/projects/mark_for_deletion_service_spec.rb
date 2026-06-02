@@ -17,18 +17,16 @@ RSpec.describe Projects::MarkForDeletionService, feature_category: :groups_and_p
 
   before do
     allow(NotificationService).to receive(:new).and_return(notification_service)
-    allow(notification_service).to receive(:project_was_moved).with(any_args)
     allow(notification_service).to receive(:project_scheduled_for_deletion).with(project)
   end
 
-  it 'marks project as archived and marked for deletion', :aggregate_failures do
+  it 'marks project as marked for deletion', :aggregate_failures do
     expect(Namespaces::ScheduleAggregationWorker).to receive(:perform_async)
       .with(project.namespace_id).and_call_original
 
     expect(result).to be_success
 
     expect(Project.unscoped.all).to include(project)
-    expect(project.reload.archived).to be(false)
     expect(project.reload).to be_self_deletion_scheduled
     expect(project.reload.self_deletion_scheduled_deletion_created_on).not_to be_nil
     expect(project.reload.deleting_user).to eq(user)
@@ -70,6 +68,7 @@ RSpec.describe Projects::MarkForDeletionService, feature_category: :groups_and_p
     end
 
     it 'sends notification' do
+      expect(notification_service).not_to receive(:project_was_moved)
       expect(notification_service).to receive(:project_scheduled_for_deletion).with(project)
 
       result
@@ -77,7 +76,7 @@ RSpec.describe Projects::MarkForDeletionService, feature_category: :groups_and_p
 
     it 'changes the state of the project' do
       expect { result }.to change { project.project_namespace.state }
-        .from(Namespaces::Stateful::STATES[:ancestor_inherited]).to(Namespaces::Stateful::STATES[:deletion_scheduled])
+        .from('ancestor_inherited').to('deletion_scheduled')
     end
 
     context 'when deletion schedule creation fails' do

@@ -3,27 +3,21 @@
 class WikiPagePolicy < BasePolicy
   delegate { @subject.container }
 
-  condition(:planner_or_reporter_access) do
-    can?(:reporter_access) || can?(:planner_access)
-  end
-
   rule { can?(:read_wiki) }.policy do
     enable :read_wiki_page
     enable :read_note
     enable :create_note
     enable :update_subscription
+    enable :award_emoji
   end
 
   rule { ~can?(:read_wiki) }.policy do
     prevent :read_note
     prevent :create_note
+    prevent :award_emoji
   end
 
-  rule { can?(:read_wiki) & planner_or_reporter_access }.policy do
-    enable :mark_note_as_internal
-  end
-
-  rule { can?(:developer_access) }.policy do
-    enable :resolve_note
+  rule { ~can?(:read_wiki) }.policy do
+    prevent :mark_note_as_internal
   end
 end

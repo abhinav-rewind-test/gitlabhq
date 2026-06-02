@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: External users
 description: Grant limited access to external members with restricted permissions for specific resources.
 ---
@@ -31,6 +31,9 @@ private project, they cannot access the code.
 
 > [!note]
 > An external user counts as a billable user and consumes a license seat.
+>
+> If you [created an external providers list](../integration/omniauth.md#create-an-external-providers-list),
+> users who sign in with a listed provider are automatically marked as external.
 
 ## Create an external user
 
@@ -41,7 +44,7 @@ Prerequisites:
 To create a new external user:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Users**.
+1. In the left sidebar, select **Overview** > **Users**.
 1. Select **New user**.
 1. In the **Account** section, enter the required account information.
 1. Optional. In the **Access** section, configure any project limits or user type settings.
@@ -83,7 +86,7 @@ Prerequisites:
 To make new users external by default:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Select the **Make new users external by default** checkbox.
 1. Optional. In the **Email exclusion pattern** field, enter a regular expression.

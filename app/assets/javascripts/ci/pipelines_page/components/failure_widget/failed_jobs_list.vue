@@ -1,10 +1,11 @@
 <script>
 import { GlAlert, GlLink, GlLoadingIcon, GlSprintf } from '@gitlab/ui';
 import { createAlert } from '~/alert';
+import { reportToSentry } from '~/ci/utils';
 import { __, s__, sprintf } from '~/locale';
 import { getQueryHeaders } from '~/ci/pipeline_details/graph/utils';
 import { graphqlEtagPipelinePath } from '~/ci/pipeline_details/utils';
-import { toggleQueryPollingByVisibility } from '~/graphql_shared/utils';
+import { setupQueryPollingByVisibility } from '~/graphql_shared/utils';
 import getPipelineFailedJobs from '~/ci/pipelines_page/graphql/queries/get_pipeline_failed_jobs.query.graphql';
 import { sortJobsByStatus } from './utils';
 import FailedJobDetails from './failed_job_details.vue';
@@ -15,6 +16,7 @@ const JOB_NAME_HEADER = __('Name');
 const STAGE_HEADER = __('Stage');
 
 export default {
+  name: 'FailedJobsList',
   components: {
     GlAlert,
     GlLink,
@@ -51,7 +53,10 @@ export default {
   apollo: {
     failedJobs: {
       context() {
-        return getQueryHeaders(this.graphqlResourceEtag);
+        return {
+          ...getQueryHeaders(this.graphqlResourceEtag),
+          featureCategory: 'continuous_integration',
+        };
       },
       query: getPipelineFailedJobs,
       pollInterval: POLL_INTERVAL,
@@ -71,6 +76,7 @@ export default {
       },
       error(e) {
         createAlert({ message: e?.message || this.$options.i18n.fetchError, variant: 'danger' });
+        reportToSentry(this.$options.name, e);
       },
     },
   },
@@ -86,7 +92,13 @@ export default {
     },
   },
   mounted() {
-    toggleQueryPollingByVisibility(this.$apollo.queries.failedJobs, POLL_INTERVAL);
+    this.pollingVisibilityCleanup = setupQueryPollingByVisibility(
+      this.$apollo.queries.failedJobs,
+      POLL_INTERVAL,
+    );
+  },
+  beforeDestroy() {
+    this.pollingVisibilityCleanup?.();
   },
   methods: {
     async retryJob(jobName) {
@@ -101,8 +113,9 @@ export default {
 
       try {
         await this.$apollo.queries.failedJobs.refetch();
-      } catch {
+      } catch (err) {
         createAlert({ message: this.$options.i18n.fetchError });
+        reportToSentry(this.$options.name, err);
       } finally {
         this.isLoadingMore = false;
       }

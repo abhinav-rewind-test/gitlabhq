@@ -3,15 +3,13 @@
 require 'spec_helper'
 
 RSpec.describe BulkImports::Groups::Graphql::GetProjectsQuery, feature_category: :importers do
-  let_it_be(:entity) { create(:bulk_import_entity, :group_entity) }
+  let_it_be(:entity, freeze: false) { create(:bulk_import_entity, :group_entity) }
   let_it_be(:tracker) { create(:bulk_import_tracker, entity: entity) }
-  let_it_be(:context) { BulkImports::Pipeline::Context.new(tracker) }
+  let_it_be(:context, freeze: false) { BulkImports::Pipeline::Context.new(tracker) }
 
   subject(:query) { described_class.new(context: context) }
 
-  context 'when the test is flaky', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/454244' do
-    it_behaves_like 'a valid Direct Transfer GraphQL query'
-  end
+  it_behaves_like 'a valid Direct Transfer GraphQL query'
 
   context 'with invalid variables' do
     it 'raises an error' do

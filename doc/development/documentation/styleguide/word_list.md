@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Documentation Guidelines
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 description: Writing styles, markup, formatting, and other standards for GitLab Documentation.
 title: Recommended word list
 ---
@@ -22,8 +22,8 @@ For guidance not on this page, we defer to these style guides:
 
 <!-- vale off -->
 
-<!-- Disable trailing punctuation in heading rule https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md026---trailing-punctuation-in-heading -->
-<!-- Proper names should have the correct capitalization rule https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md044---proper-names-should-have-the-correct-capitalization -->
+<!-- Disable trailing punctuation in heading rule <https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md026---trailing-punctuation-in-heading> -->
+<!-- Proper names should have the correct capitalization rule <https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md044---proper-names-should-have-the-correct-capitalization> -->
 <!-- markdownlint-disable MD026 MD044 -->
 
 ## `.gitlab-ci.yml` file
@@ -158,23 +158,33 @@ Use title case for **Admin Mode**. The UI uses title case.
 
 ## administrator
 
-Use **administrator access** instead of **admin** when talking about a user's access level
-to instance-wide settings on GitLab Self-Managed or GitLab Dedicated.
-
-For GitLab.com, instead of **administrator**, use [**Owner**](#owner) to refer to the most powerful
-access level for groups or projects.
-
 An **administrator** is not a [role](#roles) or [permission](#permissions).
+Do not shorten to **admin**.
 
-On GitLab Self-Managed and GitLab Dedicated, users can be administrators and modify instance-wide settings.
-Use:
+On GitLab Self-Managed and GitLab Dedicated:
 
-- Administrator access.
-- You must have administrator access.
+- Users can be administrators and modify instance-wide settings.
+- When talking about a user's [access level](#access-level) to instance-wide settings,
+  use either:
 
-Instead of:
+  - Administrator access.
+  - You must have administrator access.
 
-- To do this thing, you must have the Admin role.
+  Instead of:
+
+  - To do this thing, you must have the Admin role.
+
+On GitLab.com:
+
+- Only GitLab team members can be administrators and modify instance-wide settings.
+- Other users cannot be administrators
+  for the GitLab.com instance. They can have the [**Owner**](#owner) role, which gives
+  them full control over specific groups or projects.
+- Be specific about what these users can or cannot do compared to GitLab.com administrators.
+  For example:
+
+  - For GitLab.com, you cannot add or edit MCP servers. Only GitLab.com administrators
+    can add or edit MCP servers.
 
 ## advanced search
 
@@ -218,16 +228,21 @@ The token generated when you create an agent for Kubernetes. Use **agent access 
 - secret token
 - authentication token
 
-## Agentic Chat, GitLab Duo Chat (Agentic)
+## Agentic Chat, GitLab Duo Agentic Chat
 
-GitLab Duo Chat (Agentic) is an enhanced version of [GitLab Duo Chat (Classic)](#chat-gitlab-duo-chat-classic).
+GitLab Duo Agentic Chat is part of the GitLab Duo Agent Platform.
 
-For capitalization, use **Agentic Chat**.
+Options for use are:
 
-On first use, use **GitLab Duo Chat (Agentic)**.
-Thereafter, use **Chat** or **GitLab Duo Chat**.
+- **GitLab Duo Agentic Chat**
+- **Agentic Chat**
+- **GitLab Duo Chat** - Use when the difference between agentic and non-agentic isn't needed.
+- **Chat** - Use when the difference between agentic and non-agentic isn't needed.
 
-Do not use **Duo Agentic Chat**.
+Do not use:
+
+- **Duo Agentic Chat** (without **GitLab**)
+- **GitLab Duo Chat (agentic)** (parenthetical)
 
 ## agnostic
 
@@ -481,16 +496,22 @@ Instead of:
 
 - In the **Seat utilization** card, select **Assign seats**.
 
-## Chat, GitLab Duo Chat (Classic)
+## Chat, GitLab Duo Non-Agentic Chat
 
-GitLab Duo Chat (Classic) differs from [GitLab Duo Chat (Agentic)](#agentic-chat-gitlab-duo-chat-agentic).
+GitLab Duo Non-Agentic Chat is the older version of GitLab Duo Chat.
 
-For capitalization, use **Classic Chat** or **GitLab Duo Chat (Classic)**.
+Options for use:
 
-On first use, use **GitLab Duo Chat (Classic)**.
-Thereafter, use **Chat** or **GitLab Duo Chat**.
+- **GitLab Duo Non-Agentic Chat**.
+- **Non-Agentic Chat**.
+- **GitLab Duo Chat** - Use when the difference between agentic and non-agentic isn't needed.
+- **Chat** - Use when the difference between agentic and non-agentic isn't needed.
 
-Do not use **Duo Chat**.
+Do not use:
+
+- **Duo Non-Agentic Chat** (without **GitLab**)
+- **GitLab Duo Chat (non-agentic)** (parenthetical)
+- **Classic Chat**
 
 ## checkbox
 
@@ -552,15 +573,7 @@ Do not use **CI/CD minutes**. This term was renamed to [**compute minutes**](#co
 
 ## classic
 
-Some GitLab Duo features are non-agentic. These features should be described in the documentation
-with **(Classic)** after the feature name. For example:
-
-- GitLab Duo Chat (Classic)
-- GitLab Duo Vulnerability Resolution (Classic)
-
-You can also use a phrase that includes **classic** as lowercase. For example:
-
-- This new agentic feature is different from the classic version.
+Some GitLab Duo features are non-agentic. These features should not be referred to as **classic**.
 
 ## click
 
@@ -767,6 +780,21 @@ Use **custom role** when referring to a role created with specific customized pe
 
 When referring to a non-custom role, use [**default role**](#default-role).
 
+## Customers Portal
+
+Customers Portal is the name of the subscription and license management platform for GitLab.
+Treat it as a proper noun and use it without the article "the".
+
+Use:
+
+- Sign in to Customers Portal.
+- View your subscription in Customers Portal.
+
+Instead of:
+
+- Sign in to the Customers Portal.
+- View your subscription in the Customers Portal.
+
 ## data
 
 Use **data** as a singular noun.
@@ -968,8 +996,8 @@ For API documentation and programmatic changes, use **[update](#update)**.
 Use lowercase **editor extensions** when referring to the broader category of extensions offered by
 GitLab. However, if the UI has different capitalization, make the documentation match the UI.
 
-Individual extensions have their own names. For example, GitLab for VS Code and
-[GitLab Duo Plugin for JetBrains IDEs](#gitlab-duo-plugin-for-jetbrains-ides).
+Individual extensions have their own names. For example, [GitLab for VS Code](#gitlab-for-vs-code-extension)
+and [GitLab Duo Plugin for JetBrains IDEs](#gitlab-duo-plugin-for-jetbrains-ides).
 
 Use:
 
@@ -1241,15 +1269,23 @@ unless we've gone through a legal review and have been told to promote the partn
 
 This guidance follows the [Use of Third-party Trademarks](https://handbook.gitlab.com/handbook/legal/policies/product-third-party-trademarks-guidelines/#dos--donts-for-use-of-third-party-trademarks-in-gitlab).
 
-## GitLab AI vendor model
+## GitLab CLI
 
-Use **GitLab AI vendor model** to refer to a [language model](#language-model-large-language-model)
-that is hosted by a third-party provider, and that customers access by using the GitLab
-[AI Gateway](#ai-gateway) through the [Cloud Connector](../../cloud_connector/architecture.md).
+Use **GitLab CLI**.
 
-Do not use this term when the [language model is hosted by a customer](#self-hosted-model),
-or when the customer uses the [GitLab Duo Self-Hosted](#gitlab-duo-self-hosted)
-feature.
+After first use, you can use **CLI**. However, continue to use the full name when you
+need to distinguish it from the [GitLab Duo CLI](#gitlab-duo-cli).
+
+You can also use `glab`.
+
+## GitLab-managed model
+
+Use **GitLab-managed model** to refer to large language models that customers access through the GitLab
+AI Gateway through the [Cloud Connector](../../cloud_connector/architecture.md).
+
+Do not use this term for models that customers self-host on their own AI Gateway.
+
+Do not use GitLab AI vendor model.
 
 ## GitLab Dedicated
 
@@ -1274,14 +1310,13 @@ Do not use **Dedicated for Government** by itself. Always use **GitLab Dedicated
 Do not use **Duo** by itself. Always use **GitLab Duo**.
 
 On first use on a page, use **GitLab Duo `<featurename>`**. As of Jan, 2026,
-the following are the names of classic GitLab Duo features:
+the following are the names of GitLab Duo features:
 
 - GitLab Duo Chat
 - GitLab Duo Code Explanation
 - GitLab Duo Code Review
 - GitLab Duo Code Review Summary
 - GitLab Duo Code Suggestions
-- GitLab Duo for the CLI
 - GitLab Duo Issue Description Generation
 - GitLab Duo Issue Discussion Summary
 - GitLab Duo Merge Commit Message Generation
@@ -1296,9 +1331,6 @@ the following are the names of classic GitLab Duo features:
 
 Excluding GitLab Duo Self-Hosted, after the first use, use the feature name
 without **GitLab Duo**.
-
-You can add **(Classic)** after the feature name when comparing it to an agentic version.
-For more information, see [classic](#classic).
 
 ## GitLab Duo Agent Platform
 
@@ -1324,6 +1356,16 @@ For example:
 
 - [Blog: Unlocking AI for every GitLab Premium and Ultimate customer](https://about.gitlab.com/blog/gitlab-premium-with-duo/)
 - [Release post: Group and project controls for Premium and Ultimate with GitLab Duo](https://about.gitlab.com/releases/2025/07/17/gitlab-18-2-released/#group-and-project-controls-for-premium-and-ultimate-with-gitlab-duo)
+
+## GitLab Duo CLI
+
+Use **GitLab Duo CLI**. Do not use **Duo CLI** by itself.
+
+After first use in a section, you can use **CLI**. However, continue to use the full name when you
+need to distinguish it from the [GitLab CLI](#gitlab-cli).
+
+When referring to commands, include both `duo` and `glab duo cli` versions to cover both
+installation options. In the GitLab CLI docs, document just the `glab duo cli` version of the command.
 
 ## GitLab Duo Enterprise
 
@@ -1365,6 +1407,17 @@ If you must abbreviate, do not use **GFM**. Use **GLFM** instead.
 Use **GitLab for Eclipse plugin** to refer to the editor extension.
 
 Use **Eclipse** to refer to the IDE.
+
+## GitLab for VS Code extension
+
+Use **GitLab for VS Code** to refer to the extension.
+
+After the first mention, you can use
+**GitLab extension**, **the VS Code extension**, or just **extension**.
+
+Do not use **GitLab Workflow for VS Code**, **GitLab Workflow**, or **workflow** to refer to the extension.
+
+For terms in VS Code, see [VS Code user interface](#vs-code-user-interface).
 
 ## GitLab Helm chart, GitLab chart
 
@@ -1446,10 +1499,10 @@ Use **GitLab.com** to refer to the URL or product offering. GitLab.com is the in
 
 ## GitLab Workflow extension for VS Code
 
-Use **GitLab Workflow extension for VS Code** to refer to the extension.
-You can also use **GitLab Workflow for VS Code** or **GitLab Workflow**.
+Do not use **GitLab Workflow extension for VS Code**, **GitLab Workflow for VS Code** or
+**GitLab Workflow**.
 
-For terms in VS Code, see [VS Code user interface](#vs-code-user-interface).
+The extension was renamed to [GitLab for VS Code](#gitlab-for-vs-code-extension).
 
 ## GraphiQL
 
@@ -1479,7 +1532,7 @@ Write it out:
 
 When the Guest role is the minimum required role, use:
 
-- the Guest, Planner, Reporter, Developer, Maintainer, or Owner role
+- the Guest, Planner, Reporter, Security Manager, Developer, Maintainer, or Owner role
 
 Do not use bold.
 
@@ -1884,7 +1937,6 @@ When writing about the Minimal Access role:
 - Write it out:
   - Use: if you are assigned the Minimal Access role
   - Instead of: if you are a Minimal Access user
-
 - When the Minimal Access role is the minimum required role:
   - Use: at least the Minimal Access role
   - Instead of: the Minimal Access role or higher
@@ -2223,7 +2275,7 @@ Write it out:
 
 When the Planner role is the minimum required role, use:
 
-- the Planner, Reporter, Developer, Maintainer, or Owner role
+- the Planner, Reporter, Security Manager, Developer, Maintainer, or Owner role
 
 Do not use bold.
 
@@ -2321,7 +2373,7 @@ See also [recommended steps](_index.md#recommended-steps).
 
 ## register
 
-Use **register** instead of **sign up** when talking about creating an account.
+Instead of **register** or **sign up**, use **create a user account**.
 
 ## reindex
 
@@ -2344,7 +2396,7 @@ Write it out:
 
 When the Reporter role is the minimum required role, use:
 
-- the Reporter, Developer, Maintainer, or Owner role
+- the Reporter, Security Manager, Developer, Maintainer, or Owner role
 
 Do not use bold.
 
@@ -2542,7 +2594,7 @@ Searching is different from [filtering](#filter).
 When referring to the subscription billing model:
 
 - For GitLab.com, use **seats**. Customers purchase seats. Users occupy seats when they are invited
-  to a group, with some [exceptions](../../../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage).
+  to a group, with some [exceptions](../../../subscriptions/manage_seats.md#gitlabcom-billing-and-usage).
 - For GitLab Self-Managed, use **users**. Customers purchase subscriptions for a specified number of **users**.
 
 ## section
@@ -2638,8 +2690,6 @@ To describe the action of signing in, use:
 
 You can also use:
 
-- **sign-in** as a noun or adjective. For example: **sign-in page** or
-  **sign-in restrictions**.
 - **single sign-on**.
 
 Do not use:
@@ -2652,7 +2702,14 @@ If the user interface has different words, you can use those.
 
 ## sign up
 
-Use **register** instead of **sign up** when talking about creating an account.
+Use **create a user account** instead of **register** or **sign up** when talking about creating an account.
+
+Use **a new user account** instead of **a sign-up**.
+
+Other variations:
+
+- Use **new user account restrictions** instead of **sign-up restrictions**.
+- Use **allow new user accounts** instead of **sign-up enabled**.
 
 ## signed-in user, signed in user
 
@@ -2692,6 +2749,10 @@ In the context of:
   - Physical and must be called a **physical storage**.
 
 Gitaly storages have physical paths and virtual storages have virtual paths.
+
+## subagents
+
+Use **subagents** (no hyphen) instead of **sub-agents**.
 
 ## subgroup
 
@@ -2800,13 +2861,10 @@ Always follow these words with a noun. For example:
 
 - Use: **This setting** improves performance.
 - Instead of: **This** improves performance.
-
 - Use: **These pants** are the best.
 - Instead of: **These** are the best.
-
 - Use: **That droid** is the one you are looking for.
 - Instead of: **That** is the one you are looking for.
-
 - Use: **Those settings** must be configured. (Or even better, **Configure those settings.**)
 - Instead of: **Those** need to be configured.
 
@@ -2936,7 +2994,6 @@ For example:
 
 - Instead of: The files using storage...
 - Use: The files that use storage...
-
 - Instead of: Change directories using the command line.
 - Use: Change directories by using the command line. Or even better: To change directories, use the command line.
 

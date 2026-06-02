@@ -10,7 +10,7 @@ RSpec.describe EmailsHelper, feature_category: :shared do
     let(:issue) { create(:issue) }
 
     before do
-      self.instance_variable_set(:@issue, issue)
+      instance_variable_set(:@issue, issue)
     end
 
     context 'when given a MergeRequest' do
@@ -22,8 +22,8 @@ RSpec.describe EmailsHelper, feature_category: :shared do
 
         before do
           merge_request.project.add_developer(user)
-          self.instance_variable_set(:@recipient, user)
-          self.instance_variable_set(:@project, merge_request.project)
+          instance_variable_set(:@recipient, user)
+          instance_variable_set(:@project, merge_request.project)
         end
 
         context "and format is text" do
@@ -60,8 +60,8 @@ RSpec.describe EmailsHelper, feature_category: :shared do
       context 'when user can read commits' do
         before do
           project.add_developer(user)
-          self.instance_variable_set(:@recipient, user)
-          self.instance_variable_set(:@project, project)
+          instance_variable_set(:@recipient, user)
+          instance_variable_set(:@project, project)
         end
 
         it "returns plain text" do
@@ -110,6 +110,69 @@ RSpec.describe EmailsHelper, feature_category: :shared do
       it { is_expected.to include reason_text }
 
       it { is_expected.to end_with "on #{Gitlab.config.gitlab.host}." }
+    end
+
+    context 'with all links' do
+      let(:unsubscribe_url) { 'http://example.com/unsubscribe' }
+      let(:params) do
+        {
+          reason: nil,
+          show_manage_notifications_link: true,
+          show_help_link: true,
+          unsubscribe_url: unsubscribe_url
+        }
+      end
+
+      it 'returns HTML links for html format' do
+        result = helper.notification_reason_text(**params, format: :html)
+
+        aggregate_failures do
+          expect(result).to include('<a href=')
+          expect(result).to include('Unsubscribe')
+          expect(result).to include('Manage all notifications')
+          expect(result).to include('Help')
+        end
+      end
+
+      it 'returns plain text URLs for text format' do
+        result = helper.notification_reason_text(**params, format: :text)
+
+        aggregate_failures do
+          expect(result).not_to include('<a href=')
+          expect(result).to include("Unsubscribe from this thread: #{unsubscribe_url}")
+          expect(result).to include("Manage all notifications: #{profile_notifications_url}")
+          expect(result).to include("Help: #{help_url}")
+        end
+      end
+    end
+
+    context 'with manage label subscriptions link' do
+      let(:label_url) { 'http://example.com/labels' }
+      let(:params) { { show_help_link: true, manage_label_subscriptions_url: label_url } }
+
+      it 'returns plain text URLs for text format' do
+        result = helper.notification_reason_text(**params, format: :text)
+
+        aggregate_failures do
+          expect(result).not_to include('<a href=')
+          expect(result).to include("Manage label subscriptions: #{label_url}")
+          expect(result).to include("Help: #{help_url}")
+        end
+      end
+    end
+
+    context 'with manage notifications link but no unsubscribe_url' do
+      let(:params) { { reason: nil, show_manage_notifications_link: true, show_help_link: true } }
+
+      it 'returns plain text URLs for text format' do
+        result = helper.notification_reason_text(**params, format: :text)
+
+        aggregate_failures do
+          expect(result).not_to include('<a href=')
+          expect(result).to include("Manage all notifications: #{profile_notifications_url}")
+          expect(result).to include("Help: #{help_url}")
+        end
+      end
     end
   end
 
@@ -280,7 +343,7 @@ RSpec.describe EmailsHelper, feature_category: :shared do
 
   describe '#header_logo' do
     context 'there is a brand item with a logo' do
-      let_it_be(:appearance) { create(:appearance) }
+      let_it_be(:appearance, freeze: false) { create(:appearance) }
 
       let(:logo_path) { 'spec/fixtures/dk.png' }
 

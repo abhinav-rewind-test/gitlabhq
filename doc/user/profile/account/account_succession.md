@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Designate an account succession beneficiary
 description: Designate an individual who can take ownership of your GitLab account.
 ---
@@ -39,7 +39,7 @@ To add an account manager:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Select **Add account manager**.
 1. Add the account manager details.
 1. Select **Add account manager**.
@@ -50,7 +50,7 @@ To edit an account manager:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Next to the account manager, select **Edit** ({{< icon name="pencil" >}}).
 1. Edit the account manager details.
 1. Select **Add account manager**.
@@ -61,9 +61,23 @@ To delete an account manager:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Next to the account manager, select **Delete** ({{< icon name="remove" >}}).
 1. Select **Delete account manager**.
+
+### Account manager permissions
+
+When you designate an account manager, you grant that individual access to your GitLab account
+with the same permissions you have. This authorization stays in effect until you change or revoke
+it using GitLab tools or another method GitLab allows.
+
+You are responsible for all actions taken by your account manager during the designation period,
+including content created or published under your name, regardless of whether you directed or
+were aware of those specific actions.
+
+Your account manager is subject to the GitLab Terms of Use when acting on your behalf. GitLab
+may suspend or revoke an account manager's access if there is credible evidence of a violation
+of the GitLab Terms of Use.
 
 ## Account successor
 
@@ -79,7 +93,7 @@ To add an account successor:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Select **Add account successor**.
 1. Add the account successor details.
 1. Select **Add account successor**.
@@ -90,7 +104,7 @@ To edit an account successor:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Next to the account successor, select **Edit** ({{< icon name="pencil" >}}).
 1. Edit the account successor details.
 1. Select **Add account successor**.
@@ -101,11 +115,11 @@ To delete an account successor:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. Next to the account successor, select **Delete** ({{< icon name="remove" >}}).
 1. Select **Delete account successor**.
 
 ## Request access to a GitLab account
 
 If you are currently an account manager or account successor for a GitLab account,
-you can request access to that account by [contacting GitLab Support](https://about.gitlab.com/support/).
+you can request access to that account by [contacting GitLab Support](https://support.gitlab.com/).

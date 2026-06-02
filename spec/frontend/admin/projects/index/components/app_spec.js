@@ -107,8 +107,6 @@ describe('AdminProjectsApp', () => {
   });
 
   it('allows deleting immediately on Inactive tab', async () => {
-    window.gon = { allow_immediate_namespaces_deletion: true };
-
     await createComponent({
       mountFn: mountExtended,
       handlers: [
@@ -203,7 +201,7 @@ describe('AdminProjectsApp', () => {
 
       expect(wrapper.findComponent(FilteredSearchAndSort).props()).toMatchObject({
         sortOptions: SORT_OPTIONS,
-        activeSortOption: SORT_OPTION_UPDATED,
+        activeSortOption: SORT_OPTION_CREATED,
       });
     },
   );

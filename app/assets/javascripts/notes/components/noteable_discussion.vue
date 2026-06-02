@@ -7,6 +7,7 @@ import { clearDraft, getDraft, getAutoSaveKeyFromDiscussion } from '~/lib/utils/
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { ignoreWhilePending } from '~/lib/utils/ignore_while_pending';
+import { suppressShortcutsUntilInputFocus } from '~/lib/mousetrap';
 import { s__, __, sprintf } from '~/locale';
 import diffLineNoteFormMixin from '~/notes/mixins/diff_line_note_form';
 import TimelineEntryItem from '~/vue_shared/components/notes/timeline_entry_item.vue';
@@ -19,7 +20,7 @@ import { CopyAsGFM } from '~/behaviors/markdown/copy_as_gfm';
 import eventHub from '../event_hub';
 import noteable from '../mixins/noteable';
 import resolvable from '../mixins/resolvable';
-import { createNoteErrorMessages } from '../utils';
+import { getNoteFormErrorMessages } from '../utils';
 import DiffDiscussionHeader from './diff_discussion_header.vue';
 import DiffWithNote from './diff_with_note.vue';
 import DiscussionActions from './discussion_actions.vue';
@@ -222,6 +223,7 @@ export default {
     ]),
     ...mapActions(useLegacyDiffs, ['getLinesForDiscussion']),
     showReplyForm(text) {
+      suppressShortcutsUntilInputFocus();
       this.isReplying = true;
 
       if (!this.discussion.expanded) {
@@ -278,6 +280,10 @@ export default {
         note: { note: noteText },
       };
 
+      if (this.getNoteableData.diff_head_sha) {
+        postData.merge_request_diff_head_sha = this.getNoteableData.diff_head_sha;
+      }
+
       if (this.convertedDisscussionIds.includes(this.discussion.id)) {
         postData.return_discussion = true;
       }
@@ -307,7 +313,7 @@ export default {
         });
     },
     handleSaveError({ response }) {
-      const errorMessage = createNoteErrorMessages(response.data, response.status)[0];
+      const errorMessage = getNoteFormErrorMessages(response)[0];
 
       createAlert({
         message: errorMessage,

@@ -253,15 +253,15 @@ RSpec.describe 'Bulk update work items', feature_category: :team_planning do
       }
     end
 
-    it 'updates all specified attributes',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/4077' do
+    it 'updates all specified attributes' do
       expect do
         post_graphql_mutation(mutation, current_user: current_user)
         updatable_work_items.each(&:reload)
       end.to change { updatable_work_items.map(&:confidential) }.from([false, false]).to([true, true])
          .and change { updatable_work_items.flat_map(&:assignee_ids) }.from([]).to([assignee.id] * 2)
          .and change { updatable_work_items.map(&:milestone_id) }.from([nil, nil]).to([milestone.id] * 2)
-         .and change { updatable_work_items.flat_map(&:label_ids) }.from([label1.id] * 2).to([label1.id, label2.id] * 2)
+         .and change { updatable_work_items.flat_map { |wi| wi.label_ids.sort } }
+                .from([label1.id] * 2).to([label1.id, label2.id].sort * 2)
          .and change { updatable_work_items.map(&:state) }.from(%w[opened opened]).to(%w[closed closed])
          .and change { updatable_work_items.all? { |wi| wi.subscribed?(current_user, project) } }.from(false).to(true)
 
@@ -271,10 +271,25 @@ RSpec.describe 'Bulk update work items', feature_category: :team_planning do
     end
 
     context 'when updating work items that do not support requested widgets' do
-      let_it_be(:key_result) { create(:work_item, :key_result, project: project) }
+      let_it_be(:task_type, freeze: false) { build(:work_item_system_defined_type, :task) }
+      let_it_be(:task, freeze: false) { create(:work_item, work_item_type: task_type, project: project) }
       let_it_be(:issue) { create(:work_item, :issue, project: project) }
 
-      let(:updatable_work_item_ids) { [key_result.to_gid.to_s, issue.to_gid.to_s] }
+      let(:updatable_work_item_ids) { [task.to_gid.to_s, issue.to_gid.to_s] }
+
+      before do
+        # the stub_all_work_item_widget does not work here as it not uses the get_widget method.
+        # it uses the work_item.supported_quick_action_commands method that used the work_item_type.widget_classes
+        #
+        # We need to stub at the SystemDefined::Type level because BulkUpdateService loads work items
+        # fresh from the database, and work_item.work_item_type returns a new NamespacedType instance
+        # each time (which delegates to SystemDefined::Type). Stubbing task.work_item_type only affects
+        # the already-fetched instance, not the newly created one.
+        widgets = task_type.widget_classes(project).reject do |widget|
+          widget == WorkItems::Widgets::Milestone
+        end
+        allow(task_type).to receive(:widget_classes).and_return(widgets)
+      end
 
       context 'when updating milestone widget' do
         let(:additional_arguments) do
@@ -286,11 +301,11 @@ RSpec.describe 'Bulk update work items', feature_category: :team_planning do
         end
 
         it 'updates only work items that support the milestone widget' do
-          # Key Results don't support milestones, but Issues do
+          # issue type supports milestone and we stub task to not support the widget
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
           end.to change { issue.reload.milestone }.from(nil).to(milestone)
-            .and not_change { key_result.reload.attributes['milestone_id'] }
+            .and not_change { task.reload.attributes['milestone_id'] }
 
           expect(mutation_response).to include(
             'updatedWorkItemCount' => 1
@@ -301,7 +316,7 @@ RSpec.describe 'Bulk update work items', feature_category: :team_planning do
   end
 
   context 'when work items have different types' do
-    let_it_be(:task) { create(:work_item, :task, project: project) }
+    let_it_be(:task, freeze: false) { create(:work_item, :task, project: project) }
     let_it_be(:issue) { create(:work_item, :issue, project: project) }
     let(:updatable_work_item_ids) { [task.to_gid.to_s, issue.to_gid.to_s] }
 

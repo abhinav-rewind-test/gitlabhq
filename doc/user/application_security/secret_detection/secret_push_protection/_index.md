@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Secret Detection
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Secret push protection
 ---
 
@@ -90,7 +90,7 @@ To allow the use of secret push protection in your GitLab instance:
 
 1. Sign in to your GitLab instance as an administrator.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Security and compliance**.
+1. In the left sidebar, select **Settings** > **Security and compliance**.
 1. Under **Secret detection**, select or clear **Allow secret push protection**.
 
 Secret push protection is allowed on the instance. To use this feature, you must enable it per project.
@@ -99,13 +99,13 @@ Secret push protection is allowed on the instance. To use this feature, you must
 
 Prerequisites:
 
-- You must have the Maintainer or Owner role for the project.
+- You must have the Security Manager, Maintainer or Owner role for the project.
 - On GitLab Dedicated and GitLab Self-Managed, you must allow secret push protection on the instance.
 
 To enable secret push protection in a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. On the left sidebar, select **Secure** > **Security configuration**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Secure** > **Security configuration**.
 1. Turn on the **Secret push protection** toggle.
 
 You can also enable secret push protection for all projects in a group [with the API](../../../../api/group_security_settings.md#update-group-security-settings).
@@ -179,7 +179,6 @@ Not all detections require immediate action. Consider the following when evaluat
   - Production database credentials
   - Private cryptographic keys
   - Any credentials that could grant unauthorized access
-
 - False positives: Detected patterns that aren't actual secrets. For example:
   - Test data that resembles secrets but has no real-world value
   - Placeholder values in configuration templates

@@ -1,15 +1,14 @@
 ---
 stage: AI-powered
 group: Custom Models
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: サポートされているモデルとハードウェア要件
-title: モデルとハードウェアの要件
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: サポートされているモデルとハードウェア要件。
+title: モデルとハードウェア要件
 ---
 
 {{< details >}}
 
 - プラン: Premium、Ultimate
-- アドオン: GitLab Duo Enterprise
 - 提供形態: GitLab Self-Managed
 
 {{< /details >}}
@@ -18,52 +17,58 @@ title: モデルとハードウェアの要件
 
 - GitLab 17.1で`ai_custom_model`[フラグ](../feature_flags/_index.md)とともに[導入](https://gitlab.com/groups/gitlab-org/-/epics/12972)されました。デフォルトでは無効になっています。
 - GitLab 17.6の[GitLab Self-Managedで有効](https://gitlab.com/groups/gitlab-org/-/epics/15176)になりました。
-- GitLab 17.6以降、GitLab Duoアドオンが必須となりました。
+- GitLab 17.6以降、GitLab Duoアドオンが必須になりました。
 - 機能フラグ`ai_custom_model`は、GitLab 17.8で削除されました。
-- GitLab 17.9で一般提供となりました。
+- GitLab 17.9で一般提供になりました。
 - GitLab 18.0でPremiumを含むように変更されました。
 
 {{< /history >}}
 
-GitLab Duo Self-Hostedは、お好みのサービスプラットフォームを通じて、Mistral、Meta、Anthropic、OpenAIの業界をリードするモデルとのインテグレーションをサポートしています。
+Mistral、Meta、Anthropic、OpenAIなどの業界をリードするモデルと、お好みのサービスプラットフォームを通じて統合できます。
 
-使用できるものは次のとおりです:
+使用できるモデルは次のとおりです:
 
-- 特定のパフォーマンスのニーズとユースケースに合わせてサポートされているモデル。
-- GitLab 18.3以降、互換性のある独自のモデルを使用して、公式にサポートされているオプション以外のモデルを試すことができます。
-- 独自のインフラストラクチャをホストする必要なく、AIモデルに接続するためのGitLab AIベンダーモデル。これらのモデルは、GitLabによって完全に管理されます。
+- 特定のパフォーマンスニーズとユースケースに適合するサポート対象のモデル。
+- GitLab 18.3以降では、独自の互換性のあるモデル。公式にサポートされているオプション以外のモデルを試すことができます。
+- 独自のインフラストラクチャをホストすることなくAIモデルに接続できる、GitLabマネージドモデル。これらのモデルは、GitLabによって完全に管理されます。
 
 ## サポートされているモデル {#supported-models}
 
-AIゲートウェイは、LiteLLMを介して複数のプロバイダーをサポートしています。
+GitLabでサポートされているモデルは、特定のモデルと機能の組み合わせに応じて、GitLab Duo機能に対してさまざまなレベルの機能性を提供します。
 
-GitLabでサポートされているモデルは、特定のモデルと機能の組み合わせに応じて、GitLab Duo機能に対してさまざまなレベルの機能性を提供します。 
-
-- {{< icon name="check-circle-filled" >}}フル機能: モデルは、品質を損なうことなく機能を処理できる可能性が高い。
-- {{< icon name="check-circle-dashed" >}}部分的な機能: モデルは機能をサポートするが、妥協や制限がある可能性がある。
-- {{< icon name="dash-circle" >}}限定的な機能: モデルは機能に適しておらず、品質の大幅な低下やパフォーマンスの問題が発生する可能性が高い。限定的な機能性を持つモデルは、その特定の機能についてGitLabのサポート対象外となる。
+- {{< icon name="check-circle-filled" >}}完全な機能性: モデルは、品質を損なうことなく機能を処理できる可能性が高い。
+- {{< icon name="check-circle-dashed" >}}部分的な機能性: モデルは機能をサポートするが、妥協や制限がある可能性がある。
+- {{< icon name="dash-circle" >}}限定的な機能性: モデルは機能に適しておらず、品質の大幅な低下やパフォーマンスの問題が発生する可能性が高い。限定的な機能性を持つモデルは、その特定の機能についてGitLabのサポート対象外となる。
 
 <!-- vale gitlab_base.Spelling = NO -->
 
-| モデルファミリー | モデル | サポートされているプラットフォーム | コード補完 | コード生成 | GitLab Duo Chat（クラシック） | GitLab Duo Agent Platform |
-|-------------|-------|---------------------|-----------------|-----------------|-----------------|-----------------|
-| 一般 | [Gemini 2.5 Flash](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash) | [Vertex](https://cloud.google.com/vertex-ai) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |  {{< icon name="check-circle-dashed" >}}部分的な機能性 |
-| Mistral Codestral | [Codestral 22B v0.1](https://huggingface.co/mistralai/Codestral-22B-v0.1) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |  {{< icon name="dash-circle" >}}限定的な機能性 |
-| Mistral | [Mistral Small 24B Instruct 2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| Claude 3 |  [Claude 3.5 Sonnet](https://www.anthropic.com/news/claude-3-5-sonnet) | [AWS Bedrock](https://aws.amazon.com/bedrock/claude/) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |
-| Claude 3 |  [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) | [AWS Bedrock](https://aws.amazon.com/bedrock/claude/) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |  {{< icon name="check-circle-dashed" >}}部分的な機能性 |
-| Claude 4 | [Claude 4 Sonnet](https://www.anthropic.com/news/claude-4)                                                                          | [AWS Bedrock](https://aws.amazon.com/bedrock/claude/) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
-| GPT | [GPT-4 Turbo](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4) | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| GPT | [GPT-4o](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4o-and-gpt-4-turbo) | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| GPT | [GPT-4o-mini](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4o-and-gpt-4-turbo) | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| GPT | [GPT-5](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?pivots=azure-openai&tabs=global-standard%2Cstandard-chat-completions#gpt-5) | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| GPT | [GPT-oss-120B](https://huggingface.co/openai/gpt-oss-120b) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| GPT | [GPT-oss-20B](https://huggingface.co/openai/gpt-oss-20b) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| Llama | [Llama 3 8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | 限定的な機能性 |
-| Llama | [Llama 3.1 8B](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| Llama | [Llama 3 70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| Llama | [Llama 3.1 70B](https://huggingface.co/meta-llama/Llama-3.1-70B-Instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
-| Llama | [Llama 3.3 70B](https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| モデルファミリー | モデル | コード補完 | コード生成 | GitLab Duo Non-Agentic Chat | GitLab Duo Agent Platform |
+|--------------|-------|-----------------|-----------------|---------------------------|---------------------------|
+| Claude 4 | [Claude 4 Sonnet](https://www.anthropic.com/news/claude-4) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| Claude 4 | [Claude 4.5 Sonnet](https://www.anthropic.com/news/claude-sonnet-4-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| Claude 4 | [Claude 4.5 Haiku](https://www.anthropic.com/news/claude-haiku-4-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| Claude 4 | [Claude 4.5 Opus](https://www.anthropic.com/news/claude-opus-4-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| GPT | [GPT-4 Turbo](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| GPT | [GPT-4o](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4o-and-gpt-4-turbo) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| GPT | [GPT-4o-mini](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models?tabs=python-secure#gpt-4o-and-gpt-4-turbo) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| GPT | [GPT-5](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-openai&tabs=global-standard-aoai%2Cglobal-standard#gpt-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| GPT | [GPT-5 Mini](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-openai&tabs=global-standard-aoai%2Cglobal-standard#gpt-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |
+| GPT | [GPT-5 Codex](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-openai&tabs=global-standard-aoai%2Cglobal-standard#gpt-5) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| GPT | [GPT-5.1](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-openai&tabs=global-standard-aoai%2Cglobal-standard#gpt-51) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| GPT | [GPT-5.2](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-openai&tabs=global-standard-aoai%2Cglobal-standard#gpt-52) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| GPT | [GPT-oss-120B](https://huggingface.co/openai/gpt-oss-120b) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Mistral Devstral | [Devstral 2 123B](https://huggingface.co/mistralai/Devstral-2-123B-Instruct-2512) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| Mistral Codestral | [Codestral 22B v0.1](https://huggingface.co/mistralai/Codestral-22B-v0.1) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Mistral | [Mistral Small 24B Instruct 2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| GLM | [GLM-5.1-FP8](https://huggingface.co/zai-org/GLM-5.1-FP8) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 |
+| Kimi | [Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |
+| Kimi | [Kimi-K2.6](https://huggingface.co/moonshotai/Kimi-K2.6) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |
+| MiniMax | [MiniMax-M2.7](https://huggingface.co/MiniMaxAI/MiniMax-M2.7) | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 |
+| Llama | [Llama 3 8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Llama | [Llama 3.1 8B](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Llama | [Llama 3 70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct) | {{< icon name="check-circle-dashed" >}}部分的な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Llama | [Llama 3.1 70B](https://huggingface.co/meta-llama/Llama-3.1-70B-Instruct) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
+| Llama | [Llama 3.3 70B](https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct) | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="check-circle-filled" >}}完全な機能性 | {{< icon name="dash-circle" >}}限定的な機能性 |
 
 ### 互換性のあるモデル {#compatible-models}
 
@@ -79,65 +84,60 @@ GitLabでサポートされているモデルは、特定のモデルと機能�
 
 {{< /history >}}
 
-独自の互換性のあるモデルとプラットフォームをGitLab Duo機能で使用できます。サポートされているモデルファミリーに含まれていない互換性のあるモデルについては、一般的なモデルファミリーを使用してください。
+互換性のある独自のモデルとプラットフォームをGitLab Duo Agent PlatformおよびGitLab Duo機能とともに使用できます。サポートされているモデルファミリーに含まれていない互換性のあるモデルについては、一般的なモデルファミリーを使用してください。これには、自身でホストするモデル（たとえば、vLLMまたはLiteLLMを介して提供されるもの）が含まれますが、OpenAI API互換の`/v1`エンドポイントを介して公開されている必要があります。
 
 互換性のあるモデルは、[AI機能利用規約](https://handbook.gitlab.com/handbook/legal/ai-functionality-terms/)の顧客インテグレーションモデルの定義から除外されています。互換性のあるモデルとプラットフォームは、OpenAI API仕様に準拠する必要があります。以前に実験的またはベータ版としてマークされていたモデルとプラットフォームは、現在互換性のあるモデルと見なされています。
 
 この機能はベータ版であるため、フィードバックを収集してインテグレーションを改善する過程で変更される可能性があります:
 
 - GitLabは、選択したモデルまたはプラットフォームに固有の問題に対するテクニカルサポートを提供しません。
-- すべてのGitLab Duo機能が、すべての互換性のあるモデルで最適に動作することが保証されているわけではありません。
+- すべてのAgent PlatformまたはGitLab Duo機能が、すべての互換モデルで最適に動作することが保証されているわけではありません。
 - 応答の品質、速度、および全体的なパフォーマンスは、モデルの選択によって大きく異なる場合があります。
 
-| モデルファミリー | モデル要件 | サポートされているプラットフォーム |
-|-------------|-------|---------------------|
-| 一般 | [OpenAI API仕様](https://platform.openai.com/docs/api-reference)と互換性のある任意のモデル | OpenAI互換のAPIエンドポイントを提供する任意のプラットフォーム |
-| CodeGemma      | [CodeGemma 2b](https://huggingface.co/google/codegemma-2b) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| CodeGemma      | [CodeGemma 7b-it](https://huggingface.co/google/codegemma-7b-it) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| CodeGemma      | [CodeGemma 7b-code](https://huggingface.co/google/codegemma-7b) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| Code Llama     | [Code-Llama 13b](https://huggingface.co/meta-llama/CodeLlama-13b-Instruct-hf) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| DeepSeek Coder | [DeepSeek Coder 33b Instruct](https://huggingface.co/deepseek-ai/deepseek-coder-33b-instruct) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| DeepSeek Coder | [DeepSeek Coder 33b Base](https://huggingface.co/deepseek-ai/deepseek-coder-33b-base) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| Mistral        | [Mistral 7B-it v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2) | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments)<br> [AWS Bedrock](https://aws.amazon.com/bedrock/mistral/) |
-| Mistral | [Mistral 7B-it v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3) <sup>1</sup> | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
-| Mistral | [Mixtral 8x7B-it v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1) <sup>1</sup> | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments)、[AWS Bedrock](https://aws.amazon.com/bedrock/mistral/) |
-| Mistral | [Mixtral 8x22B-it v0.1](https://huggingface.co/mistralai/Mixtral-8x22B-Instruct-v0.1) <sup>1</sup> | [vLLM](supported_llm_serving_platforms.md#for-self-hosted-model-deployments) |
+#### GitLab Duo {#gitlab-duo}
 
-**脚注**: 
-
-1. このモデルは、GitLab 18.3で[非推奨](../../update/deprecations.md#early-mistral-models-deprecated-for-gitlab-duo-self-hosted)になりました。代わりにMistral Small 24B Instruct 2506を使用する必要があります。
+| モデルファミリー   | モデル |
+|----------------|-------|
+| 一般        | [OpenAI API仕様](https://platform.openai.com/docs/api-reference)と互換性のある任意のモデル |
+| CodeGemma      | [CodeGemma 2b](https://huggingface.co/google/codegemma-2b) |
+| CodeGemma      | [CodeGemma 7b-it](https://huggingface.co/google/codegemma-7b-it) |
+| CodeGemma      | [CodeGemma 7b-code](https://huggingface.co/google/codegemma-7b) |
+| Code Llama     | [Code-Llama 13b](https://huggingface.co/meta-llama/CodeLlama-13b-Instruct-hf) |
+| DeepSeek Coder | [DeepSeek Coder 33b Instruct](https://huggingface.co/deepseek-ai/deepseek-coder-33b-instruct) |
+| DeepSeek Coder | [DeepSeek Coder 33b Base](https://huggingface.co/deepseek-ai/deepseek-coder-33b-base) |
 
 <!-- vale gitlab_base.Spelling = YES -->
 
-## GitLab AIベンダーモデル {#gitlab-ai-vendor-models}
+#### GitLab Duo Agent Platform {#gitlab-duo-agent-platform}
 
-{{< details >}}
+| モデルファミリー   | モデル |
+|----------------|-------|
+| 一般        | [OpenAI API仕様](https://platform.openai.com/docs/api-reference)と互換性のある任意のモデル |
+| Gemini         | [Gemini 3.1 Pro](https://deepmind.google/models/gemini/pro/) |
+| Gemini         | [Gemini 3.0 Flash](https://deepmind.google/models/gemini/flash/) |
+| Gemma 4        | [Gemma-4-31B-IT](https://huggingface.co/google/gemma-4-31B-it) |
+| Qwen 3.6       | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) |
 
-- ステータス: ベータ版
+<!-- vale gitlab_base.Spelling = YES -->
 
-{{< /details >}}
+## GitLab管理モデル {#gitlab-managed-models}
 
 {{< history >}}
 
-- GitLab 18.3で`ai_self_hosted_vendored_features`[機能フラグ](../feature_flags/_index.md)とともに[導入](https://gitlab.com/groups/gitlab-org/-/epics/17192)されました。デフォルトでは無効になっています。
-- GitLab 18.7で[デフォルトで有効](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/214030)
+- GitLab 18.3で、`ai_self_hosted_vendored_features`[機能フラグ](../feature_flags/_index.md)とともに[ベータ版](../../policy/development_stages_support.md#beta)機能として[導入](https://gitlab.com/groups/gitlab-org/-/epics/17192)されました。デフォルトでは無効になっています。
+- GitLab 18.7で[デフォルトで有効](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/214030)になりました。
+- 機能フラグ`ai_self_hosted_vendored_features`は、GitLab 18.9で[削除](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/218595)されました。
 
 {{< /history >}}
 
-{{< alert type="flag" >}}
+GitLabマネージドモデルは、GitLabホスト型AIゲートウェイインフラストラクチャと統合され、GitLabによってキュレーションされ利用可能になったAIモデルへのアクセスを提供します。独自のセルフホストモデルを使用する代わりに、特定のGitLab Duo機能に対してGitLabマネージドモデルを使用することを選択できます。
 
-この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。
-
-{{< /alert >}}
-
-GitLab AIベンダーモデルは、GitLabでホストされているAIゲートウェイインフラストラクチャと統合して、GitLabがキュレートおよび利用できるようにしたAIモデルへのアクセスを提供します。独自のセルフホストモデルを使用する代わりに、特定のGitLab Duo機能にGitLab AIベンダーモデルを使用することを選択できます。
-
-どの機能でGitLab AIベンダーモデルを使用するかを選択するには、[GitLab AIベンダーモデルを設定する](configure_duo_features.md#configure-a-feature-to-use-a-gitlab-ai-vendor-model)を参照してください。
+どの機能でGitLabマネージドモデルを使用するかを選択するには、[機能のGitLabマネージドモデルを選択](configure_duo_features.md#select-a-gitlab-managed-model-for-a-feature)を参照してください。
 
 特定の機能で有効になっている場合:
 
-- GitLab AIベンダーモデルで構成されたこれらの機能に対するすべての呼び出しは、セルフホストAIゲートウェイではなく、GitLabホストAIゲートウェイを使用します。
-- [AIログが有効](logging.md#enable-logging)になっている場合でも、GitLabホストAIゲートウェイに詳細ログは生成されません。これにより、機密情報の意図しない漏洩を防ぎます。
+- GitLabマネージドモデルで設定されたそれらの機能へのすべての呼び出しは、セルフホストAIゲートウェイではなく、GitLabホスト型AIゲートウェイを使用します。
+- [AIログが有効になっている](logging.md#turn-on-data-collection-for-gitlab-duo)場合でも、GitLabホストのAIゲートウェイに詳細なログは生成されません。これにより、機密情報の意図しない漏洩を防ぎます。
 
 ## ハードウェア要件 {#hardware-requirements}
 
@@ -179,7 +179,7 @@ GitLab AIベンダーモデルは、GitLabでホストされているAIゲート
 
 #### 中規模マシン {#medium-machine}
 
-GCPまたは同等の環境上の`a2-ultragpu-4g`（4x NVIDIA A100 40 GB - 340 GB vRAM）マシンを使用する場合:
+GCPの`a2-ultragpu-4g`（4x NVIDIA A100 40 GB - 340 GB vRAM）または同等の環境:
 
 | モデル名                 | リクエスト数 | リクエストあたりの平均時間（秒） | レスポンスの平均トークン | リクエストあたりの秒間平均トークン | リクエストの合計時間 | 合計TPS |
 |----------------------------|--------------------|------------------------------|----------------------------|---------------------------------------|-------------------------|-----------|
@@ -208,4 +208,4 @@ GCPの`a2-ultragpu-8g`（8 x NVIDIA A100 80 GB - 1360 GB vRAM）または同等�
 
 ### AIゲートウェイのハードウェア要件 {#ai-gateway-hardware-requirements}
 
-AIゲートウェイのハードウェアに関する推奨事項については、[AIゲートウェイのスケーリングに関する推奨事項](../../install/install_ai_gateway.md#scaling-recommendations)を参照してください。
+AIゲートウェイのハードウェアに関する推奨事項については、[AIゲートウェイのスケールに関する推奨事項](../../install/install_ai_gateway.md#scaling-recommendations)を参照してください。

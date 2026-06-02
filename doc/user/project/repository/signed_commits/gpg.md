@@ -1,9 +1,9 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: Sign commits in your GitLab repository with GPG (GNU Privacy Guard) keys.
-title: Sign commits with GPG
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Sign commits and tags in your GitLab repository with GPG (GNU Privacy Guard) keys.
+title: Sign commits and tags with GPG
 ---
 
 {{< details >}}
@@ -14,7 +14,7 @@ title: Sign commits with GPG
 {{< /details >}}
 
 You can sign the commits you make in a GitLab repository with a
-GPG ([GNU Privacy Guard](https://gnupg.org/)) key.
+[GPG (GNU Privacy Guard)](https://gnupg.org/) key.
 
 > [!note]
 > GitLab uses the term GPG for all OpenPGP, PGP, and GPG-related material and
@@ -33,8 +33,6 @@ For GitLab to consider a commit verified:
 
 GitLab uses its own keyring to verify the GPG signature. It does not access any
 public key server.
-
-GPG verified tags are not supported.
 
 For more details about GPG, refer to the [related topics list](#related-topics).
 
@@ -123,7 +121,7 @@ To add a GPG key to your user settings:
 1. Sign in to GitLab.
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. Select **GPG keys** ({{< icon name="key" >}}).
+1. In the left sidebar, select **Access** > **GPG keys**.
 1. Select **Add new key**.
 1. In **Key**, paste your public key.
 1. To add the key to your account, select **Add key**.
@@ -223,6 +221,41 @@ Prerequisites:
    gpgsign = true
    ```
 
+## Sign and verify tags
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/19260) in GitLab 18.3 [with a flag](../../../../administration/feature_flags/_index.md) named `render_gpg_signed_tags_verification_status`. Disabled by default.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/issues/560619) in GitLab 19.0.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+After you [associate your GPG key with Git](#associate-your-gpg-key-with-git),
+you can sign your tags:
+
+1. When you create a Git tag, add the `-s` flag:
+
+   ```shell
+   git tag -s v1.1.1 -m "My signed tag"
+   ```
+
+1. Push your tag to GitLab.
+1. To verify the signature locally, run:
+
+   ```shell
+   git tag --verify v1.1.1
+   ```
+
+1. Optional. To sign all tags automatically, run:
+
+   ```shell
+   git config --global tag.gpgsign true
+   ```
+
 ## Revoke a GPG key
 
 If a GPG key becomes compromised, revoke it. Revoking a key changes both future and past commits:
@@ -234,7 +267,7 @@ To revoke a GPG key:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. Select **GPG keys** ({{< icon name="key" >}}).
+1. In the left sidebar, select **Access** > **GPG keys**.
 1. Select **Revoke** next to the GPG key you want to delete.
 
 ## Remove a GPG key
@@ -249,7 +282,7 @@ To remove a GPG key from your account:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. Select **GPG keys** ({{< icon name="key" >}}).
+1. In the left sidebar, select **Access** > **GPG keys**.
 1. Select **Remove** ({{< icon name="remove" >}}) next to the GPG key you want to delete.
 
 If you must unverify both future and past commits,

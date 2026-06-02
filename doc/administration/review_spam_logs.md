@@ -1,7 +1,8 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Monitor and manage flagged user activity considered to be spam.
 gitlab_dedicated: yes
 title: Review spam logs
 ---
@@ -30,7 +31,7 @@ View and resolve spam logs to moderate user activity in your instance.
 To view spam logs:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Spam logs**.
+1. In the left sidebar, select **Spam logs**.
 1. Optional. To resolve a spam log, select **More actions** ({{< icon name="ellipsis_v" >}}), then **Remove user**, **Block user**, **Remove log**, or **Trust user**.
 
 ### Resolving spam logs

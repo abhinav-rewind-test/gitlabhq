@@ -12,6 +12,8 @@ module Ci
     end
 
     def execute
+      raise Gitlab::Access::AccessDeniedError unless Ability.allowed?(current_user, :play_job, job)
+
       Gitlab::OptimisticLocking.retry_lock(job, name: 'ci_enqueue_job') do |job|
         job.user = current_user
         job.job_variables_attributes = variables if variables

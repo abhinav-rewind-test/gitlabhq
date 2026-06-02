@@ -1,6 +1,8 @@
 const coreJSVersion = require('./node_modules/core-js/package.json').version;
 
-console.debug(`BABEL_ENV inside Babel config is: ${process.env.BABEL_ENV}`);
+if (process.env.DEBUG_BABEL_ENV === 'true') {
+  console.debug(`BABEL_ENV inside Babel config is: ${process.env.BABEL_ENV}`);
+}
 
 let presets = [
   [
@@ -27,7 +29,6 @@ const plugins = [
   '@babel/plugin-transform-nullish-coalescing-operator',
   // See: https://gitlab.com/gitlab-org/gitlab/-/issues/336216
   '@babel/plugin-transform-logical-assignment-operators',
-  'lodash',
   '@babel/plugin-transform-class-static-block',
   '@babel/plugin-transform-export-namespace-from',
 ];

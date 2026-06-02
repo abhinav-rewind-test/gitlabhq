@@ -15,15 +15,15 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
   let(:current_user_sanitized) { 'www_example_com' }
 
-  let_it_be(:user, reload: true) { create(:user) }
-  let_it_be(:current_user, reload: true) { create(:user, email: "current@email.com", name: 'www.example.com') }
-  let_it_be(:assignee, reload: true) { create(:user, email: 'assignee@example.com', name: 'John Doe') }
-  let_it_be(:reviewer, reload: true) { create(:user, email: 'reviewer@example.com', name: 'Jane Doe') }
+  let_it_be_with_reload(:user) { create(:user) }
+  let_it_be_with_reload(:current_user) { create(:user, email: "current@email.com", name: 'www.example.com') }
+  let_it_be_with_reload(:assignee) { create(:user, email: 'assignee@example.com', name: 'John Doe') }
+  let_it_be_with_reload(:reviewer) { create(:user, email: 'reviewer@example.com', name: 'Jane Doe') }
 
   let(:previous_assignee1) { create(:user, name: 'Previous Assignee 1') }
   let(:previous_assignee_ids) { [previous_assignee1.id] }
 
-  let_it_be(:merge_request, reload: true) do
+  let_it_be_with_reload(:merge_request) do
     create(
       :merge_request,
       source_project: project,
@@ -35,7 +35,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
     )
   end
 
-  let_it_be(:issue, reload: true) do
+  let_it_be_with_reload(:issue) do
     create(
       :issue,
       author: current_user,
@@ -516,7 +516,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
     describe 'for design notes' do
       let_it_be(:design) { create(:design, :with_file) }
-      let_it_be(:recipient) { create(:user) }
+      let_it_be(:recipient, freeze: false) { create(:user) }
       let_it_be(:note) do
         create(:diff_note_on_design, noteable: design, note: "Hello #{recipient.to_reference}")
       end
@@ -819,6 +819,19 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
         it 'contains a link to the issue note' do
           is_expected.to have_body_text note_on_issue_path
         end
+
+        context 'when note contains a table of contents tag' do
+          let(:note) do
+            create(:discussion_note_on_issue, noteable: issue, project: project, author: note_author,
+              note: "[[_TOC_]]\n\n# Heading 1\n\n## Heading 2")
+          end
+
+          it 'does not render the table of contents' do
+            is_expected.to have_body_text('_TOC_')
+            is_expected.not_to have_body_text('#heading-1')
+            is_expected.not_to have_body_text('#heading-2')
+          end
+        end
       end
 
       describe 'on a wiki_page' do
@@ -965,7 +978,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
       end
     end
 
-    context 'for service desk issues' do
+    context 'for service desk issues', feature_category: :service_desk do
       let_it_be(:issue_email_participant) do
         create(:issue_email_participant, issue: issue, email: 'service.desk@example.com')
       end
@@ -976,7 +989,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
         issue.update!(external_author: 'service.desk@example.com')
       end
 
-      describe 'thank you email', feature_category: :service_desk do
+      describe 'thank you email' do
         subject { described_class.service_desk_thank_you_email(issue.id) }
 
         it_behaves_like 'an email with X-GitLab headers containing IDs' do
@@ -1021,6 +1034,17 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           end
         end
 
+        context 'when custom outgoing name contains non-ASCII characters' do
+          let_it_be(:settings) { create(:service_desk_setting, project: project, outgoing_name: 'José García') }
+
+          it 'RFC 2047 encodes the display name in "from" header' do
+            sender = subject.header[:from].addrs[0]
+            expect(sender.display_name).to eq('José García')
+            expect(sender.address).to eq(gitlab_sender)
+            expect(subject.header[:from].encoded).to include('=?UTF-8?')
+          end
+        end
+
         context 'when custom outgoing name is empty' do
           let_it_be(:settings) { create(:service_desk_setting, project: project, outgoing_name: '') }
 
@@ -1031,7 +1055,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
         context 'when custom email is enabled' do
           let_it_be(:credentials) { build(:service_desk_custom_email_credential, project: project).save!(validate: false) }
-          let_it_be(:verification) { create(:service_desk_custom_email_verification, project: project) }
+          let_it_be(:verification, freeze: false) { create(:service_desk_custom_email_verification, project: project) }
 
           let_it_be(:settings) do
             create(
@@ -1057,7 +1081,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
         end
       end
 
-      describe 'new note email', feature_category: :service_desk do
+      describe 'new note email' do
         let_it_be(:first_note) { create(:discussion_note_on_issue, note: 'Hello world') }
 
         subject { described_class.service_desk_new_note_email(issue.id, first_note.id, issue_email_participant) }
@@ -1096,7 +1120,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
         context 'when custom email is enabled' do
           let_it_be(:credentials) { build(:service_desk_custom_email_credential, project: project).save!(validate: false) }
-          let_it_be(:verification) { create(:service_desk_custom_email_verification, project: project) }
+          let_it_be(:verification, freeze: false) { create(:service_desk_custom_email_verification, project: project) }
 
           let_it_be(:settings) do
             create(
@@ -1123,7 +1147,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
       end
     end
 
-    context 'for service desk tickets' do
+    context 'for service desk tickets', feature_category: :service_desk do
       let_it_be(:ticket) do
         create(:work_item, :ticket, project: project, external_author: 'service.desk@example.com')
       end
@@ -1134,7 +1158,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
       let_it_be(:support_bot) { create(:support_bot) }
 
-      describe 'thank you email', feature_category: :service_desk do
+      describe 'thank you email' do
         subject { described_class.service_desk_thank_you_email(ticket.id) }
 
         it_behaves_like 'an email with X-GitLab headers containing IDs' do
@@ -1179,6 +1203,17 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           end
         end
 
+        context 'when custom outgoing name contains non-ASCII characters' do
+          let_it_be(:settings) { create(:service_desk_setting, project: project, outgoing_name: 'José García') }
+
+          it 'RFC 2047 encodes the display name in "from" header' do
+            sender = subject.header[:from].addrs[0]
+            expect(sender.display_name).to eq('José García')
+            expect(sender.address).to eq(gitlab_sender)
+            expect(subject.header[:from].encoded).to include('=?UTF-8?')
+          end
+        end
+
         context 'when custom outgoing name is empty' do
           let_it_be(:settings) { create(:service_desk_setting, project: project, outgoing_name: '') }
 
@@ -1189,7 +1224,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
         context 'when custom email is enabled' do
           let_it_be(:credentials) { build(:service_desk_custom_email_credential, project: project).save!(validate: false) }
-          let_it_be(:verification) { create(:service_desk_custom_email_verification, project: project) }
+          let_it_be(:verification, freeze: false) { create(:service_desk_custom_email_verification, project: project) }
 
           let_it_be(:settings) do
             create(
@@ -1215,7 +1250,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
         end
       end
 
-      describe 'new note email', feature_category: :service_desk do
+      describe 'new note email' do
         let_it_be(:first_note) { create(:discussion_note_on_work_item, noteable: ticket, project: project, note: 'Hello world') }
 
         subject { described_class.service_desk_new_note_email(ticket.id, first_note.id, issue_email_participant) }
@@ -1254,7 +1289,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
         context 'when custom email is enabled' do
           let_it_be(:credentials) { build(:service_desk_custom_email_credential, project: project).save!(validate: false) }
-          let_it_be(:verification) { create(:service_desk_custom_email_verification, project: project) }
+          let_it_be(:verification, freeze: false) { create(:service_desk_custom_email_verification, project: project) }
 
           let_it_be(:settings) do
             create(
@@ -1280,6 +1315,41 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
         end
       end
     end
+
+    context 'when work item type is not issue or ticket', feature_category: :service_desk do
+      let_it_be(:task_work_item) do
+        create(:work_item, :task, project: project, external_author: 'service.desk@example.com')
+      end
+
+      let_it_be(:issue_email_participant) do
+        create(:issue_email_participant, issue: task_work_item, email: 'service.desk@example.com')
+      end
+
+      let_it_be(:support_bot) { create(:support_bot) }
+      let_it_be(:note) { create(:discussion_note_on_work_item, noteable: task_work_item, project: project, note: 'Hello') }
+
+      shared_examples 'does not have legacy Issue headers' do
+        it 'does not have legacy Issue headers' do
+          aggregate_failures do
+            is_expected.not_to have_header('X-GitLab-Issue-ID', task_work_item.id.to_s)
+            is_expected.not_to have_header('X-GitLab-Issue-IID', task_work_item.iid.to_s)
+            is_expected.not_to have_header('X-GitLab-Issue-State', task_work_item.state.to_s)
+          end
+        end
+      end
+
+      describe 'thank you email' do
+        subject { described_class.service_desk_thank_you_email(task_work_item.id) }
+
+        it_behaves_like 'does not have legacy Issue headers'
+      end
+
+      describe 'new note email' do
+        subject { described_class.service_desk_new_note_email(task_work_item.id, note.id, issue_email_participant) }
+
+        it_behaves_like 'does not have legacy Issue headers'
+      end
+    end
   end
 
   context 'for issues', feature_category: :team_planning do
@@ -1293,7 +1363,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           let(:model) { issue }
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
         it_behaves_like 'appearance header and footer not enabled'
@@ -1333,7 +1403,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
 
         it 'contains a link to issue author' do
           is_expected.to have_body_text(issue.author_name)
-          is_expected.to have_body_text 'created an issue:'
+          is_expected.to have_body_text 'Issue created by'
           is_expected.to have_link(issue.to_reference, href: Gitlab::UrlBuilder.build(issue))
         end
 
@@ -1350,7 +1420,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           let(:model) { issue }
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
         it_behaves_like 'appearance header and footer not enabled'
@@ -1417,7 +1487,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           let(:model) { issue }
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'a user cannot unsubscribe through footer link'
         it_behaves_like 'an email with a labels subscriptions link in its footer', group_level
         it_behaves_like 'appearance header and footer enabled'
@@ -1465,7 +1535,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           is_expected.to have_body_text(issue.to_reference(full: false))
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
         it_behaves_like 'appearance header and footer not enabled'
@@ -1480,7 +1550,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           let(:model) { issue }
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
         it_behaves_like 'appearance header and footer not enabled'
@@ -1506,7 +1576,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
           let(:model) { issue }
         end
 
-        it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+        it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
         it_behaves_like 'appearance header and footer not enabled'
@@ -1588,7 +1658,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
             let(:model) { issue }
           end
 
-          it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+          it_behaves_like 'it should show Gmail Actions View Issue link'
           it_behaves_like 'an unsubscribeable thread'
 
           it 'contains description about action taken' do
@@ -1682,7 +1752,7 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
             let(:model) { issue }
           end
 
-          it_behaves_like 'it should show Gmail Actions View Issue link', group_level
+          it_behaves_like 'it should show Gmail Actions View Issue link'
           it_behaves_like 'an unsubscribeable thread', group_level do
             before do
               group.add_developer(recipient)
@@ -1762,6 +1832,25 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
       end
 
       it_behaves_like 'mailer for an issue', true
+    end
+
+    context 'when work item is a task' do
+      let_it_be_with_reload(:issue) do
+        create(
+          :issue,
+          :task,
+          author: current_user,
+          assignees: [assignee],
+          project: project,
+          description: 'My awesome description!'
+        )
+      end
+
+      subject { described_class.new_issue_email(issue.assignees.first.id, issue.id) }
+
+      it 'uses the work item type name in the email body' do
+        is_expected.to have_body_text 'Task created by'
+      end
     end
   end
 
@@ -2294,16 +2383,25 @@ RSpec.describe Notify, feature_category: :code_review_workflow do
   end
 
   context 'with SMTP connection errors' do
-    it 'raises an SMTPConnectionError' do
-      expect_next_instance_of(Mail::TestMailer) do |instance|
-        expect(instance).to receive(:deliver!).and_raise(EOFError)
-      end
+    where(:error_class) do
+      [
+        EOFError,
+        Net::SMTPServerBusy
+      ]
+    end
 
-      expect do
-        perform_enqueued_jobs do
-          described_class.new_issue_email(assignee.id, issue.id).deliver_later
+    with_them do
+      it 'raises an SMTPConnectionError' do
+        expect_next_instance_of(Mail::TestMailer) do |instance|
+          expect(instance).to receive(:deliver!).and_raise(error_class, 'Error!')
         end
-      end.to raise_error(ApplicationMailer::SMTPConnectionError)
+
+        expect do
+          perform_enqueued_jobs do
+            described_class.new_issue_email(assignee.id, issue.id).deliver_later
+          end
+        end.to raise_error(ApplicationMailer::SMTPConnectionError)
+      end
     end
   end
 end

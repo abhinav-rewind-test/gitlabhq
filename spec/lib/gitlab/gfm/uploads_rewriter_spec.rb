@@ -77,7 +77,7 @@ RSpec.describe Gitlab::Gfm::UploadsRewriter, feature_category: :shared do
           expect(new_text).to eq(text)
         end
 
-        it 'skips non-existant files' do
+        it 'skips non-existent files' do
           allow_next_instance_of(source_uploader_class) do |file|
             allow(file).to receive(:exists?).and_return(false)
           end
@@ -135,8 +135,8 @@ RSpec.describe Gitlab::Gfm::UploadsRewriter, feature_category: :shared do
   end
 
   context 'with various containers' do
-    let_it_be(:project_uploader_class) { FileUploader }
-    let_it_be(:group_uploader_class) { NamespaceFileUploader }
+    let_it_be(:project_uploader_class, freeze: false) { FileUploader }
+    let_it_be(:group_uploader_class, freeze: false) { NamespaceFileUploader }
     let_it_be(:source_project) { create(:project) }
     let_it_be(:target_project) { create(:project) }
     let_it_be(:source_group) { create(:group) }

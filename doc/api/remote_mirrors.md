@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project remote mirrors API
 ---
 
@@ -222,7 +222,10 @@ project pull mirroring API.
 
 {{< /history >}}
 
-Creates a push mirror for a project. Push mirroring is disabled by default. To enable it, include the optional parameter
+> [!note]
+> Each project can have a maximum of 10 enabled push mirrors. For more information, see [maximum number of project push mirrors](../administration/instance_limits.md#maximum-number-of-project-push-mirrors).
+
+Create a push mirror for a project. Push mirroring is disabled by default. To enable it, include the optional parameter
 `enabled` when you create the mirror.
 
 ```plaintext
@@ -237,6 +240,7 @@ Supported attributes:
 | `url`                     | string            | Yes      | Target URL to which the repository is mirrored. |
 | `auth_method`             | string            | No       | Mirror authentication method. Accepted values: `ssh_public_key`, `password`. |
 | `enabled`                 | boolean           | No       | If `true`, the mirror is enabled. |
+| `host_keys`               | array of strings  | No       | SSH host keys in bare format (`ssh-ed25519 AAAA...`) or full `known_hosts` format (`hostname ssh-ed25519 AAAA...`). Bare keys use the hostname from the mirror URL. |
 | `keep_divergent_refs`     | boolean           | No       | If `true`, divergent refs are kept when mirroring. |
 | `mirror_branch_regex`     | string            | No       | Regular expression for branch names to mirror. Only branches with names matching the regex are mirrored. Requires `only_protected_branches` to be disabled. Premium and Ultimate only. |
 | `only_protected_branches` | boolean           | No       | If `true`, only protected branches are mirrored. |
@@ -314,6 +318,7 @@ Supported attributes:
 | `mirror_id`               | integer           | Yes      | ID of the remote mirror. |
 | `auth_method`             | string            | No       | Mirror authentication method. Accepted values: `ssh_public_key`, `password`. |
 | `enabled`                 | boolean           | No       | If `true`, the mirror is enabled. |
+| `host_keys`               | array of strings  | No       | SSH host keys in bare format (`ssh-ed25519 AAAA...`) or full `known_hosts` format (`hostname ssh-ed25519 AAAA...`). Bare keys use the hostname from the mirror URL. |
 | `keep_divergent_refs`     | boolean           | No       | If `true`, divergent refs are kept when mirroring. |
 | `mirror_branch_regex`     | string            | No       | Regular expression for branch names to mirror. Only branches with names matching the regex are mirrored. Does not work with `only_protected_branches` enabled. Premium and Ultimate only. |
 | `only_protected_branches` | boolean           | No       | If `true`, only protected branches are mirrored. |

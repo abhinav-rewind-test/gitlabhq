@@ -34,7 +34,7 @@ module API
             documentation: { example: { VAR1: "value1", VAR2: "value2" } }
           optional :inputs, type: Hash, desc: 'The list of inputs to be used to create the pipeline.'
         end
-        route_setting :authorization, skip_granular_token_authorization: true
+        route_setting :authorization, skip_granular_token_authorization: :trigger_token_auth
         post ":id/(ref/:ref/)trigger/pipeline", requirements: { ref: /.+/ } do
           Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/20758')
 
@@ -118,7 +118,7 @@ module API
           requires :description, type: String, desc: 'The trigger token description',
             documentation: { example: 'my trigger token description' }
           optional :expires_at, type: DateTime, desc: 'Timestamp of when the pipeline trigger token expires.',
-            documentation: { example: '2024-07-01' }
+            documentation: { example: '2024-07-01T00:00:00.000Z' }
         end
         route_setting :authorization, permissions: :create_trigger, boundary_type: :project
         post ':id/triggers' do
@@ -142,7 +142,8 @@ module API
           end
         end
 
-        desc 'Update a trigger token' do
+        desc 'Update a pipeline trigger token' do
+          detail 'Updates a pipeline trigger token for a project.'
           tags ['ci_triggers']
           success code: 200, model: Entities::Trigger
           failure [

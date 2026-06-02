@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Coding
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Explain code in a file
 ---
 
@@ -41,8 +41,8 @@ Prerequisites:
 
 To explain the code in a file:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select a file that contains code.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the project, select a file that contains code.
 1. Select the lines you want explained.
 1. On the left side, select the question mark ({{< icon name="question" >}}).
    You might have to scroll to the first line of your selection to view it.

@@ -13,13 +13,17 @@ module Banzai
       prepend Concerns::PipelineTimingCheck
 
       LANG_PARAMS_DELIMITER = ':'
-      LANG_ATTR = 'data-canonical-lang'
-      LANG_PARAMS_ATTR = 'data-lang-params'
+      LANGUAGE_CLASS_PREFIX = 'language-'
 
       CSS   = 'pre > code:only-child'
       XPATH = Gitlab::Utils::Nokogiri.css_to_xpath(CSS).freeze
 
+      BARE_PRE_CSS   = 'pre[lang]:not(:has(code))'
+      BARE_PRE_XPATH = Gitlab::Utils::Nokogiri.css_to_xpath(BARE_PRE_CSS).freeze
+
       def call
+        wrap_bare_pre_content
+
         doc.xpath(XPATH).each do |node|
           transform_node(node)
         end
@@ -30,47 +34,94 @@ module Banzai
       def transform_node(code_node)
         return if code_node.parent&.parent.nil?
 
-        lang, lang_params = parse_lang_params(code_node)
         pre_node = code_node.parent
 
-        if lang.present?
-          code_node.remove_attribute('lang')
-          pre_node.remove_attribute('lang')
-        end
+        # Single-pass language extraction with clear priority
+        language = extract_language_with_priority(code_node, pre_node)
 
-        pre_node.set_attribute(LANG_ATTR, escape_once(lang)) if lang.present?
-        pre_node.set_attribute(LANG_PARAMS_ATTR, escape_once(lang_params)) if lang_params.present?
+        # Handle data-meta parameters
+        meta_params = pre_node.attr('data-meta') || code_node.attr('data-meta')
 
-        # markdown rendered added this, it's now in data-lang-params
-        pre_node.remove_attribute('data-meta')
-        code_node.remove_attribute('data-meta')
+        lang, lang_params = parse_language_params(language)
+
+        # Use meta_params if no lang_params from language string
+        lang_params = meta_params if lang_params.blank? && meta_params.present?
+
+        # Clean up ALL temporary attributes once
+        cleanup_all_language_attributes(code_node, pre_node)
+
+        # Set final canonical attributes once
+        set_final_language_attributes(pre_node, lang, lang_params) if lang.present?
       end
 
       private
 
-      # the `full_info_string` render option works with the space delimiter.
-      # Which means the language specified on a code block is parsed with spaces. Anything
-      # after the first space is placed in the `data-meta` attribute.
-      # However GitLab recognizes `:` as an additional delimiter on the lang attribute.
-      # So parse out the extra parameter.
-      #
-      # Original
-      # "```suggestion:+1-10 more```" -> '<pre data-canonical-lang="suggestion:+1-10" data-lang-params="more">'.
-      #
-      # With extra parsing
-      # "```suggestion:+1-10 more```" -> '<pre data-canonical-lang="suggestion" data-lang-params="+1-10 more">'.
-      def parse_lang_params(code_node)
-        pre_node = code_node.parent
-        language = pre_node.attr('lang') || code_node.attr('lang')
+      # Some markup languages (e.g., org-ruby) produce <pre lang="ruby">code</pre>
+      # without a <code> wrapper. Wrap these so pre > code:only-child can match.
+      def wrap_bare_pre_content
+        doc.xpath(BARE_PRE_XPATH).each do |pre_node|
+          code_node = Nokogiri::XML::Node.new('code', doc)
+          code_node.children = pre_node.children
+          pre_node.add_child(code_node)
+        end
+      end
 
-        return unless language
+      def extract_language_with_priority(code_node, pre_node)
+        pre_node.attr('lang') || code_node.attr('lang') || extract_language_from_class(code_node)
+      end
 
-        language, language_params = language.split(LANG_PARAMS_DELIMITER, 2)
+      # Returns [language_class, other_classes] from a code node's class attribute.
+      # language_class is the first `language-*` token found (nil if none).
+      def partition_language_class(code_node)
+        classes = code_node.attr('class')&.split
+        return [nil, nil] unless classes
 
-        # markdown renderer places extra lang parameters into data-meta
-        language_params = [pre_node.attr('data-meta'), code_node.attr('data-meta'), language_params].compact.join(' ')
+        language_class, others = classes.partition { |c| c.start_with?(LANGUAGE_CLASS_PREFIX) }
+        [language_class.first, others]
+      end
 
-        [language, language_params]
+      def extract_language_from_class(code_node)
+        lang_class, = partition_language_class(code_node)
+        lang_class&.delete_prefix(LANGUAGE_CLASS_PREFIX)
+      end
+
+      def remove_language_class(code_node)
+        lang_class, others = partition_language_class(code_node)
+        return unless lang_class
+
+        if others.empty?
+          code_node.remove_attribute('class')
+        else
+          code_node.set_attribute('class', others.join(' '))
+        end
+      end
+
+      def cleanup_all_language_attributes(code_node, pre_node)
+        code_node.remove_attribute('lang')
+        pre_node.remove_attribute('lang')
+        pre_node.remove_attribute('data-meta')
+        code_node.remove_attribute('data-meta')
+        remove_language_class(code_node)
+      end
+
+      def set_final_language_attributes(pre_node, lang, lang_params)
+        pre_node.set_attribute('data-canonical-lang', escape_once(lang))
+        pre_node.set_attribute('data-lang-params', escape_once(lang_params)) if lang_params
+      end
+
+      # Parses language parameters from a language string.
+      # Examples:
+      #   "ruby" -> ["ruby", nil]
+      #   "ruby:red" -> ["ruby", "red"]
+      #   "suggestion:+1-10 more" -> ["suggestion", "+1-10 more"]
+      def parse_language_params(language_string)
+        return [nil, nil] unless language_string
+
+        # Handle "ruby:red gem foo" -> ["ruby", "red gem foo"]
+        lang, params = language_string.split(LANG_PARAMS_DELIMITER, 2)
+        params = params&.strip&.presence
+
+        [lang, params]
       end
     end
   end

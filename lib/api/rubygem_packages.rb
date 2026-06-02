@@ -18,6 +18,9 @@ module API
     FILE_NAME_REQUIREMENTS = {
       file_name: API::NO_SLASH_URL_PART_REGEX
     }.freeze
+    GEMSPEC_FILE_NAME_REQUIREMENTS = {
+      file_name: Gitlab::Regex.rubygems_gemspec_file_name_regex
+    }.freeze
 
     content_type :binary, 'application/octet-stream'
 
@@ -62,10 +65,12 @@ module API
           not_found!
         end
 
-        desc 'Download the gemspec file' do
-          detail 'This feature was introduced in GitLab 13.9'
+        desc 'Download a gemspec file' do
+          detail 'Downloads a gemspec file in Marshal format for a specified gem version.'
+          success code: 200
           failure [
             { code: 401, message: 'Unauthorized' },
+            { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
           tags %w[packages]
@@ -73,13 +78,22 @@ module API
         params do
           requires :file_name, type: String, desc: 'Gemspec file name', documentation: { type: 'file' }
         end
-        get "quick/Marshal.#{MARSHAL_VERSION}/:file_name", requirements: FILE_NAME_REQUIREMENTS do
-          # To be implemented in https://gitlab.com/gitlab-org/gitlab/-/issues/299284
-          not_found!
+        route_setting :authorization, permissions: :read_ruby_gem, boundary_type: :project
+        get "quick/Marshal.#{MARSHAL_VERSION}/:file_name", requirements: GEMSPEC_FILE_NAME_REQUIREMENTS do
+          authorize_read_package!(project)
+
+          package_file = ::Packages::PackageFile
+                           .for_rubygem_with_file_name(project, params[:file_name])
+                           .installable
+                           .last!
+
+          track_package_event('pull_package', :rubygems, project: project, namespace: project.namespace)
+
+          present_carrierwave_file!(package_file.file)
         end
 
-        desc 'Download the .gem package' do
-          detail 'This feature was introduced in GitLab 13.9'
+        desc 'Download a gem file' do
+          detail 'Downloads a specified gem file for a project.'
           success code: 200
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -115,7 +129,7 @@ module API
             ]
             tags %w[packages]
           end
-          route_setting :authorization, permissions: :authorize_ruby_gem, boundary_type: :project
+          route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
           post 'gems/authorize' do
             authorize_workhorse!(
               subject: project,
@@ -125,7 +139,7 @@ module API
           end
 
           desc 'Upload a gem' do
-            detail 'This feature was introduced in GitLab 13.9'
+            detail 'Uploads a gem for a specified project.'
             success code: 201
             failure [
               { code: 401, message: 'Unauthorized' },
@@ -169,8 +183,10 @@ module API
             forbidden!
           end
 
-          desc 'Fetch a list of dependencies' do
-            detail 'This feature was introduced in GitLab 13.9'
+          desc 'Retrieve dependencies' do
+            detail 'Retrieves a list of dependencies for specified gems. The response is a marshalled array of ' \
+              'hashes for all versions of the requested gems. Because the response is marshalled, you can store it in ' \
+              'a file.'
             success code: 200
             failure [
               { code: 401, message: 'Unauthorized' },

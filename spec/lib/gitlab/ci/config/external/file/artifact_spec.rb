@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Gitlab::Ci::Config::External::File::Artifact, feature_category: :pipeline_composition do
   let(:parent_pipeline) { create(:ci_pipeline) }
   let(:project) { parent_pipeline.project }
-  let(:variables) {}
+  let(:variables) { nil }
   let(:context) do
     Gitlab::Ci::Config::External::Context
       .new(variables: variables, parent_pipeline: parent_pipeline, project: project)
@@ -133,7 +133,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Artifact, feature_category: :
 
                 context 'when file is empty' do
                   let(:params) { { artifact: 'secret_stuff/generated.yml', job: 'generator' } }
-                  let(:variables) { Gitlab::Ci::Variables::Collection.new([{ 'key' => 'GITLAB_TOKEN', 'value' => 'secret_stuff', 'masked' => true }]) }
+                  let(:variables) { Gitlab::Ci::Variables::Collection.new([{ key: 'GITLAB_TOKEN', value: 'secret_stuff', masked: true }]) }
                   let(:context) do
                     Gitlab::Ci::Config::External::Context.new(parent_pipeline: parent_pipeline, variables: variables)
                   end
@@ -159,6 +159,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Artifact, feature_category: :
 
                   it 'propagates parent_pipeline to nested includes' do
                     expected_attrs = {
+                      parent_file: external_file,
                       parent_pipeline: parent_pipeline,
                       project: anything,
                       sha: anything,

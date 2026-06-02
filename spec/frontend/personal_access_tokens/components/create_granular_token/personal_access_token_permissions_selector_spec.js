@@ -1,4 +1,4 @@
-import { GlSearchBoxByType, GlSkeletonLoader } from '@gitlab/ui';
+import { GlSearchBoxByType, GlSkeletonLoader, GlTab } from '@gitlab/ui';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
@@ -38,24 +38,30 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
   };
 
   const findSearchBox = () => wrapper.findComponent(GlSearchBoxByType);
+  const findTab = () => wrapper.findComponent(GlTab);
   const findSkeletonLoader = () => wrapper.findComponent(GlSkeletonLoader);
   const findResourcesList = () => wrapper.findComponent(PersonalAccessTokenResourcesList);
   const findPermissionsList = () =>
     wrapper.findComponent(PersonalAccessTokenGranularPermissionsList);
+  const findErrorMessage = () => wrapper.find('.invalid-feedback');
 
   beforeEach(() => {
     createComponent();
   });
 
   describe('rendering', () => {
-    it('shows group resource title for group scope', () => {
-      expect(wrapper.text()).toContain('Group and project resources');
+    it('renders group tab', () => {
+      expect(findTab().attributes('title')).toBe('Group and project');
     });
 
-    it('shows user resource title for user scope', () => {
+    it('renders user tab', () => {
       createComponent({ props: { targetBoundaries: ['USER'] } });
 
-      expect(wrapper.text()).toBe('User resources');
+      expect(findTab().attributes('title')).toBe('User');
+    });
+
+    it('renders tab with an initial count', () => {
+      expect(findTab().attributes('tabcount')).toBe('0');
     });
 
     it('renders the search box', () => {
@@ -70,7 +76,8 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
     it('shows error message when error prop is provided', () => {
       createComponent({ props: { error: 'At least one permission is required.' } });
 
-      expect(wrapper.text()).toContain('At least one permission is required.');
+      expect(findErrorMessage().exists()).toBe(true);
+      expect(findErrorMessage().text()).toBe('At least one permission is required.');
     });
   });
 
@@ -110,9 +117,11 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
     });
 
     it('filters permissions by target boundaries', () => {
+      expect(findResourcesList().props('scope')).toBe('namespace');
       expect(findResourcesList().props('permissions')).toStrictEqual(mockGroupPermissions);
+
       expect(findPermissionsList().props('permissions')).toStrictEqual(mockGroupPermissions);
-      expect(findPermissionsList().props('targetBoundaries')).toEqual(['GROUP', 'PROJECT']);
+      expect(findPermissionsList().props('scope')).toEqual('namespace');
     });
 
     it('filters user permissions correctly', async () => {
@@ -120,15 +129,18 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
 
       await waitForPromises();
 
+      expect(findResourcesList().props('scope')).toBe('user');
       expect(findResourcesList().props('permissions')).toStrictEqual(mockUserPermissions);
+
       expect(findPermissionsList().props('permissions')).toStrictEqual(mockUserPermissions);
-      expect(findPermissionsList().props('targetBoundaries')).toEqual(['USER']);
+      expect(findPermissionsList().props('scope')).toEqual('user');
     });
 
     it('searches by permission description', async () => {
       await findSearchBox().vm.$emit('input', 'Repository');
 
       expect(findResourcesList().props('permissions')).toStrictEqual([mockGroupPermissions[2]]);
+
       expect(findPermissionsList().props('permissions')).toStrictEqual(mockGroupPermissions);
     });
 
@@ -138,6 +150,7 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
       expect(findResourcesList().props('permissions')).toStrictEqual([
         mockGroupPermissions[0],
         mockGroupPermissions[1],
+        mockGroupPermissions[3],
       ]);
 
       expect(findPermissionsList().props('permissions')).toStrictEqual(mockGroupPermissions);
@@ -147,6 +160,98 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
       await findSearchBox().vm.$emit('input', 'unknown');
 
       expect(wrapper.text()).toContain('No resources found');
+    });
+
+    it('displays the selected permissions based on the value prop', () => {
+      createComponent({ props: { value: ['read_project', 'write_project'] } });
+
+      expect(findPermissionsList().props('value')).toEqual(['read_project', 'write_project']);
+    });
+  });
+
+  describe('AI suggestion handling', () => {
+    beforeEach(async () => {
+      createComponent();
+      await waitForPromises();
+    });
+
+    describe('when AI suggests permissions', () => {
+      it('selects the suggested permissions and their resources', async () => {
+        await wrapper.setProps({ aiPermissions: { suggested: ['read_project'], removed: [] } });
+
+        expect(wrapper.vm.selectedResources).toContain('project');
+        expect(wrapper.emitted('input')[0]).toEqual([['read_project']]);
+      });
+
+      it('applies permissions when set before the permissions query resolves', async () => {
+        createComponent({
+          props: { aiPermissions: { suggested: ['read_project'], removed: [] } },
+        });
+
+        expect(wrapper.emitted('input')).toBeUndefined();
+
+        await waitForPromises();
+
+        expect(wrapper.emitted('input')[0]).toEqual([['read_project']]);
+      });
+
+      it('merges with already selected permissions', async () => {
+        await wrapper.setProps({ value: ['write_project'] });
+        await wrapper.setProps({ aiPermissions: { suggested: ['read_project'], removed: [] } });
+
+        expect(wrapper.emitted('input')[0]).toEqual([['write_project', 'read_project']]);
+      });
+
+      it('merges suggested resources with already selected resources', async () => {
+        await findResourcesList().vm.$emit('input', ['repository']);
+        await wrapper.setProps({ aiPermissions: { suggested: ['read_project'], removed: [] } });
+
+        expect(wrapper.vm.selectedResources).toContain('repository');
+        expect(wrapper.vm.selectedResources).toContain('project');
+      });
+    });
+
+    describe('when AI removes permissions', () => {
+      beforeEach(async () => {
+        await findResourcesList().vm.$emit('input', ['project']);
+        await findPermissionsList().vm.$emit('input', ['read_project', 'write_project']);
+        await wrapper.setProps({ value: ['read_project', 'write_project'] });
+      });
+
+      it('removes the specified permissions', async () => {
+        await wrapper.setProps({ aiPermissions: { suggested: [], removed: ['read_project'] } });
+
+        expect(wrapper.emitted('input')[1]).toEqual([['write_project']]);
+      });
+
+      it('does not remove the resource when all its permissions are cleared', async () => {
+        await wrapper.setProps({
+          aiPermissions: { suggested: [], removed: ['read_project', 'write_project'] },
+        });
+
+        expect(findPermissionsList().props('selectedResources')).toContain('project');
+      });
+    });
+  });
+
+  describe('pre-filling resources from permissions', () => {
+    it('selects resources when value prop is provided', async () => {
+      await waitForPromises();
+
+      await wrapper.setProps({ value: ['read_project', 'read_repository'] });
+
+      expect(wrapper.vm.selectedResources).toContain('project');
+      expect(wrapper.vm.selectedResources).toContain('repository');
+    });
+
+    it('merges with already selected resources', async () => {
+      await waitForPromises();
+
+      await findResourcesList().vm.$emit('input', ['repository']);
+      await wrapper.setProps({ value: ['read_project'] });
+
+      expect(wrapper.vm.selectedResources).toContain('repository');
+      expect(wrapper.vm.selectedResources).toContain('project');
     });
   });
 
@@ -161,6 +266,16 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
       await findResourcesList().vm.$emit('input', selectedResources);
 
       expect(findPermissionsList().props('selectedResources')).toEqual(selectedResources);
+
+      expect(findTab().attributes('tabcount')).toBe('2');
+    });
+
+    it('updates tab count when selected resources change', async () => {
+      const selectedResources = ['project', 'repository'];
+
+      await findResourcesList().vm.$emit('input', selectedResources);
+
+      expect(findTab().attributes('tabcount')).toBe('2');
     });
 
     it('emits input event when permissions list changes', async () => {
@@ -180,6 +295,8 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
 
       expect(wrapper.emitted('input')[0]).toEqual([['read_project', 'read_repository']]);
 
+      await wrapper.setProps({ value: ['read_project', 'read_repository'] });
+
       // simulate unchecking `project` resource
       await findResourcesList().vm.$emit('input', ['repository']);
 
@@ -189,18 +306,30 @@ describe('PersonalAccessTokenPermissionsSelector', () => {
     });
 
     it('handles `remove-resource` event', async () => {
-      await findResourcesList().vm.$emit('input', ['project', 'repository']);
+      await findResourcesList().vm.$emit('input', ['project', 'repository', 'contributed_project']);
 
-      await findPermissionsList().vm.$emit('input', ['read_project', 'read_repository']);
+      await findPermissionsList().vm.$emit('input', [
+        'read_project',
+        'read_repository',
+        'read_contributed_project',
+      ]);
 
-      expect(wrapper.emitted('input')[0]).toEqual([['read_project', 'read_repository']]);
+      expect(wrapper.emitted('input')[0]).toEqual([
+        ['read_project', 'read_repository', 'read_contributed_project'],
+      ]);
+
+      await wrapper.setProps({
+        value: ['read_project', 'read_repository', 'read_contributed_project'],
+      });
 
       // simulate unchecking `project` resource
       await findPermissionsList().vm.$emit('remove-resource', 'project');
 
       await nextTick();
 
-      expect(wrapper.emitted('input')[1]).toEqual([['read_repository']]);
+      expect(wrapper.emitted('input')[1]).toEqual([
+        ['read_repository', 'read_contributed_project'],
+      ]);
     });
   });
 });

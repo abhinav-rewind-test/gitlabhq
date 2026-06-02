@@ -1,14 +1,21 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Connect and use GitLab Duo in Neovim.
 title: Troubleshooting Neovim
 ---
 
+{{< details >}}
+
+- Tier: [Free](../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
 When troubleshooting the GitLab plugin for Neovim, you should confirm that the issue occurs
 in isolation from other Neovim plugins and settings. First, run the Neovim [testing steps](#test-your-neovim-configuration),
-then the troubleshooting steps for [GitLab Duo Code Suggestions](../../user/duo_agent_platform/code_suggestions/troubleshooting.md) or [GitLab Duo Code Suggestions (Classic)](../../user/project/repository/code_suggestions/troubleshooting.md).
+then the troubleshooting steps for GitLab Duo Code Suggestions.
 
 If the steps on this page don't solve your problem, check the
 [list of open issues](https://gitlab.com/gitlab-org/editor-extensions/gitlab.vim/-/issues/?sort=created_date&state=opened&first_page_size=100)
@@ -41,7 +48,7 @@ These checks help you identify and resolve configuration issues on your own.
 ## Enable debug logs
 
 Enable debug logs to capture more information about problems. Debug logs can
-contain sensitive workspace configuration, so review the output before sharing
+contain sensitive configuration details, so review the output before sharing
 it with others.
 
 To enable extra logging:
@@ -70,7 +77,7 @@ a problem with Code Suggestions:
 
    ```lua
    -- NOTE: Do not set this in your usual configuration, as this log level
-   -- could include sensitive workspace configuration.
+   -- could include sensitive configuration details.
    vim.lsp.set_log_level('debug')
 
    vim.opt.rtp:append('$HOME/.local/share/nvim/site/pack/gitlab/start/gitlab.vim')

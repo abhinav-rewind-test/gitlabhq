@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Create an issue
 ---
 
@@ -30,17 +30,18 @@ You can create an issue in many ways in GitLab:
 
 Prerequisites:
 
-- You must have at least the Guest role for the project.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To create an issue:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Either:
 
-   - On the left sidebar, select **Plan** > **Issues**, and then, in the upper-right corner, select **New issue**.
-   - On the left sidebar, at the top, select the plus sign ({{< icon name="plus" >}}) and then, under **In this project**,
-     select **New issue**.
+   - In the left sidebar, select **Plan** > **Work items**, and then, in the upper-right corner, select **New item**.
+   - In the upper-right corner, select the plus sign ({{< icon name="plus" >}}) and then, under **In this project**,
+     select **New work item**.
 
+1. From the **Type** dropdown list, select **Issue** if it is not already selected.
 1. Complete the [fields](#fields-in-the-new-issue-form).
 1. Select **Create issue**.
 
@@ -53,12 +54,12 @@ to the projects in the group.
 
 Prerequisites:
 
-- You must have at least the Guest role for the project in the group.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the project in the group.
 
 To create an issue from a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Issues**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Work items**.
 1. In the upper-right corner, select **Select project to create issue**.
 1. Select the project you'd like to create an issue for. The button now reflects the selected
    project.
@@ -77,7 +78,7 @@ You can create a new issue from an existing one. The two issues can then be mark
 
 Prerequisites:
 
-- You must have at least the Guest role for the project.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To create an issue from another issue:
 
@@ -97,20 +98,20 @@ You can create a new issue from an [issue board](../issue_board.md).
 
 Prerequisites:
 
-- You must have at least the Guest role for the project.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To create an issue from a project issue board:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issue boards**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Issue boards**.
 1. At the top of a board list, select **Create new issue** ({{< icon name="plus-square" >}}).
 1. Enter the issue's title.
 1. Select **Create issue**.
 
 To create an issue from a group issue board:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Issue boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Issue boards**.
 1. At the top of a board list, select **Create new issue** ({{< icon name="plus-square" >}}).
 1. Enter the issue's title.
 1. Under **Projects**, select the project in the group that the issue should belong to.
@@ -135,13 +136,13 @@ Prerequisites:
 - Your GitLab instance must have [incoming email](../../../administration/incoming_email.md)
   configured with [email sub-addressing or catch-all mailbox](../../../administration/incoming_email.md#requirements).
 - There must be at least one issue in the issue list.
-- You must have at least the Guest role for the project.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To email an issue to a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**.
-1. At the bottom of the page, select **Email issue to this project**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Work items**.
+1. In the upper-right corner, select **More actions** ({{< icon name="ellipsis_v" >}}), then select **Email work item to this project**.
 1. To copy the email address, select **Copy** ({{< icon name="copy-to-clipboard" >}}).
 1. From your email client, send an email to this address.
    The subject is used as the title of the new issue, and the email body becomes the description.
@@ -227,14 +228,14 @@ the appropriate project and followed up from there.
 
 When you're creating a new issue, you can complete the following fields:
 
-- Title
+- Title: [limited formatting support](../../markdown.md#work-item-and-merge-request-titles)
 - Project: defaults to the current project
 - Type: either issue (default) or incident
 - [Description template](../description_templates.md): overwrites anything in the Description text box
 - Description: you can use [Markdown](../../markdown.md) and [quick actions](../quick_actions.md)
 - Checkbox to make the issue [confidential](confidential_issues.md)
 - [Assignees](managing_issues.md#assignees)
-- [Weight](issue_weight.md)
+- [Weight](../../work_items/weight.md)
 - [Parent](../../group/epics/_index.md)
 - [Dates](due_dates.md)
 - [Milestone](../milestones/_index.md)

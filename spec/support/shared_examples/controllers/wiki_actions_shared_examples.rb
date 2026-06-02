@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'wiki controller actions' do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:other_user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:other_user, freeze: false) { create(:user) }
 
   let(:container) { raise NotImplementedError }
   let(:routing_params) { raise NotImplementedError }
@@ -239,6 +239,16 @@ RSpec.shared_examples 'wiki controller actions' do
         end
       end
 
+      context 'recently viewed wiki pages tracking' do
+        it 'logs the wiki page view for the current user' do
+          expect_next_instance_of(::Gitlab::Search::RecentWikiPages) do |service|
+            expect(service).to receive(:log_view).with(an_instance_of(WikiPage::Meta))
+          end
+
+          request
+        end
+      end
+
       context 'when page content encoding is invalid' do
         it 'sets flash error' do
           allow(controller).to receive(:valid_encoding?).and_return(false)
@@ -399,6 +409,25 @@ RSpec.shared_examples 'wiki controller actions' do
         end
 
         it_behaves_like 'renders 404 with CTA to create page'
+      end
+    end
+
+    context 'when the redirects file exceeds the size limit' do
+      let(:id) { 'non-existent-page' }
+
+      before do
+        blob = instance_double(Gitlab::Git::Blob, truncated?: true)
+        allow(Wiki).to receive(:for_container).and_return(wiki)
+        allow(wiki.repository).to receive(:blob_at).and_call_original
+        allow(wiki.repository).to receive(:blob_at)
+          .with(wiki.default_branch, Wiki::REDIRECTS_YML, limit: Wiki::REDIRECTS_YML_SIZE_LIMIT)
+          .and_return(blob)
+      end
+
+      it 'renders a 404' do
+        request
+
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
   end
@@ -660,6 +689,51 @@ RSpec.shared_examples 'wiki controller actions' do
 
       expect(response).to render_template('shared/wikis/git_access')
       expect(response.body).to include(wiki.http_url_to_repo)
+    end
+  end
+
+  describe 'GET #index' do
+    subject(:request) { get :index, params: routing_params }
+
+    context 'when wiki has home page' do
+      before do
+        create(:wiki_page, wiki: wiki, title: 'home', content: 'Home')
+        create(:wiki_page, wiki: wiki, title: 'aaa-first', content: 'First')
+      end
+
+      it 'redirects to home page' do
+        request
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(controller.wiki_page_path(wiki, 'home'))
+      end
+    end
+
+    context 'when wiki has pages but no home page' do
+      before do
+        create(:wiki_page, wiki: wiki, title: 'other-page', content: 'Content')
+      end
+
+      it 'redirects to pages list' do
+        request
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(controller.wiki_path(wiki, action: :pages))
+      end
+    end
+
+    context 'when wiki is empty' do
+      before do
+        # Delete all pages (including the one created in setup)
+        wiki.list_pages.each { |page| wiki.delete_page(page) }
+      end
+
+      it 'redirects to home page for empty state' do
+        request
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(controller.wiki_page_path(wiki, 'home'))
+      end
     end
   end
 

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Instance-level CI/CD variables API
 ---
 
@@ -104,7 +104,7 @@ curl \
 
 Creates a new instance-level variable.
 
-The [maximum number of instance-level variables](../administration/instance_limits.md#cicd-variable-limits) can be changed.
+The [maximum number of instance-level variables](../administration/cicd/limits.md#instance-cicd-variable-limit) can be changed.
 
 ```plaintext
 POST /admin/ci/variables

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: CI Platform
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Datadog
 ---
 
@@ -29,7 +29,7 @@ or for a specific project or group:
 1. *For integrations for the entire instance:*
    1. Sign in to GitLab as a user with administrator access.
    1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Integrations**.
+1. In the left sidebar, select **Settings** > **Integrations**.
 1. Scroll to **Add an integration**, and select **Datadog**.
 1. Select **Active** to enable the integration.
 1. Specify the [**Datadog site**](https://docs.datadoghq.com/getting_started/site/) to send data to.
@@ -55,11 +55,11 @@ and only requires configuration in GitLab:
 1. Optional. Select **Enable Pipeline job logs collection** to enable logs collection for the output of jobs. ([Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/346339) in GitLab 15.3.)
 1. Optional. If you use more than one GitLab instance, provide a unique **Service** name
    to differentiate between your GitLab instances.
-<!-- vale gitlab_base.Spelling = NO -->
+   <!-- vale gitlab_base.Spelling = NO -->
 1. Optional. If you use groups of GitLab instances (such as staging and production
    environments), provide an **Env** name. This value is attached to each span
    the integration generates.
-<!-- vale gitlab_base.Spelling = YES -->
+   <!-- vale gitlab_base.Spelling = YES -->
 1. Optional. To define any custom tags for all spans at which the integration is being configured,
    enter one tag per line in **Tags**. Each line must be in the format `key:value`.
 1. Optional. Select **Test settings**.

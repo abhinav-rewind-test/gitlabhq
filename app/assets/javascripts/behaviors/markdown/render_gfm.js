@@ -8,6 +8,8 @@ import { renderGlql } from './render_glql';
 import { renderJSONTable, renderJSONTableHTML } from './render_json_table';
 import { addAriaLabels } from './accessibility';
 import { renderImageLightbox } from './render_image_lightbox';
+import renderStickyTableHeaders from './render_table_headers';
+import { GFM_POPOVER_SELECTOR } from './constants';
 
 function initPopovers(elements) {
   if (!elements.length) return;
@@ -18,7 +20,14 @@ function initPopovers(elements) {
     .catch(() => {});
 }
 
-// Render GitLab Flavored Markdown
+// Render GitLab Flavored Markdown.
+//
+// This function handles components originating from backend-rendered GLFM that need
+// frontend work to vivify them.  It is purpose built to co-operate with the Banzai
+// pipeline system in `lib/banzai`, and will not work correctly with HTML generated
+// using other methods (e.g. Marked).  Modifying it to also work with other sources
+// may compromise the security of GitLab, as it affects how we handle the output from
+// the backend.
 export function renderGFM(element) {
   if (!element) {
     return;
@@ -37,9 +46,7 @@ export function renderGFM(element) {
   const tableHTMLEls = arrayFromAll('table[data-table-fields]');
   const glqlEls = arrayFromAll('[data-canonical-lang="glql"], .language-glql');
   const userEls = arrayFromAll('.gfm-project_member');
-  const popoverEls = arrayFromAll(
-    '.gfm-issue, .gfm-work_item, .gfm-merge_request, .gfm-epic, .gfm-milestone',
-  );
+  const popoverEls = arrayFromAll(GFM_POPOVER_SELECTOR);
   const taskListCheckboxEls = arrayFromAll('.task-list-item-checkbox');
   // eslint-disable-next-line @gitlab/require-i18n-strings
   const imageEls = arrayFromAll('a>img');
@@ -56,4 +63,7 @@ export function renderGFM(element) {
   addAriaLabels(taskListCheckboxEls);
   renderGlql(glqlEls);
   renderImageLightbox(imageEls, element);
+
+  const mdTableEls = arrayFromAll('table:not(.code)');
+  renderStickyTableHeaders(mdTableEls);
 }

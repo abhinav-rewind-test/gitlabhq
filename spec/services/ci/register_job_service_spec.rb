@@ -21,6 +21,48 @@ module Ci
 
       subject(:execute) { service.execute }
 
+      context "when job is present and ready for execution", :aggregate_failures do
+        let_it_be(:runner) { create(:ci_runner, :project, projects: [project]) }
+
+        it 'returns correct payload' do
+          expect(execute.valid?).to be_truthy
+
+          response = Gitlab::Json.parse(execute.build_json)
+
+          expect(response['job_info']['id']).to eq(pending_job.id)
+          expect(response['job_info']['pipeline_id']).to eq(pipeline.id)
+        end
+      end
+
+      context 'when queue size exceeds MAX_QUEUE_DEPTH' do
+        let(:runner) { create(:ci_runner, :instance) }
+        let!(:pending_job_1) { create(:ci_build, :pending, :queued, pipeline: pipeline) }
+        let!(:pending_job_2) { create(:ci_build, :pending, :queued, pipeline: pipeline) }
+        let!(:pending_job_3) { create(:ci_build, :pending, :queued, pipeline: pipeline) }
+
+        before do
+          project.update!(shared_runners_enabled: true)
+          pending_job_1.reload.create_queuing_entry!
+          pending_job_2.reload.create_queuing_entry!
+          pending_job_3.reload.create_queuing_entry!
+          stub_const("#{described_class}::MAX_QUEUE_DEPTH", 2)
+        end
+
+        it 'uses count to determine the full queue size' do
+          result = described_class.new(runner, nil).execute
+
+          expect(result).to be_valid
+          expect(result.build_presented.queue_size).to eq(3)
+        end
+
+        it 'observes the full queue size in metrics' do
+          expect(Gitlab::Ci::Queue::Metrics.queue_size_total).to receive(:observe)
+            .with({ runner_type: runner.runner_type }, 3)
+
+          described_class.new(runner, nil).execute
+        end
+      end
+
       context 'when checking database loadbalancing stickiness' do
         let(:runner) { shared_runner }
 
@@ -878,6 +920,23 @@ module Ci
             expect(pending_job).to be_failed
             expect(pending_job).to be_scheduler_failure
           end
+
+          context 'when the build transitions to running and fails on post-commit' do
+            it 'transitions to scheduler_failure status and clears runtime_metadata' do
+              allow(Ci::Build).to receive(:find_by!).and_return(pending_job)
+              allow(pending_job).to receive(:execute_hooks).and_raise(RuntimeError, 'scheduler error')
+              expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception)
+                                                 .with(anything, a_hash_including(build_id: pending_job.id))
+                                                 .once
+
+              expect(subject).to be_nil
+
+              pending_job.reload
+              expect(pending_job).to be_failed
+              expect(pending_job).to be_scheduler_failure
+              expect(pending_job.runtime_metadata).to be_nil
+            end
+          end
         end
 
         context 'when an exception is raised during a persistent ref creation' do
@@ -1345,6 +1404,74 @@ module Ci
         token_ttl = exp - Time.current.to_i
 
         expect(token_ttl).to be > build.timeout
+      end
+    end
+
+    describe 'routing via environment_key' do
+      # Use a dedicated project/pipeline so the outer pending_build (different project) does not
+      # compete with our pending_job for the same project_runner.
+      let_it_be(:resume_project) { create(:project, shared_runners_enabled: false) }
+      let_it_be(:resume_pipeline) { create(:ci_empty_pipeline, project: resume_project) }
+      let_it_be(:project_runner) { create(:ci_runner, :project, projects: [resume_project]) }
+      let_it_be(:runner_manager) { create(:ci_runner_machine, runner: project_runner, system_xid: 's_testmachine') }
+
+      let(:env_key) { nil }
+      let!(:pending_job) do
+        options = { script: ['echo hi'] }
+        options[:suspend_options] = { environment_key: env_key } unless env_key.nil?
+        create(:ci_build, :pending, :queued, pipeline: resume_pipeline, options: options)
+      end
+
+      def build_on(runner)
+        described_class.new(runner, runner_manager).execute.build
+      end
+
+      before do
+        stub_feature_flags(ci_resume_environment_runner_routing: true)
+      end
+
+      context 'when build has no environment_key in options' do
+        it 'proceeds with normal matching and picks the build' do
+          expect(build_on(project_runner)).to eq(pending_job)
+        end
+      end
+
+      context 'when build has a blank environment_key' do
+        let(:env_key) { '' }
+
+        it 'treats blank key as absent and picks the build' do
+          expect(build_on(project_runner)).to eq(pending_job)
+        end
+      end
+
+      context 'when build has environment_key matching this runner' do
+        let(:env_key) { "#{project_runner.id}/s_testmachine/executor-specific-data" }
+
+        it 'picks the build because the key matches this runner' do
+          expect(build_on(project_runner)).to eq(pending_job)
+        end
+      end
+
+      context 'when build has environment_key for a different runner' do
+        let(:other_runner) { create(:ci_runner, :project, projects: [resume_project]) }
+        let(:env_key) { "#{other_runner.id}/s_testmachine/executor-specific-data" }
+
+        it 'does not pick the build because the key belongs to a different runner' do
+          expect(build_on(project_runner)).to be_nil
+        end
+      end
+
+      context 'when feature flag is disabled' do
+        let(:other_runner) { create(:ci_runner, :project, projects: [resume_project]) }
+        let(:env_key) { "#{other_runner.id}/s_testmachine/executor-specific-data" }
+
+        before do
+          stub_feature_flags(ci_resume_environment_runner_routing: false)
+        end
+
+        it 'skips routing check and allows any runner to pick the build' do
+          expect(build_on(project_runner)).to eq(pending_job)
+        end
       end
     end
   end

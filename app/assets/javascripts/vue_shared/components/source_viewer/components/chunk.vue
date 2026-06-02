@@ -26,6 +26,7 @@ export default {
   directives: {
     SafeHtml,
   },
+  inject: ['blameActions', 'glFeatures'],
   props: {
     isHighlighted: {
       type: Boolean,
@@ -57,7 +58,13 @@ export default {
       type: String,
       required: true,
     },
+    isBlameActive: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
+  emits: ['appear', 'disappear', 'highlighted'],
   data() {
     return {
       number: undefined,
@@ -81,6 +88,8 @@ export default {
   watch: {
     shouldHighlight: {
       handler(newVal) {
+        // One-shot blame-recompute signal, intentionally outside the blobs guard below.
+        if (newVal) this.$nextTick(() => this.$emit('highlighted'));
         if (!this.blobs?.length) return;
 
         if (newVal) {
@@ -104,8 +113,25 @@ export default {
       this.hasAppeared = true;
       this.$emit('appear');
     },
+    // Forward a raw-layer pointer event to the hljs span at the same coords.
+    forwardEventToHighlight({ type, clientX, clientY }) {
+      const overlay = this.$refs.highlightOverlay;
+      if (!overlay) return;
+      overlay.removeAttribute('inert');
+      const target = document
+        .elementsFromPoint(clientX, clientY)
+        .find((el) => overlay.contains(el));
+      if (target) target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX, clientY }));
+      overlay.setAttribute('inert', '');
+    },
     calculateLineNumber(index) {
       return this.startingFrom + index + 1;
+    },
+    handleBlameClick(event, index) {
+      if (this.glFeatures.inlineBlame) {
+        event.preventDefault();
+        this.blameActions.activateInlineBlame(this.calculateLineNumber(index));
+      }
     },
     async addCodeNavigationClasses() {
       await this.$nextTick();
@@ -134,9 +160,13 @@ export default {
         class="diff-line-num line-links line-numbers gl-border-r gl-z-3 gl-flex !gl-p-0"
       >
         <a
+          v-if="!isBlameActive"
           class="file-line-blame gl-select-none !gl-shadow-none"
           data-event-tracking="click_chunk_blame_on_blob_page"
           :href="`${blamePath}${pageSearchString}#L${calculateLineNumber(index)}`"
+          :aria-label="`View blame for line ${calculateLineNumber(index)}`"
+          :data-testid="`blame-link-${calculateLineNumber(index)}`"
+          @click="handleBlameClick($event, index)"
         ></a>
         <a
           :id="`L${calculateLineNumber(index)}`"
@@ -159,8 +189,8 @@ export default {
       @disappear="() => $emit('disappear')"
     >
       <pre
-        class="code highlight gl-m-0 gl-w-full !gl-overflow-visible !gl-border-none !gl-p-0 gl-leading-0"
-      ><code v-if="shouldHighlight" v-safe-html="highlightedContent" :style="codeStyling" data-testid="content"></code><code v-else v-once class="line !gl-whitespace-pre-wrap gl-ml-1" data-testid="content" v-text="rawContent"></code></pre>
+        class="code highlight gl-relative gl-m-0 gl-w-full !gl-overflow-visible !gl-border-none !gl-p-0 gl-leading-0"
+      ><code v-once class="line gl-relative gl-z-1 !gl-whitespace-pre !gl-bg-transparent !gl-text-transparent" :style="codeStyling" data-testid="content" @click="forwardEventToHighlight" @mouseover="forwardEventToHighlight" @mouseout="forwardEventToHighlight" v-text="rawContent"></code><code v-if="shouldHighlight" ref="highlightOverlay" v-safe-html="highlightedContent" :style="codeStyling" class="gl-absolute gl-left-0" inert></code></pre>
     </gl-intersection-observer>
   </div>
 </template>

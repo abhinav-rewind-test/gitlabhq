@@ -26,12 +26,9 @@ import { isLoggedIn } from '~/lib/utils/common_utils';
 import WorkItemChangeTypeModal from 'ee_else_ce/work_items/components/work_item_change_type_modal.vue';
 import {
   CREATION_CONTEXT_RELATED_ITEM,
-  NAME_TO_TEXT_LOWERCASE_MAP,
   STATE_CLOSED,
-  WORK_ITEM_TYPE_NAME_KEY_RESULT,
   WORK_ITEM_TYPE_NAME_OBJECTIVE,
-  WORK_ITEM_TYPE_NAME_EPIC,
-  WORK_ITEM_TYPE_NAME_ISSUE,
+  VIEW_CONTEXT,
   WIDGET_TYPE_NOTIFICATIONS,
 } from '../constants';
 import updateWorkItemMutation from '../graphql/update_work_item.mutation.graphql';
@@ -39,6 +36,7 @@ import updateWorkItemNotificationsMutation from '../graphql/update_work_item_not
 import convertWorkItemMutation from '../graphql/work_item_convert.mutation.graphql';
 import namespaceWorkItemTypesQuery from '../graphql/namespace_work_item_types.query.graphql';
 import getWorkItemNotificationsByIdQuery from '../graphql/get_work_item_notifications_by_id.query.graphql';
+import { findNotificationsWidget } from '../utils';
 import WorkItemStateToggle from './work_item_state_toggle.vue';
 import CreateWorkItemModal from './create_work_item_modal.vue';
 import MoveWorkItemModal from './move_work_item_modal.vue';
@@ -85,6 +83,7 @@ export default {
     getWorkItemTypeConfiguration: {
       default: () => {},
     },
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
   },
   props: {
     fullPath: {
@@ -272,16 +271,14 @@ export default {
       variables() {
         return {
           id: this.workItemId,
+          useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
         };
       },
       skip() {
         return !this.workItemId;
       },
       update(data) {
-        return Boolean(
-          data?.workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_NOTIFICATIONS)
-            ?.subscribed,
-        );
+        return Boolean(findNotificationsWidget(data?.workItem)?.subscribed);
       },
       error(error) {
         Sentry.captureException(error);
@@ -289,31 +286,37 @@ export default {
     },
   },
   computed: {
+    // eslint-disable-next-line vue/no-unused-properties
+    tracking() {
+      return {
+        extra: { viewContext: this.viewContext },
+      };
+    },
     i18n() {
       return {
         deleteWorkItem: sprintf(s__('WorkItem|Delete %{workItemType}'), {
-          workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType],
+          workItemType: this.workItemType,
         }),
         convertError: sprintf(
           s__(
             'WorkItem|Something went wrong while promoting the %{workItemType}. Please try again.',
           ),
-          { workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType] },
+          { workItemType: this.workItemType },
         ),
         copyCreateNoteEmail: sprintf(s__('WorkItem|Copy %{workItemType} email address'), {
-          workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType],
+          workItemType: this.workItemType,
         }),
         copyReferenceError: sprintf(
           s__(
             'WorkItem|Something went wrong while copying the %{workItemType} reference. Please try again.',
           ),
-          { workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType] },
+          { workItemType: this.workItemType },
         ),
         copyCreateNoteEmailError: sprintf(
           s__(
             'WorkItem|Something went wrong while copying the %{workItemType} email address. Please try again.',
           ),
-          { workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType] },
+          { workItemType: this.workItemType },
         ),
       };
     },
@@ -326,20 +329,16 @@ export default {
             'WorkItem|Are you sure you want to delete the %{workItemType}? This action cannot be reversed.',
           );
       return sprintf(message, {
-        workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType],
+        workItemType: this.workItemType,
       });
     },
     workItemTypeConfiguration() {
       return this.getWorkItemTypeConfiguration(this.workItemType);
     },
     canPromoteToObjective() {
-      // User permissions
       if (!this.canUpdateMetadata) return false;
 
-      return (
-        this.workItemTypeConfiguration?.canPromoteToObjective ||
-        this.workItemType === WORK_ITEM_TYPE_NAME_KEY_RESULT
-      );
+      return this.workItemTypeConfiguration?.canPromoteToObjective;
     },
     confidentialItem() {
       return {
@@ -388,9 +387,6 @@ export default {
         webUrl: this.workItemWebUrl,
       };
     },
-    isEpic() {
-      return this.workItemType === WORK_ITEM_TYPE_NAME_EPIC;
-    },
     showChangeType() {
       if (!this.canUpdateMetadata) {
         return false;
@@ -403,14 +399,10 @@ export default {
       return this.canUpdate && !(this.workItemState === STATE_CLOSED && this.isDiscussionLocked);
     },
     showMoveButton() {
-      return (
-        (this.workItemTypeConfiguration?.supportsMoveAction ||
-          this.workItemType === WORK_ITEM_TYPE_NAME_ISSUE) &&
-        this.canMove
-      );
+      return this.workItemTypeConfiguration?.supportsMoveAction && this.canMove;
     },
     showProjectSelector() {
-      return this.workItemTypeConfiguration?.showProjectSelector || !this.isEpic;
+      return this.workItemTypeConfiguration?.showProjectSelector;
     },
     toggleSidebarLabel() {
       return this.showSidebar ? s__('WorkItem|Hide sidebar') : s__('WorkItem|Show sidebar');
@@ -465,6 +457,12 @@ export default {
       }
     },
     toggleNotifications(subscribed) {
+      const notificationWidget = {
+        type: WIDGET_TYPE_NOTIFICATIONS,
+        subscribed,
+        __typename: 'WorkItemWidgetNotifications',
+      };
+
       this.$apollo
         .mutate({
           mutation: updateWorkItemNotificationsMutation,
@@ -473,6 +471,7 @@ export default {
               id: this.workItemId,
               subscribed,
             },
+            useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
           },
           optimisticResponse: {
             workItemSubscribe: {
@@ -480,13 +479,14 @@ export default {
               workItem: {
                 __typename: 'WorkItem',
                 id: this.workItemId,
-                widgets: [
-                  {
-                    type: WIDGET_TYPE_NOTIFICATIONS,
-                    subscribed,
-                    __typename: 'WorkItemWidgetNotifications',
-                  },
-                ],
+                ...(this.glFeatures?.workItemFeaturesField
+                  ? {
+                      features: {
+                        __typename: 'WorkItemFeatures',
+                        notifications: notificationWidget,
+                      },
+                    }
+                  : { widgets: [notificationWidget] }),
               },
             },
           },
@@ -525,6 +525,7 @@ export default {
                 discussionLocked: !this.isDiscussionLocked,
               },
             },
+            useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
           },
         })
         .then(({ data }) => {
@@ -862,7 +863,7 @@ export default {
       :namespace-full-name="namespaceFullName"
       :is-group="isGroup"
       hide-button
-      @workItemCreated="$emit('workItemCreated')"
+      @work-item-created="$emit('work-item-created')"
       @hideModal="isCreateWorkItemModalVisible = false"
     />
     <work-item-change-type-modal

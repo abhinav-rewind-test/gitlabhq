@@ -228,6 +228,7 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
       context 'when geo is not configured' do
         before do
           allow(ActiveRecord::Base).to receive_message_chain('configurations.configs_for').and_return([main_config])
+          allow(ActiveRecord::Base.configurations).to receive(:primary?).and_return(false)
           allow(Gitlab::Database).to receive(:has_config?).with(:geo).and_return(false)
         end
 
@@ -360,6 +361,32 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
             expect(Rake::Task['gitlab:db:alter_cell_sequences_range']).not_to receive(:invoke)
 
             run_rake_task('gitlab:db:configure')
+          end
+        end
+
+        context 'when has cell configuration but cell ID is not found in topology service' do
+          before do
+            allow(connection).to receive(:tables).and_return([])
+
+            allow_next_instance_of(Gitlab::TopologyServiceClient::HealthService) do |instance|
+              allow(instance).to receive(:service_healthy?).and_return(topology_service_healthy)
+            end
+
+            allow_next_instance_of(Gitlab::TopologyServiceClient::CellService) do |instance|
+              allow(instance).to receive(:cell_sequence_ranges)
+                .and_raise(Gitlab::TopologyServiceClient::CellNotFoundError, "Cell '1' not found on Topology Service")
+            end
+          end
+
+          it 'fails the rake task with CellNotFoundError' do
+            expect(Rake::Task['db:schema:load']).to receive(:invoke)
+            expect(Rake::Task['gitlab:db:lock_writes']).not_to receive(:invoke)
+            expect(Rake::Task['db:seed_fu']).not_to receive(:invoke)
+            expect(Rake::Task['db:migrate']).not_to receive(:invoke)
+            expect(Rake::Task['gitlab:db:alter_cell_sequences_range']).not_to receive(:invoke)
+
+            expect { run_rake_task('gitlab:db:configure') }
+              .to raise_error(Gitlab::TopologyServiceClient::CellNotFoundError, "Cell '1' not found on Topology Service")
           end
         end
 
@@ -575,6 +602,35 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
           end
         end
 
+        context 'when has cell configuration but cell ID is not found in topology service' do
+          before do
+            allow(main_model.connection).to receive(:tables).and_return(%w[schema_migrations])
+            allow(ci_model.connection).to receive(:tables).and_return([])
+
+            allow_next_instance_of(Gitlab::TopologyServiceClient::HealthService) do |instance|
+              allow(instance).to receive(:service_healthy?).and_return(topology_service_healthy)
+            end
+
+            allow_next_instance_of(Gitlab::TopologyServiceClient::CellService) do |instance|
+              allow(instance).to receive(:cell_sequence_ranges)
+                .and_raise(Gitlab::TopologyServiceClient::CellNotFoundError, "Cell '1' not found on Topology Service")
+            end
+          end
+
+          it 'fails the rake task with CellNotFoundError' do
+            expect(Rake::Task['db:schema:load:main']).to receive(:invoke)
+            expect(Rake::Task['db:schema:load:ci']).to receive(:invoke)
+            expect(Rake::Task['db:migrate:main']).not_to receive(:invoke)
+            expect(Rake::Task['db:migrate:ci']).not_to receive(:invoke)
+            expect(Rake::Task['db:seed_fu']).not_to receive(:invoke)
+            expect(Rake::Task['gitlab:db:lock_writes']).not_to receive(:invoke)
+            expect(Rake::Task['gitlab:db:alter_cell_sequences_range']).not_to receive(:invoke)
+
+            expect { run_rake_task('gitlab:db:configure') }
+              .to raise_error(Gitlab::TopologyServiceClient::CellNotFoundError, "Cell '1' not found on Topology Service")
+          end
+        end
+
         context 'when has cell configuration but config skips altering cell sequences' do
           let(:skip_sequence_alteration) { true }
 
@@ -648,6 +704,7 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
       before do
         # stub normal migrations
         allow(ActiveRecord::Base).to receive_message_chain('configurations.configs_for').and_return([main_config])
+        allow(ActiveRecord::Base.configurations).to receive(:primary?).and_return(false)
         allow(connection).to receive(:tables).and_return(%w[table1 table2])
         allow(Rake::Task['db:migrate']).to receive(:invoke)
 
@@ -965,7 +1022,7 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
   end
 
   describe 'dictionary generate' do
-    let(:db_config) { instance_double(ActiveRecord::DatabaseConfigurations::HashConfig, name: 'fake_db') }
+    let(:db_config) { instance_double(ActiveRecord::DatabaseConfigurations::HashConfig, name: 'fake_db', database: 'fake_db') }
 
     let(:model) { ActiveRecord::Base }
     let(:connection) { model.connection }
@@ -1192,7 +1249,6 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
     let(:ignored_views) { double(ActiveRecord::Relation, pluck: ['pg_stat_statements']) }
 
     before do
-      allow(Gitlab::Database::PgDepend).to receive(:using_connection).and_yield
       allow(Gitlab::Database::PgDepend).to receive(:from_pg_extension).with('VIEW').and_return(ignored_views)
     end
 
@@ -1206,6 +1262,9 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
 
         allow(connection).to receive(:tables).and_return(tables)
         allow(connection).to receive(:views).and_return(views)
+
+        allow(Backup::DatabaseConnection).to receive(:new).with('main')
+          .and_return(instance_double(Backup::DatabaseConnection, connection: connection))
       end
 
       it 'drops all objects for the database', :aggregate_failures do
@@ -1232,6 +1291,20 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
           allow(main_model.connection).to receive(:quote_table_name).with(name).and_return("\"#{name}\"")
           allow(ci_model.connection).to receive(:quote_table_name).with(name).and_return("\"#{name}\"")
         end
+
+        allow(Backup::DatabaseConnection).to receive(:new).with('main')
+          .and_return(instance_double(Backup::DatabaseConnection, connection: main_model.connection))
+        allow(Backup::DatabaseConnection).to receive(:new).with('ci')
+          .and_return(instance_double(Backup::DatabaseConnection, connection: ci_model.connection))
+      end
+
+      it 'does not use PgDepend.using_connection to avoid SharedModel connection conflicts' do
+        expect(Gitlab::Database::PgDepend).not_to receive(:using_connection)
+
+        allow(main_model.connection).to receive(:execute).and_return(nil)
+        allow(ci_model.connection).to receive(:execute).and_return(nil)
+
+        run_rake_task('gitlab:db:drop_tables')
       end
 
       it 'drops all objects for all databases', :aggregate_failures do
@@ -1407,6 +1480,14 @@ RSpec.describe 'gitlab:db namespace rake task', :silence_stdout, feature_categor
             .to raise_error(/Don't know how to build task 'gitlab:db:reindex:geo'/)
         end
       end
+    end
+  end
+
+  describe 'reindex:stats' do
+    it 'delegates to Gitlab::Database::Reindexing.stats' do
+      expect(Gitlab::Database::Reindexing).to receive(:stats).with(no_args)
+
+      run_rake_task('gitlab:db:reindex:stats')
     end
   end
 

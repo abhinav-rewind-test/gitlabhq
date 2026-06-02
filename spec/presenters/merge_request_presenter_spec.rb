@@ -8,11 +8,6 @@ RSpec.describe MergeRequestPresenter do
 
   let_it_be(:user) { create(:user) }
 
-  before do
-    # required for the issues/work_items URLs
-    stub_feature_flags(work_item_planning_view: false)
-  end
-
   describe '#mergeable_discussions_state' do
     subject { described_class.new(resource).mergeable_discussions_state }
 
@@ -126,8 +121,8 @@ RSpec.describe MergeRequestPresenter do
 
   context 'issues links' do
     let_it_be(:project) { create(:project, :private, :repository, creator: user, namespace: user.namespace) }
-    let_it_be(:issue_a) { create(:issue, project: project, iid: 1) }
-    let_it_be(:issue_b) { create(:issue, project: project, iid: 3) }
+    let_it_be(:issue_a, freeze: false) { create(:issue, project: project, iid: 1) }
+    let_it_be(:issue_b, freeze: false) { create(:issue, project: project, iid: 3) }
 
     let_it_be(:resource) do
       create(

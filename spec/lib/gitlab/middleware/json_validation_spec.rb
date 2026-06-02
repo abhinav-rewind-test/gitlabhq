@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
+RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :api do
   let(:app) { double(:app) } # rubocop:disable RSpec/VerifiedDoubles -- stubbed app
   let(:middleware) { described_class.new(app, options) }
   let(:options) { {} }
@@ -61,8 +61,8 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
       middleware = described_class.new(app, custom_options)
 
       route_config_map = middleware.instance_variable_get(:@route_config_map)
-      # Should include default route configs (7) plus custom route limits (2)
-      expect(route_config_map.size).to eq(9)
+      # Should include default route configs (10) plus custom route limits (2)
+      expect(route_config_map.size).to eq(12)
       expect(route_config_map.first).to be_a(Hash)
       expect(route_config_map.first).to have_key(:regex)
       expect(route_config_map.first).to have_key(:methods)
@@ -116,7 +116,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
         expect(app).to receive(:call).with(env)
 
         result = middleware.call(env)
-        expect(result).to eq([200, {}, ['OK']])
+        expect(result).to match_array([200, {}, ['OK']])
       end
     end
 
@@ -175,6 +175,12 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
 
         it_behaves_like 'validates JSON content type'
       end
+
+      context 'with application/vnd.docker.distribution.events.v1+json' do
+        let(:content_type) { 'application/vnd.docker.distribution.events.v1+json' }
+
+        it_behaves_like 'validates JSON content type'
+      end
     end
 
     context 'with empty body' do
@@ -195,7 +201,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
         expect(app).to receive(:call).with(env)
 
         result = middleware.call(env)
-        expect(result).to eq([200, {}, ['OK']])
+        expect(result).to match_array([200, {}, ['OK']])
       end
 
       it 'rewinds the request body after reading' do
@@ -263,7 +269,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           expect(app).to receive(:call).with(env)
 
           result = middleware.call(env)
-          expect(result).to eq([200, {}, ['OK']])
+          expect(result).to match_array([200, {}, ['OK']])
         end
       end
     end
@@ -351,7 +357,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
         expect(app).to receive(:call).with(env)
 
         result = middleware.call(env)
-        expect(result).to eq([200, {}, ['OK']])
+        expect(result).to match_array([200, {}, ['OK']])
       end
     end
 
@@ -387,36 +393,77 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           }
         end
 
-        it 'validates internal API' do
-          # Should validate but not fail due to route-specific internal API limits
-          expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
-          expect(app).to receive(:call).with(env)
+        context 'when request authorized' do
+          before do
+            allow(::Gitlab::Middleware::InternalApiAuthenticator).to receive(:verify!).and_return(true)
+          end
 
-          result = middleware.call(env)
+          it 'validates internal API' do
+            # Should validate but not fail due to route-specific internal API limits
+            expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
+            expect(app).to receive(:call).with(env)
 
-          expect(result).to eq([200, {}, ['OK']])
-        end
-      end
+            result = middleware.call(env)
 
-      context 'for Duo Workflow paths' do
-        let(:env) do
-          {
-            'REQUEST_METHOD' => 'POST',
-            'CONTENT_TYPE' => content_type,
-            'PATH_INFO' => '/api/v4/ai/duo_workflows/workflows/123',
-            'rack.input' => StringIO.new(body)
-          }
+            expect(result).to match_array([200, {}, ['OK']])
+          end
         end
 
-        it 'validates Duo Workflow API' do
-          # Should validate but not fail due to route-specific internal API limits
+        context 'when request unauthorized' do
+          before do
+            allow(::Gitlab::Middleware::InternalApiAuthenticator).to receive(:verify!).and_return(false)
+          end
 
-          expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
-          expect(app).to receive(:call).with(env)
+          it 'returns and error response without parsing JSON body' do
+            # When internal requests are unauthorized they should not parse the body of the request
+            expect(::Gitlab::Json::StreamValidator).not_to receive(:new).and_call_original
+            expect(app).not_to receive(:call).with(env)
 
-          result = middleware.call(env)
+            result = middleware.call(env)
 
-          expect(result).to eq([200, {}, ['OK']])
+            expect(result).to match_array(
+              [401, { "Content-Type" => "application/json" }, ["{\"error\":\"Unauthorized\"}"]]
+            )
+          end
+        end
+
+        context 'when request is GET' do
+          let(:env) do
+            {
+              'REQUEST_METHOD' => 'GET',
+              'CONTENT_TYPE' => content_type,
+              'PATH_INFO' => '/api/v4/internal/some/endpoint',
+              'rack.input' => StringIO.new(body)
+            }
+          end
+
+          it 'strips the request body and continues without authenticating' do
+            expect(::Gitlab::Middleware::InternalApiAuthenticator).not_to receive(:verify!)
+            expect(app).to receive(:call).with(env)
+
+            middleware.call(env)
+
+            expect(env['rack.input'].read).to eq('{}')
+          end
+        end
+
+        context 'for Duo Workflow GET requests' do
+          let(:env) do
+            {
+              'REQUEST_METHOD' => 'GET',
+              'CONTENT_TYPE' => content_type,
+              'PATH_INFO' => '/api/v4/ai/duo_workflows/workflows/123',
+              'rack.input' => StringIO.new(body)
+            }
+          end
+
+          it 'strips the request body and passes through' do
+            expect(app).to receive(:call).with(env)
+
+            middleware.call(env)
+
+            expect(env['rack.input'].read).to eq('{}')
+          end
         end
       end
     end
@@ -424,9 +471,11 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
     context 'with custom limits for URLs' do
       let(:options) { { default_limits: { max_depth: 1, mode: :enforced } } }
       let(:body) { '{"deeply": {"nested": {"json": "that would normally fail"}}}' }
+      let(:request_method) { 'POST' }
+
       let(:env) do
         {
-          'REQUEST_METHOD' => 'POST',
+          'REQUEST_METHOD' => request_method,
           'CONTENT_TYPE' => content_type,
           'PATH_INFO' => path_info,
           'rack.input' => StringIO.new(body)
@@ -457,7 +506,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
             expect(app).to receive(:call).with(env)
 
             result = middleware.call(env)
-            expect(result).to eq([200, {}, ['OK']])
+            expect(result).to match_array([200, {}, ['OK']])
           end
         end
       end
@@ -470,7 +519,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           expect(app).to receive(:call).with(env)
 
           result = middleware.call(env)
-          expect(result).to eq([200, {}, ['OK']])
+          expect(result).to match_array([200, {}, ['OK']])
         end
 
         context 'for a very large body exceeding 10 megabytes' do
@@ -478,16 +527,39 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
 
           it 'rejects the large payload' do
             result = middleware.call(env)
-            expect(result).to eq([400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']])
+            expect(result).to match_array(
+              [400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']]
+            )
           end
         end
       end
 
       context 'with internal API routes' do
+        before do
+          allow(::Gitlab::Middleware::InternalApiAuthenticator).to receive(:verify!).and_return(true)
+        end
+
         where(:description, :path_info) do
           [
             ['Internal API endpoint', '/api/v4/internal/some/endpoint'],
-            ['Internal API nested path', '/api/v4/internal/pages/domains'],
+            ['Internal API nested path', '/api/v4/internal/pages/domains']
+          ]
+        end
+
+        with_them do
+          it 'validates payloads' do
+            expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
+            expect(app).to receive(:call).with(env)
+
+            result = middleware.call(env)
+            expect(result).to eq([200, {}, ['OK']])
+          end
+        end
+      end
+
+      context 'with Duo Workflow routes' do
+        where(:description, :path_info) do
+          [
             ['Duo workflow endpoint', '/api/v4/ai/duo_workflows/workflows/123'],
             ['Duo workflow nested path', '/api/v4/ai/duo_workflows/workflows/456/execute']
           ]
@@ -499,7 +571,103 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
             expect(app).to receive(:call).with(env)
 
             result = middleware.call(env)
+            expect(result).to match_array([200, {}, ['OK']])
+          end
+        end
+
+        context 'for a body exceeding 4 megabytes' do
+          let(:env) do
+            {
+              'REQUEST_METHOD' => 'POST',
+              'CONTENT_TYPE' => content_type,
+              'PATH_INFO' => '/api/v4/ai/duo_workflows/workflows/123',
+              'rack.input' => StringIO.new(body)
+            }
+          end
+
+          let(:body) { "{\"json\" : \"#{'a' * 4_200_000}\"}" }
+
+          it 'rejects the large payload' do
+            result = middleware.call(env)
+            expect(result).to eq([400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']])
+          end
+        end
+      end
+
+      context 'for usage_data/track_events endpoint' do
+        let(:path_info) { '/api/v4/usage_data/track_events' }
+
+        it 'validates payloads' do
+          expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
+          expect(app).to receive(:call).with(env)
+
+          result = middleware.call(env)
+          expect(result).to eq([200, {}, ['OK']])
+        end
+
+        context 'for a body exceeding 2 megabytes' do
+          let(:body) { "{\"json\" : \"#{'a' * 2_100_000}\"}" }
+
+          it 'rejects the large payload' do
+            result = middleware.call(env)
+            expect(result).to eq([400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']])
+          end
+        end
+      end
+
+      context 'for protected_branches endpoint' do
+        where(:request_method, :description, :path_info) do
+          [
+            ['POST', 'to protected_branches', '/api/v4/projects/123/protected_branches'],
+            ['PATCH', 'to protected_branches with name', '/api/v4/projects/123/protected_branches/main'],
+            ['POST', 'with URL-encoded project ID', '/api/v4/projects/group%2Fproject/protected_branches']
+          ]
+        end
+
+        with_them do
+          it 'validates payloads' do
+            expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
+            expect(app).to receive(:call).with(env)
+
+            result = middleware.call(env)
             expect(result).to eq([200, {}, ['OK']])
+          end
+
+          context 'for a body exceeding 3 megabytes' do
+            let(:body) { "{\"json\" : \"#{'a' * 3_200_000}\"}" }
+
+            it 'rejects the large payload' do
+              result = middleware.call(env)
+              expect(result).to eq([400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']])
+            end
+          end
+        end
+      end
+
+      context 'for protected_tags endpoint' do
+        where(:description, :path_info) do
+          [
+            ['POST to protected_tags', '/api/v4/projects/123/protected_tags'],
+            ['POST with URL-encoded project ID', '/api/v4/projects/group%2Fproject/protected_tags']
+          ]
+        end
+
+        with_them do
+          it 'validates payloads' do
+            expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
+            expect(app).to receive(:call).with(env)
+
+            result = middleware.call(env)
+            expect(result).to eq([200, {}, ['OK']])
+          end
+
+          context 'for a body exceeding 1 megabyte' do
+            let(:body) { "{\"json\" : \"#{'a' * 1_100_000}\"}" }
+
+            it 'rejects the large payload' do
+              result = middleware.call(env)
+              expect(result).to eq([400, { "Content-Type" => "application/json" }, ['{"error":"JSON body too large"}']])
+            end
           end
         end
       end
@@ -543,7 +711,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           expect(app).to receive(:call).with(env)
 
           result = middleware.call(env)
-          expect(result).to eq([200, {}, ['OK']])
+          expect(result).to match_array([200, {}, ['OK']])
         end
       end
 
@@ -632,7 +800,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
             expect(app).to receive(:call).with(env)
 
             result = middleware.call(env)
-            expect(result).to eq([200, {}, ['OK']])
+            expect(result).to match_array([200, {}, ['OK']])
           end
         end
       end
@@ -681,7 +849,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           expect(app).to receive(:call).with(env)
 
           result = middleware.call(env)
-          expect(result).to eq([200, {}, ['OK']])
+          expect(result).to match_array([200, {}, ['OK']])
         end
       end
 
@@ -702,7 +870,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
           expect(::Gitlab::Json::StreamValidator).to receive(:new).and_call_original
 
           result = middleware.call(env)
-          expect(result).to eq([200, {}, ['OK']])
+          expect(result).to match_array([200, {}, ['OK']])
         end
       end
 
@@ -781,7 +949,7 @@ RSpec.describe Gitlab::Middleware::JsonValidation, feature_category: :shared do
             expect(app).to receive(:call).with(env)
             expect(::Gitlab::Json::StreamValidator).not_to receive(:new)
             result = middleware.call(env)
-            expect(result).to eq([200, {}, ['OK']])
+            expect(result).to match_array([200, {}, ['OK']])
           end
         end
 

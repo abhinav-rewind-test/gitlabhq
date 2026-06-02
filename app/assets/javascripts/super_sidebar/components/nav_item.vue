@@ -1,5 +1,5 @@
 <script>
-import { GlAvatar, GlButton, GlIcon, GlBadge, GlTooltipDirective } from '@gitlab/ui';
+import { GlAvatar, GlButton, GlIcon, GlTooltipDirective } from '@gitlab/ui';
 import { s__, sprintf } from '~/locale';
 import {
   CLICK_MENU_ITEM_ACTION,
@@ -22,7 +22,6 @@ export default {
     GlAvatar,
     GlButton,
     GlIcon,
-    GlBadge,
     NavItemLink,
     NavItemRouterLink,
   },
@@ -80,7 +79,10 @@ export default {
   computed: {
     pillData() {
       if (this.item.pill_count_field) {
-        return this.asyncCount[this.item.pill_count_field];
+        const countField = this.item.pill_count_field;
+        const hasAsyncCount = Object.prototype.hasOwnProperty.call(this.asyncCount, countField);
+
+        return hasAsyncCount ? this.asyncCount[countField] : '-';
       }
       return this.item.pill_count;
     },
@@ -142,8 +144,7 @@ export default {
       return {
         'gl-px-2 gl-mx-2 gl-leading-normal': this.isSubitem,
         'gl-px-2': !this.isSubitem,
-        '!gl-pl-5 gl-rounded-small': this.isFlyout,
-        'gl-rounded-base': !this.isFlyout,
+        '!gl-pl-5 gl-rounded-default': this.isFlyout,
         [this.item.link_classes]: this.item.link_classes,
         ...this.linkClasses,
       };
@@ -169,9 +170,6 @@ export default {
       return sprintf(this.$options.i18n.unpin, {
         title: this.item.title,
       });
-    },
-    hasBadge() {
-      return Boolean(this.item.badge);
     },
   },
   mounted() {
@@ -214,7 +212,7 @@ export default {
     <component
       :is="navItemLinkComponent"
       v-bind="linkProps"
-      class="super-sidebar-nav-item show-on-focus-or-hover--control hide-on-focus-or-hover--control gl-relative gl-mb-1 gl-flex gl-items-center gl-gap-3 gl-py-1 !gl-text-default !gl-no-underline focus:gl-focus-inset"
+      class="application-chrome-nav-item super-sidebar-nav-item show-on-focus-or-hover--control hide-on-focus-or-hover--control gl-relative gl-mb-1 gl-flex gl-items-center gl-gap-3 gl-py-1 !gl-no-underline focus:gl-focus-inset"
       :class="computedLinkClasses"
       data-testid="nav-item-link"
       :aria-label="item.title"
@@ -254,21 +252,11 @@ export default {
       </div>
       <div
         v-show="!isIconOnly"
-        class="gl-grow gl-text-default gl-break-anywhere"
+        class="gl-grow gl-break-anywhere"
         :class="{ 'gl-w-max': isFlyout, 'nav-item-link-label': !isFlyout }"
         data-testid="nav-item-link-label"
       >
         {{ item.title }}
-        <gl-badge
-          v-if="hasBadge"
-          v-gl-tooltip="item.badge.tooltip"
-          variant="info"
-          size="sm"
-          data-testid="nav-item-feature-announcement-badge"
-          class="nav-item-feature-announcement-badge"
-        >
-          {{ item.badge.label }}
-        </gl-badge>
         <div v-if="item.subtitle" class="gl-truncate-end gl-text-sm gl-text-subtle">
           {{ item.subtitle }}
         </div>
@@ -278,52 +266,35 @@ export default {
         v-if="hasEndSpace && !isIconOnly"
         class="nav-item-link-badge gl-flex gl-min-w-6 gl-items-start gl-justify-end"
       >
-        <gl-badge
+        <span
           v-if="hasPill"
-          variant="neutral"
-          class="gl-mr-1"
+          class="gl-mr-3 gl-min-w-3 gl-text-center gl-text-sm"
           :class="{
             'hide-on-focus-or-hover--target transition-opacity-on-hover--target': isPinnable,
           }"
           data-testid="pill-badge"
         >
           {{ pillData }}
-        </gl-badge>
+        </span>
       </span>
     </component>
-    <template v-if="isPinnable">
-      <gl-button
-        v-if="isPinned"
-        v-gl-tooltip.noninteractive.right.viewport="$options.i18n.unpinItem"
-        :aria-label="unpinAriaLabel"
-        category="tertiary"
-        class="show-on-focus-or-hover--target transition-opacity-on-hover--target always-animate gl-absolute gl-right-3 gl-top-1/2 -gl-translate-y-1/2"
-        :class="{ 'gl-pointer-events-none': !canClickPinButton }"
-        data-testid="nav-item-unpin"
-        icon="thumbtack-solid"
-        size="small"
-        @click="pinRemove"
-        @keydown.enter.stop.prevent="pinRemove"
-        @keydown.space.stop.prevent="pinRemove"
-        @keydown.escape="$emit('nav-pin-keydown-esc')"
-        @transitionend="togglePointerEvents"
-      />
-      <gl-button
-        v-else
-        v-gl-tooltip.noninteractive.right.viewport="$options.i18n.pinItem"
-        :aria-label="pinAriaLabel"
-        category="tertiary"
-        class="show-on-focus-or-hover--target transition-opacity-on-hover--target always-animate gl-absolute gl-right-3 gl-top-1/2 -gl-translate-y-1/2"
-        :class="{ 'gl-pointer-events-none': !canClickPinButton }"
-        data-testid="nav-item-pin"
-        icon="thumbtack"
-        size="small"
-        @click="pinAdd"
-        @keydown.enter.stop.prevent="pinAdd"
-        @keydown.space.stop.prevent="pinAdd"
-        @keydown.escape="$emit('nav-pin-keydown-esc')"
-        @transitionend="togglePointerEvents"
-      />
-    </template>
+    <gl-button
+      v-if="isPinnable"
+      v-gl-tooltip.noninteractive.right.viewport="
+        isPinned ? $options.i18n.unpinItem : $options.i18n.pinItem
+      "
+      :aria-label="isPinned ? unpinAriaLabel : pinAriaLabel"
+      category="tertiary"
+      class="show-on-focus-or-hover--target transition-opacity-on-hover--target always-animate gl-absolute gl-right-3 gl-top-1/2 -gl-translate-y-1/2"
+      :class="{ 'gl-pointer-events-none': !canClickPinButton }"
+      :data-testid="isPinned ? 'nav-item-unpin' : 'nav-item-pin'"
+      :icon="isPinned ? 'thumbtack-solid' : 'thumbtack'"
+      size="small"
+      @click="isPinned ? pinRemove() : pinAdd()"
+      @keydown.enter.stop.prevent="isPinned ? pinRemove() : pinAdd()"
+      @keydown.space.stop.prevent="isPinned ? pinRemove() : pinAdd()"
+      @keydown.escape="$emit('nav-pin-keydown-esc')"
+      @transitionend="togglePointerEvents"
+    />
   </li>
 </template>

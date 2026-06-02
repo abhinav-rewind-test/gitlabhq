@@ -8,14 +8,14 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
   let_it_be(:current_user) { create(:user) }
   let_it_be(:reporter) { create(:user) }
 
-  let_it_be(:group)         { create(:group) }
-  let_it_be(:project)       { create(:project, group: group) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:project, freeze: false) { create(:project, group: group) }
   let_it_be(:other_project) { create(:project, group: group) }
 
   let_it_be(:started_milestone) { create(:milestone, project: project, title: "started milestone", start_date: 1.day.ago) }
   let_it_be(:assignee)  { create(:user) }
   let_it_be(:issue1)    { create(:incident, project: project, state: :opened, created_at: 3.hours.ago, updated_at: 3.hours.ago, milestone: started_milestone) }
-  let_it_be(:issue2)    { create(:issue, project: project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago, assignees: [assignee]) }
+  let_it_be(:issue2, freeze: false) { create(:issue, project: project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago, assignees: [assignee]) }
   let_it_be(:issue3)    { create(:issue, project: other_project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago, assignees: [assignee]) }
   let_it_be(:issue4)    { create(:issue) }
   let_it_be(:label1)    { create(:label, project: project) }
@@ -401,7 +401,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by closed at' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:closed_issue1) { create(:issue, project: project, closed_at: 3.days.from_now) }
           let_it_be(:closed_issue2) { create(:issue, project: project, closed_at: nil) }
           let_it_be(:closed_issue3) { create(:issue, project: project, closed_at: 2.days.ago) }
@@ -417,7 +417,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by due date' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:due_issue1) { create(:issue, project: project, due_date: 3.days.from_now) }
           let_it_be(:due_issue2) { create(:issue, project: project, due_date: nil) }
           let_it_be(:due_issue3) { create(:issue, project: project, due_date: 2.days.ago) }
@@ -433,7 +433,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by relative position' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:relative_issue1) { create(:issue, project: project, relative_position: 2000) }
           let_it_be(:relative_issue2) { create(:issue, project: project, relative_position: nil) }
           let_it_be(:relative_issue3) { create(:issue, project: project, relative_position: 1000) }
@@ -445,7 +445,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by priority' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
           let_it_be(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
           let_it_be(:priority_label1) { create(:label, project: project, priority: 1) }
@@ -465,7 +465,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by label priority' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:label1) { create(:label, project: project, priority: 1) }
           let_it_be(:label2) { create(:label, project: project, priority: 5) }
           let_it_be(:label3) { create(:label, project: project, priority: 10) }
@@ -484,7 +484,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by milestone due date' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
           let_it_be(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
           let_it_be(:milestone_issue1) { create(:issue, project: project) }
@@ -501,7 +501,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by severity' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:issue_high_severity) { create_issue_with_severity(project, severity: :high) }
           let_it_be(:issue_low_severity) { create_issue_with_severity(project, severity: :low) }
           let_it_be(:issue_no_severity) { create(:incident, project: project) }
@@ -516,9 +516,9 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by popularity' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:issue1) { create(:issue, project: project) } # has one upvote
-          let_it_be(:issue2) { create(:issue, project: project) } # has two upvote
+          let_it_be(:issue2, freeze: false) { create(:issue, project: project) } # has two upvote
           let_it_be(:issue3) { create(:issue, project: project) }
           let_it_be(:issue4) { create(:issue, project: project) } # has one upvote
 
@@ -539,7 +539,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by escalation status' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:triggered_incident) { create(:incident, :with_escalation_status, project: project) }
           let_it_be(:issue_no_status) { create(:issue, project: project) }
           let_it_be(:resolved_incident) do
@@ -578,9 +578,9 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
         end
 
         context 'when sorting by title' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
           let_it_be(:issue1) { create(:issue, project: project, title: 'foo') }
-          let_it_be(:issue2) { create(:issue, project: project, title: 'bar') }
+          let_it_be(:issue2, freeze: false) { create(:issue, project: project, title: 'bar') }
           let_it_be(:issue3) { create(:issue, project: project, title: 'baz') }
           let_it_be(:issue4) { create(:issue, project: project, title: 'Baz 2') }
 
@@ -603,13 +603,13 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
       end
 
       it 'finds a specific issue with iid', :request_store do
-        result = batch_sync(max_queries: 11) { resolve_issues(iid: issue1.iid).to_a }
+        result = batch_sync(max_queries: 12) { resolve_issues(iid: issue1.iid).to_a }
 
         expect(result).to contain_exactly(issue1)
       end
 
       it 'batches queries that only include IIDs', :request_store do
-        result = batch_sync(max_queries: 11) do
+        result = batch_sync(max_queries: 13) do
           [issue1, issue2]
             .map { |issue| resolve_issues(iid: issue.iid.to_s) }
             .flat_map(&:to_a)
@@ -619,7 +619,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_plannin
       end
 
       it 'finds a specific issue with iids', :request_store do
-        result = batch_sync(max_queries: 11) do
+        result = batch_sync(max_queries: 12) do
           resolve_issues(iids: [issue1.iid]).to_a
         end
 

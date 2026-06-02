@@ -121,11 +121,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Duration, feature_category: :continuous_int
     end
 
     def calculate(data)
-      periods = data.shuffle.map do |(first, last)|
-        described_class::Period.new(first, last)
+      periods = data.shuffle.map do |(started_at, finished_at)|
+        described_class::Period.new(started_at: started_at, finished_at: finished_at)
       end
 
-      described_class.send(:from_periods, periods.sort_by(&:first))
+      described_class.send(:from_periods, periods.sort_by(&:started_at))
     end
   end
 
@@ -277,13 +277,13 @@ RSpec.describe Gitlab::Ci::Pipeline::Duration, feature_category: :continuous_int
       travel_to(current) do
         expect do
           described_class.from_pipeline(pipeline)
-        end.not_to exceed_query_limit(1)
+        end.not_to exceed_query_limit(2)
 
         create_list(:ci_build, 2, :success, pipeline: pipeline, started_at: start_time, finished_at: start_time + 50)
 
         expect do
           described_class.from_pipeline(pipeline)
-        end.not_to exceed_query_limit(1)
+        end.not_to exceed_query_limit(2)
       end
     end
 
@@ -291,7 +291,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Duration, feature_category: :continuous_int
       travel_to(current) do
         expect do
           described_class.from_pipeline(pipeline)
-        end.not_to exceed_query_limit(1)
+        end.not_to exceed_query_limit(2)
 
         create_list(
           :ci_bridge, 2, :success,
@@ -304,7 +304,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Duration, feature_category: :continuous_int
 
         expect do
           described_class.from_pipeline(pipeline)
-        end.not_to exceed_query_limit(1)
+        end.not_to exceed_query_limit(2)
       end
     end
 

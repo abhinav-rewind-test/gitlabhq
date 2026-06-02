@@ -6,7 +6,7 @@ RSpec.shared_context 'with current_organization setting' do
   include_context 'with Organization URL helpers'
 
   unless method_defined?(:current_organization)
-    let_it_be(:current_organization, reload: true) { create(:common_organization) }
+    let_it_be_with_reload(:current_organization) { create(:common_organization) }
   end
 
   before do |example|
@@ -51,9 +51,20 @@ RSpec.configure do |rspec|
   # This ensures Current.organization is always set, preventing issues where
   # controllers or services rely on organization context.
   rspec.include_context 'with current_organization setting', type: :controller
-  rspec.include_context 'with current_organization setting', type: :request
+  rspec.include_context 'with current_organization setting', type: :graphql
+
+  # Auto-tag GraphQL request specs for organization context inclusion
+  rspec.define_derived_metadata(type: :request) do |metadata|
+    metadata[:with_current_organization] = true if metadata[:file_path]&.include?('spec/requests/api/graphql/')
+  end
 
   # Allow explicit opt-in for non-controller specs using :with_current_organization tag
   rspec.include_context 'with current_organization setting', with_current_organization: true
   rspec.include_context 'with Organization URL helpers', with_organization_url_helpers: true
+end
+
+def seed_internal_bot(bot_type)
+  before do
+    Users::Internal.in_organization(current_organization).public_send(bot_type)
+  end
 end

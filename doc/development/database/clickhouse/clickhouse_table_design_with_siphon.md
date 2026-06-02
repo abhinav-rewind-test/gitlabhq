@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: ClickHouse table design with Siphon
 ---
 
@@ -44,11 +44,20 @@ In this example, we are replicating the `labels` table to ClickHouse.
 
 ### ClickHouse Table Creation
 
-You can generate a ClickHouse database migration using a Rake task. This transforms the PostgreSQL schema for the specified table into a Siphon-compatible ClickHouse table definition.
+You can generate a ClickHouse database migration and Siphon configuration with a Rake task.
+The Rake task transforms the PostgreSQL schema for the specified table into a Siphon-compatible
+ClickHouse table definition.
 
 ```shell
 bundle exec rails generate gitlab:click_house:siphon labels
 ```
+
+The generator creates two files:
+
+- `db/click_house/migrate/main/<TIMESTAMP>_create_siphon_labels.rb`: The ClickHouse migration with
+  the table definition.
+- `db/siphon/tables/labels.yml`: The Siphon configuration metadata file that registers the table
+  for replication.
 
 Generated `CREATE TABLE` statement:
 
@@ -70,7 +79,7 @@ Generated `CREATE TABLE` statement:
         lock_on_merge Bool DEFAULT false,
         archived Bool DEFAULT false,
         organization_id Nullable(Int64),
-        _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now(),
+        _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC'),
         _siphon_deleted Bool DEFAULT FALSE
       )
       ENGINE = ReplacingMergeTree(_siphon_replicated_at, _siphon_deleted)
@@ -94,22 +103,85 @@ Examples for such columns:
 
 ### Siphon Configuration
 
-After the table is created, you should update your Siphon configuration in `gdk.yml` and add your table:
+The generator writes the Siphon metadata file to `db/siphon/tables/<table>.yml`. GDK detects these
+files automatically during `gdk reconfigure`. Edit the file to customize the replication targets.
+
+The generated `db/siphon/tables/labels.yml` looks like:
 
 ```yaml
-siphon:
-  enabled: true
-  tables:
-  - organizations
-  - namespaces
-  - projects
-  - labels
+table: labels
+database: main
+replication_targets:
+  - name: clickhouse_main
+    target: siphon_labels
 ```
 
-After this change, you can restart the Siphon-related processes in your GDK and eventually you should see data synchronized to your table.
+The configuration fields are:
+
+- **`table`**: The source table name in PostgreSQL.
+- **`database`**: The database identifier (`main`, `ci`, or `sec`).
+- **`ignored_columns`** *(optional)*: Columns to exclude from replication.
+- **`replication_targets`**: Specifies destination details:
+  - **`name`**: Must be `clickhouse_main` for ClickHouse replication.
+  - **`target`**: The destination table name in ClickHouse.
+  - **`priority`** *(optional)*: Lower values replicate first during the initial snapshot (used only in GDK).
+  - **`dedup_by`** *(optional)*: Columns the consumer uses to locate existing rows when applying `UPDATE`
+    and `DELETE` events. Must match the PostgreSQL primary key columns. Required when the ClickHouse
+    primary key includes columns beyond the PostgreSQL primary key (for example, `traversal_path`).
+  - **`dedup_by_table`** *(optional)*: A different ClickHouse table to inspect for matching primary keys
+    when the `target` is not the table that stores the rows (for example, when `target` is a `Null`
+    landing table and the actual storage table has a different name). The configured table's primary
+    keys must contain the PostgreSQL primary key columns at the end.
+  - **`dedup_by_columns_lookup_table`** *(optional)*: A secondary ClickHouse table used to look up the
+    full primary key from the PostgreSQL primary key columns. The lookup table's primary keys must
+    start with the PostgreSQL primary key columns. Use this when the main `target` table's primary key
+    starts with columns that are not part of the PostgreSQL primary key (for example, ordering by
+    `(merge_request_diff_id, relative_order, traversal_path)` while the PostgreSQL primary key is
+    `(merge_request_diff_id, relative_order)`).
+  - **`reconcile`** *(optional)*: Configuration for the periodic consistency check job that repairs
+    denormalized columns.
+    - **`column`**: The denormalized column to reconcile (for example, `traversal_path`).
+    - **`expression_key_columns`**: The source columns used to compute the denormalized value. Must
+      match the sharding key columns defined in `db/docs/<table>.yml`.
+
+The following example replicates `merge_requests` and reconciles the `traversal_path` column from
+`target_project_id`:
+
+```yaml
+table: merge_requests
+database: main
+replication_targets:
+  - name: clickhouse_main
+    target: siphon_merge_requests
+    dedup_by_table: merge_requests
+    dedup_by:
+      - id
+    reconcile:
+      column: traversal_path
+      expression_key_columns:
+        - target_project_id
+```
+
+The following example uses a separate lookup table to resolve the full ClickHouse primary key from the
+PostgreSQL primary key columns:
+
+```yaml
+table: merge_request_diff_files_99208b8fac
+database: main
+replication_targets:
+  - name: clickhouse_main
+    target: siphon_merge_request_diff_files
+    dedup_by_columns_lookup_table: siphon_merge_request_diff_files_pg_pkey_ordered
+    dedup_by:
+      - merge_request_diff_id
+      - relative_order
+```
+
+After creating the file, apply the configuration and restart Siphon:
 
 ```shell
-gdk restart siphon-clickhouse-consumer siphon-producer-main-db
+gdk reconfigure
+gdk restart siphon
 ```
 
 The updated configuration triggers Siphon to perform two actions:
@@ -212,19 +284,24 @@ Generated `CREATE TABLE` statement:
           coalesce(organization_id, 0) != 0, dictGetOrDefault('organization_traversal_paths_dict', 'traversal_path', organization_id, '0/'),
           '0/'
         ),
-        _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now(),
-        _siphon_deleted Bool DEFAULT FALSE,
-        PROJECTION pg_pkey_ordered (
-          SELECT *
-          ORDER BY id
-        )
+        _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC'),
+        _siphon_deleted Bool DEFAULT FALSE
       )
       ENGINE = ReplacingMergeTree(_siphon_replicated_at, _siphon_deleted)
       PRIMARY KEY (traversal_path, id)
-      SETTINGS deduplicate_merge_projection_mode = 'rebuild'
 ```
 
-The primary keys for the table are: `(traversal_path, id)`. Additionally, the generator adds an extra [projection](https://clickhouse.com/docs/data-modeling/projections) for looking up records via the original PostgreSQL primary keys (name: `pg_pkey_ordered`). This is needed for Siphon to quickly locate existing records when replicating `DELETE` statements.
+The primary keys for the table are: `(traversal_path, id)`. The generator also creates a secondary
+table `siphon_labels_pg_pkey_ordered` and a materialized view `siphon_labels_pg_pkey_ordered_mv`.
+The materialized view syncs the primary key columns from the main table into the secondary table,
+which is ordered by the PostgreSQL primary key columns first. Siphon uses the secondary table to
+locate existing rows by their PostgreSQL primary keys when replicating `DELETE` and `UPDATE` events.
+
+> [!note]
+> Some older tables implement the same PostgreSQL primary key lookup with a ClickHouse
+> [projection](https://clickhouse.com/docs/data-modeling/projections) named `pg_pkey_ordered`
+> instead of a secondary table. Projections do not perform well above a certain scale, so new
+> tables use the materialized view approach.
 
 #### Querying the Table
 
@@ -331,6 +408,285 @@ Find the `ENGINE` clause and look at the arguments:
 ENGINE = ReplacingMergeTree(_siphon_replicated_at, _siphon_deleted)
 ```
 
+### Near Real-Time Denormalization via `NULL` Engine
+
+The GitLab PostgreSQL schema is optimized for normalized, transactional workloads. However, ClickHouse performance scales best with **denormalized** (wide) tables. While ClickHouse supports `JOINs`, they are computationally expensive. As a rule of thumb, **if a JOIN more than triples your query I/O, you should denormalize at ingestion time.**
+
+This strategy is ideal for enrichment where relationships are `1:1` or `1:N` (where `N` is small, e.g., < 500 rows), such as adding **Assignee** and **Reviewer** data directly to a **Merge Request** record.
+
+#### High-Level Overview
+
+To avoid the cost of storing raw data twice, we utilize a "pass-through" pipeline:
+
+1. **The Ingestion Point (Siphon Table):** Define a "landing" table using the `NULL` engine. This engine acts as a bufferless pipe that receives data from Siphon and triggers downstream logic, immediately discarding the raw bytes to save disk space.
+1. **The Storage Table (Destination):** Define the final `ReplacingMergeTree` table. This schema includes both the source columns and the extra columns intended for denormalized data.
+1. **The Logic Engine (Materialized View):** Define a Materialized View (MV) that "watches" the `NULL` table. Upon every insert, the MV performs the `JOIN` logic against existing reference tables to fetch enrichment data.
+1. **The Landing:** The MV pushes the enriched, "wide" rows into the storage table.
+
+#### Implementation Example: Denormalized Merge Request Reviewers
+
+**Architecture Overview:**
+
+```mermaid
+graph TD
+    subgraph Ingestion_Source [Data Source]
+        CDC[Siphon / CDC Data]
+    end
+
+    subgraph ClickHouse_Engine [Pipeline]
+        NullTable[<b>siphon_merge_requests</b><br/>ENGINE = Null]
+
+        MV{<b>merge_requests_mv</b><br/>Materialized View}
+
+        RefTable[(<b>siphon_merge_request_reviewers</b><br/>ENGINE = ReplacingMergeTree)]
+    end
+
+    subgraph Storage [Destination]
+        FinalTable[(<b>merge_requests</b><br/>ENGINE = ReplacingMergeTree)]
+    end
+
+    %% Data Flow
+    CDC -->|INSERT| NullTable
+    NullTable -->|Triggers| MV
+    RefTable -.->|Lookup/JOIN/Format| MV
+    MV -->|Enriched Data| FinalTable
+
+    %% Styling
+    style NullTable fill:#f9f,stroke:#333,stroke-width:2px
+    style FinalTable fill:#00ff00,color:#000,stroke:#333,stroke-width:2px
+    style MV fill:#fff4dd,stroke:#d4a017,stroke-width:2px
+```
+
+> [!note]
+> For the sake of simplicity, unnecessary columns are omitted from the `merge_requests` table.
+
+##### 1. Create the `NULL` `siphon_merge_requests` table
+
+First, generate a Siphon table for `merge_requests`:
+
+```shell
+bundle exec rails generate gitlab:click_house:siphon merge_requests --with-traversal-path
+```
+
+The resulting schema (after removing non-essential columns) appears as follows:
+
+```sql
+CREATE TABLE IF NOT EXISTS siphon_merge_requests
+(
+  id Int64 CODEC(DoubleDelta, ZSTD),
+  target_branch String,
+  source_branch String,
+  source_project_id Nullable(Int64),
+  author_id Nullable(Int64),
+  title Nullable(String),
+  created_at DateTime64(6, 'UTC') CODEC(Delta, ZSTD(1)),
+  updated_at DateTime64(6, 'UTC') CODEC(Delta, ZSTD(1)),
+  target_project_id Int64,
+  iid Nullable(Int64),
+  description Nullable(String),
+  traversal_path String DEFAULT multiIf(coalesce(target_project_id, 0) != 0, dictGetOrDefault('project_traversal_paths_dict', 'traversal_path', target_project_id, '0/'), '0/') CODEC(ZSTD(3)),
+  _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC') CODEC(ZSTD(1)),
+  _siphon_deleted Bool DEFAULT FALSE CODEC(ZSTD(1))
+)
+ENGINE = Null;
+```
+
+**Key Notes:**
+
+- The `ENGINE` is explicitly set to `Null`.
+- Column compression remains defined but has no performance impact as data is never written to disk by this engine.
+
+##### 2. Create the `siphon_merge_request_reviewers` table
+
+Generate the reviewers table:
+
+```shell
+bundle exec rails generate gitlab:click_house:siphon merge_request_reviewers --with-traversal-path
+```
+
+**The generated schema:**
+
+```sql
+CREATE TABLE IF NOT EXISTS siphon_merge_request_reviewers
+(
+  id Int64 CODEC(DoubleDelta, ZSTD),
+  user_id Int64,
+  merge_request_id Int64,
+  created_at DateTime64(6, 'UTC') CODEC(Delta, ZSTD(1)),
+  state Int8 DEFAULT 0,
+  project_id Int64,
+  traversal_path String DEFAULT multiIf(coalesce(project_id, 0) != 0, dictGetOrDefault('project_traversal_paths_dict', 'traversal_path', project_id, '0/'), '0/') CODEC(ZSTD(3)),
+  _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC') CODEC(ZSTD(1)),
+  _siphon_deleted Bool DEFAULT FALSE CODEC(ZSTD(1))
+)
+ENGINE = ReplacingMergeTree(_siphon_replicated_at, _siphon_deleted)
+PRIMARY KEY (traversal_path, merge_request_id, id)
+SETTINGS index_granularity = 1024;
+```
+
+**Modifications made:**
+
+- `merge_request_id` is included in the primary key to optimize reviewer lookups per MR.
+- `index_granularity` is decreased to 1024 to improve `JOIN` performance during the MV trigger.
+
+##### 3. Create the `merge_requests` destination table
+
+This table contains all columns from `siphon_merge_requests` plus additional denormalized columns (in this case, for reviewers). Reviewers are modeled as an array of `Tuples`, where each tuple contains the `user_id` and the review `state`.
+
+```sql
+CREATE TABLE IF NOT EXISTS merge_requests
+(
+  id Int64 CODEC(DoubleDelta, ZSTD),
+  target_branch String,
+  source_branch String,
+  source_project_id Nullable(Int64),
+  author_id Nullable(Int64),
+  title Nullable(String),
+  created_at DateTime64(6, 'UTC') CODEC(Delta, ZSTD(1)),
+  updated_at DateTime64(6, 'UTC') CODEC(Delta, ZSTD(1)),
+  target_project_id Int64,
+  iid Nullable(Int64),
+  description Nullable(String),
+  traversal_path String DEFAULT multiIf(coalesce(target_project_id, 0) != 0, dictGetOrDefault('project_traversal_paths_dict', 'traversal_path', target_project_id, '0/'), '0/') CODEC(ZSTD(3)),
+  reviewers Array(Tuple(UInt64, Int8)),
+  _siphon_replicated_at DateTime64(6, 'UTC') DEFAULT now64(6, 'UTC') CODEC(ZSTD(1)),
+  _siphon_deleted Bool DEFAULT FALSE CODEC(ZSTD(1))
+)
+ENGINE = ReplacingMergeTree(_siphon_replicated_at, _siphon_deleted)
+PRIMARY KEY (traversal_path, id)
+```
+
+##### 4. Creating the JOIN Materialized View
+
+The Materialized View ensures that every insert into `siphon_merge_requests` is enriched with current reviewer data.
+
+```sql
+CREATE MATERIALIZED VIEW merge_requests_mv TO merge_requests
+AS WITH
+    cte AS
+    (
+        -- Store the current INSERT block for siphon_merge_requests table
+        SELECT *
+        FROM siphon_merge_requests
+    ),
+    collected_reviewers AS
+    (
+        SELECT
+            traversal_path,
+            merge_request_id,
+            groupArray((user_id, state)) AS reviewers -- Build the Array(Tuple(UInt64, Int8)) value
+        FROM
+        (
+            -- Load the deduplicated reviewer records for the given merge request values
+            SELECT
+                traversal_path,
+                merge_request_id,
+                id,
+                argMax(user_id, _siphon_replicated_at) AS user_id,
+                argMax(state, _siphon_replicated_at) AS state,
+                argMax(_siphon_deleted, _siphon_replicated_at) AS _siphon_deleted
+            FROM siphon_merge_request_reviewers
+            WHERE (traversal_path, merge_request_id) IN (
+                SELECT traversal_path, id
+                FROM cte
+            )
+            GROUP BY traversal_path, merge_request_id, id
+            HAVING _siphon_deleted = false
+        )
+        GROUP BY traversal_path, merge_request_id
+    )
+SELECT
+    cte.id AS id,
+    cte.target_branch AS target_branch,
+    cte.source_branch AS source_branch,
+    cte.source_project_id AS source_project_id,
+    cte.author_id AS author_id,
+    cte.title AS title,
+    cte.created_at AS created_at,
+    cte.updated_at AS updated_at,
+    cte.target_project_id AS target_project_id,
+    cte.iid AS iid,
+    cte.description AS description,
+    cte.traversal_path AS traversal_path,
+    collected_reviewers.reviewers AS reviewers,
+    cte._siphon_replicated_at AS _siphon_replicated_at,
+    cte._siphon_deleted AS _siphon_deleted
+FROM cte
+LEFT JOIN collected_reviewers ON collected_reviewers.merge_request_id = cte.id AND collected_reviewers.traversal_path = cte.traversal_path
+```
+
+##### Siphon Configuration and the "Chicken-and-Egg" Problem
+
+Materialized Views trigger on inserts to the source table (`siphon_merge_requests`). However, if an update occurs in the `siphon_merge_request_reviewers` table, the denormalized `merge_requests` table will not automatically update.
+
+Because Siphon replicates tables independently, transactional dependencies from PostgreSQL are not natively preserved. To resolve this, Siphon includes a "refresh" callback feature. When a downstream record (reviewer) changes, Siphon can trigger an asynchronous "refresh" of the parent record (Merge Request). This re-inserts the parent row into the `Null` table after a short delay, re-triggering the MV and ensuring it picks up the latest reviewer state.
+
+This is conceptually similar to the `.touch` method in Ruby on Rails, executed asynchronously across a collection of records.
+
+**Siphon ClickHouse consumer configuration:**
+
+```yaml
+streams:
+  # Note: to properly work with hierarchy de-normalization, the following tables also need to be replicated: namespaces, projects, organizations
+  - identifier: merge_requests
+    subject: merge_requests
+    target: siphon_merge_requests
+    # required for handling refresh callbacks from downstream tables
+    enable_refresh_package: true
+  - identifier: merge_request_reviewers
+    subject: merge_request_reviewers
+    target: siphon_merge_request_reviewers
+    dedup_by:
+      - id
+
+clickhouse:
+  # connectivity configuration is disabled
+  refresh_on_change:
+    - source_stream_identifier: merge_request_reviewers
+      source_keys:
+        - merge_request_id
+      target_stream_identifier: merge_requests
+      target_keys:
+        - id
+  # dedup_ configuration is needed for properly applying DELETE and UPDATE events
+  dedup_config:
+    - stream_identifier: merge_requests
+      dedup_by_table: merge_requests
+      dedup_by:
+        - id
+    - stream_identifier: merge_request_reviewers
+      dedup_by:
+        - id
+```
+
+##### Querying the Table
+
+After the configuration is finished and data is replicated to the ClickHouse tables we can run a query on the `merge_requests` table. The following query counts Merge Requests for a project (`id = 12`) that are being reviewed by a specific user (`id = 73`) with a status of "requested changes" (`state = 3`).
+
+```sql
+SELECT COUNT(*)
+FROM (
+  SELECT
+    id,
+    argMax(reviewers, _siphon_replicated_at) AS reviewers,
+    argMax(_siphon_deleted, _siphon_replicated_at) AS _siphon_deleted
+  FROM merge_requests
+  WHERE
+  -- Filter for the project
+  startsWith(traversal_path, dictGetOrDefault('project_traversal_paths_dict', 'traversal_path', 12, '0/'))
+  GROUP BY traversal_path, id
+  HAVING _siphon_deleted = false
+)
+WHERE
+-- x.1: user id filter
+-- x.2: review state filter
+arrayExists(x -> x.1 = 73 AND x.2 = 3, reviewers);
+
+```
+
+> [!note]
+> Array data types may add extra overhead during parsing and filtering. When denormalized data is a simple list of IDs without associated state, a delimited string field (e.g., `'/user_id1/user_id2/'`) combined with `hasSubstr` can offer higher performance.
+
 ### Consistency Guarantees
 
 With all denormalizations, there are trade-offs. The Siphon-based hierarchy denormalization provides the following consistency guarantees under normal operation (assuming that the `namespaces` and `projects` tables have finished their initial data snapshot):
@@ -342,7 +698,31 @@ With all denormalizations, there are trade-offs. The Siphon-based hierarchy deno
 
 In development, consistency issues may appear more often as record creation may happen very close to the project or group creation. In these cases, the eventual consistency enforcement should resolve the problems in seconds or minutes (configurable).
 
-#### Working in Cells Environment
+## Table Partitioning
+
+ClickHouse [partitioning](https://clickhouse.com/docs/engines/table-engines/mergetree-family/custom-partitioning-key) is a data management tool intended for data lifecycle operations (like dropping old data), rather than a primary tool for query optimization.
+
+### Partition Granularity
+
+Avoid overly granular partitioning schemes. As a rule of thumb, you should not go more granular than **yearly partitioning** (for example, `toYear(created_at)`).
+
+Too many partitions can severely degrade ClickHouse performance:
+
+- Ingestion Speed: Each `INSERT` creates separate data "parts" for every partition touched by the `INSERT` block. High partition counts lead to a "part explosion", increasing metadata overhead and merge pressure.
+- Query Performance: Queries spanning many partitions must open and process metadata for a large number of small files, which can significantly slow down execution.
+
+### Constraints and Siphon Snapshots
+
+There is a hard limit on the number of partitions that can be touched in a single insert statement: `max_partitions_per_insert_block=100`. This limit is enforced on ClickHouse Cloud and cannot be increased.
+
+When Siphon performs an initial snapshot of a PostgreSQL table, data is often read in a sequence that does not match the ClickHouse partition key. If the snapshot contains data spanning more than 100 different months, the insert will fail.
+
+You should only consider more granular partitioning (such as monthly) if the following conditions are met:
+
+1. The PostgreSQL source table follows the same partitioning logic. Siphon snapshots each PostgreSQL partition individually, which naturally keeps the data blocks within ClickHouse's limits.
+1. The data volume is exceptionally high, justifying the management overhead of more partitions.
+
+## Working in Cells Environment
 
 Siphon-replicated database tables are by design support the [Cells architecture](../../cells/_index.md). Assuming that Siphon is configured on all cells, when an organization or group is moved to another cell, no extra data migrations are needed for ClickHouse.
 

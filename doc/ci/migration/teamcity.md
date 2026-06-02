@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Migrate from TeamCity
 ---
 
@@ -279,13 +279,13 @@ Before doing any migration work, you should first:
 1. Migrate projects from your SCM solution to GitLab.
    - (Recommended) You can use the available [importers](../../user/import/_index.md)
      to automate mass imports from external SCM providers.
-   - You can [import repositories by URL](../../user/project/import/repo_by_url.md).
+   - You can [import repositories by URL](../../user/import/third_party_systems/repo_by_url.md).
 1. Create a `.gitlab-ci.yml` file in each project.
 1. Migrate TeamCity configuration to GitLab CI/CD jobs and configure them to show results directly in merge requests.
 1. Migrate deployment jobs by using [cloud deployment templates](../cloud_deployment/_index.md),
    [environments](../environments/_index.md), and the [GitLab agent for Kubernetes](../../user/clusters/agent/_index.md).
 1. Check if any CI/CD configuration can be reused across different projects, then create
-   and share [CI/CD templates](../examples/_index.md#cicd-templates) or [CI/CD components](../components/_index.md).
+   and share [CI/CD components](../components/_index.md).
 1. See [pipeline efficiency](../pipelines/pipeline_efficiency.md)
    to learn how to make your GitLab CI/CD pipelines faster and more efficient.
 

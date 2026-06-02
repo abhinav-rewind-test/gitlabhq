@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline_composition do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   let(:path) { described_class.new(address: address) }
   let(:server_fqdn) { 'acme.com' }
@@ -14,7 +14,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
   end
 
   shared_context 'with catalog resource project with components' do
-    let_it_be(:project) do
+    let_it_be(:project, freeze: false) do
       create(
         :project, :custom_repo,
         files: {
@@ -51,7 +51,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
     let(:address) { "acme.com/#{project_path}/secret-detection@#{version}" }
 
     context 'when the project repository contains a templates directory' do
-      let_it_be(:project) do
+      let_it_be(:project, freeze: false) do
         create(
           :project, :custom_repo,
           files: {
@@ -144,13 +144,13 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
         end
 
         context 'when the project is not a catalog resource' do
-          let_it_be(:project) { create(:project, :repository) }
+          let_it_be(:project, freeze: false) { create(:project, :repository) }
 
           it_behaves_like 'does not find the component'
         end
 
         context 'when the project is a catalog resource' do
-          let_it_be(:project) do
+          let_it_be(:project, freeze: false) do
             create(
               :project, :custom_repo,
               files: {
@@ -159,9 +159,9 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
             )
           end
 
-          let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
+          let_it_be(:resource, freeze: false) { create(:ci_catalog_resource, project: project) }
 
-          let_it_be(:v2_6_0) do
+          let_it_be(:v2_6_0, freeze: false) do
             sha = project.repository.commit('master').id
             release = create(:release, project: project, tag: '2.6.0', sha: sha, released_at: Date.yesterday)
 
@@ -249,9 +249,9 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
         end
       end
 
-      context 'when ci_optimize_component_fetching feature flag is disabled' do
+      context 'when ci_cache_component_includes feature flag is disabled' do
         before do
-          stub_feature_flags(ci_optimize_component_fetching: false)
+          stub_feature_flags(ci_cache_component_includes: false)
         end
 
         context 'when fetching the latest release' do
@@ -344,7 +344,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
 
         context 'when there is a release' do
           context 'when the version matches' do
-            let_it_be(:release) do
+            let_it_be(:release, freeze: false) do
               create(
                 :release, :with_catalog_resource_version,
                 project: project, tag: version, author: user, sha: commit.id
@@ -363,7 +363,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
           end
 
           context 'when version does not match' do
-            let_it_be(:release) do
+            let_it_be(:release, freeze: false) do
               create(
                 :release, :with_catalog_resource_version,
                 project: project, tag: '0.2.0', author: user, sha: commit.id
@@ -391,6 +391,14 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
             expect(result.content).to eq('image: alpine_1')
             expect(result.path).to eq('templates/secret-detection.yml')
             expect(path.project).to eq(project)
+          end
+        end
+
+        context 'when project does not exist' do
+          let(:address) { "acme.com/non-existent/project/component@1.0.0" }
+
+          it 'returns nil' do
+            expect(path.sha).to be_nil
           end
         end
       end
@@ -432,6 +440,12 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
       before do
         catalog_resource.destroy!
       end
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when project does not exist' do
+      let(:address) { "acme.com/non-existent/project/component@1.0.0" }
 
       it { is_expected.to be_nil }
     end
@@ -478,7 +492,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
   end
 
   describe '#invalid_usage_for_latest?' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:project_path) { project.full_path }
     let(:address) { "acme.com/#{project_path}/secret-detection@#{version}" }
 
@@ -509,7 +523,7 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
   end
 
   describe '#invalid_usage_for_partial_semver?' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:project_path) { project.full_path }
     let(:address) { "acme.com/#{project_path}/secret-detection@#{version}" }
 
@@ -572,5 +586,135 @@ RSpec.describe Gitlab::Ci::Components::InstancePath, feature_category: :pipeline
     subject(:fqdn_prefix) { described_class.fqdn_prefix }
 
     it { is_expected.to eq("#{server_fqdn}/") }
+  end
+
+  describe 'SafeRequestStore caching', :request_store do
+    include_context 'with catalog resource project with components'
+
+    let(:address) { "acme.com/#{project_path}/secret-detection@0.1.0" }
+
+    describe '#project' do
+      it 'caches the project lookup in SafeRequestStore' do
+        path1 = described_class.new(address: address)
+        path2 = described_class.new(address: address)
+
+        expect(Project).to receive(:find_by_full_path).once.and_call_original
+
+        path1.project
+        path2.project
+      end
+    end
+
+    describe '#sha' do
+      it 'caches the sha lookup in SafeRequestStore' do
+        path1 = described_class.new(address: address)
+        path2 = described_class.new(address: address)
+
+        path1.sha
+        expect(path1).not_to receive(:sha_by_released_tag)
+        expect(path1).not_to receive(:sha_by_ref)
+
+        path2.sha
+      end
+    end
+
+    describe '#fetch_content!' do
+      it 'caches the access check in SafeRequestStore' do
+        path1 = described_class.new(address: address)
+        path2 = described_class.new(address: address)
+
+        expect(Ability).to receive(:allowed?).with(user, :download_code, project).once.and_return(true)
+
+        path1.fetch_content!(current_user: user)
+        path2.fetch_content!(current_user: user)
+      end
+    end
+  end
+
+  describe 'content fetching optimizations', :request_store, :clean_gitlab_redis_repository_cache do
+    let_it_be(:project, freeze: false) do
+      create(
+        :project, :custom_repo,
+        files: {
+          'templates/component-a.yml' => 'job_a: { script: echo a }',
+          'templates/component-b.yml' => 'job_b: { script: echo b }'
+        }
+      )
+    end
+
+    let(:version) { 'master' }
+    let(:project_path) { project.full_path }
+
+    before_all do
+      project.add_developer(user)
+    end
+
+    context 'when ci_cache_component_includes is disabled' do
+      before do
+        stub_feature_flags(ci_cache_component_includes: false)
+      end
+
+      it 'does not write to cache' do
+        address = "acme.com/#{project_path}/component-a@#{version}"
+        path = described_class.new(address: address)
+        cache_store = Gitlab::Redis::RepositoryCache.cache_store
+
+        result = path.fetch_content!(current_user: user)
+        expect(result.content).not_to be_nil
+
+        sha = project.commit('master').sha
+        cache_key = "ci_component_content:v1:#{project.id}:#{sha}:templates/component-a.yml"
+
+        expect(cache_store.read(cache_key)).to be_nil
+      end
+
+      it 'does not read from cache' do
+        address = "acme.com/#{project_path}/component-a@#{version}"
+        path = described_class.new(address: address)
+        cache_store = Gitlab::Redis::RepositoryCache.cache_store
+        sha = project.commit('master').sha
+        cache_key = "ci_component_content:v1:#{project.id}:#{sha}:templates/component-a.yml"
+
+        cache_store.write(cache_key, 'cached: value')
+
+        result = path.fetch_content!(current_user: user)
+
+        expect(result.content).to eq('job_a: { script: echo a }')
+        expect(result.content).not_to eq('cached: value')
+      end
+    end
+
+    it 'caches content across multiple requests' do
+      address = "acme.com/#{project_path}/component-a@#{version}"
+      path1 = described_class.new(address: address)
+
+      first_result = path1.fetch_content!(current_user: user)
+      first_content = first_result.content
+
+      expect(project.repository).not_to receive(:blobs_at)
+
+      path2 = described_class.new(address: address)
+      second_result = path2.fetch_content!(current_user: user)
+
+      expect(second_result.content).to eq(first_content)
+      expect(second_result.path).to eq(first_result.path)
+    end
+
+    it 'generates cache keys for both simple and complex template paths' do
+      address = "acme.com/#{project_path}/component-a@#{version}"
+      path = described_class.new(address: address)
+
+      result = path.fetch_content!(current_user: user)
+      expect(result.content).to eq('job_a: { script: echo a }')
+
+      cache_store = Gitlab::Redis::RepositoryCache.cache_store
+      sha = project.commit('master').sha
+
+      simple_cache_key = "ci_component_content:v1:#{project.id}:#{sha}:templates/component-a.yml"
+      complex_cache_key = "ci_component_content:v1:#{project.id}:#{sha}:templates/component-a/template.yml"
+
+      expect(cache_store.read(simple_cache_key)).to eq('job_a: { script: echo a }')
+      expect(cache_store.read(complex_cache_key)).to be_nil
+    end
   end
 end

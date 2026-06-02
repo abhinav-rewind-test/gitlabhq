@@ -8,11 +8,14 @@ class ApplicationSetting < ApplicationRecord
   include Sanitizable
   include Gitlab::EncryptedAttribute
   include IgnorableColumns
+  include SafelyChangeColumnDefault
 
+  columns_changing_default :tool_approval_for_session_enabled
+
+  ignore_column :container_registry_data_repair_detail_worker_max_concurrency,
+    remove_with: '19.2', remove_after: '2026-06-22'
   ignore_column :model_prompt_cache_enabled, remove_with: '18.5', remove_after: '2025-10-05'
   ignore_column :lock_model_prompt_cache_enabled, remove_with: '18.5', remove_after: '2025-10-05'
-  ignore_column :duo_sast_fp_detection_enabled, remove_with: '18.11', remove_after: '2026-02-19'
-  ignore_column :lock_duo_sast_fp_detection_enabled, remove_with: '18.11', remove_after: '2026-02-19'
 
   INSTANCE_REVIEW_MIN_USERS = 50
   GRAFANA_URL_ERROR_MESSAGE = 'Please check your Grafana URL setting in ' \
@@ -42,6 +45,8 @@ class ApplicationSetting < ApplicationRecord
 
   DEFAULT_AUTHENTICATED_GIT_HTTP_LIMIT = 3600
   DEFAULT_AUTHENTICATED_GIT_HTTP_PERIOD = 3600
+
+  DEFAULT_RAW_BLOB_UNAUTHENTICATED_REQUEST_LIMIT = 800
 
   SEARCH_SCOPE_SYSTEM_DEFAULT = 'system default'
 
@@ -201,18 +206,24 @@ class ApplicationSetting < ApplicationRecord
     presence: true,
     if: :unique_ips_limit_enabled
 
+  validates :metrics_method_call_threshold,
+    numericality: { greater_than_or_equal_to: 0 },
+    presence: true,
+    if: :prometheus_metrics_enabled
+
   validates :kroki_url, presence: { if: :kroki_enabled }
 
   validate :validate_kroki_url, if: :kroki_enabled
 
   validates :kroki_formats, json_schema: { filename: 'application_setting_kroki_formats' }
 
-  validates :metrics_method_call_threshold,
-    numericality: { greater_than_or_equal_to: 0 },
-    presence: true,
-    if: :prometheus_metrics_enabled
-
   validates :plantuml_url, presence: true, if: :plantuml_enabled
+
+  jsonb_accessor :diagram_proxy,
+    kroki_diagram_proxy_enabled: [:boolean, { default: false }],
+    plantuml_diagram_proxy_enabled: [:boolean, { default: false }]
+
+  validates :diagram_proxy, json_schema: { filename: 'application_setting_diagram_proxy' }
 
   validates :sourcegraph_url, presence: true, if: :sourcegraph_enabled
 
@@ -326,6 +337,18 @@ class ApplicationSetting < ApplicationRecord
       less_than_or_equal_to: Commit::MAX_DIFF_LINES_SETTING_UPPER_BOUND
     }
 
+  validates :diff_max_versions,
+    numericality: {
+      only_integer: true,
+      greater_than: 0
+    }
+
+  validates :diff_max_commits,
+    numericality: {
+      only_integer: true,
+      greater_than: 0
+    }
+
   validates :user_default_internal_regex, js_regex: true, allow_nil: true
   validates :default_preferred_language, presence: true, inclusion: { in: Gitlab::I18n.available_locales }
 
@@ -391,6 +414,7 @@ class ApplicationSetting < ApplicationRecord
 
   validates :wiki_page_max_content_bytes, numericality: { only_integer: true, greater_than_or_equal_to: 1.kilobyte }
   validates :wiki_asciidoc_allow_uri_includes, inclusion: { in: [true, false], message: N_('must be a boolean value') }
+  validates :secrets_manager_instance_enrolled, inclusion: { in: [true, false], message: N_('must be a boolean value') }
 
   validates :email_restrictions, untrusted_regexp: true
 
@@ -531,7 +555,7 @@ class ApplicationSetting < ApplicationRecord
     {
       pipeline_variables_default_allowed: [:boolean, { default: true }],
       ci_job_live_trace_enabled: [:boolean, { default: false }],
-      ci_partitions_size_limit: [::Gitlab::Database::Type::JsonbInteger.new, { default: 100.gigabytes }],
+      ci_partitions_in_seconds_limit: [:integer, { default: ChronicDuration.parse('1 month') }],
       ci_delete_pipelines_in_seconds_limit: [:integer, { default: ChronicDuration.parse('1 year') }],
       git_push_pipeline_limit: [:integer, { default: 4 }]
     }
@@ -542,7 +566,12 @@ class ApplicationSetting < ApplicationRecord
   chronic_duration_attr :ci_delete_pipelines_in_seconds_limit_human_readable, :ci_delete_pipelines_in_seconds_limit
 
   validate :validate_object_storage_for_live_trace_configuration, if: -> { ci_job_live_trace_enabled? }
-  validates :ci_partitions_size_limit, presence: true, numericality: { only_integer: true, greater_than: 0 }
+  validates :ci_partitions_in_seconds_limit, presence: true,
+    numericality: {
+      only_integer: true,
+      greater_than_or_equal_to: ChronicDuration.parse('1 month'),
+      less_than_or_equal_to: ChronicDuration.parse('6 months')
+    }
   validates :ci_delete_pipelines_in_seconds_limit, presence: true,
     numericality: { only_integer: true, greater_than_or_equal_to: 1.day }
 
@@ -584,7 +613,7 @@ class ApplicationSetting < ApplicationRecord
   validates :integrations, json_schema: { filename: "application_setting_integrations" }
 
   jsonb_accessor :topology_service_settings,
-    topology_service_concurrency_limit: [:integer, { default: 200 }]
+    topology_service_concurrency_limit: [:integer, { default: 40 }]
 
   validates :topology_service_settings, json_schema: { filename: "application_setting_topology_service_settings" }
 
@@ -655,7 +684,6 @@ class ApplicationSetting < ApplicationRecord
       :ci_max_includes,
       :ci_max_total_yaml_size_bytes,
       :container_registry_cleanup_tags_service_max_list_size,
-      :container_registry_data_repair_detail_worker_max_concurrency,
       :container_registry_delete_tags_service_timeout,
       :container_registry_expiration_policies_worker_capacity,
       :decompress_archive_file_timeout,
@@ -698,6 +726,7 @@ class ApplicationSetting < ApplicationRecord
       :projects_api_limit,
       :projects_api_rate_limit_unauthenticated,
       :raw_blob_request_limit,
+      :raw_blob_request_limit_unauthenticated,
       :runner_jobs_request_api_limit,
       :runner_jobs_patch_trace_api_limit,
       :runner_jobs_endpoints_api_limit,
@@ -729,6 +758,31 @@ class ApplicationSetting < ApplicationRecord
 
   validates :resource_access_tokens_settings, json_schema: { filename: 'resource_access_tokens_settings' }
 
+  jsonb_accessor :personal_access_token_settings,
+    enforce_granular_tokens: [:boolean, { default: false }],
+    granular_tokens_enforced_after: [:date, { default: nil }]
+
+  validates :personal_access_token_settings, json_schema: { filename: 'personal_access_token_settings' }
+
+  validates :granular_tokens_enforced_after,
+    presence: true,
+    if: :enforce_granular_tokens?
+
+  validates :granular_tokens_enforced_after,
+    future_date: true,
+    if: :granular_tokens_enforced_after_changed?
+
+  jsonb_accessor :diff_limits,
+    diff_max_versions: [:integer, { default: 1_000 }],
+    diff_max_commits: [:integer, { default: 1_000_000 }]
+
+  validates :diff_limits, json_schema: { filename: "application_setting_diff_limits" }
+
+  jsonb_accessor :mcp_server_settings,
+    mcp_server_enabled: [:boolean, { default: true }]
+
+  validates :mcp_server_settings, json_schema: { filename: "application_setting_mcp_server_settings" }
+
   jsonb_accessor :group_settings,
     top_level_group_creation_enabled: [:boolean, { default: true }],
     disable_invite_members: [:boolean, { default: false }]
@@ -751,6 +805,13 @@ class ApplicationSetting < ApplicationRecord
     max_github_response_size_limit: [:integer, { default: 8 }],
     max_github_response_json_value_count: [:integer, { default: 250_000 }]
 
+  jsonb_accessor :markdown_settings,
+    description_and_note_max_size: [:integer, { default: 1.megabyte }]
+
+  validates :markdown_settings,
+    json_schema: { filename: "application_setting_markdown_settings" }
+  validates :description_and_note_max_size, numericality: { only_integer: true, greater_than: 0 }
+
   jsonb_accessor :service_ping_settings,
     gitlab_environment_toolkit_instance: [:boolean, { default: false }],
     gitlab_product_usage_data_enabled: [:boolean, { default: Settings.gitlab['initial_gitlab_product_usage_data'] }]
@@ -771,12 +832,13 @@ class ApplicationSetting < ApplicationRecord
     disable_password_authentication_for_users_with_sso_identities: [:boolean, { default: false }],
     root_moved_permanently_redirection: [:boolean, { default: false }],
     session_expire_from_init: [:boolean, { default: false }],
-    require_minimum_email_based_otp_for_users_with_passwords: [:boolean, { default: false }]
+    require_minimum_email_based_otp_for_users_with_passwords: [:boolean, { default: false }],
+    email_otp_enabled: [:boolean, { default: false }]
 
   validates :sign_in_restrictions, json_schema: { filename: 'application_setting_sign_in_restrictions' }
 
   jsonb_accessor :search,
-    global_search_issues_enabled: [:boolean, { default: true }],
+    global_search_work_items_enabled: [:boolean, { default: true }],
     global_search_merge_requests_enabled: [:boolean, { default: true }],
     global_search_snippet_titles_enabled: [:boolean, { default: true }],
     global_search_users_enabled: [:boolean, { default: true }],
@@ -822,8 +884,6 @@ class ApplicationSetting < ApplicationRecord
   validates :helm_max_packages_count,
     presence: true,
     numericality: { only_integer: true, greater_than: 0 }
-
-  jsonb_accessor :oauth_provider, ropc_without_client_credentials: [:boolean, { default: true }]
 
   validates :package_registry, json_schema: { filename: 'application_setting_package_registry' }
 
@@ -907,8 +967,7 @@ class ApplicationSetting < ApplicationRecord
       :lock_pypi_package_requests_forwarding,
       :maven_package_requests_forwarding,
       :lock_maven_package_requests_forwarding,
-      :pages_unique_domain_default_enabled,
-      :allow_immediate_namespaces_deletion
+      :pages_unique_domain_default_enabled
     )
   end
 
@@ -1023,15 +1082,6 @@ class ApplicationSetting < ApplicationRecord
     allow_nil: false,
     inclusion: { in: [true, false], message: N_('must be a boolean value') }
 
-  jsonb_accessor :namespace_deletion_settings,
-    allow_immediate_namespaces_deletion: [:boolean, { default: true }]
-
-  validates :namespace_deletion_settings, json_schema: { filename: "application_setting_namespace_deletion_settings" }
-
-  validates :allow_immediate_namespaces_deletion,
-    inclusion: { in: [false], message: N_('cannot be enabled on Dedicated') },
-    if: :gitlab_dedicated_instance
-
   validates :allow_runner_registration_token,
     allow_nil: false,
     inclusion: { in: [true, false], message: N_('must be a boolean value') }
@@ -1090,6 +1140,10 @@ class ApplicationSetting < ApplicationRecord
     vscode_extension_marketplace_extension_host_domain: [
       :string,
       { default: ::WebIde::ExtensionMarketplace::DEFAULT_EXTENSION_HOST_DOMAIN, store_key: :extension_host_domain }
+    ],
+    vscode_extension_marketplace_single_origin_fallback_enabled: [
+      :boolean,
+      { default: true, store_key: :single_origin_fallback_enabled }
     ]
 
   jsonb_accessor :editor_extensions,
@@ -1216,7 +1270,7 @@ class ApplicationSetting < ApplicationRecord
     HUMANIZED_ATTRIBUTES[attribute.to_sym] || super
   end
 
-  # overriden in EE
+  # overridden in EE
   def self.rate_limits_definition
     {
       autocomplete_users_limit: [:integer, { default: 300 }],
@@ -1256,7 +1310,8 @@ class ApplicationSetting < ApplicationRecord
       users_api_limit_ssh_key: [:integer, { default: 120 }],
       users_api_limit_gpg_keys: [:integer, { default: 120 }],
       users_api_limit_gpg_key: [:integer, { default: 120 }],
-      pipeline_limit_per_user: [:integer, { default: 0 }]
+      pipeline_limit_per_user: [:integer, { default: 0 }],
+      raw_blob_request_limit_unauthenticated: [:integer, { default: DEFAULT_RAW_BLOB_UNAUTHENTICATED_REQUEST_LIMIT }]
     }
   end
 
@@ -1321,6 +1376,12 @@ class ApplicationSetting < ApplicationRecord
 
   def custom_default_search_scope_set?
     ::Search::Scopes.all_scope_names.include?(default_search_scope)
+  end
+
+  def granular_tokens_enforced?
+    return false unless Feature.enabled?(:granular_personal_access_tokens_enforcement, :instance)
+
+    enforce_granular_tokens? && granular_tokens_enforced_after <= Date.current
   end
 
   private

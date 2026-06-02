@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting post-migration contribution and membership mapping
 ---
 
@@ -16,9 +16,37 @@ During placeholder user reassignment, you might encounter the following issues.
 
 ## Source user reassignment failed
 
-There is currently no way to retry reassignment for source users with `failed` status in the UI. See [issue 589632](https://gitlab.com/gitlab-org/gitlab/-/issues/589632).
+To retry reassignment for source users with `failed` status, you can use the GraphQL API or the Rails console. For more information, see [issue 589777](https://gitlab.com/gitlab-org/gitlab/-/work_items/589777). UI support is discussed in [issue 593001](https://gitlab.com/gitlab-org/gitlab/-/work_items/593001).
 
-However, you can manually retry failed source users in the [Rails console](../../../administration/operations/rails_console.md):
+### Use the GraphQL API
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/589777) in GitLab 18.11.
+
+{{< /history >}}
+
+Use the `importSourceUserRetryFailedReassignment` mutation to retry a failed reassignment:
+
+```graphql
+mutation {
+  importSourceUserRetryFailedReassignment(input: { id: "gid://gitlab/Import::SourceUser/<SOURCE_USER_ID>" }) {
+    importSourceUser {
+      id
+      status
+    }
+    errors
+  }
+}
+```
+
+Replace `<SOURCE_USER_ID>` with the import source user ID.
+You can find this ID by querying `importSourceUsers` on the namespace.
+
+### Use the Rails console
+
+You can manually retry failed source users in the
+[Rails console](../../../administration/operations/rails_console.md):
 
 ```ruby
 # Find by the source user's placeholder user ID because placeholder user IDs are easy to fetch from the UI
@@ -34,7 +62,10 @@ else
 end
 ```
 
-If the source user fails again, check [`importer.log`](../../../administration/logs/_index.md#importerlog) for any logs with the message `Failed to reassign placeholder user` to begin investigating the root cause.
+### Investigate repeated failures
+
+If the source user fails again, check [`importer.log`](../../../administration/logs/_index.md#importerlog)
+for any logs with the message `Failed to reassign placeholder user` to begin investigating the root cause.
 
 ## Source user reassigned successfully but its placeholder user was not deleted
 
@@ -42,7 +73,7 @@ Placeholder users are deleted after successfully reassigning user contributions.
 
 Users reassigning placeholder users in GitLab 18.5 and earlier are more likely to encounter this scenario. When this happens, the message `Unable to delete placeholder user because it is still referenced in other tables` appears in [`importer.log`](../../../administration/logs/_index.md#importerlog) tied to the placeholder user's ID.
 
-There are two approaches to deleting these users:
+To delete these users, you can either:
 
 - [Delete the placeholder user as an administrator](../../profile/account/delete_account.md#delete-users-and-user-contributions). This approach is best when you're confident any remaining placeholder user contributions can be deleted.
 - Upgrade the GitLab instance to GitLab 18.6 or later and retry placeholder reassignment for the placeholder user in the Rails console. This approach is best when reassignment completed on GitLab 18.5 or earlier and you're unsure about what placeholder user contributions remain.

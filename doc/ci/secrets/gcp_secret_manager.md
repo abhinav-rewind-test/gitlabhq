@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to use GCP Secret Manager secrets in GitLab CI/CD pipelines
 title: Use GCP Secret Manager secrets in GitLab CI/CD
 ---
@@ -179,7 +179,3 @@ The job can't be created because one or more of the required variables are not d
 
 The Google Cloud Secret Manager integration requires at least GitLab 16.8 and GitLab Runner 16.8.
 This warning appears if the job is executed by a runner using a version earlier than 16.8.
-
-On GitLab.com, there is a [known issue](https://gitlab.com/gitlab-org/ci-cd/shared-runners/infrastructure/-/issues/176)
-causing SaaS runners to run an older version. As a workaround until this issue is fixed,
-you can register your own GitLab Runner with version 16.8 or later.

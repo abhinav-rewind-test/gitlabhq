@@ -13,7 +13,7 @@ module Integrations
         datadog diffblue_cover discord drone_ci emails_on_push ewm external_wiki
         gitlab_slack_application hangouts_chat harbor irker jira linear matrix
         mattermost mattermost_slash_commands microsoft_teams packagist phorge pipelines_email
-        pivotaltracker pumble pushover redmine slack slack_slash_commands squash_tm teamcity telegram
+        pivotaltracker pumble pushover redmine slack squash_tm teamcity telegram
         unify_circuit webex_teams youtrack zentao
       ].freeze
 
@@ -40,8 +40,43 @@ module Integrations
       # Base classes which aren't actual integrations.
       BASE_CLASSES = %w[].freeze
 
+      INTEGRATION_POPULARITY_RANKING = [
+        "Integrations::JiraCloudApp",
+        "Integrations::Jira",
+        "Integrations::GitlabSlackApplication",
+        "Integrations::Discord",
+        "Integrations::Slack",
+        "Integrations::Github",
+        "Integrations::MicrosoftTeams",
+        "Integrations::Jenkins",
+        "Integrations::Telegram",
+        "Integrations::PipelinesEmail",
+        "Integrations::EmailsOnPush",
+        "Integrations::Confluence",
+        "Integrations::GoogleCloudPlatform::WorkloadIdentityFederation",
+        "Integrations::HangoutsChat",
+        "Integrations::Datadog",
+        "Integrations::Youtrack",
+        "Integrations::GoogleCloudPlatform::ArtifactRegistry",
+        "Integrations::Clickup",
+        "Integrations::Prometheus",
+        "Integrations::ExternalWiki",
+        "Integrations::Linear",
+        "Integrations::Asana",
+        "Integrations::Mattermost",
+        "Integrations::CustomIssueTracker",
+        "Integrations::AppleAppStore",
+        "Integrations::Packagist",
+        "Integrations::Harbor",
+        "Integrations::GooglePlay",
+        "Integrations::Redmine",
+        "Integrations::Buildkite"
+      ].freeze
+
       BASE_ATTRIBUTES = %w[id instance project_id group_id created_at updated_at
         encrypted_properties encrypted_properties_iv properties organization_id].freeze
+
+      JSONB_COLUMNS = %w[filter].freeze
 
       SECTION_TYPE_CONFIGURATION = 'configuration'
       SECTION_TYPE_CONNECTION = 'connection'
@@ -272,10 +307,8 @@ module Integrations
         # Returns a list of disabled integration names.
         # Example: ["gitlab_slack_application", ...]
         def disabled_integration_names
-          # The GitLab for Slack app integration is only available when enabled through settings.
-          # The Slack Slash Commands integration is only available for customers
-          # who cannot use the GitLab for Slack app.
-          disabled = Gitlab::CurrentSettings.slack_app_enabled ? ['slack_slash_commands'] : ['gitlab_slack_application']
+          disabled = []
+          disabled += ['gitlab_slack_application'] unless Gitlab::CurrentSettings.slack_app_enabled
           disabled += ['jira_cloud_app'] unless Gitlab::CurrentSettings.jira_connect_application_key.present?
           disabled
         end
@@ -512,12 +545,14 @@ module Integrations
         attribute :group_confidential_mention_events, default: false
 
         after_initialize :initialize_properties
+        before_validation :normalize_filter
 
         after_commit :reset_updated_properties
 
         belongs_to :project, inverse_of: :integrations
         belongs_to :group, inverse_of: :integrations
         belongs_to :organization, class_name: 'Organizations::Organization', inverse_of: :integrations, optional: true
+        belongs_to :inherit_from, class_name: 'Integration', optional: true
 
         validates :project_id, presence: true, unless: -> { instance_level? || group_level? }
         validates :group_id, presence: true, unless: -> { instance_level? || project_level? }
@@ -527,6 +562,7 @@ module Integrations
         validates :type, uniqueness: { scope: :instance }, if: :instance_level?
         validates :type, uniqueness: { scope: :project_id }, if: :project_level?
         validates :type, uniqueness: { scope: :group_id }, if: :group_level?
+        validates :filter, json_schema: { filename: 'filter', size_limit: 8.kilobytes }
         validates_with ExactlyOnePresentValidator, fields: [:project_id, :group_id, :organization_id]
         validate :validate_encrypted_properties_size_limit, if: :encrypted_properties_changed?
 
@@ -681,14 +717,24 @@ module Integrations
         super.except('properties')
       end
 
+      def filter
+        normalize_filter_value(read_attribute(:filter))
+      end
+
+      def filter=(value)
+        write_attribute(:filter, normalize_filter_value(value))
+      end
+
       # Returns a hash of attributes (columns => values) used for inserting into the database.
       def to_database_hash
         column = self.class.attribute_aliases.fetch('type', 'type')
 
         attributes_for_database
           .except(*BASE_ATTRIBUTES)
+          .except(*JSONB_COLUMNS)
           .merge(column => type)
           .merge(reencrypt_properties)
+          .merge(JSONB_COLUMNS.to_h { |col| [col.to_s, normalized_jsonb_value(col)] })
       end
 
       def reencrypt_properties
@@ -845,6 +891,40 @@ module Integrations
       end
 
       private
+
+      def normalize_filter_value(value)
+        return value unless value.is_a?(String)
+
+        log_error(
+          'Integration filter value is a string, normalizing',
+          filter_value: value,
+          caller: cleaned_caller_backtrace
+        )
+
+        parsed = Gitlab::Json.safe_parse(value)
+        parsed.is_a?(String) ? Gitlab::Json.safe_parse(parsed) : parsed
+      end
+
+      def cleaned_caller_backtrace
+        Gitlab::BacktraceCleaner.clean_backtrace(caller)
+          .reject { |line| line.include?('/gems/') }
+          .first(5)
+      end
+
+      def normalize_filter
+        return unless read_attribute(:filter).is_a?(String)
+
+        write_attribute(:filter, normalize_filter_value(read_attribute(:filter)))
+      end
+
+      def normalized_jsonb_value(column_name)
+        case column_name
+        when 'filter'
+          filter
+        else
+          self[column_name]
+        end
+      end
 
       def validate_recipients?
         activated? && !importing?

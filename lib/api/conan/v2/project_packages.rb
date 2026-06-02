@@ -6,6 +6,10 @@ module API
       class ProjectPackages < ::API::Base
         MAX_FILES_COUNT = MAX_PACKAGE_REVISIONS_COUNT = 1000
 
+        def self.authorization_boundary_options
+          { boundary_type: :project }
+        end
+
         helpers do
           include Gitlab::Utils::StrongMemoize
           def package_files(finder_params)
@@ -22,6 +26,16 @@ module API
           end
 
           def destroy_package_entity(entity, event_name)
+            if ::Feature.enabled?(:packages_protected_packages_delete, project)
+              service_response = ::Packages::Protection::CheckRuleExistenceService.for_delete(
+                project: project,
+                current_user: current_user,
+                params: { package_name: package.name, package_type: :conan }
+              ).execute
+
+              forbidden!('Package is deletion protected.') if service_response[:protection_rule_exists?]
+            end
+
             track_conan_package_event(event_name)
 
             entity.transaction do
@@ -94,10 +108,14 @@ module API
                 get urgency: :low do
                   not_found!('Package') unless package
 
-                  revision = package.conan_recipe_revisions.default.order_by_id_desc.first
+                  revision = if Feature.disabled?(:packages_conan_v1_revisions_backward_compatibility, project)
+                               package.conan_recipe_revisions.default.order_by_id_desc.first
+                             else
+                               # Fall back to default revision '0' for Conan v1 compatibility
+                               package.latest_recipe_revision_or_default
+                             end
 
-                  not_found!('Revision') unless revision.present?
-
+                  not_found!('Revision') unless revision
                   present revision, with: ::API::Entities::Packages::Conan::Revision
                 end
               end
@@ -123,7 +141,7 @@ module API
                   present package, with: ::API::Entities::Packages::Conan::RecipeRevisions
                 end
                 params do
-                  requires :recipe_revision, type: String, regexp: Gitlab::Regex.conan_revision_regex_v2,
+                  requires :recipe_revision, type: String, regexp: Gitlab::Regex.conan_revision_regex_combined,
                     desc: 'Recipe revision', documentation: { example: 'df28fd816be3a119de5ce4d374436b25' }
                 end
                 namespace ':recipe_revision' do
@@ -151,10 +169,10 @@ module API
                     not_found!('Revision') unless recipe_revision
 
                     if package.conan_recipe_revisions.one?
-                      track_conan_package_event('delete_package')
                       destroy_conditionally!(package) do |package|
-                        ::Packages::MarkPackageForDestructionService.new(container: package,
+                        result = ::Packages::MarkPackageForDestructionService.new(container: package,
                           current_user: current_user).execute
+                        render_api_error!(result.message, result.http_status) if result.error?
 
                         # Conan cli expects 200 status code when deleting a recipe revision
                         status 200
@@ -257,9 +275,10 @@ module API
 
                       route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true
                       route_setting :authorization, job_token_policies: :admin_packages,
-                        permissions: :authorize_conan_package, boundary_type: :project
+                        skip_granular_token_authorization: :workhorse_pre_authorization
 
                       put 'authorize', urgency: :low do
+                        protect_package!(params[:package_name], :conan)
                         authorize_workhorse!(subject: project, maximum_size: project.actual_limits.conan_max_file_size)
                       end
                     end
@@ -287,9 +306,16 @@ module API
 
                     authorize_read_package!(project)
                     not_found!('Package') unless package
-                    not_found!('Revision') unless recipe_revision.present?
 
-                    recipe_revision.conan_package_references.pluck_reference_and_info.to_h
+                    revision = recipe_revision
+
+                    if Feature.enabled?(:packages_conan_v1_revisions_backward_compatibility, project)
+                      revision ||= package
+                    end
+
+                    not_found!('Revision') unless revision
+
+                    revision.conan_package_references.pluck_reference_and_info.to_h
                   end
 
                   params do
@@ -319,8 +345,12 @@ module API
 
                         revision = package_revisions.default.order_by_id_desc.first
 
-                        not_found!('Revision') unless revision.present?
+                        # Fall back to default revision '0' for Conan v1 compatibility
+                        if Feature.enabled?(:packages_conan_v1_revisions_backward_compatibility, project)
+                          revision ||= package.default_package_revision
+                        end
 
+                        not_found!('Revision') unless revision
                         present revision, with: ::API::Entities::Packages::Conan::Revision
                       end
                     end
@@ -354,7 +384,7 @@ module API
                       end
 
                       params do
-                        requires :package_revision, type: String, regexp: Gitlab::Regex.conan_revision_regex_v2,
+                        requires :package_revision, type: String, regexp: Gitlab::Regex.conan_revision_regex_combined,
                           desc: 'Package revision', documentation: { example: '3bdd2d8c8e76c876ebd1ac0469a4e72c' }
                       end
                       namespace ':package_revision' do
@@ -487,9 +517,10 @@ module API
                             route_setting :authentication, job_token_allowed: true,
                               basic_auth_personal_access_token: true
                             route_setting :authorization, job_token_policies: :admin_packages,
-                              permissions: :authorize_conan_package, boundary_type: :project
+                              skip_granular_token_authorization: :workhorse_pre_authorization
 
                             put 'authorize', urgency: :low do
+                              protect_package!(params[:package_name], :conan)
                               authorize_workhorse!(subject: project,
                                 maximum_size: project.actual_limits.conan_max_file_size)
                             end

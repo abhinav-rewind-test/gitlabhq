@@ -6,6 +6,10 @@ module Types
 
     authorize :read_user_preference
 
+    authorize_granular_token permissions: :read_user_preference,
+      boundary: :user,
+      boundary_type: :user
+
     alias_method :user_preference, :object
 
     field :extensions_marketplace_opt_in_status, Types::ExtensionsMarketplaceOptInStatusEnum,
@@ -62,6 +66,19 @@ module Types
       null: false,
       description: 'Display settings for the work item lists.'
 
+    field :orbit_settings,
+      type: GraphQL::Types::JSON,
+      null: false,
+      description: 'Orbit agent settings for the user.',
+      experiment: { milestone: '19.0' }
+
+    field :wiki_use_auto_commit_message,
+      GraphQL::Types::Boolean,
+      null: false,
+      description: 'Whether to skip the commit message modal and use the auto-generated commit message when saving ' \
+        'changes to a wiki document.',
+      experiment: { milestone: '18.10' }
+
     def issues_sort
       user_preference.issues_sort&.to_sym
     end
@@ -84,3 +101,5 @@ module Types
     end
   end
 end
+
+Types::UserPreferencesType.prepend_mod

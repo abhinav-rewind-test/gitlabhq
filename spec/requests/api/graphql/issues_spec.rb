@@ -20,12 +20,12 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
   let_it_be(:milestone2) { create(:milestone, project: project_d, due_date: 20.days.from_now) }
   let_it_be(:milestone3) { create(:milestone, project: project_d, due_date: 30.days.from_now) }
   let_it_be(:milestone4) { create(:milestone, project: project_a, due_date: 40.days.from_now) }
-  let_it_be(:priority1) { create(:label, project: project_c, priority: 1) }
-  let_it_be(:priority2) { create(:label, project: project_d, priority: 5) }
-  let_it_be(:priority3) { create(:label, project: project_a, priority: 10) }
-  let_it_be(:priority4) { create(:label, project: project_d, priority: 15) }
+  let_it_be(:priority1, freeze: false) { create(:label, project: project_c, priority: 1) }
+  let_it_be(:priority2, freeze: false) { create(:label, project: project_d, priority: 5) }
+  let_it_be(:priority3, freeze: false) { create(:label, project: project_a, priority: 10) }
+  let_it_be(:priority4, freeze: false) { create(:label, project: project_d, priority: 15) }
 
-  let_it_be(:issue_a) do
+  let_it_be(:issue_a, freeze: false) do
     create(
       :issue,
       project: project_a,
@@ -85,7 +85,7 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
   end
 
   let_it_be(:archived_issue) { create(:issue, project: archived_project) }
-  let_it_be(:issues, reload: true) { [issue_a, issue_b, issue_c, issue_d, issue_e] }
+  let_it_be_with_reload(:issues) { [issue_a, issue_b, issue_c, issue_d, issue_e] }
   # we need to always provide at least one filter to the query so it doesn't fail
   let_it_be(:base_params) { { iids: issues.map { |issue| issue.iid.to_s } } }
 
@@ -156,61 +156,59 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
     it_behaves_like 'query that requires at least one filter'
   end
 
-  context 'with quarantine', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/5996' do
-    # All new specs should be added to the shared example if the change also
-    # affects the `issues` query at the root level of the API.
-    # Shared example also used in spec/requests/api/graphql/project/issues_spec.rb
-    it_behaves_like 'graphql issue list request spec' do
-      let_it_be(:external_user) { create(:user) }
-      let_it_be(:another_user) { reporter }
-      let_it_be(:project) { project_a } # Used for Service Desk issues creation in shared example
+  # All new specs should be added to the shared example if the change also
+  # affects the `issues` query at the root level of the API.
+  # Shared example also used in spec/requests/api/graphql/project/issues_spec.rb
+  it_behaves_like 'graphql issue list request spec' do
+    let_it_be(:external_user) { create(:user) }
+    let_it_be(:another_user) { reporter }
+    let_it_be(:project) { project_a } # Used for Service Desk issues creation in shared example
 
-      let(:public_projects) { [project_a, project_c] }
+    let(:public_projects) { [project_a, project_c] }
 
-      let(:issue_nodes_path) { %w[issues nodes] }
+    let(:issue_nodes_path) { %w[issues nodes] }
 
-      # filters
-      let(:expected_negated_assignee_issues) { [issue_b, issue_c, issue_d, issue_e] }
-      let(:voted_issues) { [issue_a, issue_c] }
-      let(:no_award_issues) { [issue_b, issue_d, issue_e] }
-      let(:locked_discussion_issues) { [issue_b, issue_d] }
-      let(:unlocked_discussion_issues) { [issue_a, issue_c, issue_e] }
-      let(:search_title_term) { 'matching issue' }
-      let(:title_search_issue) { issue_c }
-      let(:confidential_issues) { [issue_c, issue_e] }
-      let(:non_confidential_issues) { [issue_a, issue_b, issue_d] }
-      let(:public_non_confidential_issues) { [issue_a] }
-      let(:subscribed_issues) { [issue_a] }
-      let(:unsubscribed_issues) { [issue_b] }
+    # filters
+    let(:expected_negated_assignee_issues) { [issue_b, issue_c, issue_d, issue_e] }
+    let(:voted_issues) { [issue_a, issue_c] }
+    let(:no_award_issues) { [issue_b, issue_d, issue_e] }
+    let(:locked_discussion_issues) { [issue_b, issue_d] }
+    let(:unlocked_discussion_issues) { [issue_a, issue_c, issue_e] }
+    let(:search_title_term) { 'matching issue' }
+    let(:title_search_issue) { issue_c }
+    let(:confidential_issues) { [issue_c, issue_e] }
+    let(:non_confidential_issues) { [issue_a, issue_b, issue_d] }
+    let(:public_non_confidential_issues) { [issue_a] }
+    let(:subscribed_issues) { [issue_a] }
+    let(:unsubscribed_issues) { [issue_b] }
 
-      # sorting
-      let(:data_path) { [:issues] }
-      let(:expected_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-      let(:expected_priority_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
-      let(:expected_due_date_sorted_desc) { [issue_c, issue_b, issue_a, issue_e, issue_d] }
-      let(:expected_due_date_sorted_asc) { [issue_e, issue_a, issue_b, issue_c, issue_d] }
-      let(:expected_relative_position_sorted_asc) { [issue_a, issue_b, issue_d, issue_c, issue_e] }
-      let(:expected_label_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-      let(:expected_label_priority_sorted_desc) { [issue_a, issue_e, issue_d, issue_c, issue_b] }
-      let(:expected_milestone_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-      let(:expected_milestone_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
+    # sorting
+    let(:data_path) { [:issues] }
+    let(:expected_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+    let(:expected_priority_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
+    let(:expected_due_date_sorted_desc) { [issue_c, issue_b, issue_a, issue_e, issue_d] }
+    let(:expected_due_date_sorted_asc) { [issue_e, issue_a, issue_b, issue_c, issue_d] }
+    let(:expected_relative_position_sorted_asc) { [issue_a, issue_b, issue_d, issue_c, issue_e] }
+    let(:expected_label_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+    let(:expected_label_priority_sorted_desc) { [issue_a, issue_e, issue_d, issue_c, issue_b] }
+    let(:expected_milestone_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+    let(:expected_milestone_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
 
-      # N+1 queries
-      let(:same_project_issue1) { issue_d }
-      let(:same_project_issue2) { issue_e }
+    # N+1 queries
+    let(:same_project_issue1) { issue_d }
+    let(:same_project_issue2) { issue_e }
 
-      before_all do
-        create(:award_emoji, :upvote, user: developer, awardable: issue_a)
-        create(:award_emoji, :upvote, user: developer, awardable: issue_c)
-      end
+    before_all do
+      create(:award_emoji, :upvote, user: developer, awardable: issue_a)
+      create(:award_emoji, :upvote, user: developer, awardable: issue_c)
+    end
 
-      def pagination_query(params)
-        graphql_query_for(
-          :issues,
-          base_params.merge(**params.to_h),
-          "#{page_info} nodes { id }"
-        )
-      end
+    def pagination_query(params)
+      graphql_query_for(
+        :issues,
+        base_params.merge(**params.to_h),
+        "#{page_info} nodes { id }"
+      )
     end
   end
 
@@ -237,7 +235,11 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
       private_project = create(:project, :private, group: private_group)
       create(:issue, project: private_project)
 
-      expect { post_query }.not_to exceed_all_query_limit(control).with_threshold(1)
+      # Threshold increased from 1 to 4: the test adds 2 projects in 2 new root namespaces,
+      # each requiring a one-time work_item_custom_types lookup for the configurable types
+      # cache (keyed per root ancestor in SafeRequestStore). This is O(new namespaces),
+      # not O(issues).
+      expect { post_query }.not_to exceed_all_query_limit(control).with_threshold(4)
       expect_graphql_errors_to_be_empty
     end
   end

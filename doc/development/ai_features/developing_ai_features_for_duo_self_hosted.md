@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Custom Models
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Developing AI Features for GitLab Duo Self-Hosted
 ---
 
@@ -9,24 +9,8 @@ This document outlines the process for developing AI features for GitLab Duo Sel
 
 ## Gaining access to a hosted model
 
-The following models are currently available to GitLab team members for development purposes as of July, 2025:
-
-- `Claude Sonnet 3.5` on AWS Bedrock
-- `Claude Sonnet 3.5 v2` on AWS Bedrock
-- `Claude Sonnet 3.7` on AWS Bedrock
-- `Claude Sonnet 4` on AWS Bedrock
-- `Claude Haiku 3.5` on AWS Bedrock
-- `Llama 3.3 70b` on AWS Bedrock
-- `Llama 3.1 8b` on AWS Bedrock
-- `Llama 3.1 70b` on AWS Bedrock
-- `Mistral Small` on Fireworks AI
-- `Mixtral 8x22b` on Fireworks AI
-- `Codestral 22b v0.1` on Fireworks AI
-- `Llama 3.1 70b` on Fireworks AI
-- `Llama 3.1 8b` on Fireworks AI
-- `Llama 3.3 70b` on Fireworks AI
-
-Development environments provide access to a limited set of models for cost optimization. The [complete model catalog](../../administration/gitlab_duo_self_hosted/supported_models_and_hardware_requirements.md#supported-models) is available in production deployments.
+For the current list of models available to GitLab team members for development purposes, see the
+[supported models documentation](../../administration/gitlab_duo_self_hosted/supported_models_and_hardware_requirements.md#supported-models).
 
 ### Gaining access to models on Fireworks AI
 
@@ -38,7 +22,7 @@ Our Fireworks AI account is managed by [Code Creation Group](https://handbook.gi
 
 To gain access to models in AWS Bedrock, create an [access request using the `aws_services_account_iam_update` template](https://gitlab.com/gitlab-com/gl-security/corp/issue-tracker/-/issues/new?description_template=aws_services_account_iam_update). See [this example access request](https://gitlab.com/gitlab-com/gl-security/corp/issue-tracker/-/issues/949) if you aren't sure what information to fill in.
 
-Once your access request is approved, you can gain access to AWS credentials by visiting [https://gitlabsandbox.cloud/login](https://gitlabsandbox.cloud/login).
+Once your access request is approved, you can gain access to AWS credentials by visiting <https://gitlabsandbox.cloud/login>.
 
 After logging into `gitlabsandbox.cloud`, perform the following steps:
 
@@ -88,6 +72,7 @@ To use the hosted models, set the following environment variables on your AI Gat
    AWS_REGION=us-east-1
    FIREWORKS_AI_API_KEY=your-fireworks-api-key
    AIGW_CUSTOM_MODELS__ENABLED=true
+   DUO_WORKFLOW_AUTH__OIDC_CUSTOMER_PORTAL_URL=https://customers.staging.gitlab.com
    # useful for debugging
    AIGW_LOGGING__ENABLE_REQUEST_LOGGING=true
    AIGW_LOGGING__ENABLE_LITELLM_LOGGING=true
@@ -121,7 +106,7 @@ To enable the use of self-hosted models in the GitLab instance, follow these ste
 
 1. Go to **Admin page -> GitLab Duo**
 1. Click the **Configure models for GitLab Duo** button
-1. In the Model Configuration page, click the **Add self-hosted model** button
+1. In the Model Selection page, click the **Add self-hosted model** button
 1. Fill in the model details
 1. Click **Add self-hosted model** to save your changes
 
@@ -129,7 +114,7 @@ To enable the use of self-hosted models in the GitLab instance, follow these ste
 
 To use the created self-hosted model to power AI-native features:
 
-1. On your GDK instance, go to `/admin/gitlab_duo/self_hosted`.
+1. On your GDK instance, go to `/admin/gitlab_duo/model_selection`.
 1. For each AI feature you want to use with your self-hosted model (for example, Code Generation, Code Completion, General Chat, Explain Code, and so on), select your newly created self-hosted model (for example, **Claude 3.5 Sonnet on Bedrock**) from the corresponding dropdown list.
 1. Optional. To copy the configuration to all features under a specific category, select the copy icon next to it.
 1. After making your selections, the changes are usually saved automatically.

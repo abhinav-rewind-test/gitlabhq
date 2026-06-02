@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Upgrade a multi-node instance with downtime
 description: Upgrade a multi-node Linux package-based or cloud-native instance with downtime.
 ---
@@ -85,8 +85,15 @@ For Gitaly servers that are not part of Gitaly Cluster (Praefect), upgrade the s
 by [upgrading with the Linux package](package/_index.md#upgrade-with-the-linux-package).
 If you have multiple Gitaly shards, you can upgrade the Gitaly servers in any order.
 
-If you're running Gitaly Cluster (Praefect), follow the
-[zero-downtime upgrade process for Gitaly Cluster (Praefect)](zero_downtime.md#upgrade-gitaly-cluster-praefect-nodes).
+If you're running Gitaly Cluster (Praefect), the components must be upgraded
+in the following order:
+
+1. Praefect PostgreSQL database. If you use:
+   - The Linux package, this step requires downtime for Git operations.
+   - A third-party HA database solution, this step can be done without downtime.
+1. Gitaly nodes. Upgrade sequentially by [upgrading with the Linux package](package/_index.md#upgrade-with-the-linux-package).
+1. Praefect nodes. Follow the [Praefect upgrade steps](zero_downtime.md#upgrade-gitaly-cluster-praefect-nodes),
+   designating one node as the deploy node to run database migrations.
 
 ### When using Amazon Machine Images
 
@@ -108,6 +115,8 @@ To upgrade Gitaly Cluster (Praefect) nodes by using an AMI redeployment process:
 1. Redeploy your other Gitaly Cluster (Praefect) nodes.
 
 ## Upgrade the PostgreSQL nodes
+
+If you are using a Patroni (HA PostgreSQL) configuration, skip this section and follow the [Upgrade Patroni nodes](#upgrade-patroni-nodes) steps instead.
 
 For non-clustered PostgreSQL servers:
 
@@ -202,7 +211,6 @@ deploy node:
    `/etc/gitlab/gitlab.rb` does not contain `gitlab_rails['auto_migrate'] = false`.
    Either set it specifically `gitlab_rails['auto_migrate'] = true` or omit it
    for the default behavior (`true`).
-
 1. If you're using PgBouncer, you must bypass PgBouncer and connect directly to PostgreSQL before running migrations.
 
    Rails uses an advisory lock when attempting to run a migration to prevent

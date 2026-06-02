@@ -1,5 +1,4 @@
-import $ from 'jquery';
-import { assignIn } from 'lodash';
+import { assignIn } from 'lodash-es';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import waitForPromises from 'helpers/wait_for_promises';
 import SmartInterval from '~/smart_interval';
@@ -66,7 +65,7 @@ describe('SmartInterval', () => {
 
     it('does not increment while waiting for callback', () => {
       interval = createDefaultSmartInterval({
-        callback: () => new Promise($.noop),
+        callback: () => new Promise(() => {}),
       });
 
       jest.runOnlyPendingTimers();
@@ -184,7 +183,7 @@ describe('SmartInterval', () => {
       jest.runOnlyPendingTimers();
 
       return waitForPromises().then(() => {
-        $(document).triggerHandler('beforeunload');
+        window.dispatchEvent(new Event('beforeunload'));
 
         expect(interval.state.intervalId).toBeUndefined();
         expect(interval.getCurrentInterval()).toBe(interval.cfg.startingInterval);

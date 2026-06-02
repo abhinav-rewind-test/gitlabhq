@@ -1,8 +1,8 @@
 ---
-stage: none
+stage: Tutorials
 group: Tutorials
 description: Tutorial on how to create a shop application in Python with GitLab Duo.
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: 'Tutorial: Use GitLab Duo to create a shop application in Python'
 ---
 
@@ -21,7 +21,7 @@ This tutorial is part one in a series, and guides you through creating and debug
 a [Python](https://www.python.org/) web application with a database backend
 that meets these requirements.
 
-You'll use [GitLab Duo Chat (Agentic)](../../gitlab_duo_chat/agentic_chat.md)
+You'll use [GitLab Duo Agentic Chat](../../gitlab_duo_chat/agentic_chat.md)
 and [GitLab Duo Code Suggestions](../../duo_agent_platform/code_suggestions/_index.md)
 to help you:
 
@@ -62,8 +62,10 @@ Depending on your subscription add-on, you can use Chat in the GitLab UI, the We
 
 #### Use Chat in the GitLab UI
 
-1. On the top bar, select **Search or go to** and find your project.
-1. On the GitLab Duo sidebar, select either **New GitLab Duo Chat** ({{< icon name="pencil-square" >}}) or **Current GitLab Duo Chat** ({{< icon name="duo-chat" >}}).
+1. In the top bar, select **Search or go to** and find your project.
+1. On the GitLab Duo sidebar, select **Add new chat** ({{< icon name="pencil-square" >}}).
+1. From the dropdown list, select an agent.
+
    A Chat conversation opens in the GitLab Duo sidebar on the right side of your screen.
 1. Enter your question in the chat text box and press <kbd>Enter</kbd> or select **Send**.
    It might take a few seconds for the interactive AI chat to produce an answer.
@@ -71,10 +73,10 @@ Depending on your subscription add-on, you can use Chat in the GitLab UI, the We
 #### Use Chat in the Web IDE
 
 1. Open the Web IDE:
-   1. In the GitLab UI, on the top bar, select **Search or go to** and find your project.
+   1. In the GitLab UI, in the top bar, select **Search or go to** and find your project.
    1. Select a file. Then in the upper right, select **Edit** > **Open in Web IDE**.
 1. Open Chat by using one of these methods:
-   - On the left sidebar, select **GitLab Duo Chat**.
+   - In the left sidebar, select **GitLab Duo Chat**.
    - In the file that you have open in the editor, select some code.
      1. Right-click and select **GitLab Duo Chat**.
      1. Select **Explain selected code**, **Generate Tests**, or **Refactor**.
@@ -91,7 +93,7 @@ How you use Chat in your IDE differs depending on which IDE you use.
 {{< tab title="VS Code" >}}
 
 1. In VS Code, open a file. The file does not need to be a file in a Git repository.
-1. On the left sidebar, select **GitLab Duo Chat** ({{< icon name="duo-chat" >}}).
+1. In the left sidebar, select **GitLab Duo Chat** ({{< icon name="duo-chat" >}}).
 1. In the message box, enter your question. Press **Enter**, or select **Send**.
 1. In the chat pane, in the upper-right corner, select **Show Status** to show information
    in the Command Palette.
@@ -122,11 +124,11 @@ For more information, see [Use GitLab Duo Chat in VS Code](../../gitlab_duo_chat
 
 To use Code Suggestions:
 
-1. Open your Git project in a
-   [supported IDE](../../duo_agent_platform/code_suggestions/supported_extensions.md#supported-editor-extensions).
-1. Add the project as a remote of your local repository using
-   [`git remote add`](../../../topics/git/commands.md#git-remote-add).
-1. Add your project directory, including the hidden `.git/` folder, to your IDE workspace or project.
+1. Open your Git project in a [supported IDE](../../project/repository/code_suggestions/supported_extensions.md#supported-editor-extensions).
+
+   The local project must have a Git remote configured that points to a repository on GitLab. If it
+   doesn't already, use [`git remote add`](../../../topics/git/commands.md#git-remote-add) to link the
+   project.
 1. Author your code.
    As you type, suggestions are displayed. Code Suggestions provides code snippets
    or completes the current line, depending on the cursor position.
@@ -198,7 +200,6 @@ ensures you do not miss critical components.
    ```
 
 1. Copy the response into the `.gitignore` file.
-
 1. For the `README` file, enter the following into Chat:
 
    ```plaintext
@@ -342,7 +343,7 @@ what you're configuring and why.
 
    If you want to ask Chat what to adjust, do so in the IDE in the `setup.py`
    file, instead of in the GitLab UI. This provides Chat with
-   [the context you're working in](../../duo_agent_platform/context.md#gitlab-duo-chat-agentic),
+   [the context you're working in](../../duo_agent_platform/context.md#gitlab-duo-agentic-chat),
    including the `setup.py` file you just created.
 
    ```plaintext
@@ -1378,7 +1379,6 @@ def create_app(test_config=None):
 {{< /tabs >}}
 
 1. Check your code files against these examples.
-
 1. To verify if your code works, ask Chat how to start a local application server:
 
    ```plaintext
@@ -1405,10 +1405,10 @@ For more information, see [Using GitLab Duo /fix](https://youtu.be/agTqx__j6Ko?s
 - [Get started with GitLab Duo](../../get_started/getting_started_gitlab_duo.md).
 - Blog post: [Streamline DevSecOps engineering workflows with GitLab Duo](https://about.gitlab.com/blog/streamline-devsecops-engineering-workflows-with-gitlab-duo/)
 - <i class="fa-youtube-play" aria-hidden="true"></i>
-  [GitLab Duo Chat (Agentic)](https://youtu.be/uG9-QLAJrrg?si=c25SR7DoRAep7jvQ)
+  [GitLab Duo Chat (agentic)](https://youtu.be/uG9-QLAJrrg?si=c25SR7DoRAep7jvQ)
   <!-- Video published on 2025-06-02 -->
 - <i class="fa-youtube-play" aria-hidden="true"></i>
-  [GitLab Duo Chat (Classic)](https://youtu.be/ZQBAuf-CTAY?si=0o9-xJ_ATTsL1oew)
+  [GitLab Duo Chat (non-agentic)](https://youtu.be/ZQBAuf-CTAY?si=0o9-xJ_ATTsL1oew)
   <!-- Video published on 2024-04-18 -->
 - <i class="fa-youtube-play" aria-hidden="true"></i>
   [GitLab Duo Code Suggestions](https://youtu.be/ds7SG1wgcVM?si=MfbzPIDpikGhoPh7)

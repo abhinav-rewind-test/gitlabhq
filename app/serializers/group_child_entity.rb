@@ -6,7 +6,7 @@ class GroupChildEntity < Grape::Entity
   include MarkupHelper
   include Namespaces::DeletableHelper
 
-  expose :id, :name, :description, :visibility, :full_name, :full_path,
+  expose :id, :name, :description, :visibility, :full_name, :path, :full_path,
     :created_at, :updated_at, :avatar_url
 
   expose :type do |instance|
@@ -21,12 +21,24 @@ class GroupChildEntity < Grape::Entity
     can_archive?
   end
 
+  expose :can_transfer do |_instance|
+    can_transfer?
+  end
+
   expose :edit_path do |instance|
     # We know `type` will be one either `project` or `group`.
     # The `edit_polymorphic_path` helper would try to call the path helper
     # with a plural: `edit_groups_path(instance)` or `edit_projects_path(instance)`
     # while our methods are `edit_group_path` or `edit_project_path`
     public_send("edit_#{type}_path", instance) # rubocop:disable GitlabSecurity/PublicSend
+  end
+
+  expose :request_access_path do |instance|
+    polymorphic_path([:request_access, instance, :members])
+  end
+
+  expose :withdraw_access_request_path do |instance|
+    polymorphic_path([:leave, instance, :members])
   end
 
   expose :relative_path do |instance|
@@ -129,33 +141,27 @@ class GroupChildEntity < Grape::Entity
   end
 
   def can_edit?
-    return false unless request.respond_to?(:current_user)
+    ability = project? ? :admin_project : :admin_group
 
-    if project?
-      # Avoid checking rights for each project, as it might be expensive if the
-      # user cannot read cross project.
-      can?(request.current_user, :read_cross_project) &&
-        can?(request.current_user, :admin_project, object)
-    else
-      can?(request.current_user, :admin_group, object)
-    end
+    cross_project_ability_allowed?(ability)
   end
 
   def can_archive?
-    return false unless request.try(:current_user)
-
     ability = project? ? :archive_project : :archive_group
-    can?(request.current_user, ability, object)
+
+    cross_project_ability_allowed?(ability)
+  end
+
+  def can_transfer?
+    ability = project? ? :change_namespace : :change_group
+
+    cross_project_ability_allowed?(ability)
   end
 
   def can_remove?
-    return false unless request.try(:current_user)
+    ability = project? ? :remove_project : :remove_group
 
-    if project?
-      can?(request.current_user, :remove_project, object)
-    else
-      can?(request.current_user, :admin_group, object)
-    end
+    cross_project_ability_allowed?(ability)
   end
 
   def can_leave?
@@ -168,8 +174,22 @@ class GroupChildEntity < Grape::Entity
     end
   end
 
+  def cross_project_ability_allowed?(ability)
+    return false unless request.respond_to?(:current_user)
+
+    if project?
+      # Avoid checking rights for each project, as it might be expensive if the
+      # user cannot read cross project. Cross project access is prevent when external
+      # authorization is enabled
+      can?(request.current_user, :read_cross_project) &&
+        can?(request.current_user, ability, object)
+    else
+      can?(request.current_user, ability, object)
+    end
+  end
+
   def marked_for_deletion_on
-    object.marked_for_deletion_on
+    object.self_deletion_scheduled_deletion_created_on
   end
 
   def permanent_deletion_date

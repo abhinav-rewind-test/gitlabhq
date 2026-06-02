@@ -76,6 +76,7 @@ describe('WorkItemLabels component', () => {
     workItemId = mockWorkItemId,
     workItemIid = '1',
     workItemType = mockWorkItemType,
+    provide = {},
   } = {}) => {
     wrapper = shallowMountExtended(WorkItemLabels, {
       apolloProvider: createMockApollo([
@@ -89,6 +90,7 @@ describe('WorkItemLabels component', () => {
         issuesListPath: `${fullPath}/issues`,
         epicsListPath: 'groups/some-group/-/epics',
         labelsManagePath: `${fullPath}/labels`,
+        ...provide,
       },
       propsData: {
         workItemId,
@@ -118,18 +120,6 @@ describe('WorkItemLabels component', () => {
   const updateLabels = (labels) => {
     findWorkItemSidebarDropdownWidget().vm.$emit('updateSelected', labels);
     findWorkItemSidebarDropdownWidget().vm.$emit('updateValue', labels);
-  };
-
-  const getMutationInput = (addLabelIds, removeLabelIds) => {
-    return {
-      input: {
-        id: mockWorkItemId,
-        labelsWidget: {
-          addLabelIds,
-          removeLabelIds,
-        },
-      },
-    };
   };
 
   const expectDropdownCountToBe = (count, toggleDropdownText) => {
@@ -270,9 +260,42 @@ describe('WorkItemLabels component', () => {
     await waitForPromises();
 
     expectDropdownCountToBe(1, 'Label 1');
-    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith(
-      getMutationInput([label1Id], []),
-    );
+    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: mockWorkItemId,
+        labelsWidget: {
+          addLabelIds: [label1Id],
+          removeLabelIds: [],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
+  });
+
+  it('passes useWorkItemFeatures as true to mutation when workItemFeaturesField feature flag is enabled', async () => {
+    createComponent({
+      workItemQueryHandler: workItemQuerySuccess,
+      updateWorkItemMutationHandler: successUpdateWorkItemMutationHandler,
+      provide: { glFeatures: { workItemFeaturesField: true } },
+    });
+
+    await waitForPromises();
+
+    showDropdown();
+    updateLabels([label1Id]);
+
+    await waitForPromises();
+
+    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: mockWorkItemId,
+        labelsWidget: {
+          addLabelIds: [label1Id],
+          removeLabelIds: [],
+        },
+      },
+      useWorkItemFeatures: true,
+    });
   });
 
   it('update labels when labels are removed', async () => {
@@ -292,9 +315,16 @@ describe('WorkItemLabels component', () => {
     await waitForPromises();
 
     expectDropdownCountToBe(1, 'Label 1');
-    expect(successRemoveLabelWorkItemMutationHandler).toHaveBeenCalledWith(
-      getMutationInput([], [label2Id, label3Id]),
-    );
+    expect(successRemoveLabelWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: mockWorkItemId,
+        labelsWidget: {
+          addLabelIds: [],
+          removeLabelIds: [label2Id, label3Id],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
   });
 
   it('update labels when labels are removed during create mode', async () => {
@@ -333,9 +363,16 @@ describe('WorkItemLabels component', () => {
     await waitForPromises();
 
     expectDropdownCountToBe(2, 'Label 1 and Label 3');
-    expect(successAddRemoveLabelWorkItemMutationHandler).toHaveBeenCalledWith(
-      getMutationInput([label3Id], [label2Id]),
-    );
+    expect(successAddRemoveLabelWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: mockWorkItemId,
+        labelsWidget: {
+          addLabelIds: [label3Id],
+          removeLabelIds: [label2Id],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
   });
 
   it('clears all labels when updateValue has no labels', async () => {
@@ -355,9 +392,16 @@ describe('WorkItemLabels component', () => {
     await waitForPromises();
 
     expectDropdownCountToBe(0, 'No labels');
-    expect(successRemoveAllLabelWorkItemMutationHandler).toHaveBeenCalledWith(
-      getMutationInput([], [label1Id, label2Id, label3Id]),
-    );
+    expect(successRemoveAllLabelWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: mockWorkItemId,
+        labelsWidget: {
+          addLabelIds: [],
+          removeLabelIds: [label1Id, label2Id, label3Id],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
   });
 
   it('shows selected labels at top of list', async () => {
@@ -432,6 +476,7 @@ describe('WorkItemLabels component', () => {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_label',
         property: 'type_Task',
+        extra: { viewContext: 'full_screen' },
       });
     });
   });

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Deploy a GitLab project to Amazon ECS. Containerize the application and set up continuous deployment, review apps, and security testing.
 title: Deploy to Amazon Elastic Container Service
 ---
@@ -180,7 +180,7 @@ Now, the demo application is accessible from the internet.
 
    ![The demo application running in a browser.](img/view-running-app_v13_10.png)
 
-In this guide, HTTPS/SSL is **not** configured. You can access to the application through HTTP only
+In this guide, HTTPS/SSL is not configured. You can access to the application through HTTP only
 (for example, `http://<ec2-ipv4-address>`).
 
 ## Set up Continuous Deployment from GitLab

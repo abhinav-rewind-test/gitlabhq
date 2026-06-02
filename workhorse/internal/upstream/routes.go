@@ -13,6 +13,8 @@ import (
 	"gitlab.com/gitlab-org/labkit/log"
 	"gitlab.com/gitlab-org/labkit/tracing"
 
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/loadshedding"
+
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/ai_assist/duoworkflow"
 	apipkg "gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/artifacts"
@@ -28,6 +30,8 @@ import (
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/helper"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/imageresizer"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/metrics"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/oauthproxy"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/orbit"
 	proxypkg "gitlab.com/gitlab-org/gitlab/workhorse/internal/proxy"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/queueing"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/ratelimitcache"
@@ -137,6 +141,17 @@ func withBodyLimitMode(bodyLimitMode bodylimit.Mode) func(*routeOptions) {
 }
 
 func (u *upstream) observabilityMiddlewares(handler http.Handler, method string, metadata routeMetadata, opts *routeOptions) http.Handler {
+	if u.loadShedder != nil {
+		// Pass the readiness provider so that load shedding also activates
+		// when the Puma readiness probe signals not-ready (e.g. after a timeout).
+		// Use a typed nil to avoid a non-nil interface holding a nil pointer.
+		var readiness loadshedding.ReadinessProvider
+		if u.healthCheckServer != nil {
+			readiness = u.healthCheckServer
+		}
+		handler = loadshedding.Middleware(u.loadShedder, readiness, u.accessLogger)(handler)
+	}
+
 	handler = log.AccessLogger(
 		handler,
 		log.WithAccessLogger(u.accessLogger),
@@ -210,22 +225,8 @@ func (u *upstream) route(method string, metadata routeMetadata, handler http.Han
 	}
 }
 
+//nolint:unparam // matchers kept for API consistency with other route methods
 func (u *upstream) wsRoute(metadata routeMetadata, handler http.Handler, matchers ...matcherFunc) routeEntry {
-	method := "GET"
-	handler = u.observabilityMiddlewares(handler, method, metadata, nil)
-
-	return routeEntry{
-		method:   method,
-		regex:    compileRegexp(metadata.regexpStr),
-		handler:  handler,
-		matchers: append(matchers, websocket.IsWebSocketUpgrade),
-	}
-}
-
-// wsRouteStrict creates a WebSocket route that will match requests even if websocket headers are missing.
-// The request is rejected if it is not a valid WebSocket upgrade request.
-// Use wsRouteStrict if you want invalid WebSocket upgrade requests to fail early with a 400 Bad Request.
-func (u *upstream) wsRouteStrict(metadata routeMetadata, handler http.Handler, matchers ...matcherFunc) routeEntry {
 	method := "GET"
 	handler = u.observabilityMiddlewares(handler, method, metadata, nil)
 	handler = requireWebsocket(handler)
@@ -278,7 +279,7 @@ func WithSuccessTracking(tracker *healthcheck.SuccessTracker) ProxyOption {
 	}
 }
 
-func buildProxy(backend *url.URL, version string, rt http.RoundTripper, cfg config.Config, dependencyProxyInjector *dependencyproxy.Injector, opts ...ProxyOption) http.Handler {
+func buildProxy(backend *url.URL, version string, rt http.RoundTripper, cfg config.Config, dependencyProxyInjector *dependencyproxy.Injector, api *apipkg.API, opts ...ProxyOption) http.Handler {
 	proxier := proxypkg.NewProxy(backend, version, rt)
 
 	// Apply optional middleware
@@ -287,24 +288,34 @@ func buildProxy(backend *url.URL, version string, rt http.RoundTripper, cfg conf
 		handler = opt(handler)
 	}
 
-	return senddata.SendData(
-		sendfile.SendFile(apipkg.Block(handler)),
+	injecters := []senddata.Injecter{
 		git.SendArchive,
 		git.SendBlob,
+		git.SendChangedPaths,
 		git.SendDiff,
+		git.SendListBlobs,
 		git.SendPatch,
 		git.SendSnapshot,
 		artifacts.SendEntry,
 		sendurl.SendURL,
 		imageresizer.NewResizer(cfg),
 		dependencyProxyInjector,
+	}
+	if api != nil {
+		injecters = append(injecters, orbit.NewSendQuery(api, version))
+	}
+
+	return senddata.SendData(
+		sendfile.SendFile(apipkg.Block(handler)),
+		injecters...,
 	)
 }
 
 // Routing table
 // We match against URI not containing the relativeUrlRoot:
 // see upstream.ServeHTTP
-
+//
+//nolint:funlen // Route configuration is inherently verbose; splitting would reduce readability
 func configureRoutes(u *upstream) {
 	api := u.APIClient
 	static := &staticpages.Static{DocumentRoot: u.DocumentRoot, Exclude: staticExclude, API: u.APIClient}
@@ -316,7 +327,7 @@ func configureRoutes(u *upstream) {
 		proxyOpts = append(proxyOpts, WithSuccessTracking(u.healthCheckServer.GetSuccessTracker()))
 	}
 
-	proxy := buildProxy(u.Backend, u.Version, u.RoundTripper, u.Config, dependencyProxyInjector, proxyOpts...)
+	proxy := buildProxy(u.Backend, u.Version, u.RoundTripper, u.Config, dependencyProxyInjector, api, proxyOpts...)
 	cableProxy := proxypkg.NewProxy(u.CableBackend, u.Version, u.CableRoundTripper)
 
 	dwHandler := duoworkflow.NewHandler(api, u.rdb, u)
@@ -335,7 +346,7 @@ func configureRoutes(u *upstream) {
 	}
 
 	signingTripper := secret.NewRoundTripper(u.RoundTripper, u.Version)
-	signingProxy := buildProxy(u.Backend, u.Version, signingTripper, u.Config, dependencyProxyInjector)
+	signingProxy := buildProxy(u.Backend, u.Version, signingTripper, u.Config, dependencyProxyInjector, api)
 
 	preparer := upload.NewObjectStoragePreparer(u.Config)
 	requestBodyUploader := upload.RequestBody(api, signingProxy, preparer)
@@ -357,6 +368,27 @@ func configureRoutes(u *upstream) {
 	healthUpstream := static.ErrorPagesUnless(u.DevelopmentMode, staticpages.ErrorFormatText, proxy)
 
 	gob := gobpkg.NewProxy(api, u.Version, u.ProxyHeadersTimeout, u.Config)
+
+	// AUTH-011: gradual rollout of OAuth handling to the IAM Auth service.
+	// When IAMServiceURL is nil, oauthHandler.Build() returns proxy unchanged
+	// and the OAuth routes below behave exactly as today (Rails-only).
+	if u.IAMServiceURL == nil {
+		log.WithFields(log.Fields{
+			"iam_routing_enabled": false,
+		}).Info("oauthproxy: IAMServiceURL not set; OAuth requests will be handled by Rails")
+	} else {
+		log.WithFields(log.Fields{
+			"iam_routing_enabled": true,
+			"iam_backend_url":     u.IAMServiceURL.String(),
+		}).Info("oauthproxy: OAuth routing to IAM service enabled")
+	}
+	oauthHandler := &oauthproxy.Handler{
+		API:           api,
+		Version:       u.Version,
+		RailsProxy:    proxy,
+		IAMServiceURL: u.IAMServiceURL,
+	}
+	oauthRoute := oauthHandler.Build()
 
 	u.Routes = []routeEntry{
 		// Git Clone
@@ -385,7 +417,7 @@ func configureRoutes(u *upstream) {
 			contentEncodingHandler(upload.Artifacts(api, signingProxy, preparer, &u.Config))),
 
 		// ActionCable websocket
-		u.wsRouteStrict(newRoute(`^/-/cable\z`, "action_cable", railsBackend),
+		u.wsRoute(newRoute(`^/-/cable\z`, "action_cable", railsBackend),
 			cableProxy),
 
 		// Terminal websocket
@@ -418,7 +450,9 @@ func configureRoutes(u *upstream) {
 
 		// Terraform State
 		u.route("POST",
-			newRoute(apiProjectPattern+`/terraform/state/[^/]+/lock`, "projects_api_terraform_state_lock", railsBackend), proxy),
+			newRoute(apiProjectPattern+`/terraform/state/[^/]+/lock`, "projects_api_terraform_state_lock", railsBackend), proxy, withBodyLimit(4*1024), withBodyLimitMode(bodylimit.ModeEnforced)), // 4 KB
+		u.route("DELETE",
+			newRoute(apiProjectPattern+`/terraform/state/[^/]+/lock`, "projects_api_terraform_state_unlock", railsBackend), proxy, withBodyLimit(4*1024), withBodyLimitMode(bodylimit.ModeEnforced)), // 4 KB
 
 		u.route("POST",
 			newRoute(apiProjectPattern+`/terraform/state/.*`, "projects_api_terraform_state", railsBackend), requestBodyUploader),
@@ -608,6 +642,25 @@ func configureRoutes(u *upstream) {
 		u.route("POST",
 			newRoute(userUploadPattern, "user_uploads", railsBackend), mimeMultipartUploader),
 
+		// AUTH-011: OAuth endpoints routed through the oauthproxy handler. When
+		// IAMServiceURL is unset, oauthRoute is the Rails proxy unchanged, so
+		// these entries have no effect on existing behavior. Static OIDC
+		// discovery endpoints (/.well-known/openid-configuration,
+		// /oauth/discovery/keys) are intentionally NOT wired here because
+		// AUTH-011 Phase 1 handles them via a Cloudflare Origin Rule
+		// independent of Workhorse. /oauth/userinfo and /oauth/device are
+		// also not wired because AUTH-011 keeps them on Rails permanently.
+		u.route("",
+			newRoute(`^/oauth/authorize\z`, "oauth_authorize", railsBackend), oauthRoute),
+		u.route("",
+			newRoute(`^/oauth/authorize_device\z`, "oauth_authorize_device", railsBackend), oauthRoute),
+		u.route("",
+			newRoute(`^/oauth/token\z`, "oauth_token", railsBackend), oauthRoute),
+		u.route("",
+			newRoute(`^/oauth/revoke\z`, "oauth_revoke", railsBackend), oauthRoute),
+		u.route("",
+			newRoute(`^/oauth/introspect\z`, "oauth_introspect", railsBackend), oauthRoute),
+
 		// health checks don't intercept errors and go straight to rails
 		// TODO: We should probably not return a HTML deploy page?
 		//       https://gitlab.com/gitlab-org/gitlab/-/issues/336326
@@ -721,7 +774,7 @@ func allowedProxy(proxy http.Handler, dependencyProxyInjector *dependencyproxy.I
 	if u.CircuitBreakerConfig.Enabled {
 		roundTripperRateLimitCache := ratelimitcache.NewRoundTripper(u.RoundTripper, u.rdb)
 
-		return buildProxy(u.Backend, u.Version, roundTripperRateLimitCache, u.Config, dependencyProxyInjector)
+		return buildProxy(u.Backend, u.Version, roundTripperRateLimitCache, u.Config, dependencyProxyInjector, nil)
 	}
 
 	return proxy

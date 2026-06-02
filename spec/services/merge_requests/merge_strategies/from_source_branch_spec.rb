@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_category: :code_review_workflow do
   let_it_be(:user) { create(:user) }
-  let_it_be(:user2) { create(:user) }
+  let_it_be(:user2, freeze: false) { create(:user) }
 
   let(:merge_request) { create(:merge_request, :simple, author: user2, assignees: [user2]) }
   let(:project) { merge_request.project }
@@ -27,6 +27,14 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
         expect { strategy.validate! }
           .to raise_exception(MergeRequests::MergeStrategies::StrategyError, error_message)
       end
+    end
+
+    it 'calls mergeable? with use_cache: false' do
+      expect(merge_request).to receive(:mergeable?).with(
+        hash_including(use_cache: false)
+      ).and_return(true)
+
+      strategy.validate!
     end
 
     context 'when merge request should be squashed but is not' do
@@ -104,9 +112,9 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
       end
     end
 
-    context 'when rebase_on_merge_automatic ff is off' do
+    context 'when automatic rebase is off' do
       before do
-        stub_feature_flags(rebase_on_merge_automatic: false)
+        project.project_setting.update!(automatic_rebase_enabled: false)
       end
 
       context 'when merge request should be rebased' do
@@ -173,6 +181,7 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
       before do
         project.merge_method = :ff
         project.save!
+        project.project_setting.update!(automatic_rebase_enabled: true)
       end
 
       context 'when it requires a rebase' do
@@ -194,6 +203,19 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
 
           expect(strategy.execute_git_merge!).to eq({ commit_sha: '1234' })
         end
+
+        context 'when automatic_rebase_enabled is false' do
+          before do
+            project.project_setting.update!(automatic_rebase_enabled: false)
+          end
+
+          it 'performs a fast-forward merge without create ref service' do
+            expect(MergeRequests::CreateRefService).not_to receive(:new)
+            expect(merge_request.target_project.repository).to receive(:ff_merge).and_return('1234')
+
+            expect(strategy.execute_git_merge!).to eq({ commit_sha: '1234' })
+          end
+        end
       end
 
       context 'when it does not require a rebase' do
@@ -214,6 +236,7 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
       before do
         project.merge_method = :rebase_merge
         project.save!
+        project.project_setting.update!(automatic_rebase_enabled: true)
       end
 
       it 'fast forward merges with the commit sha from the create ref service' do
@@ -230,6 +253,19 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
 
         expect(strategy.execute_git_merge!).to eq({ commit_sha: '1234' })
       end
+
+      context 'when automatic_rebase_enabled is false' do
+        before do
+          project.project_setting.update!(automatic_rebase_enabled: false)
+        end
+
+        it 'performs standard merge without create ref service' do
+          expect(MergeRequests::CreateRefService).not_to receive(:new)
+          expect(merge_request.target_project.repository).to receive(:merge).and_return('1234')
+
+          expect(strategy.execute_git_merge!).to eq({ commit_sha: '1234', merge_commit_sha: '1234' })
+        end
+      end
     end
 
     context 'when we are using the merge commit method' do
@@ -245,11 +281,7 @@ RSpec.describe MergeRequests::MergeStrategies::FromSourceBranch, feature_categor
       end
     end
 
-    context 'when rebase_on_merge_automatic ff is off' do
-      before do
-        stub_feature_flags(rebase_on_merge_automatic: false)
-      end
-
+    context 'when automatic rebase is off' do
       context 'when fast-forward is required' do
         before do
           project.merge_method = :ff

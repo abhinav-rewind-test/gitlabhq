@@ -8,6 +8,7 @@ module Banzai
           Filter::References::ExternalIssueReferenceFilter::LinkResolutionFilter,
           Filter::TruncateVisibleFilter,
           Filter::PlaceholdersPostFilter,
+          Filter::DiagramProxyPostFilter,
           *internal_link_filters,
           Filter::AbsoluteLinkFilter,
           Filter::BroadcastMessagePlaceholdersFilter
@@ -27,10 +28,6 @@ module Banzai
       end
 
       def self.transform_context(context)
-        context.merge(
-          post_process: true
-        )
-
         Filter::AssetProxyFilter.transform_context(context)
       end
     end

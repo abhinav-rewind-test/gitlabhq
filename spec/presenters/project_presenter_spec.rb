@@ -38,7 +38,7 @@ RSpec.describe ProjectPresenter do
       let_it_be(:user) { nil }
 
       context 'when repository is empty' do
-        let_it_be(:project) { create(:project_empty_repo, :public) }
+        let_it_be(:project, freeze: false) { create(:project_empty_repo, :public) }
 
         it 'returns wiki if user has repository access and can read wiki, which exists' do
           allow(project).to receive(:wiki_repository_exists?).and_return(true)
@@ -57,13 +57,6 @@ RSpec.describe ProjectPresenter do
           expect(presenter.default_view).to eq('activity')
         end
 
-        it 'returns issues if user does not have repository access, but can read issues' do
-          allow(presenter).to receive(:can?).with(nil, :download_code, project).and_return(false)
-          allow(presenter).to receive(:can?).with(nil, :read_issue, project).and_call_original
-
-          expect(presenter.default_view).to eq('projects/issues')
-        end
-
         it 'returns activity if user can read neither wiki nor issues' do
           allow(presenter).to receive(:can?).with(nil, :download_code, project).and_return(false)
           allow(presenter).to receive(:can?).with(nil, :read_issue, project).and_return(false)
@@ -73,7 +66,7 @@ RSpec.describe ProjectPresenter do
       end
 
       context 'when repository is not empty' do
-        let_it_be(:project) { create(:project, :public, :repository) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
 
         it 'returns files and readme if user has repository access' do
           allow(presenter).to receive(:can?).with(nil, :read_code, project).and_return(true)
@@ -157,16 +150,6 @@ RSpec.describe ProjectPresenter do
         end
       end
 
-      context 'with issues as a feature available' do
-        it 'return issues' do
-          allow(presenter).to receive(:can?).with(user, :read_code, project).and_return(false)
-          allow(presenter).to receive(:can?).with(user, :read_issue, project).and_return(true)
-          allow(presenter).to receive(:can?).with(user, :read_wiki, project).and_return(false)
-
-          expect(presenter.default_view).to eq('projects/issues')
-        end
-      end
-
       context 'with no activity, no wikies and no issues' do
         it 'returns activity as default' do
           project.project_feature.update_attribute(:issues_access_level, 0)
@@ -182,7 +165,7 @@ RSpec.describe ProjectPresenter do
 
   describe '#can_current_user_push_code?' do
     context 'empty repo' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
 
       it 'returns true if user can push_code' do
         project.add_developer(user)
@@ -225,7 +208,7 @@ RSpec.describe ProjectPresenter do
   end
 
   context 'statistics anchors (empty repo)' do
-    let_it_be(:project) { create(:project, :empty_repo) }
+    let_it_be(:project, freeze: false) { create(:project, :empty_repo) }
 
     describe '#storage_anchor_data' do
       it 'does not return storage data' do
@@ -277,8 +260,8 @@ RSpec.describe ProjectPresenter do
   end
 
   context 'statistics anchors' do
-    let_it_be(:user)    { create(:user) }
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:user, freeze: false)    { create(:user) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
     let_it_be(:release) { create(:release, project: project, author: user) }
 
     let(:presenter) { described_class.new(project, current_user: user) }
@@ -487,7 +470,7 @@ RSpec.describe ProjectPresenter do
       end
 
       context 'when the project is empty' do
-        let_it_be(:project) { create(:project, :empty_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :empty_repo) }
 
         # Since we protect the default branch for empty repos
         it 'is empty for a developer' do
@@ -618,29 +601,86 @@ RSpec.describe ProjectPresenter do
       end
 
       context 'when Auto Devops is enabled' do
-        it 'returns anchor data' do
+        before do
           allow(project).to receive(:auto_devops_enabled?).and_return(true)
+        end
 
+        it 'returns anchor data' do
           expect(presenter.autodevops_anchor_data).to have_attributes(
             is_link: false,
             label: a_string_including('Auto DevOps enabled'),
             link: nil
           )
         end
+
+        it 'returns anchor data with warning icon when container registry is disabled' do
+          allow(presenter).to receive(:container_registry_disabled?).and_return(true)
+
+          anchor_data = presenter.autodevops_anchor_data
+
+          expect(anchor_data.label).to include('warning')
+        end
+
+        it 'returns anchor data without warning icon when container registry is enabled' do
+          allow(presenter).to receive(:container_registry_disabled?).and_return(false)
+
+          anchor_data = presenter.autodevops_anchor_data
+
+          expect(anchor_data.label).not_to include('warning')
+        end
       end
 
       context 'when user can admin pipeline and CI yml does not exist' do
-        it 'returns anchor data' do
+        before do
           project.add_maintainer(user)
-
-          allow(project).to receive(:auto_devops_enabled?).and_return(false)
           allow(project).to receive(:has_ci_config_file?).and_return(false)
+        end
 
-          expect(presenter.autodevops_anchor_data).to have_attributes(
+        it 'returns anchor data with icon when Auto DevOps is disabled' do
+          allow(project).to receive(:auto_devops_enabled?).and_return(false)
+
+          anchor_data = presenter.autodevops_anchor_data
+          label = anchor_data.label
+
+          expect(label).to include('Enable Auto DevOps')
+          expect(label).to include('data-testid="plus-icon"')
+        end
+
+        it 'returns anchor data with link when Auto DevOps is enabled' do
+          allow(project).to receive(:auto_devops_enabled?).and_return(true)
+
+          anchor_data = presenter.autodevops_anchor_data
+
+          expect(anchor_data).to have_attributes(
             is_link: false,
-            label: a_string_including('Enable Auto DevOps'),
-            link: presenter.project_settings_ci_cd_path(project, anchor: 'autodevops-settings')
+            label: a_string_including('Auto DevOps enabled'),
+            link: presenter.project_settings_ci_cd_path(project, anchor: 'autodevops-settings'),
+            class_modifier: 'btn-default'
           )
+        end
+
+        it 'returns anchor data with warning icon when Auto DevOps is enabled and container registry is disabled' do
+          allow(project).to receive(:auto_devops_enabled?).and_return(true)
+          allow(presenter).to receive(:container_registry_disabled?).and_return(true)
+
+          anchor_data = presenter.autodevops_anchor_data
+
+          expect(anchor_data.label).to include('warning')
+        end
+      end
+
+      context 'when Auto DevOps is enabled and container registry is disabled' do
+        it 'returns warning icon with tooltip and aria-label' do
+          allow(project).to receive(:auto_devops_enabled?).and_return(true)
+          allow(presenter).to receive(:container_registry_disabled?).and_return(true)
+
+          anchor_data = presenter.autodevops_anchor_data
+          label = anchor_data.label
+
+          expect(label).to include('Auto DevOps enabled')
+          expect(label).to include('data-toggle="tooltip"')
+          expect(label).to match(/aria-label=/)
+          expect(label).to include('warning')
         end
       end
     end
@@ -727,7 +767,7 @@ RSpec.describe ProjectPresenter do
         have_attributes(
           is_link: false,
           label: a_string_ending_with('Wiki'),
-          link: wiki_path(project.wiki),
+          link: wiki_path(project.wiki, action: :index),
           class_modifier: 'btn-default'
         )
       end
@@ -740,7 +780,7 @@ RSpec.describe ProjectPresenter do
         )
       end
 
-      where(:wiki_enabled, :can_read_wiki, :has_home_page, :can_create_wiki, :expected_result) do
+      where(:wiki_enabled, :can_read_wiki, :wiki_exists, :can_create_wiki, :expected_result) do
         true  | true  | true  | true  | ref(:anchor_goto_wiki)
         true  | true  | true  | false | ref(:anchor_goto_wiki)
         true  | true  | false | true  | ref(:anchor_add_wiki)
@@ -750,7 +790,6 @@ RSpec.describe ProjectPresenter do
         true  | false | false | true  | nil
         true  | false | false | false | nil
         false | true  | true  | true  | nil
-        false | true  | true  | false | nil
         false | true  | true  | false | nil
         false | true  | false | true  | nil
         false | true  | false | false | nil
@@ -764,7 +803,7 @@ RSpec.describe ProjectPresenter do
         before do
           allow(project).to receive(:wiki_enabled?).and_return(wiki_enabled)
           allow(presenter).to receive(:can?).with(user, :read_wiki, project).and_return(can_read_wiki)
-          allow(project.wiki).to receive(:has_home_page?).and_return(has_home_page)
+          allow(project.wiki).to receive(:exists?).and_return(wiki_exists)
           allow(presenter).to receive(:can?).with(user, :create_wiki, project).and_return(can_create_wiki)
         end
 
@@ -955,7 +994,7 @@ RSpec.describe ProjectPresenter do
     end
 
     context 'initialized repo' do
-      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
 
       it 'orders the items correctly' do
         expect(empty_repo_statistics_buttons.map(&:label)).to start_with(
@@ -1040,7 +1079,7 @@ RSpec.describe ProjectPresenter do
   describe '#has_review_app?' do
     subject { presenter.has_review_app? }
 
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     context 'when review apps exist' do
       let!(:environment) do

@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Composition Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Static reachability analysis
 ---
 
@@ -9,7 +9,6 @@ title: Static reachability analysis
 
 - Tier: Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-- Status: Limited Availability
 
 {{< /details >}}
 
@@ -21,6 +20,7 @@ title: Static reachability analysis
 - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/17607) support for Java in GitLab 18.5 and dependency scanning analyzer v0.39.0.
 - [Changed](https://gitlab.com/groups/gitlab-org/-/epics/15780) from beta to Limited Availability (LA) in GitLab 18.5.
 - [Changed](https://gitlab.com/groups/gitlab-org/-/epics/19692) Java support from experiment to beta in GitLab 18.8.
+- [Generally available](https://gitlab.com/groups/gitlab-org/-/work_items/20456) in GitLab 19.0.
 
 {{< /history >}}
 
@@ -43,22 +43,18 @@ project path to determine enrichment. static reachability analysis relies on
 that maps package names from SBOMs to their corresponding code import paths for Python and Java
 packages. This metadata is maintained with weekly updates.
 
-> [!warning]
-> Static reachability analysis is production-ready. However, it has limited availability
-> because it depends on [dependency scanning by SBOM](dependency_scanning_sbom/_index.md),
-> which has the same status.
-
 Share feedback in [issue 535498](https://gitlab.com/gitlab-org/gitlab/-/issues/535498).
 
-## Enable static reachability analysis
+## Turn on static reachability analysis
 
 Prerequisites:
 
-- Ensure the project uses
+- The Developer, Maintainer, or Owner role for the project.
+- The project uses
   [supported languages and package managers](#supported-languages-and-package-managers).
 - [Dependency scanning analyzer](https://gitlab.com/gitlab-org/security-products/analyzers/dependency-scanning)
-  version 0.39.0 or later (earlier versions may support specific languages - see `History` above)
-- Enable [Dependency scanning by using SBOM](dependency_scanning_sbom/_index.md#getting-started).
+  version 0.39.0 or later (earlier versions may support specific languages - see `History` above).
+- [Dependency scanning by using SBOM](dependency_scanning_sbom/_index.md#turn-on-dependency-scanning) turned on for the project.
   [Gemnasium](https://gitlab.com/gitlab-org/security-products/analyzers/gemnasium) analyzers are not
   supported.
 - Language-specific prerequisites:
@@ -69,7 +65,7 @@ Prerequisites:
       managers, see the
       [dependency scanning analyzer documentation](https://gitlab.com/gitlab-org/security-products/analyzers/dependency-scanning#supported-files).
   - JavaScript and TypeScript:
-    - Repository must contain lock files
+    - Repository must contain lockfiles
       [supported](https://gitlab.com/gitlab-org/security-products/analyzers/dependency-scanning#supported-files)
       by the dependency scanning analyzer.
   - Java:
@@ -80,34 +76,39 @@ Prerequisites:
 > [!warning]
 > Static reachability analysis increases job duration.
 
-To enable static reachability analysis in your project:
+To turn on static reachability analysis in your project:
 
-- On the top bar, select **Search or go to** and find your project.
-- Edit the `.gitlab-ci.yml` file, and add the following.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Code** > **Repository**.
+1. Select the `.gitlab-ci.yml` file.
+1. Select **Edit** > **Edit single file**.
+1. Add the following configuration:
 
-```yaml
-include:
-- template: Jobs/Dependency-Scanning.v2.gitlab-ci.yml
-  variables:
-  DS_STATIC_REACHABILITY_ENABLED: true
-```
+   ```yaml
+   include:
+   - template: Jobs/Dependency-Scanning.v2.gitlab-ci.yml
 
-At this point, static reachability analysis is enabled in your pipeline. When dependency scanning
-runs and outputs an SBOM, the results are supplemented by static reachability analysis.
+   variables:
+     DS_STATIC_REACHABILITY_ENABLED: true
+   ```
+
+1. Select **Commit changes**.
+
+When dependency scanning runs and outputs an SBOM, the results are supplemented by static reachability analysis.
 
 ## Reachability values
 
 A dependency can have one of the following reachability values. Prioritize triage and remediation of
 dependencies marked as **Yes**, because these are confirmed to be used in your code.
 
-**Yes**
-: The package linked to this vulnerability is confirmed reachable in code. When a direct
-dependency is marked as reachable, its transitive dependencies are also marked as reachable.
+Yes
+: The package linked to this vulnerability is confirmed reachable in code. When a direct dependency
+  is marked as reachable, its transitive dependencies are also marked as reachable.
 
-**Not Found**
+Not Found
 : Static reachability analysis ran successfully but did not detect usage of the vulnerable package.
 
-**Not Available**
+Not Available
 : Static reachability analysis was not executed, so no reachability data exists.
 
 To find the reachability value for a vulnerable dependency:
@@ -123,7 +124,7 @@ reachability analysis cannot always definitively determine package usage.
 
 Dependencies are marked as not found when:
 
-- They appear in lock files but are not imported in the code.
+- They appear in lockfiles but are not imported in the code.
 - They are in excluded directories (for example, configured with `DS_EXCLUDED_PATHS`).
 - They are tools included for local usage only, such as coverage testing or linting packages.
 
@@ -141,7 +142,7 @@ In this example, the graph file `pipdeptree.json` is outside the excluded direct
 to identify the dependencies listed in the file. However, the source code that imports the
 `requests` dependency is in an excluded directory, so static reachability analysis doesn't check its
 reachability. As a result, the `requests` dependency is labeled as **Not found**. In other words,
-this occurs when the lock file is outside the excluded directory but the code that imports the
+this occurs when the lockfile is outside the excluded directory but the code that imports the
 dependency is inside it.
 
 ## Supported languages and package managers
@@ -166,23 +167,18 @@ language.
 1. For Python `pipenv`, static reachability analysis doesn't support `Pipfile.lock` files. Support
    is available only for `pipenv.graph.json` because it supports a dependency graph.
 1. No support for frontend frameworks.
-1. Java's dynamic nature causes [known issues](#known-issues-for-java) with higher false negatives.
+1. Java's dynamic nature causes the following issues which can result in higher false negative
+   rates for projects using modern frameworks:
+   - Static reachability analysis detects explicit usage through direct imports, Java reflection
+     patterns, and Java Database Connectivity connection strings in source code. It cannot identify
+     dependencies loaded dynamically at runtime, such as those using dependency injection frameworks
+     like Spring Boot.
+   - Coverage is limited to packages in the GitLab advisory database and the most
+     widely-depended-upon packages in Maven Central.
 1. Use `maven.graph.json` files as described in the
    [Maven](dependency_scanning_sbom/_index.md#maven) instructions.
-1. Use dependency lock files as described in the
-   [Gradle](dependency_scanning_sbom/_index.md#gradle) instructions.
-
-### Known issues for Java
-
-Static reachability analysis for Java has the following known issues:
-
-- It detects explicit usage through direct imports, Java reflection patterns, and JDBC connection
-  strings in source code. It cannot identify dependencies loaded dynamically at runtime, such as
-  those using dependency injection frameworks like Spring Boot.
-- Coverage is limited to packages in the GitLab advisory database and the most widely-depended-upon
-  packages in Maven Central.
-
-These issues might result in higher false negative rates for projects using modern frameworks.
+1. Use dependency lockfiles as described in the [Gradle](dependency_scanning_sbom/_index.md#gradle)
+   instructions.
 
 ## Offline environment
 
@@ -192,7 +188,7 @@ you must do an initial setup and perform ongoing maintenance.
 Initial setup:
 
 - Complete the offline environment requirements for
-  [dependency scanning (SBOM)](dependency_scanning_sbom/_index.md#offline-support).
+  [dependency scanning (SBOM)](dependency_scanning_sbom/_index.md#offline-environment).
 
 Ongoing maintenance:
 

@@ -6,10 +6,14 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
   include AfterNextHelpers
 
   let_it_be(:group) { create(:group, :public) }
-  let_it_be(:project) { create(:project, :private, :repository, group: group) }
   let_it_be(:user) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
+  let_it_be(:merge_request_author) { create(:user) }
+  let_it_be(:unauthorized_reviewer) { create(:user) }
+  let_it_be(:project) do
+    create(:project, :private, :repository, group: group, maintainers: user, developers: [user2, user3])
+  end
 
   let_it_be_with_reload(:merge_request) do
     create(
@@ -21,7 +25,7 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
       reviewer_ids: [user3.id],
       source_project: project,
       target_project: project,
-      author: create(:user)
+      author: merge_request_author
     )
   end
 
@@ -29,9 +33,6 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
   let(:opts) { { reviewer_ids: [user2.id] } }
 
   before do
-    project.add_maintainer(user)
-    project.add_developer(user2)
-    project.add_developer(user3)
     merge_request.errors.clear
   end
 
@@ -63,13 +64,17 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
         let(:opts) { { reviewer_ids: [] } }
 
         it_behaves_like 'removing all reviewers'
+
+        it 'does not publish a cloud event' do
+          expect { set_reviewers }.not_to publish_event(MergeRequests::AssignedReviewersEvent)
+        end
       end
 
       it 'updates the MR' do
         expect { set_reviewers }
           .to change { merge_request.reload.reviewers }.from([user3]).to([user2])
-          .and change(merge_request, :updated_at)
-          .and change(merge_request, :updated_by).to(user)
+          .and change { merge_request.updated_at }
+          .and change { merge_request.updated_by }.to(user)
       end
 
       it 'creates system note about merge_request review request' do
@@ -132,6 +137,10 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
         set_reviewers
       end
 
+      it 'publishes a cloud event for assigned reviewers' do
+        expect { set_reviewers }.to publish_event(MergeRequests::AssignedReviewersEvent)
+      end
+
       it_behaves_like 'triggers GraphQL subscription mergeRequestReviewersUpdated' do
         let(:action) { set_reviewers }
       end
@@ -178,7 +187,7 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
       end
 
       context 'when adding reviewers to MR with no reviewers' do
-        let_it_be(:merge_request_without_reviewers) do
+        let_it_be(:merge_request_without_reviewers, freeze: false) do
           create(
             :merge_request,
             :simple,
@@ -234,7 +243,7 @@ RSpec.describe MergeRequests::UpdateReviewersService, feature_category: :code_re
       end
 
       it 'does not update the reviewers if they do not have access' do
-        opts[:reviewer_ids] = [create(:user).id]
+        opts[:reviewer_ids] = [unauthorized_reviewer.id]
 
         expect(set_reviewers).to have_attributes(
           reviewers: [user3],

@@ -49,6 +49,7 @@ export default {
   data() {
     return {
       todoId: null,
+      todoCount: 0,
       loading: false,
     };
   },
@@ -76,6 +77,7 @@ export default {
 
         const currentUserTodos = data.namespace?.issuable?.currentUserTodos?.nodes ?? [];
         this.todoId = currentUserTodos[0]?.id;
+        this.todoCount = currentUserTodos.length;
         this.$emit('todoUpdated', currentUserTodos.length > 0);
       },
       error() {
@@ -128,8 +130,8 @@ export default {
     tootltipTitle() {
       return todoLabel(this.hasTodo);
     },
-    isNotificationsTodosButtons() {
-      return this.glFeatures.notificationsTodosButtons;
+    isIconButton() {
+      return this.isMergeRequest || this.glFeatures.notificationsTodosButtons;
     },
   },
   methods: {
@@ -140,15 +142,14 @@ export default {
           mutation: todoMutations[this.todoMutationType],
           variables: {
             input: {
-              targetId: !this.hasTodo ? this.issuableId : undefined,
-              id: this.hasTodo ? this.todoId : undefined,
+              targetId: this.issuableId,
             },
           },
           update: (
             store,
             {
               data: {
-                todoMutation: { todo },
+                todoMutation: { todo, todos },
               },
             },
           ) => {
@@ -158,7 +159,8 @@ export default {
             };
             const sourceData = store.readQuery(queryProps);
             const data = produce(sourceData, (draftState) => {
-              draftState.namespace.issuable.currentUserTodos.nodes = this.hasTodo ? [] : [todo];
+              draftState.namespace.issuable.currentUserTodos.nodes =
+                todos !== undefined ? [] : [todo];
             });
             store.writeQuery({
               data,
@@ -201,15 +203,16 @@ export default {
 <template>
   <div data-testid="sidebar-todo" :class="{ 'inline-block': !isMergeRequest }">
     <todo-button
-      v-if="isNotificationsTodosButtons"
+      v-if="isIconButton"
       v-gl-tooltip.hover.top
       :title="tootltipTitle"
       :issuable-type="issuableType"
       :issuable-id="issuableId"
       :is-todo="hasTodo"
+      :todo-count="todoCount"
       :disabled="isLoading"
       :is-icon-button="true"
-      class="hide-collapsed"
+      class="hide-collapsed !gl-align-top"
       @click.stop.prevent="toggleTodo"
     >
       <gl-animated-todo-icon
@@ -223,10 +226,10 @@ export default {
       :issuable-type="issuableType"
       :issuable-id="issuableId"
       :is-todo="hasTodo"
+      :todo-count="todoCount"
       :loading="isLoading"
-      :size="isMergeRequest ? 'medium' : 'small'"
-      class="hide-collapsed"
-      :class="{ 'gl-mt-2': !isMergeRequest }"
+      size="small"
+      class="hide-collapsed gl-mt-2"
       @click.stop.prevent="toggleTodo"
     />
     <gl-button

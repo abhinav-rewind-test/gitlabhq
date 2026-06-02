@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Platform Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Security inventory
 description: Group-level visibility of assets, scanner coverage, and vulnerabilities.
 ---
@@ -25,7 +25,7 @@ Use the security inventory to visualize which assets you need to secure and unde
 The security inventory shows:
 
 - Your groups, subgroups, and projects.
-- Security scanner coverage for each project, regardless of how the scanner is enabled. Security scanners include:
+- Security scanner coverage for each project, regardless of how the scanner is enabled. Tool coverage reflects the scan status of the most recent pipeline on the default branch. Security scanners include:
   - Static application security testing (SAST)
   - Dependency scanning
   - Container scanning
@@ -40,15 +40,31 @@ Track the development of the security inventory in [epic 16939](https://gitlab.c
 
 Prerequisites:
 
-- You must have the Developer, Maintainer, or Owner role in the group to view the security inventory.
+- You must have the Security Manager, Developer, Maintainer, or Owner role in the group to view the security inventory.
 
 To view the security inventory:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Security inventory**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Security inventory**.
 1. Complete one of the following actions:
    - To view a group's subgroups, projects, and security assets, select the group.
    - To view a group or project's scanner coverage, search for the group or project.
+
+## Scanner coverage
+
+{{< history >}}
+
+- Stale status was [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/596022) in GitLab 19.0
+
+{{< /history >}}
+
+Security scanner status is evaluated when a default branch pipeline completes.
+Each security scanner shows one of the following coverage statuses for every project or group:
+
+- **Not enabled**: The scanner is not configured.
+- **Enabled**: The scanner is configured and completed successfully.
+- **Failed**: The scanner ran but did not complete successfully.
+- **Stale**: A previously enabled scanner has not run in the last three consecutive pipelines.
 
 ## Filter projects in the security inventory
 
@@ -87,4 +103,4 @@ When working with the security inventory, you might encounter the following issu
 
 ### Security inventory menu item missing
 
-Some users do not have the required permissions to access the **Security inventory** menu item. The menu item only displays for groups when the authenticated user has the Developer, Maintainer, or Owner role.
+Some users do not have the required permissions to access the **Security inventory** menu item. The menu item only displays for groups when the authenticated user has the Security Manager, Developer, Maintainer, or Owner role.

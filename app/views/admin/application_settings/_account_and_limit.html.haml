@@ -11,6 +11,11 @@
     .form-group
       = f.label :max_attachment_size, _('Maximum attachment size (MiB)'), class: 'label-bold'
       = f.number_field :max_attachment_size, class: 'form-control gl-form-input', title: _('Maximum size of individual attachments in comments.'), data: { toggle: 'tooltip', container: 'body' }
+    .form-group
+      = f.label :description_and_note_max_size, _('Maximum description or comment content size (bytes)'), class: 'label-bold'
+      = f.number_field :description_and_note_max_size, class: 'form-control gl-form-input'
+      .form-text.gl-text-subtle
+        = _('Work item, merge request, and vulnerability descriptions and comments exceeding this size are rejected on create or update. Default: 1048576 (1 MiB).')
 
     = render 'admin/application_settings/repository_size_limit_setting_registration_features_cta', form: f
     = render_if_exists 'admin/application_settings/repository_size_limit_setting', form: f
@@ -51,7 +56,10 @@
     .form-group
       = render 'admin/application_settings/require_access_token_expiry', form: f
       = render_if_exists 'admin/application_settings/service_accounts_pats_expiration_enforced', form: f
+
     = render_if_exists 'admin/application_settings/personal_access_token_expiration_policy', form: f
+
+    = render 'admin/application_settings/granular_tokens_enforced_after', form: f
 
     = render 'admin/application_settings/project_and_group_access_tokens', form: f
 
@@ -60,9 +68,6 @@
     .form-group
       = f.label :user_oauth_applications, _('User OAuth applications'), class: 'label-bold'
       = f.gitlab_ui_checkbox_component :user_oauth_applications, _('Allow users to register any application to use GitLab as an OAuth provider. This setting does not affect group-level OAuth applications.')
-    .form-group
-      = f.label :ropc_without_client_credentials, _('OAuth authorizations'), class: 'label-bold'
-      = f.gitlab_ui_checkbox_component :ropc_without_client_credentials, _('Allow users to use resource owner password credentials flow without oauth client credentials')
 
     .form-group
       = f.label :user_default_external, _('External users'), class: 'label-bold'

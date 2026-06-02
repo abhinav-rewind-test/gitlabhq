@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Gitlab::Database::BackgroundOperation::Queueable, feature_category: :database do
   let(:worker_klass) { Gitlab::Database::BackgroundOperation::Worker }
   let_it_be(:user) { create(:user) }
-  let(:organization) { user.organization }
+  let(:organization) { Current.organization }
 
   shared_examples 'enqueues worker' do
     it 'creates a new worker' do
@@ -13,14 +13,25 @@ RSpec.describe Gitlab::Database::BackgroundOperation::Queueable, feature_categor
     end
   end
 
+  before do
+    stub_current_organization(user.organization)
+  end
+
   describe '.enqueue' do
-    let(:job_class_name) { 'TestWorker' }
+    let(:job_class_name) { 'DummyTest' }
     let(:table_name) { 'users' }
     let(:column_name) { 'id' }
     let(:job_arguments) { %w[arg1 arg2] }
 
     subject(:enqueue_background_operation) do
-      worker_klass.enqueue(job_class_name, table_name, column_name, job_arguments: job_arguments, user: user)
+      worker_klass.enqueue(
+        job_class_name,
+        table_name,
+        column_name,
+        job_arguments: job_arguments,
+        user: user,
+        organization: organization
+      )
     end
 
     context 'when there are no duplicate records' do
@@ -107,7 +118,14 @@ RSpec.describe Gitlab::Database::BackgroundOperation::Queueable, feature_categor
       context 'with undone workers' do
         before do
           # worker will be in the default 'queued' status
-          worker_klass.enqueue(job_class_name, table_name, column_name, job_arguments: job_arguments, user: user)
+          worker_klass.enqueue(
+            job_class_name,
+            table_name,
+            column_name,
+            job_arguments: job_arguments,
+            user: user,
+            organization: organization
+          )
         end
 
         it 'skips enqueue and logs a warning' do
@@ -132,7 +150,8 @@ RSpec.describe Gitlab::Database::BackgroundOperation::Queueable, feature_categor
             table_name,
             column_name,
             job_arguments: job_arguments,
-            user: user
+            user: user,
+            organization: organization
           )
 
           worker.update!(status: 3) # finished
@@ -148,13 +167,59 @@ RSpec.describe Gitlab::Database::BackgroundOperation::Queueable, feature_categor
             table_name,
             column_name,
             job_arguments: job_arguments,
-            user: user
+            user: user,
+            organization: organization
           )
 
           worker.update!(status: 4) # failed
         end
 
         it_behaves_like 'enqueues worker'
+      end
+
+      context 'when resuming from a previous worker' do
+        let(:previous_max) { [5000] }
+
+        before do
+          previous_worker = worker_klass.enqueue(
+            job_class_name,
+            table_name,
+            column_name,
+            job_arguments: job_arguments,
+            user: user,
+            organization: organization
+          )
+
+          previous_worker.create_job!([1], previous_max)
+          previous_worker.update!(status: 3) # finished
+        end
+
+        it 'sets min_cursor to the previous worker last job max_cursor' do
+          enqueue_background_operation
+
+          new_worker = worker_klass.unfinished_with_config(
+            job_class_name, table_name, column_name, job_arguments, org_id: organization.id
+          ).first
+
+          expect(new_worker.min_cursor).to eq(previous_max)
+        end
+
+        context 'when job class uses reset_cursor!' do
+          let(:job_class_name) { 'UsersDeleteUnconfirmedSecondaryEmails' }
+          let(:table_name) { 'emails' }
+          let(:column_name) { 'id' }
+          let(:job_arguments) { [] }
+
+          it 'starts from MIN(column) instead of previous max_cursor' do
+            enqueue_background_operation
+
+            new_worker = worker_klass.unfinished_with_config(
+              job_class_name, table_name, column_name, job_arguments, org_id: organization.id
+            ).first
+
+            expect(new_worker.min_cursor).not_to eq(previous_max)
+          end
+        end
       end
     end
   end

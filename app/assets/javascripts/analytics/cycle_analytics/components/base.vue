@@ -151,8 +151,8 @@ export default {
       :end-date="createdBefore"
       :group-path="groupPath"
       :predefined-date-range="predefinedDateRange"
-      @setDateRange="onSetDateRange"
-      @setPredefinedDateRange="setPredefinedDateRange"
+      @set-date-range="onSetDateRange"
+      @set-predefined-date-range="setPredefinedDateRange"
     />
     <div class="gl-flex gl-flex-col @md/panel:gl-flex-row">
       <path-navigation
@@ -185,7 +185,7 @@ export default {
       :empty-state-message="emptyStageText"
       :no-data-svg-path="noDataSvgPath"
       :pagination="pagination"
-      @handleUpdatePagination="onHandleUpdatePagination"
+      @handle-update-pagination="onHandleUpdatePagination"
     />
     <url-sync v-if="isLoaded" :query="query" />
   </div>

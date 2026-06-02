@@ -1,15 +1,14 @@
 ---
 stage: AI-powered
 group: Custom Models
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: GitLab Duo Self-Hostedのデプロイに関するトラブルシューティングのヒント
-title: GitLab Duo Self-Hostedのトラブルシューティング
+title: セルフホストモデルのトラブルシューティング
 ---
 
 {{< details >}}
 
 - プラン: Premium、Ultimate
-- アドオン: GitLab Duo Enterprise
 - 提供形態: GitLab Self-Managed
 
 {{< /details >}}
@@ -18,35 +17,33 @@ title: GitLab Duo Self-Hostedのトラブルシューティング
 
 - GitLab 17.1で`ai_custom_model`[フラグ](../feature_flags/_index.md)とともに[導入](https://gitlab.com/groups/gitlab-org/-/epics/12972)されました。デフォルトでは無効になっています。
 - GitLab 17.6の[GitLab Self-Managedで有効](https://gitlab.com/groups/gitlab-org/-/epics/15176)になりました。
-- GitLab 17.6以降、GitLab Duoアドオンが必須となりました。
+- GitLab 17.6以降、GitLab Duoアドオンが必須になりました。
 - 機能フラグ`ai_custom_model`は、GitLab 17.8で削除されました。
-- GitLab 17.9で一般提供となりました。
+- GitLab 17.9で一般提供になりました。
 - GitLab 18.0でPremiumを含むように変更されました。
 
 {{< /history >}}
 
-GitLab Duo Self-Hostedを使用していると、問題が発生することがあります。
-
 トラブルシューティングを開始する前に、以下を確認してください:
 
-- [`gitlab-rails`コンソール](../operations/rails_console.md)にアクセスできること。
-- AIゲートウェイDockerイメージでShellを開きます。
-- 以下のエンドポイントを把握していること:
-  - AIゲートウェイがホストされています。
-  - モデルがホストされている場所
-- [ロギングを有効にする](logging.md#enable-logging)と、GitLabからAIゲートウェイへのリクエストとレスポンスが[`llm.log`](../logs/_index.md#llmlog)に記録されていることを確認できます。
+- [`gitlab-rails`コンソール](../operations/rails_console.md)にアクセスできる。
+- AIゲートウェイDockerイメージでShellを開いている。
+- 以下のエンドポイントを把握している:
+  - AIゲートウェイがホストされているエンドポイント。
+  - モデルがホストされているエンドポイント。
+- GitLabからAIゲートウェイへのリクエストとレスポンスが[`llm.log`](../logs/_index.md#llmlog)に記録されるように[ログを有効化](logging.md#turn-on-data-collection-for-gitlab-duo)している。
 
 GitLab Duoのトラブルシューティングの詳細については、以下を参照してください:
 
 - [GitLab Duoのトラブルシューティング](../../user/gitlab_duo/troubleshooting.md)。
-- [コード提案のトラブルシューティング](../../user/project/repository/code_suggestions/troubleshooting.md)。
+- [コード提案のトラブルシューティング](../../user/project/repository/code_suggestions/_index.md#direct-and-indirect-connections)。
 - [GitLab Duo Chatのトラブルシューティング](../../user/gitlab_duo_chat/troubleshooting.md)。
 
 ## デバッグスクリプトを使用する {#use-debugging-scripts}
 
 管理者がセルフホストモデルの設定を検証するためのデバッグスクリプトが2つ提供されています。
 
-1. GitLabからAIゲートウェイへの接続をデバッグします。GitLabインスタンスから、[Rakeタスク](../../administration/raketasks/_index.md)を実行します:
+1. GitLabからAIゲートウェイへの接続をデバッグします。GitLabインスタンスから、[Rakeタスク](../raketasks/_index.md)を実行します:
 
    ```shell
    gitlab-rake "gitlab:duo:verify_self_hosted_setup[<username>]"
@@ -101,9 +98,10 @@ GitLab Duoのトラブルシューティングの詳細については、以下�
        --model-endpoint=http://<your-model-endpoint>/v1
      ```
 
-トラブルシューティングが完了したら、AIゲートウェイコンテナを停止して再起動します（**without** `AIGW_AUTH__BYPASS_EXTERNAL=true`は**without**）。
+トラブルシューティングが完了したら、AIゲートウェイコンテナを停止して、`AIGW_AUTH__BYPASS_EXTERNAL=true`**なし**で再起動します。
 
-> [!warning]本番環境で認証をバイパスしないでください。
+> [!warning]
+> 本番環境では認証をバイパスしないでください。
 
 コマンドの出力を検証し、必要に応じて修正します。
 
@@ -111,11 +109,11 @@ GitLab Duoのトラブルシューティングの詳細については、以下�
 
 ## GitLab Duoヘルスチェックが機能しない {#gitlab-duo-health-check-is-not-working}
 
-[GitLab Duoのヘルスチェックを実行](../../administration/gitlab_duo/configure/gitlab_self_managed.md#run-a-health-check-for-gitlab-duo)すると、`401 response from the AI Gateway`のようなエラーが表示される場合があります。
+[GitLab Duoのヘルスチェックを実行](../gitlab_duo/configure/_index.md#run-a-health-check-for-gitlab-duo)すると、`401 response from the AI Gateway`のようなエラーが表示される場合があります。
 
 解決するには、まずGitLab Duoの機能が正しく機能しているかどうかを確認します。たとえば、GitLab Duo Chatにメッセージを送信します。
 
-これが機能しない場合、エラーはGitLab Duoヘルスチェックの既知の問題による可能性があります。詳細については、[イシュー517097](https://gitlab.com/gitlab-org/gitlab/-/issues/517097)を参照してください。
+これが機能しない場合、エラーはGitLab Duoヘルスチェックの既知の問題に起因する可能性があります。詳細については、[イシュー517097](https://gitlab.com/gitlab-org/gitlab/-/issues/517097)を参照してください。
 
 ## GitLabがモデルにリクエストを送信できるかどうかを確認する {#check-if-gitlab-can-make-a-request-to-the-model}
 
@@ -146,8 +144,8 @@ client.complete(url: "#{ai_gateway_url}/v1/chat/agent", body: body)
 - ユーザーがコード提案にアクセスできない可能性がある。解決するには、[ユーザーがコード提案をリクエストできるかどうかを確認](#check-if-a-user-can-request-code-suggestions)します。
 - GitLabの環境変数が正しく設定されていない。解決するには、[GitLabの環境変数が正しくセットアップされていることを確認](#check-that-the-ai-gateway-environment-variables-are-set-up-correctly)します。
 - GitLabインスタンスが、セルフホストモデルを使用するように設定されていない。解決するには、[GitLabインスタンスが、セルフホストモデルを使用するように設定されているかどうかを確認](#check-if-gitlab-instance-is-configured-to-use-self-hosted-models)します。
-- AIゲートウェイに到達できません。解決するには、[GitLabがAIゲートウェイにHTTPリクエストを送信できるかどうかを確認します](#check-if-gitlab-can-make-an-http-request-to-the-ai-gateway)。
-- LLMサーバーがAIゲートウェイコンテナと同じインスタンスにインストールされている場合、ローカルリクエストが機能しないことがあります。解決するには、[Dockerコンテナからのローカルリクエストを許可](#llm-server-is-not-available-inside-the-ai-gateway-container)します。
+- AIゲートウェイに到達できない。解決するには、[GitLabがAIゲートウェイにHTTPリクエストを送信できるかどうかを確認](#check-if-gitlab-can-make-an-http-request-to-the-ai-gateway)します。
+- LLMサーバーがAIゲートウェイコンテナと同じインスタンスにインストールされている場合、ローカルリクエストが機能しないことがある。解決するには、[Dockerコンテナからのローカルリクエストを許可](#llm-server-is-not-available-inside-the-ai-gateway-container)します。
 
 ## ユーザーがコード提案をリクエストできるかどうかを確認する {#check-if-a-user-can-request-code-suggestions}
 
@@ -166,14 +164,18 @@ User.find_by_id("<user_id>").can?(:access_code_suggestions)
 
 ## GitLabインスタンスがセルフホストモデルを使用するように設定されているかどうかを確認する {#check-if-gitlab-instance-is-configured-to-use-self-hosted-models}
 
+前提条件: 
+
+- 管理者アクセス権が必要です。
+
 GitLab Duoが正しく設定されているかどうかを確認するには:
 
 1. 右上隅で、**管理者**を選択します。
-1. **セルフホストモデル**を選択します
+1. 左サイドバーで、**セルフホストモデル**を選択します。
 1. **AIネイティブ機能**を展開します。
 1. **機能**で、**コード提案**と**コード生成**が**セルフホストモデル**に設定されていることを確認します。
 
-## AIゲートウェイURLが正しく設定されているか確認してください {#check-that-the-ai-gateway-url-is-set-up-correctly}
+## AIゲートウェイURLが正しく設定されていることを確認する {#check-that-the-ai-gateway-url-is-set-up-correctly}
 
 AIゲートウェイURLが正しいことを確認するには、GitLab Railsコンソールで以下を実行します:
 
@@ -181,7 +183,7 @@ AIゲートウェイURLが正しいことを確認するには、GitLab Railsコ
 Ai::Setting.instance.ai_gateway_url == "<your-ai-gateway-instance-url>"
 ```
 
-AIゲートウェイが設定されていない場合は、[GitLabインスタンスがAIゲートウェイにアクセスするように設定します](configure_duo_features.md#configure-access-to-the-local-ai-gateway)。
+AIゲートウェイがセットアップされていない場合は、[AIゲートウェイにアクセスするようにGitLabインスタンスを設定](configure_duo_features.md#configure-access-to-the-local-ai-gateway)します。
 
 ## GitLab Duo Agent PlatformサービスURLを検証する {#validate-the-gitlab-duo-agent-platform-service-url}
 
@@ -195,7 +197,7 @@ Agent PlatformサービスのURLはTCP URLであり、`http://`または`https:/
 
 Agent PlatformのURLがセットアップされていない場合は、[URLにアクセスできるようにGitLabインスタンスを設定](configure_duo_features.md#configure-access-to-the-gitlab-duo-agent-platform)する必要があります。
 
-## GitLabがAIゲートウェイにHTTPリクエストを送信できるかどうかを確認します {#check-if-gitlab-can-make-an-http-request-to-the-ai-gateway}
+## GitLabがAIゲートウェイにHTTPリクエストを送信できるかどうかを確認する {#check-if-gitlab-can-make-an-http-request-to-the-ai-gateway}
 
 GitLab Railsコンソールで、次のコマンドを実行して、GitLabがAIゲートウェイにHTTPリクエストを送信できることを確認します:
 
@@ -205,15 +207,15 @@ HTTParty.get('<your-aigateway-endpoint>/monitoring/healthz', headers: { 'accept'
 
 レスポンスが`200`でない場合、次のいずれかを意味します:
 
-- ネットワークが、GitLabがAIゲートウェイコンテナに到達できるように適切に設定されていません。ネットワーク管理者に連絡して、セットアップを検証します。
-- AIゲートウェイは、リクエストを処理できません。このイシューを解決するには、[AIゲートウェイがモデルにリクエストを送信できるかどうかを確認します](#check-if-the-ai-gateway-can-make-a-request-to-the-model)。
+- ネットワークが、GitLabがAIゲートウェイコンテナに到達できるように適切に設定されていない。ネットワーク管理者に連絡して、セットアップを検証します。
+- AIゲートウェイがリクエストを処理できない。この問題を解決するには、[AIゲートウェイがモデルにリクエストを送信できるかどうかを確認](#check-if-the-ai-gateway-can-make-a-request-to-the-model)します。
 
-## AIゲートウェイがモデルにリクエストを送信できるかどうかを確認します {#check-if-the-ai-gateway-can-make-a-request-to-the-model}
+## AIゲートウェイがモデルにリクエストを送信できるかどうかを確認する {#check-if-the-ai-gateway-can-make-a-request-to-the-model}
 
-AIゲートウェイコンテナから、codeサジェストのAIゲートウェイAPIにHTTPリクエストを行います。以下の値を置き換えます:
+AIゲートウェイコンテナから、コード提案のAIゲートウェイAPIにHTTPリクエストを送信します。次のようにします。
 
-- `<your_model_name>`を使用しているモデルの名前に。例: `mistral`、`codegemma`。
-- `<your_model_endpoint>`をモデルがホストされているエンドポイントに。
+- `<your_model_name>`を、使用しているモデルの名前に置き換えます。例: `mistral`、`codegemma`。
+- `<your_model_endpoint>`を、モデルがホストされているエンドポイントに置き換えます。
 
 ```shell
 docker exec -it <ai-gateway-container> sh
@@ -229,29 +231,29 @@ curl --request POST "http://localhost:5052/v1/chat/agent" \
 - AIゲートウェイがモデルにアクセスできない可能性があります。解決するには、[AIゲートウェイからモデルに到達できるかどうかを確認します](#check-if-the-model-is-reachable-from-ai-gateway)。
 - モデル名またはエンドポイントが正しくない可能性があります。値を確認し、必要に応じて修正します。
 
-## AIゲートウェイがリクエストを処理できるかどうかを確認します {#check-if-ai-gateway-can-process-requests}
+## AIゲートウェイがリクエストを処理できるかどうかを確認する {#check-if-ai-gateway-can-process-requests}
 
 ```shell
 docker exec -it <ai-gateway-container> sh
 curl '<your-aigateway-endpoint>/monitoring/healthz'
 ```
 
-レスポンスが`200`でない場合、AIゲートウェイが正しくインストールされていません。解決するには、[AIゲートウェイのインストール方法に関するドキュメント](../../install/install_ai_gateway.md)に従ってください。
+レスポンスが`200`でない場合、AIゲートウェイが正しくインストールされていないことを意味します。解決するには、[AIゲートウェイのインストール方法に関するドキュメント](../../install/install_ai_gateway.md)に従います。
 
-## AIゲートウェイの環境変数が正しく設定されていることを確認してください {#check-that-the-ai-gateway-environment-variables-are-set-up-correctly}
+## AIゲートウェイの環境変数が正しくセットアップされていることを確認する {#check-that-the-ai-gateway-environment-variables-are-set-up-correctly}
 
-AIゲートウェイの環境変数が正しく設定されていることを確認するには、AIゲートウェイコンテナのコンソールで以下を実行します:
+AIゲートウェイの環境変数が正しくセットアップされていることを確認するには、AIゲートウェイコンテナのコンソールで以下を実行します:
 
 ```shell
 docker exec -it <ai-gateway-container> sh
 echo $AIGW_CUSTOM_MODELS__ENABLED # must be true
 ```
 
-環境変数が正しくセットアップされていない場合は、[コンテナを作成](../../install/install_ai_gateway.md#find-the-ai-gateway-image)して設定します。
+環境変数が正しく設定されていない場合は、[コンテナを作成](../../install/install_ai_gateway.md#ai-gateway-images)してください。
 
-## AIゲートウェイからモデルに到達できるかどうかを確認します {#check-if-the-model-is-reachable-from-ai-gateway}
+## AIゲートウェイからモデルに到達可能かどうかを確認する {#check-if-the-model-is-reachable-from-ai-gateway}
 
-AIゲートウェイコンテナでShellを作成し、モデルにcURLリクエストを行います。AIゲートウェイがそのリクエストを作成できないことが判明した場合、これは次の原因である可能性があります:
+AIゲートウェイコンテナでShellを作成し、モデルにcurlリクエストを送信します。AIゲートウェイがそのリクエストを送信できないことが判明した場合、これは次のことが原因である可能性があります:
 
 1. モデルサーバーが正しく機能していない。
 1. コンテナ周辺のネットワーク設定が、モデルがホストされている場所へのリクエストを許可するように適切に設定されていない。
@@ -281,7 +283,7 @@ curl "$AIGW_GITLAB_API_URL/projects"
 
 ## イメージのプラットフォームがホストと一致しない {#the-images-platform-does-not-match-the-host}
 
-[AIゲートウェイリリースを検索する](../../install/install_ai_gateway.md#find-the-ai-gateway-image)と、`The requested image's platform (linux/amd64) does not match the detected host`というエラーが表示されることがあります。
+AIゲートウェイイメージを[使用する](../../install/install_ai_gateway.md#ai-gateway-images)と、`The requested image's platform (linux/amd64) does not match the detected host`というエラーが発生する可能性があります。
 
 この回避策として、`docker run`コマンドに`--platform linux/amd64`を追加します:
 
@@ -289,11 +291,11 @@ curl "$AIGW_GITLAB_API_URL/projects"
 docker run --platform linux/amd64 -e AIGW_GITLAB_URL=<your-gitlab-endpoint> <image>
 ```
 
-## LLMサーバーはAIゲートウェイコンテナ内で利用できません {#llm-server-is-not-available-inside-the-ai-gateway-container}
+## LLMサーバーがAIゲートウェイコンテナ内で使用できない {#llm-server-is-not-available-inside-the-ai-gateway-container}
 
-LLMサーバーがAIゲートウェイコンテナと同じインスタンスにインストールされている場合、ローカルホスト経由でアクセスできないことがあります。
+LLMサーバーがAIゲートウェイコンテナと同じインスタンスにインストールされている場合、ローカルホストからはアクセスできない可能性があります。
 
-これを解決するには:
+これを解決するには、次の手順に従います:
 
 1. `--network host`を`docker run`コマンドに含めて、AIゲートウェイコンテナからのローカルリクエストを有効にします。
 1. ポートの競合に対処するために、`-e AIGW_FASTAPI__METRICS_PORT=8083`フラグを使用します。
@@ -352,11 +354,11 @@ vLLMの使用中に**404エラー**が発生した場合は、次の手順に従
 
 ## エラーA1000 {#error-a1000}
 
-セルフホストモデルでGitLab Duo機能を使用すると、次のエラーが発生する可能性があります:
+セルフホストモデルでGitLab Duoの機能を使用すると、次のエラーが発生する可能性があります:
 
 `I'm sorry, I couldn't respond in time. Please try again. Error code: A1000`
 
-このイシューは、モデルへのリクエストが、設定されたタイムアウト期間よりも長くかかっている場合に発生します。
+この問題は、モデルへのリクエストにかかる時間が、設定されたタイムアウト期間よりも長くなった場合に発生します。
 
 一般的な原因は次のとおりです:
 
@@ -367,9 +369,9 @@ vLLMの使用中に**404エラー**が発生した場合は、次の手順に従
 
 タイムアウトエラーを解決するには:
 
-1. [より高いAIゲートウェイタイムアウト値を設定します](configure_duo_features.md#configure-timeout-for-the-ai-gateway)。タイムアウトは60～600秒（10分）の間に設定できます。
-1. タイムアウトを調整した後、ログを監視してエラーが解決されたことを確認します。
-1. より高いタイムアウト値を設定してもタイムアウトエラーが解決しない場合は:
+1. [より高いAIゲートウェイタイムアウト値を設定します](configure_duo_features.md#configure-timeout-for-the-ai-gateway)。タイムアウトは60秒から600秒（10分）の間に設定できます。
+1. タイムアウトを調整した後、ログをモニタリングしてエラーが解決されたことを確認します。
+1. より高いタイムアウト値を設定してもタイムアウトエラーが解決しない場合:
    - モデルのパフォーマンスとリソース割り当てを確認します。
    - AIゲートウェイとモデルエンドポイント間のネットワーク接続を確認します。
    - よりパフォーマンスの高いモデルまたはデプロイ設定の使用を検討してください。
@@ -382,12 +384,12 @@ GitLab Self-Managedのセットアップを検証するには、次のコマン�
 gitlab-rake gitlab:duo:verify_self_hosted_setup
 ```
 
-## AIゲートウェイサーバーでログが生成されていません {#no-logs-generated-in-the-ai-gateway-server}
+## AIゲートウェイサーバーでログが生成されない {#no-logs-generated-in-the-ai-gateway-server}
 
-AIゲートウェイサーバーでログが生成されない場合は、次の手順でトラブルシューティングを行います:
+AIゲートウェイサーバーでログが生成されない場合は、次の手順に従ってトラブルシューティングを行います:
 
-1. [AIログが有効になっている](logging.md#enable-logging)ことを確認します。
-1. 次のコマンドを実行して、エラーがないかGitLab Railsログを表示します:
+1. [AIログが有効になっている](logging.md#turn-on-data-collection-for-gitlab-duo)ことを確認します。
+1. 次のコマンドを実行して、GitLab Railsログを表示し、エラーがないか確認します:
 
    ```shell
    sudo gitlab-ctl tail
@@ -396,9 +398,9 @@ AIゲートウェイサーバーでログが生成されない場合は、次の
 
 1. ログで「Error」や「Exception」などのキーワードを探して、根本的な問題を特定します。
 
-## AIゲートウェイコンテナでのSSL証明書エラーとキーのデシリアライズのイシュー {#ssl-certificate-errors-and-key-de-serialization-issues-in-the-ai-gateway-container}
+## AIゲートウェイコンテナでのSSL証明書エラーとキーの逆シリアル化の問題 {#ssl-certificate-errors-and-key-de-serialization-issues-in-the-ai-gateway-container}
 
-AIゲートウェイコンテナ内でGitLab Duo Chatを開始しようとすると、SSL証明書エラーとキーのシリアライズ化のイシューが発生することがあります。
+AIゲートウェイコンテナ内でGitLab Duo Chatを開始しようとすると、SSL証明書エラーとキーの逆シリアル化の問題が発生する可能性があります。
 
 システムでPEMファイルを読み込む際に問題が発生し、次のようなエラーが発生する可能性があります:
 
@@ -445,20 +447,39 @@ Invocation of model ID meta.llama3-3-70b-instruct-v1:0 with on-demand throughput
 
    **重要**: トラブルシューティング後、このフラグを設定**せずに**GitLabを再起動します。
 
-   {{< alert type="warning" >}}
+   > [!warning]
+   > **本番環境で`CLOUD_CONNECTOR_SELF_SIGN_TOKENS=1`を使用しないでください**。開発環境は本番環境を忠実に反映する必要があり、隠れたフラグや内部専用の回避策があってはなりません。
 
-   **本番環境で`CLOUD_CONNECTOR_SELF_SIGN_TOKENS=1`を使用しないでください**。開発環境は本番環境を忠実に反映する必要があり、隠れたフラグや内部専用の回避策があってはなりません。
-
-   {{< /alert >}}
-
-1. この問題を解決するには:
+1. この問題を解決するには、次の手順に従います:
    - GitLabチームのメンバーである場合は、[`#g_custom_models` Slackチャンネル](https://gitlab.enterprise.slack.com/archives/C06DCB3N96F)を通じて、カスタムモデルチームに連絡してください。
    - お客様の場合は、[GitLabサポート](https://about.gitlab.com/support/)を通じて問題を報告してください。
 
-## GitLab Duo Chatのトラブルシューティング {#troubleshooting-gitlab-duo-chat}
+## エラー: このワークフローの認証トークンのフェッチ中にエラーが発生しました {#error-an-error-occurred-while-fetching-an-authentication-token-for-this-workflow}
 
-GitLab Duoセルフホストモデルを使用している場合にGitLab Duo Chatのトラブルシューティングを行うには、[GitLab Duo Chatのトラブルシューティング](../../user/gitlab_duo_chat/troubleshooting.md)を参照してください。
+このエラーは、GitLabまたはローカル環境でエージェント型チャットを使用しようとすると発生する可能性があります。
 
-## 関連トピック {#related-topics}
+IDEの[GitLab言語サーバー](../../editor_extensions/language_server/_index.md)のログに、次の内容が表示されることもあります:
 
-- [サポートエンジニア向けプレイブックと一般的な問題](support_engineer_playbook.md)
+```shell
+2026-01-09T20:17:43:419 [error]: [WorkflowRailsService] Failed to fetch the workflow token
+    Error: Fetching direct_access from https://gitlab.example.com/api/v4/ai/duo_workflows/direct_access failed.
+{"message":"400 Bad request - 14:failed to connect to all addresses; last error: UNKNOWN: ipv4:172.x.x.x:50052: Ssl handshake failed (TSI_PROTOCOL_FAILURE): SSL_ERROR_SSL: error:100000f7:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER: Invalid certificate verification context. debug_error_string:{UNKNOWN:Error received from peer  {grpc_status:14, grpc_message:\"failed to connect to all addresses; last error: UNKNOWN: ipv4:172.x.x.x:50052: Ssl handshake failed (TSI_PROTOCOL_FAILURE): SSL_ERROR_SSL: error:100000f7:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER: Invalid certificate verification context\"}}"}
+2026-01-09T20:17:43:433 [error]: Max retries exceeded or non-retryable error: An error occurred while fetching an authentication token for this workflow.
+2026-01-09T20:17:43:435 [error]: Workflow failed with status code "50": An error occurred while fetching an authentication token for this workflow.
+```
+
+これは、証明書の問題により、言語サーバーが`direct_access`エンドポイントと通信してJWTトークンを生成できなかったことを意味します。
+
+セルフホストモデルをGitLab Duo Agent Platformに接続するためにTLSを使用しない場合は、この問題を解決するには、GitLab Duo Agent PlatformサービスへのTLS接続を[無効にしてください](configure_duo_features.md#configure-access-to-the-gitlab-duo-agent-platform)。
+
+## Agentic Chatからの応答がUIに表示されない {#response-from-agentic-chat-does-not-display-in-the-ui}
+
+チャットの応答には、ブラウザとGitLab間の永続的なWebSocket接続が必要です。リバースプロキシがWebSocketアップグレードをサポートしていない場合、応答は正常に生成されますが、GitLab UIのチャットには表示されません。
+
+### 症状 {#symptoms}
+
+- `llm.log`には、エラーなしで`chunk_received`、`streaming_finished`、および`final_answer_received`が表示されます。
+- AIゲートウェイのログには、モデルの応答が成功したことが示されます。
+- GitLab Duo Chat UIはリクエストを処理しているように見えますが、応答は表示されません。
+
+この問題を解決するには、リバースプロキシが[受信接続要件](../gitlab_duo/configure/_index.md#allow-inbound-connections-from-clients-to-the-gitlab-instance)を満たすように構成されていることを確認してください。

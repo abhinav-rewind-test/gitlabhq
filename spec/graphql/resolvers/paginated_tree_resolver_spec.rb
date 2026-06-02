@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe Resolvers::PaginatedTreeResolver, feature_category: :source_code_management do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:repository) { project.repository }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:repository, freeze: false) { project.repository }
 
   specify do
     expect(described_class).to have_nullable_graphql_type(Types::Tree::TreeType.connection_type)
@@ -121,12 +121,13 @@ RSpec.describe Resolvers::PaginatedTreeResolver, feature_category: :source_code_
 
   def resolve_repository(args, opts = {})
     field_options = {
+      name: 'field_value',
       owner: resolver_parent,
-      resolver: described_class,
+      resolver_class: described_class,
       connection_extension: Gitlab::Graphql::Extensions::ExternallyPaginatedArrayExtension
     }.merge(opts)
 
-    field = ::Types::BaseField.from_options('field_value', **field_options)
+    field = ::Types::BaseField.new(**field_options)
     resolve_field(field, repository, args: args, object_type: resolver_parent)
   end
 end

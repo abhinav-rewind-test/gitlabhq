@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Release, feature_category: :release_orchestration do
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
 
   let_it_be_with_reload(:release) { create(:release, project: project, author: user) }
 
@@ -49,8 +49,8 @@ RSpec.describe Release, feature_category: :release_orchestration do
     end
 
     describe 'scopes' do
-      let_it_be(:another_project) { create(:project) }
-      let_it_be(:another_release) { create(:release, project: another_project, tag: 'v2') }
+      let_it_be(:another_project, freeze: false) { create(:project) }
+      let_it_be(:another_release, freeze: false) { create(:release, project: another_project, tag: 'v2') }
 
       describe '.for_projects' do
         it 'returns releases for the given projects' do
@@ -127,11 +127,11 @@ RSpec.describe Release, feature_category: :release_orchestration do
   end
 
   describe 'latest releases' do
-    let_it_be(:yesterday) { Time.zone.now - 1.day }
+    let_it_be(:yesterday, freeze: false) { Time.zone.now - 1.day }
     let_it_be(:today) { Time.zone.now }
-    let_it_be(:tomorrow) { Time.zone.now + 1.day }
+    let_it_be(:tomorrow, freeze: false) { Time.zone.now + 1.day }
 
-    let_it_be(:project2) { create(:project) }
+    let_it_be(:project2, freeze: false) { create(:project) }
 
     let_it_be(:project_release1) do
       create(:release, project: project, released_at: yesterday, created_at: tomorrow)
@@ -141,7 +141,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
       create(:release, project: project, released_at: tomorrow, created_at: yesterday)
     end
 
-    let_it_be(:project2_release1) do
+    let_it_be(:project2_release1, freeze: false) do
       create(:release, project: project2, released_at: yesterday, created_at: tomorrow)
     end
 
@@ -350,7 +350,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
       it 'also deletes the associated evidence' do
         release_with_evidence
 
-        expect { release_with_evidence.destroy! }.to change(Releases::Evidence, :count).by(-1)
+        expect { release_with_evidence.destroy! }.to change { Releases::Evidence.count }.by(-1)
       end
     end
   end
@@ -376,7 +376,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
   end
 
   describe 'updating catalog resource version' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
 
     let_it_be_with_reload(:release) do
@@ -403,10 +403,75 @@ RSpec.describe Release, feature_category: :release_orchestration do
     end
   end
 
+  describe '#tagged_packages' do
+    let_it_be(:release) { create(:release, project: project, tag: 'v1.0.0') }
+
+    context 'when packages match the release tag version' do
+      let_it_be(:matching_package) { create(:generic_package, project: project, version: '1.0.0') }
+
+      it 'returns packages whose version matches the tag without the v prefix' do
+        expect(release.tagged_packages).to contain_exactly(matching_package)
+      end
+    end
+
+    context 'when multiple packages match the release tag version' do
+      let_it_be(:package_a) { create(:generic_package, project: project, version: '1.0.0') }
+      let_it_be(:package_b) { create(:npm_package, project: project, version: '1.0.0') }
+
+      it 'returns all matching packages' do
+        expect(release.tagged_packages).to contain_exactly(package_a, package_b)
+      end
+    end
+
+    context 'when no packages match the release tag version' do
+      let_it_be(:other_package) { create(:generic_package, project: project, version: '2.0.0') }
+
+      it 'returns an empty relation' do
+        expect(release.tagged_packages).to be_empty
+      end
+    end
+
+    context 'when the tag has no v prefix' do
+      let_it_be(:release_no_prefix) { create(:release, project: project, tag: '3.0.0') }
+      let_it_be(:matching_package) { create(:generic_package, project: project, version: '3.0.0') }
+
+      it 'matches packages by version directly' do
+        expect(release_no_prefix.tagged_packages).to contain_exactly(matching_package)
+      end
+    end
+
+    context 'when the tag has an uppercase V prefix' do
+      let_it_be(:release_upper_v) { create(:release, project: project, tag: 'V4.0.0') }
+      let_it_be(:matching_package) { create(:generic_package, project: project, version: '4.0.0') }
+
+      it 'strips the uppercase V prefix and matches packages' do
+        expect(release_upper_v.tagged_packages).to contain_exactly(matching_package)
+      end
+    end
+
+    context 'when the tag is blank' do
+      let(:release_no_tag) { build(:release, project: project, tag: '') }
+
+      it 'returns none' do
+        expect(release_no_tag.tagged_packages).to be_empty
+      end
+    end
+
+    context 'when a package is pending destruction' do
+      let_it_be(:destroyed_package) do
+        create(:generic_package, project: project, version: '1.0.0', status: :pending_destruction)
+      end
+
+      it 'excludes non-displayable packages' do
+        expect(release.tagged_packages).not_to include(destroyed_package)
+      end
+    end
+  end
+
   describe '#related_deployments' do
     let_it_be(:release) { create(:release, project: project, tag: 'v1.0.0') }
     let_it_be(:ref) { release.tag }
-    let_it_be(:environment) { create(:environment, project: project) }
+    let_it_be(:environment, freeze: false) { create(:environment, project: project) }
     let_it_be_with_reload(:deployment) { create(:deployment, environment: environment, ref: ref) }
 
     it 'returns deployments for the release tag in the available environments' do

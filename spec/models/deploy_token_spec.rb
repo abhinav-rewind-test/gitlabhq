@@ -10,6 +10,8 @@ RSpec.describe DeployToken, feature_category: :continuous_delivery do
   it { is_expected.to have_many :group_deploy_tokens }
   it { is_expected.to have_many(:groups).through(:group_deploy_tokens) }
   it { is_expected.to belong_to(:user).with_foreign_key('creator_id') }
+  it { is_expected.to belong_to(:owner_project).class_name('Project').optional }
+  it { is_expected.to belong_to(:owner_group).class_name('Group').optional }
 
   it_behaves_like 'having unique enum values'
 
@@ -79,6 +81,10 @@ RSpec.describe DeployToken, feature_category: :continuous_delivery do
 
       expect(deploy_token.token_encrypted).not_to be_empty
     end
+  end
+
+  describe '#bot?' do
+    it { expect(deploy_token.bot?).to be_truthy }
   end
 
   describe '#ensure_at_least_one_scope' do

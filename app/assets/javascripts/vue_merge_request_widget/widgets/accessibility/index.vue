@@ -1,5 +1,5 @@
 <script>
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { __, n__, s__, sprintf } from '~/locale';
 import axios from '~/lib/utils/axios_utils';
 import MrWidget from '~/vue_merge_request_widget/components/widget/widget.vue';
@@ -167,8 +167,8 @@ export default {
     :summary="summary"
     :content="content"
     :is-collapsible="shouldCollapse"
+    :expand-button-label="s__('AccessibilityReport|Expand accessibility details')"
+    :collapse-button-label="s__('AccessibilityReport|Collapse accessibility details')"
     :fetch-collapsed-data="fetchCollapsedData"
-    :label="__('Accessibility')"
-    path="accessibility"
   />
 </template>

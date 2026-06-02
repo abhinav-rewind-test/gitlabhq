@@ -1,7 +1,7 @@
 ---
 stage: ModelOps
 group: MLOps
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Model registry
 ---
 
@@ -40,26 +40,27 @@ The model registry is controlled by the package registry setting.
 Before using the model registry, make
 sure the [package registry is enabled](../../../../administration/packages/_index.md#enable-or-disable-the-package-registry).
 
-To access the model registry, on the left sidebar, select **Deploy** > **Model registry**.
+To access the model registry, in the left sidebar, select **Deploy** > **Model registry**.
 
 If **Model registry** is not available, ensure that it has been enabled.
 
 To enable the model registry or set the [visibility level](../../../public_access.md) to public or private:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Under **Model registry**, ensure the toggle is on and select who you want to have access.
-   Users must have
-at least the [Reporter role](../../../permissions.md#roles) to modify or delete models and model versions.
+   Users must have at least the [Reporter role](../../../permissions.md#roles) to modify
+   or delete models and model versions.
 
 ## Create machine learning models by using the UI
 
 To create a new machine learning model by using the GitLab UI:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
-1. On the **Model registry** page, select **Create/Import**.
-1. In the dropdown, select **Create new model**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
+1. On the **Model registry** page, you can either:
+   - Select **Create model** if you have no models yet.
+   - In the upper-right corner, select **Create/Import model** then select **Create new model** in the dropdown list.
 1. Complete the fields:
    - Enter a unique name for your model name.
    - Optional. Provide a description for the model.
@@ -76,7 +77,7 @@ To create a new model version:
    - Enter a unique version number following semantic versioning.
    - Optional. Provide a description for the model version.
    - Upload any files, logs, metrics, or parameters associated with the model version.
-1. Select on **Create & import**.
+1. Select **Create & import**.
 
 The new model version is now available in the model registry.
 
@@ -84,13 +85,13 @@ The new model version is now available in the model registry.
 
 To delete a model and all its associated versions:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model you want to delete.
 1. In the most right column, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete model**.
 
 Alternatively you can delete models from the model details page:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model you want to delete.
 1. Select the model name to view its details.
 1. Select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete model**.
@@ -100,28 +101,28 @@ Alternatively you can delete models from the model details page:
 
 To delete a model version:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model with a version you want to delete.
 1. Select the model name to view its details.
 1. Select the **Versions** tab.
 1. Find the model version you want to delete
-1. In the most right column, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete model version**.
+1. In the most right column, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete version**.
 
 Alternatively you can delete models from the model version details page:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model with a version you want to delete.
 1. Select the model name to view its details.
 1. Select the **Versions** tab.
 1. Select the version name to view its details.
-1. Select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete model version**.
+1. Select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and **Delete version**.
 1. Confirm the deletion.
 
 ### Add artifacts to a model version
 
 To add artifacts to a model version:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model.
 1. Select the model name to view its details.
 1. Select the **Versions** tab.
@@ -139,7 +140,7 @@ Because each file has a size limit of 5 GB, you must partition larger models.
 
 To delete artifacts of a version:
 
-1. On the left sidebar, select **Deploy** > **Model registry**.
+1. In the left sidebar, select **Deploy** > **Model registry**.
 1. Find the model.
 1. Select the model name to view its details.
 1. Select the **Versions** tab.
@@ -153,7 +154,7 @@ To delete artifacts of a version:
 
 Models and model versions can be created using the [MLflow](https://www.mlflow.org/docs/latest/tracking.html) client compatibility.
 For more information about how to create and manage models and model versions, see [MLflow client compatibility](../experiment_tracking/mlflow_client.md#model-registry).
-You can also create models directly on GitLab by selecting **Create Model**
+You can also create models directly on GitLab by selecting **Create model**
 on the Model registry page.
 
 ### Add artifacts, metrics, and parameters to a model version by using MLflow

@@ -48,6 +48,19 @@ RSpec.describe 'PipelineCreate', feature_category: :pipeline_composition do
       project.add_developer(user)
     end
 
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :create_pipeline do
+      let(:boundary_object) { project }
+      let(:mutation) do
+        graphql_mutation(
+          :pipeline_create,
+          { project_path: project.full_path, **params },
+          'errors'
+        )
+      end
+
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+
     context 'when the pipeline creation is not successful' do
       it 'returns error' do
         stub_ci_builds_disabled
@@ -141,6 +154,48 @@ RSpec.describe 'PipelineCreate', feature_category: :pipeline_composition do
               '`test_script` input: required value has not been provided'
             )
           end
+        end
+      end
+    end
+
+    context 'when merge_request_iid is provided' do
+      let_it_be(:merge_request) do
+        create(:merge_request, source_project: project, source_branch: 'feature', target_branch: 'master')
+      end
+
+      let(:params) { { ref: merge_request.source_branch, merge_request_iid: merge_request.iid.to_s } }
+
+      before_all do
+        project.repository.create_branch('feature', 'master')
+      end
+
+      before do
+        stub_ci_pipeline_yaml_file(YAML.dump({
+          test: {
+            script: 'echo test',
+            rules: [{ when: 'always' }]
+          }
+        }))
+      end
+
+      it 'creates a pipeline linked to the merge request' do
+        expect do
+          post_graphql_mutation(mutation, current_user: user)
+        end.to change { ::Ci::Pipeline.count }.by(1)
+
+        created_pipeline = ::Ci::Pipeline.last
+        expect(created_pipeline.merge_request).to eq(merge_request)
+        expect(created_pipeline.source).to eq('merge_request_event')
+        expect(mutation_response['pipeline']['id']).to eq(created_pipeline.to_global_id.to_s)
+      end
+
+      context 'when merge request does not exist' do
+        let(:params) { { ref: 'master', merge_request_iid: '999999' } }
+
+        it 'returns an error' do
+          post_graphql_mutation(mutation, current_user: user)
+
+          expect(graphql_errors.first['message']).to include("Couldn't find")
         end
       end
     end

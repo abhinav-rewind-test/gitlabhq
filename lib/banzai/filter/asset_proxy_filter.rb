@@ -22,6 +22,8 @@ module Banzai
         return doc unless asset_proxy_enabled?
 
         doc.search('img').each do |element|
+          next if element.classes.include?('js-render-iframe')
+
           original_src = element['src']
           next unless original_src
 
@@ -64,7 +66,10 @@ module Banzai
           Gitlab.config.asset_proxy['secret_key']     = application_settings.asset_proxy_secret_key
           Gitlab.config.asset_proxy['allowlist']      = determine_allowlist(application_settings)
           Gitlab.config.asset_proxy['domain_regexp']  = host_regexp_for_allowlist(Gitlab.config.asset_proxy.allowlist)
-          Gitlab.config.asset_proxy['csp_directives'] = csp_for_allowlist(Gitlab.config.asset_proxy.allowlist)
+          if Gitlab.config.asset_proxy.enabled
+            Gitlab.config.asset_proxy['csp_directives'] =
+              csp_for_allowlist(Gitlab.config.asset_proxy.allowlist, asset_proxy_url: Gitlab.config.asset_proxy.url)
+          end
         else
           Gitlab.config.asset_proxy['enabled'] = ::ApplicationSetting.defaults[:asset_proxy_enabled]
         end
@@ -77,9 +82,7 @@ module Banzai
         Regexp.new("^(#{escaped.join('|')})$", Regexp::IGNORECASE)
       end
 
-      def self.csp_for_allowlist(allowlist)
-        return unless Gitlab.config.asset_proxy.enabled
-
+      def self.csp_for_allowlist(allowlist, asset_proxy_url:)
         # See https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#host-source.
 
         # Permit assets on the GitLab host itself.
@@ -88,7 +91,6 @@ module Banzai
         # We need to permit the asset proxy URL itself for it to work in the Mermaid sandbox.
         # The setting is already validated to be a valid URL; we need to ensure it ends in a
         # forward-slash for the CSP to ensure we permit the entire prefix.
-        asset_proxy_url = Gitlab.config.asset_proxy.url
         asset_proxy_url += '/' unless asset_proxy_url.ends_with?('/')
         src << asset_proxy_url
 

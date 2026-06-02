@@ -146,8 +146,21 @@ describe('Source Viewer component', () => {
         });
       });
 
+      it('defers blame entries until their chunk emits highlighted', async () => {
+        jest.spyOn(utils, 'calculateBlameOffset').mockReturnValue(null);
+        createComponent();
+        await triggerChunkAppear();
+        expect(findBlameComponents().at(0).props('blameInfo')).toEqual([]);
+
+        utils.calculateBlameOffset.mockReturnValue('42px');
+        findChunks().at(0).vm.$emit('highlighted');
+        await nextTick();
+
+        expect(findBlameComponents().at(0).props('blameInfo')).toHaveLength(1);
+      });
+
       describe('per-chunk skeleton loaders', () => {
-        const emitAppear = () => findChunks().at(0).vm.$emit('appear');
+        const emitAppear = (index = 0) => findChunks().at(index).vm.$emit('appear');
 
         it.each([
           { showBlame: true, minCount: 1 },
@@ -184,8 +197,16 @@ describe('Source Viewer component', () => {
           emitAppear();
           await nextTick();
 
-          const loader = findBlameSkeletonLoaders().at(0);
-          expect(loader.props('totalLines')).toBe(1);
+          const chunk1Loader = findBlameSkeletonLoaders().at(0);
+          expect(chunk1Loader.props('totalLines')).toBe(70);
+          expect(chunk1Loader.props('startLine')).toBe(0);
+
+          emitAppear(1);
+          await nextTick();
+
+          const chunk2Loader = findBlameSkeletonLoaders().at(1);
+          expect(chunk2Loader.props('totalLines')).toBe(40);
+          expect(chunk2Loader.props('startLine')).toBe(70);
         });
       });
 
@@ -199,6 +220,42 @@ describe('Source Viewer component', () => {
             fullPath: projectPath,
             ref: currentRef,
           }),
+        );
+      });
+
+      it('loads blame for all already-visible chunks when showBlame is enabled', async () => {
+        createComponent({ showBlame: false });
+        await triggerChunkAppear(0);
+        await triggerChunkAppear(1);
+        blameDataQueryHandlerSuccess.mockClear();
+
+        await wrapper.setProps({ showBlame: true });
+        await waitForPromises();
+
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledTimes(2);
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledWith(
+          expect.objectContaining({ fromLine: 1, toLine: 70 }),
+        );
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledWith(
+          expect.objectContaining({ fromLine: 71, toLine: 110 }),
+        );
+      });
+
+      it('preloads blame for all already-visible chunks when shouldPreloadBlame is enabled', async () => {
+        createComponent({ showBlame: false, shouldPreloadBlame: false });
+        await triggerChunkAppear(0);
+        await triggerChunkAppear(1);
+        blameDataQueryHandlerSuccess.mockClear();
+
+        await wrapper.setProps({ shouldPreloadBlame: true });
+        await waitForPromises();
+
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledTimes(2);
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledWith(
+          expect.objectContaining({ fromLine: 1, toLine: 70 }),
+        );
+        expect(blameDataQueryHandlerSuccess).toHaveBeenCalledWith(
+          expect.objectContaining({ fromLine: 71, toLine: 110 }),
         );
       });
 

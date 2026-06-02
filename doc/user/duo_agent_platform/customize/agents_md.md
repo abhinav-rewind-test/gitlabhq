@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: AGENTS.md customization files
 ---
 
@@ -15,8 +15,12 @@ title: AGENTS.md customization files
 {{< history >}}
 
 - Support for `AGENTS.md` in GitLab Duo Chat [introduced](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/merge_requests/2597) in GitLab 18.7.
+  - [Introduced](https://gitlab.com/gitlab-org/gitlab-vscode-extension/-/releases/v6.60.0) in GitLab for VS Code 6.60.0.
+  - [Introduced](https://gitlab.com/gitlab-org/editor-extensions/gitlab-jetbrains-plugin/-/releases/v3.26.0) in the GitLab Duo plugin for JetBrains IDEs 3.26.0.
+  - [Introduced](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/releases/v8.47.0) in GitLab Duo CLI 8.47.0.
 - Support for `AGENTS.md` in agentic flows [introduced](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/issues/1509) in GitLab 18.8.
 - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/585273) in GitLab 18.8.
+- Support for GitLab UI [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/593279) in GitLab 18.11.
 
 {{< /history >}}
 
@@ -29,19 +33,23 @@ details are available for GitLab Duo Agent Platform and any other AI tool that s
 
 Specify `AGENTS.md` files for GitLab Duo to use with:
 
-- GitLab Duo Chat in your IDE.
-- Foundational and custom flows.
+- GitLab Duo Chat in the GitLab UI and your local environment.
+- Foundational and custom flows, excluding Code Review Flow.
 
 ## How GitLab Duo uses `AGENTS.md` files
 
-You can create `AGENTS.md` files at multiple levels:
+You can create `AGENTS.md` files at multiple levels, depending on how you use GitLab Duo:
 
-- User-level: Apply to all of your projects and workspaces.
-- Workspace-level: Apply only to a specific project or workspace.
-- Subdirectory-level: Apply only to a specific project within a monorepo
-  or within a project with distinct components.
+| Level                                                           | GitLab UI | Editor extensions | GitLab Duo CLI |
+|-----------------------------------------------------------------|--------------------------|------------------|--------------|
+| User-level: Apply to all of your projects        | {{< no >}}  |  {{< yes >}}    | {{< yes >}} |
+| Project-level: Apply only to a specific project  | {{< yes >}} | {{< yes >}}         | {{< yes >}} |
+| Subdirectory-level: Apply only to a specific project within a monorepo or within a project with distinct components | {{< no >}} | {{< yes >}} | {{< yes >}} |
 
-GitLab Duo Chat combines available instructions from user-level and workspace-level `AGENTS.md`
+If you use a multi-root workspace in your IDE, you can create project-level `AGENTS.md` files
+for each project in the workspace.
+
+GitLab Duo combines available instructions from user-level and project-level `AGENTS.md`
 files for all conversations. If a task requires working with files in a directory that contains an
 additional `AGENTS.md` file, Chat applies those instructions as well.
 
@@ -54,11 +62,11 @@ instructions. Previously existing conversations do not.
 ### Prerequisites
 
 - Meet the [Agent Platform prerequisites](../_index.md#prerequisites).
-- For GitLab Duo Chat in your IDE, install the supported extensions:
-
-  - For VS Code, [install and configure the GitLab Workflow extension for VS Code](../../../editor_extensions/visual_studio_code/setup.md) 6.60 or later.
-  - For a JetBrains IDE, [install and configure the GitLab plugin for JetBrains](../../../editor_extensions/jetbrains_ide/setup.md) 3.26.0 or later.
-
+- For GitLab Duo Chat in your local environment, install and configure one of the following:
+  - [GitLab for VS Code](../../../editor_extensions/visual_studio_code/setup.md) 6.60 or later.
+  - [GitLab Duo plugin for JetBrains IDEs](../../../editor_extensions/jetbrains_ide/setup.md) 3.26.0
+    or later.
+  - [GitLab Duo CLI](../../gitlab_duo_cli/_index.md#set-up-the-gitlab-duo-cli) 8.47.0 or later.
 - For custom flows, update the flow's configuration file to access the `user_rule` context passed
   from the executor:
 
@@ -78,12 +86,11 @@ instructions. Previously existing conversations do not.
 
 ### Create user-level `AGENTS.md` files
 
-User-level `AGENTS.md` files apply to all of your projects and workspaces.
+User-level `AGENTS.md` files apply to all of your projects.
 
 1. Create an `AGENTS.md` file in your home directory:
    - On Linux or macOS, create the file at `~/.gitlab/duo/AGENTS.md`.
    - On Windows, create the file at `%APPDATA%\GitLab\duo\AGENTS.md`.
-
 1. Add instructions to the file. For example:
 
    {{< tabs >}}
@@ -156,11 +163,11 @@ If you have set a specific environment variable, then you create the
 - If you have set the `XDG_CONFIG_HOME` environment variable, create the file at
   `$XDG_CONFIG_HOME/gitlab/duo/AGENTS.md`.
 
-### Create workspace-level `AGENTS.md` files
+### Create project-level `AGENTS.md` files
 
-Workspace-level `AGENTS.md` files apply only to a specific project or workspace.
+Project-level `AGENTS.md` files apply only to a specific project.
 
-1. In the root of your project workspace, create an `AGENTS.md` file.
+1. In the root of your project, create an `AGENTS.md` file.
 1. Add instructions to the file. For example:
 
    ```markdown

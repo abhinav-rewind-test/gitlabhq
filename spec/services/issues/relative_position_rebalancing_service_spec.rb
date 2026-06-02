@@ -3,32 +3,32 @@
 require 'spec_helper'
 
 RSpec.describe Issues::RelativePositionRebalancingService, :clean_gitlab_redis_shared_state, feature_category: :team_planning do
-  let_it_be(:project, reload: true) { create(:project, :repository_disabled, skip_disk_validation: true) }
+  let_it_be_with_reload(:project) { create(:project, :repository_disabled, skip_disk_validation: true) }
   let_it_be(:user) { project.creator }
   let_it_be(:start) { RelativePositioning::START_POSITION }
   let_it_be(:max_pos) { RelativePositioning::MAX_POSITION }
   let_it_be(:min_pos) { RelativePositioning::MIN_POSITION }
   let_it_be(:clump_size) { 300 }
 
-  let_it_be(:unclumped, reload: true) do
+  let_it_be_with_reload(:unclumped) do
     (1..clump_size).to_a.map do |i|
       create(:issue, project: project, author: user, relative_position: start + (1024 * i))
     end
   end
 
-  let_it_be(:end_clump, reload: true) do
+  let_it_be_with_reload(:end_clump) do
     (1..clump_size).to_a.map do |i|
       create(:issue, project: project, author: user, relative_position: max_pos - i)
     end
   end
 
-  let_it_be(:start_clump, reload: true) do
+  let_it_be_with_reload(:start_clump) do
     (1..clump_size).to_a.map do |i|
       create(:issue, project: project, author: user, relative_position: min_pos + i)
     end
   end
 
-  let_it_be(:nil_clump, reload: true) do
+  let_it_be_with_reload(:nil_clump) do
     (1..100).to_a.map do |i|
       create(:issue, project: project, author: user, relative_position: nil)
     end
@@ -38,7 +38,7 @@ RSpec.describe Issues::RelativePositionRebalancingService, :clean_gitlab_redis_s
     project.reload.issues.order_by_relative_position.to_a
   end
 
-  subject(:service) { described_class.new(Project.id_in(project)) }
+  subject(:service) { described_class.new(project.project_namespace) }
 
   context 'execute' do
     it 're-balances a set of issues with clumps at the end and start' do
@@ -174,6 +174,36 @@ RSpec.describe Issues::RelativePositionRebalancingService, :clean_gitlab_redis_s
 
         # order is preserved
         expect(original_order).to match_array(issues_in_position_order.map(&:id))
+      end
+    end
+
+    context 'when multiple projects belong to the same namespace' do
+      let_it_be(:group) { create(:group) }
+      let_it_be(:project1) { create(:project, namespace: group) }
+      let_it_be(:project2) { create(:project, namespace: group) }
+      let_it_be(:issue1) { create(:issue, project: project1, relative_position: 100) }
+      let_it_be(:issue2) { create(:issue, project: project2, relative_position: 200) }
+
+      subject(:multi_project_service) { described_class.new(group) }
+
+      describe '#preload_issue_ids' do
+        it 'caches issues from all namespaces under the namespace hierarchy' do
+          multi_project_service.send(:preload_issue_ids)
+          caching = multi_project_service.send(:caching)
+
+          expect(caching.issue_count).to eq(2)
+          expect(caching.get_cached_issue_ids(0, 10)).to contain_exactly(issue1.id.to_s, issue2.id.to_s)
+        end
+
+        it 'iterates each descendant namespace (group + project namespaces)' do
+          caching = multi_project_service.send(:caching)
+          expected_namespace_ids = group.self_and_descendant_ids(skope: Namespace).pluck(:id)
+
+          expect(caching).to receive(:cache_current_namespace_id)
+            .exactly(expected_namespace_ids.size).times.and_call_original
+
+          multi_project_service.send(:preload_issue_ids)
+        end
       end
     end
 

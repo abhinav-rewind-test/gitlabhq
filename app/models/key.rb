@@ -10,14 +10,14 @@ class Key < ApplicationRecord
   include CreatedAtFilterable
   include Cells::Claimable
 
-  cells_claims_attribute :key, type: CLAIMS_BUCKET_TYPE::SSH_KEYS, feature_flag: :cells_claims_keys
+  cells_claims_attribute :fingerprint_sha256, type: CLAIMS_BUCKET_TYPE::SSH_KEY_FINGERPRINTS, feature_flag: :cells_claims_keys
 
   cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::ORGANIZATION, subject_key: :organization_id
 
   sha256_attribute :fingerprint_sha256
 
   belongs_to :user
-  belongs_to :organization, class_name: 'Organizations::Organization'
+  belongs_to :organization, class_name: 'Organizations::Organization', optional: false
 
   has_many :ssh_signatures, class_name: 'CommitSignatures::SshSignature'
 
@@ -204,7 +204,7 @@ class Key < ApplicationRecord
   end
 
   def unique_attributes
-    [:key]
+    [:fingerprint_sha256]
   end
 end
 

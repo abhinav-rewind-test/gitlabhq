@@ -20,7 +20,6 @@ module Banzai
           escaped_char_spans: true,
           footnotes: true,
           full_info_string: true,
-          github_pre_lang: true,
           hardbreaks: false,
           header_accessibility: true,
           header_ids: Banzai::Renderer::USER_CONTENT_ID_PREFIX,
@@ -39,39 +38,27 @@ module Banzai
           tagfilter: false,
           tasklist: true,
           tasklist_classes: true,
-          tasklist_in_table: false,
+          tasklist_in_table: true,
           wikilinks_title_before_pipe: true,
           unsafe: true
         }.freeze
 
-        # Supports the bare minimum markdown. Usually used for single line
-        # titles.
-        MINIMUM_MARKDOWN = {
-          autolink: true,
-          hardbreaks: false,
-          strikethrough: true,
-          unsafe: false,
-          relaxed_autolinks: true
-        }.freeze
-
         def render(text)
-          # GLFMMarkdown requires UTF-8 input, and raises on anything else,
-          # like US-ASCII.  Occasionally we can get an empty US-ASCII `text`
-          # here, due to the following surprising result:
+          # GLFMMarkdown requires UTF-8 input and raises on anything else.
           #
-          # [7] pry(main)> "".encoding
-          # => #<Encoding:UTF-8>
-          # [8] pry(main)> [].join
-          # => ""
-          # [9] pry(main)> [].join.encoding
-          # => #<Encoding:US-ASCII>
+          # Fast path for empty input, and re-encode any non-UTF-8 as UTF-8; raises if the encoding
+          # is invalid.
+          #
+          # Practically, all web input is gathered as UTF-8, but internally we may sometimes call
+          # render with US-ASCII, as it's the encoding given to e.g.: `[].join`, `1.to_s`,
+          # `true.to_s`, etc., even if the source file that contained these calls was in UTF-8 and
+          # `""` is UTF-8!
           #
           # See related discussion with further links:
           # https://github.com/gjtorikian/commonmarker/issues/277.
-          #
-          # Obviate the need for checking anything encoding-related by shortcutting
-          # when given an empty input.
           return "" if text.empty?
+
+          text = text.encode(Encoding::UTF_8) unless text.encoding == Encoding::UTF_8
 
           ::GLFMMarkdown.to_html(text, options: render_options)
         end
@@ -79,12 +66,13 @@ module Banzai
         private
 
         def render_options
-          return MINIMUM_MARKDOWN if minimum_markdown_enabled?
+          customized_options.merge(
+              github_pre_lang: Feature.disabled?(:use_css_language_classes, resolve_project)
+            )
+        end
 
-          unless sourcepos_disabled? || headers_disabled? || autolink_disabled? || raw_html_disabled? ||
-              placeholders_disabled?
-            return OPTIONS
-          end
+        def customized_options
+          return OPTIONS unless any_options_customized?
 
           OPTIONS.merge(
             sourcepos: !sourcepos_disabled?,
@@ -94,6 +82,10 @@ module Banzai
             placeholder_detection: !placeholders_disabled?,
             unsafe: !raw_html_disabled?
           )
+        end
+
+        def any_options_customized?
+          sourcepos_disabled? || headers_disabled? || autolink_disabled? || raw_html_disabled? || placeholders_disabled?
         end
 
         def headers_disabled?
@@ -106,10 +98,6 @@ module Banzai
 
         def raw_html_disabled?
           context[:disable_raw_html]
-        end
-
-        def minimum_markdown_enabled?
-          context[:minimum_markdown]
         end
 
         def placeholders_disabled?

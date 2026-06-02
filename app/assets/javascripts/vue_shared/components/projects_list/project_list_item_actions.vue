@@ -7,6 +7,7 @@ import { createAlert } from '~/alert';
 import { archiveProject, restoreProject, unarchiveProject, deleteProject } from '~/rest_api';
 import ListActions from '~/vue_shared/components/list_actions/list_actions.vue';
 import DeleteModal from '~/projects/components/shared/delete_modal.vue';
+import TransferModal from '~/projects/components/transfer_modal.vue';
 import {
   ACTION_COPY_ID,
   ACTION_ARCHIVE,
@@ -18,6 +19,7 @@ import {
   ACTION_REQUEST_ACCESS,
   ACTION_WITHDRAW_ACCESS_REQUEST,
   ACTION_LEAVE,
+  ACTION_TRANSFER,
 } from '~/vue_shared/components/list_actions/constants';
 import { RESOURCE_TYPES } from '~/groups_projects/constants';
 import { InternalEvents } from '~/tracking';
@@ -26,6 +28,7 @@ import {
   renderRestoreSuccessToast,
   renderUnarchiveSuccessToast,
   renderDeleteSuccessToast,
+  renderTransferSuccessToast,
   deleteParams,
 } from './utils';
 import ProjectsListItemLeaveModal from './projects_list_item_leave_modal.vue';
@@ -36,9 +39,11 @@ export default {
     GlLoadingIcon,
     ListActions,
     DeleteModal,
+    TransferModal,
     ProjectsListItemLeaveModal,
   },
   mixins: [InternalEvents.mixin()],
+  inject: ['triggerRestoreLocation'],
   i18n: {
     project: __('Project'),
   },
@@ -48,12 +53,14 @@ export default {
       required: true,
     },
   },
+  emits: ['action'],
   data() {
     return {
       actionsLoading: false,
       isDeleteModalVisible: false,
       isDeleteLoading: false,
       isLeaveModalVisible: false,
+      isTransferModalVisible: false,
     };
   },
   computed: {
@@ -102,6 +109,12 @@ export default {
         [ACTION_LEAVE]: {
           text: __('Leave project'),
           action: this.onActionLeave,
+          extraAttrs: {
+            class: 'js-leave-link',
+          },
+        },
+        [ACTION_TRANSFER]: {
+          action: this.onActionTransfer,
         },
       };
 
@@ -144,14 +157,14 @@ export default {
     hasActionLeave() {
       return this.project.availableActions?.includes(ACTION_LEAVE);
     },
+    hasActionTransfer() {
+      return this.project.availableActions?.includes(ACTION_TRANSFER);
+    },
   },
   methods: {
-    refetch() {
-      this.$emit('refetch');
-    },
     async archive() {
       await archiveProject(this.project.id);
-      this.refetch();
+      this.$emit('action', ACTION_ARCHIVE);
       renderArchiveSuccessToast(this.project);
 
       this.trackEvent('archive_namespace_in_quick_action', {
@@ -161,7 +174,7 @@ export default {
     },
     async unarchive() {
       await unarchiveProject(this.project.id);
-      this.refetch();
+      this.$emit('action', ACTION_UNARCHIVE);
       renderUnarchiveSuccessToast(this.project);
 
       this.trackEvent('archive_namespace_in_quick_action', {
@@ -171,8 +184,12 @@ export default {
     },
     async restore() {
       await restoreProject(this.project.id);
-      this.refetch();
+      this.$emit('action', ACTION_RESTORE);
       renderRestoreSuccessToast(this.project);
+
+      this.trackEvent('trigger_restore_on_project', {
+        label: this.triggerRestoreLocation,
+      });
     },
     async onActionWithLoading({ action, errorMessage }) {
       this.actionsLoading = true;
@@ -203,7 +220,11 @@ export default {
 
       try {
         await deleteProject(this.project.id, deleteParams(this.project));
-        this.refetch();
+
+        this.$emit(
+          'action',
+          this.project.markedForDeletion ? ACTION_DELETE_IMMEDIATELY : ACTION_DELETE,
+        );
         renderDeleteSuccessToast(this.project);
       } catch (error) {
         createAlert({
@@ -219,6 +240,16 @@ export default {
     },
     onActionLeave() {
       this.isLeaveModalVisible = true;
+    },
+    onLeaveSuccess() {
+      this.$emit('action', ACTION_LEAVE);
+    },
+    onActionTransfer() {
+      this.isTransferModalVisible = true;
+    },
+    onTransferSuccess() {
+      this.$emit('action', ACTION_TRANSFER);
+      renderTransferSuccessToast(this.project);
     },
   },
 };
@@ -252,7 +283,13 @@ export default {
       v-if="hasActionLeave"
       v-model="isLeaveModalVisible"
       :project="project"
-      @success="refetch"
+      @success="onLeaveSuccess"
+    />
+    <transfer-modal
+      v-if="hasActionTransfer"
+      v-model="isTransferModalVisible"
+      :project="project"
+      @success="onTransferSuccess"
     />
   </div>
 </template>

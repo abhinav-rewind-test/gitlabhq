@@ -9,6 +9,7 @@ import Suggestions from '~/vue_shared/components/markdown/suggestions.vue';
 import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
 import { globalAccessorPlugin } from '~/pinia/plugins';
 import { useNotes } from '~/notes/store/legacy_notes';
+import { useDiscussions } from '~/notes/store/discussions';
 import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
 import { noteableDataMock, notesDataMock, note } from '../mock_data';
 
@@ -38,6 +39,7 @@ describe('issue_note_body component', () => {
 
   beforeEach(() => {
     pinia = createTestingPinia({ plugins: [globalAccessorPlugin] });
+    useDiscussions();
     useLegacyDiffs();
     useNotes().setNoteableData(noteableDataMock);
     useNotes().setNotesData(notesDataMock);
@@ -51,12 +53,6 @@ describe('issue_note_body component', () => {
 
   it('should render awards list', () => {
     expect(wrapper.findComponent(NoteAwardsList).exists()).toBe(true);
-  });
-
-  describe('isInternalNote', () => {
-    beforeEach(() => {
-      createComponent({ isInternalNote: true });
-    });
   });
 
   describe('isEditing', () => {
@@ -103,12 +99,6 @@ describe('issue_note_body component', () => {
 
       expect(form.props('lines')).toEqual(value);
     });
-
-    describe('isInternalNote', () => {
-      beforeEach(() => {
-        wrapper.setProps({ isInternalNote: true });
-      });
-    });
   });
 
   describe('commitMessage', () => {
@@ -140,6 +130,18 @@ describe('issue_note_body component', () => {
   });
 
   describe('duo code review feedback', () => {
+    const createDuoNote = (type, userType, duoSessionUrl) => ({
+      ...note,
+      id: '1',
+      type,
+      discussion_id: 'discussion1',
+      duo_session_url: duoSessionUrl,
+      author: {
+        ...note.author,
+        user_type: userType,
+      },
+    });
+
     it.each`
       userType                 | type                | exists   | existsText
       ${'duo_code_review_bot'} | ${null}             | ${true}  | ${'renders'}
@@ -149,17 +151,9 @@ describe('issue_note_body component', () => {
     `(
       '$existsText code review feedback component when author type is "$userType" and note type is "$type"',
       ({ userType, type, exists }) => {
-        const duoNote = {
-          ...note,
-          id: '1',
-          type,
-          discussion_id: 'discussion1',
-          author: {
-            ...note.author,
-            user_type: userType,
-          },
-        };
-        useNotes().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+        const duoNote = createDuoNote(type, userType);
+
+        useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
 
         createComponent({ note: duoNote });
 
@@ -168,21 +162,38 @@ describe('issue_note_body component', () => {
     );
 
     it('does not render if not first note in discussion', () => {
-      const duoNote = {
-        ...note,
-        id: '9',
-        type: 'DiscussionNote',
-        discussion_id: 'discussion1',
-        author: {
-          ...note.author,
-          user_type: 'duo_code_review_bot',
-        },
-      };
-      useNotes().discussions = [{ id: 'discussion1', notes: [note, duoNote] }];
+      const duoNote = createDuoNote('DiscussionNote', 'duo_code_review_bot');
+
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [note, duoNote] }];
 
       createComponent({ note: duoNote });
 
       expect(wrapper.findByTestId('code-review-feedback').exists()).toBe(false);
+    });
+
+    it('passes duo_session_url to the feedback component', () => {
+      const duoSessionUrl = 'https://gitlab.example.com/project/agent-sessions/1';
+      const duoNote = createDuoNote('DiscussionNote', 'duo_code_review_bot', duoSessionUrl);
+
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+
+      createComponent({ note: duoNote });
+
+      expect(wrapper.findByTestId('code-review-feedback').attributes('duo-session-url')).toBe(
+        duoSessionUrl,
+      );
+    });
+
+    it('does not pass duo_session_url when not present on note', () => {
+      const duoNote = createDuoNote('DiscussionNote', 'duo_code_review_bot');
+
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+
+      createComponent({ note: duoNote });
+
+      expect(
+        wrapper.findByTestId('code-review-feedback').attributes('duo-session-url'),
+      ).toBeUndefined();
     });
   });
 
@@ -201,7 +212,7 @@ describe('issue_note_body component', () => {
 
     it('renders feedback text for the first DiffNote from GitLabDuo', () => {
       const duoNote = createDuoNote();
-      useNotes().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
 
       createComponent({
         note: duoNote,
@@ -213,7 +224,7 @@ describe('issue_note_body component', () => {
 
     it('does not render feedback text for non-DiffNote from GitLabDuo', () => {
       const duoNote = createDuoNote({ type: 'DiscussionNote' });
-      useNotes().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
 
       createComponent({
         note: duoNote,
@@ -225,7 +236,7 @@ describe('issue_note_body component', () => {
 
     it('does not render feedback text for follow-up DiffNote from GitLabDuo', () => {
       const duoNote = createDuoNote({ id: '2' });
-      useNotes().discussions = [{ id: 'discussion1', notes: [{ id: '1' }, duoNote] }];
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [{ id: '1' }, duoNote] }];
 
       createComponent({
         note: duoNote,
@@ -237,7 +248,7 @@ describe('issue_note_body component', () => {
 
     it('shows default awards list with thumbsup and thumbsdown for first DiffNote from GitLabDuo', () => {
       const duoNote = createDuoNote();
-      useNotes().discussions = [{ id: 'discussion1', notes: [duoNote] }];
+      useDiscussions().discussions = [{ id: 'discussion1', notes: [duoNote] }];
 
       createComponent({
         note: duoNote,

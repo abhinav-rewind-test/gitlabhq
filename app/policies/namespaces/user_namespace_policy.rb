@@ -9,8 +9,8 @@ module Namespaces
     condition(:owner) { @subject.owner == @user }
 
     rule { owner | admin }.policy do
-      enable :owner_access
       enable :create_projects
+      enable :create_project_fork
       enable :import_projects
       enable :admin_namespace
       enable :admin_runners
@@ -21,13 +21,12 @@ module Namespaces
       enable :admin_package
       enable :read_billing
       enable :edit_billing
+      enable :transfer_projects
     end
 
     rule { ~can_create_personal_project }.prevent :create_projects, :import_projects
 
-    rule { bot_user_namespace }.prevent :create_projects, :import_projects
-
-    rule { (owner | admin) & can?(:create_projects) }.enable :transfer_projects
+    rule { bot_user_namespace }.prevent :create_projects, :import_projects, :transfer_projects
   end
 end
 

@@ -1,8 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: テスト結果、セキュリティスキャン、Code Qualityチェック、パフォーマンスメトリクスのアーティファクトのレポートタイプ。
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: テスト結果、セキュリティスキャン、コード品質チェック、およびパフォーマンスメトリクスのアーティファクトレポートタイプ。
 title: GitLab CI/CDアーティファクトのレポートタイプ
 ---
 
@@ -13,10 +13,10 @@ title: GitLab CI/CDアーティファクトのレポートタイプ
 
 {{< /details >}}
 
-[`artifacts:reports`](_index.md#artifactsreports)を使用すると、以下を実行できます:
+[`artifacts:reports`](_index.md#artifactsreports)を使用すると、以下を実行できます。
 
 - ジョブに含まれるテンプレートで生成されたテストレポート、コード品質レポート、セキュリティレポート、その他のアーティファクトを収集する。
-- 上記レポートの一部を、以下の情報の確認に使用する:
+- 上記レポートの一部を、以下の情報の確認に使用する。
   - マージリクエスト。
   - パイプラインビュー。
   - [セキュリティダッシュボード](../../user/application_security/security_dashboard/_index.md)。
@@ -27,11 +27,8 @@ title: GitLab CI/CDアーティファクトのレポートタイプ
 
 レポートの出力ファイルを参照するには、ジョブの定義に必ず[`artifacts:paths`](_index.md#artifactspaths)キーワードを含めます。
 
-{{< alert type="note" >}}
-
-[子パイプラインからのアーティファクト](_index.md#needspipelinejob)を使用して、親パイプラインでレポートを組み合わせる操作はサポートされていません。この機能のサポートは、[エピック8205](https://gitlab.com/groups/gitlab-org/-/epics/8205)で提案されています。
-
-{{< /alert >}}
+> [!note]
+> 親パイプラインでの[子パイプラインからのアーティファクト](_index.md#needspipelinejob)を使用した統合レポートはサポートされていません。この機能のサポートは、[エピック8205](https://gitlab.com/groups/gitlab-org/-/epics/8205)で提案されています。
 
 ## `artifacts:reports:accessibility` {#artifactsreportsaccessibility}
 
@@ -59,7 +56,7 @@ GitLabは、単一または複数のレポートの結果をマージリクエ�
 
 #### `external_link` {#external_link}
 
-`external_link`注釈をジョブにアタッチして、ジョブ出力ページにリンクを追加できます。`external_link`注釈の値は、次のキーを持つオブジェクトです:
+`external_link`注釈をジョブにアタッチして、ジョブ出力ページにリンクを追加できます。`external_link`注釈の値は、次のキーを持つオブジェクトです。
 
 | キー     | 説明 |
 |---------|-------------|
@@ -68,7 +65,7 @@ GitLabは、単一または複数のレポートの結果をマージリクエ�
 
 ### レポートの例 {#example-report}
 
-ジョブ注釈レポートの例を次に示します:
+ジョブ注釈レポートの例を次に示します。
 
 ```json
 {
@@ -97,9 +94,9 @@ GitLabは、単一または複数のレポートの結果をマージリクエ�
 
 {{< /details >}}
 
-`api_fuzzing`レポートは、[APIファジングバグ](../../user/application_security/api_fuzzing/_index.md)をアーティファクトとして収集します。
+The `api_fuzzing`レポートは、[APIファジングのバグ](../../user/application_security/api_fuzzing/_index.md)をアーティファクトとして収集します。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[セキュリティウィジェット](../../user/application_security/api_fuzzing/configuration/enabling_the_analyzer.md#view-details-of-an-api-fuzzing-vulnerability)。
 - [プロジェクト脆弱性レポート](../../user/application_security/vulnerability_report/_index.md)。
@@ -142,17 +139,14 @@ artifacts:
 
 カバレッジレポートの結果は、マージリクエストの[差分注釈](../testing/code_coverage/_index.md#coverage-visualization)に表示されます。
 
-{{< alert type="note" >}}
-
-子パイプラインからのカバレッジレポートはマージリクエストの差分注釈に表示されますが、アーティファクト自体は親パイプラインと共有されません。
-
-{{< /alert >}}
+> [!note]
+> 子パイプラインからのカバレッジレポートは、マージリクエストの差分注釈に表示されますが、アーティファクト自体は親パイプラインと共有されません。
 
 ## `artifacts:reports:codequality` {#artifactsreportscodequality}
 
 `codequality`レポートは、[コード品質の問題](../testing/code_quality.md)を収集します。収集されたコード品質レポートは、アーティファクトとしてGitLabにアップロードされます。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[コード品質ウィジェット](../testing/code_quality.md#merge-request-widget)。
 - マージリクエストの[差分注釈](../testing/code_quality.md#merge-request-changes-view)。
@@ -168,9 +162,9 @@ GitLabは、単一または複数のレポートの結果を以下で表示で�
 
 {{< /details >}}
 
-`container_scanning`レポートは、[コンテナスキャンの脆弱性](../../user/application_security/container_scanning/_index.md)を収集します。収集されたコンテナスキャンレポートは、アーティファクトとしてGitLabにアップロードされます。
+The `container_scanning`レポートは[コンテナスキャンの脆弱性](../../user/application_security/container_scanning/_index.md)を収集します。収集されたコンテナスキャンレポートは、GitLabにアーティファクトとしてアップロードされます。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[コンテナスキャンウィジェット](../../user/application_security/container_scanning/_index.md)
 - パイプラインの[**セキュリティ**タブ](../../user/application_security/detect/security_scanning_results.md)。
@@ -185,7 +179,7 @@ GitLabは、単一または複数のレポートの結果を以下で表示で�
 
 {{< /details >}}
 
-`coverage_fuzzing`レポートは、[カバレッジファジングバグ](../../user/application_security/coverage_fuzzing/_index.md)を収集します。収集されたカバレッジファジングレポートは、アーティファクトとしてGitLabにアップロードされます。GitLabは、単一または複数のレポートの結果を以下で表示できます:
+`coverage_fuzzing`レポートは、[カバレッジファジングバグ](../../user/application_security/coverage_fuzzing/_index.md)を収集します。収集されたカバレッジファジングレポートは、アーティファクトとしてGitLabにアップロードされます。GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[カバレッジファジングウィジェット](../../user/application_security/coverage_fuzzing/_index.md#interacting-with-the-vulnerabilities)。
 - パイプラインの[**セキュリティ**タブ](../../user/application_security/detect/security_scanning_results.md)。
@@ -202,14 +196,14 @@ GitLabは、単一または複数のレポートの結果を以下で表示で�
 
 このレポートは、[CycloneDX](https://cyclonedx.org/docs/1.4)プロトコル形式に従って、プロジェクトのコンポーネントを記述したソフトウェア部品表です。
 
-ジョブごとに複数のCycloneDXレポートを指定できます。これらのレポートは、ファイル名のリスト、ファイル名パターン、またはその両方として指定できます:
+ジョブごとに複数のCycloneDXレポートを指定できます。これらのレポートは、ファイル名のリスト、ファイル名パターン、またはその両方として指定できます。
 
 - ファイル名のパターン（`cyclonedx: gl-sbom-*.json`、`junit: test-results/**/*.json`）。
 - ファイル名の配列（`cyclonedx: [gl-sbom-npm-npm.cdx.json, gl-sbom-bundler-gem.cdx.json]`）。
 - 両方の組み合わせ（`cyclonedx: [gl-sbom-*.json, my-cyclonedx.json]`）。
 - ディレクトリはサポートされていません（`cyclonedx: test-results`、`cyclonedx: test-results/**`）。
 
-次の例は、CycloneDXアーティファクトを公開するジョブを示しています:
+次の例は、CycloneDXアーティファクトを公開するジョブを示しています。
 
 ```yaml
 artifacts:
@@ -229,7 +223,7 @@ artifacts:
 
 `dast`レポートは、[DASTの脆弱性](../../user/application_security/dast/_index.md)を収集します。収集されたDASTレポートは、アーティファクトとしてGitLabにアップロードされます。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストのセキュリティウィジェット。
 - パイプラインの[**セキュリティ**タブ](../../user/application_security/detect/security_scanning_results.md)。
@@ -244,9 +238,9 @@ GitLabは、単一または複数のレポートの結果を以下で表示で�
 
 {{< /details >}}
 
-`dependency_scanning`レポートは、[依存関係スキャンの脆弱性](../../user/application_security/dependency_scanning/_index.md)を収集します。収集された依存関係スキャンレポートは、アーティファクトとしてGitLabにアップロードされます。
+The `dependency_scanning`レポートは[依存関係スキャンの脆弱性](../../user/application_security/dependency_scanning/_index.md)を収集します。収集された依存関係スキャンレポートは、GitLabにアーティファクトとしてアップロードされます。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[依存関係スキャンウィジェット](../../user/application_security/dependency_scanning/_index.md)。
 - パイプラインの[**セキュリティ**タブ](../../user/application_security/detect/security_scanning_results.md)。
@@ -256,31 +250,37 @@ GitLabは、単一または複数のレポートの結果を以下で表示で�
 
 ## `artifacts:reports:dotenv` {#artifactsreportsdotenv}
 
-`dotenv`レポートは、環境変数のセットをアーティファクトとして収集します。
+The `dotenv`レポートは、ファイルから環境変数を収集し、それらをCI/CD変数としてパイプラインの以降のジョブで利用できるようにします。
 
-収集された変数は、ジョブのランタイムに作成された変数として登録され、[後続のジョブスクリプトで使用](../variables/job_scripts.md#pass-an-environment-variable-to-another-job)したり、[ジョブの完了後に動的な環境URLを設定](../environments/_index.md#set-a-dynamic-environment-url)するために使用したりできます。
+収集された変数は、[後続のジョブスクリプトで使用できる](../variables/job_scripts.md#pass-environment-variables-to-later-jobs) 、または[動的な環境URLを設定できる](../environments/_index.md#set-a-dynamic-environment-url)ジョブ変数として登録されます。
 
-`dotenv`レポートに重複する環境変数がある場合、最後に指定された環境変数が使用されます。
+同じ変数名が`dotenv`レポートに複数回出現する場合、最後の値が使用されます。
 
-レポートはパイプラインの詳細ページからダウンロードできるため、認証情報などの機密データをdotenvレポートに保存することは避ける必要があります。必要に応じて、[`artifacts:access`](_index.md#artifactsaccess)を使用して、ジョブのレポートアーティファクトをダウンロードできるユーザーを制限できます。
+認証情報、APIキー、トークンなどの機密データは、パイプラインユーザーによってアクセスされる可能性があるため、含めないでください。アクセスを制限するには、[`artifacts:access`](_index.md#artifactsaccess)を使用します。
 
-GitLabでは、dotenvファイルを処理するために[`dotenv` gem](https://github.com/bkeepers/dotenv)を使用していますが、[元のdotenvルール](https://github.com/motdotla/dotenv?tab=readme-ov-file#what-rules-does-the-parsing-engine-follow)とgemの実装の両方を超えて、追加の制限が適用されます:
+GitLabは、`dotenv`ファイルを処理するために[`dotenv` gem](https://github.com/bkeepers/dotenv)を使用しますが、[元のdotenvのルール](https://github.com/motdotla/dotenv?tab=readme-ov-file#what-rules-does-the-parsing-engine-follow)とgemの実装の両方を超える追加の制限を適用します。
 
-- dotenvファイルの最大サイズは5 KBです。この制限は、[GitLab Self-Managedでは変更可能](../../administration/instance_limits.md#limit-dotenv-file-size)です。
-- GitLab.comで[継承される変数の最大数](../../user/gitlab_com/_index.md#cicd)は、Freeでは50、Premiumでは100、Ultimateでは150です。GitLab Self-Managedのデフォルトは20で、`dotenv_variables` [アプリケーション制限](../../administration/instance_limits.md#limit-dotenv-variables)を変更することで、この条件は変更できます。
+ファイルサイズと変数の制限:
+
+- `dotenv`ファイルの最大サイズは5 KBです。この制限は、GitLab Self-Managedで[変更可能](../../administration/instance_limits.md#limit-dotenv-file-size)です。
+- GitLab.comでは、[継承可能な変数数の上限](../../user/gitlab_com/_index.md#cicd)は、Freeで50、Premiumで100、Ultimateで150です。GitLab Self-Managedのデフォルトは20で、`dotenv_variables` [アプリケーション制限](../../administration/instance_limits.md#limit-dotenv-variables)で変更できます。
+
+形式の制限:
+
 - UTF-8エンコードのみが[サポートされています](../jobs/job_artifacts_troubleshooting.md#error-message-fatal-invalid-argument-when-uploading-a-dotenv-artifact-on-a-windows-runner)。
-- dotenvファイルに、空行またはコメント（`#`で始まる）を含めることはできません。
-- 変数名には、ASCII文字（`A-Za-z`）、数字（`0-9`）、アンダースコア（`_`）のみを含めることができます。
-- dotenvファイルは引用符をサポートしていません。単一引用符または二重引用符はそのまま保持され、エスケープには使用できません。
-  - [ファイルでの複数行の値](https://github.com/motdotla/dotenv#multiline-values)はサポートされていません。GitLabは、アップロード時にdotenvファイルを拒否します。
-  - 先頭と末尾のスペースまたは改行文字（`\n`）は削除されます。
-- `${var}`ファイルでの変数の代入はサポートされていません。GitLabは、ファイルの処理時に、変数置換を空の文字列に解決します。
+- `dotenv`ファイルには空行やコメント（`#`で始まるもの）を含めることはできません。
+- 変数名には、ASCII文字（`A-Za-z`）、数字（`0-9`）、およびアンダースコア（`_`）のみを含めることができます。
+- `dotenv`ファイルはクォーティングをサポートしていません。シングルクォートまたはダブルクォートはそのまま保持され、エスケープには使用できません。
+- 値には、改行やエスケープが必要なその他の特殊文字を含めることはできません。
+- [複数行の値](https://github.com/motdotla/dotenv#multiline-values)はサポートされていません。GitLabは、`dotenv`ファイルのアップロード時に拒否します。
+- 先頭と末尾のスペース、または改行文字（`\n`）は削除されます。
+- 複雑な値（JSON、複数行のテキスト）の場合は、別のアーティファクトレポートタイプを使用するか、データを別のファイルアーティファクトに保存してください。
 
 ## `artifacts:reports:junit` {#artifactsreportsjunit}
 
 `junit`レポートは、[JUnitレポート形式のXMLファイル](https://www.ibm.com/docs/en/developer-for-zos/16.0?topic=formats-junit-xml-format)を収集します。収集された単体テストレポートは、アーティファクトとしてGitLabにアップロードされます。JUnitは元々Javaで開発されましたが、JavaScript、Python、Rubyなどの他言語向けに、サードパーティによる多数の移植版が提供されています。
 
-詳細と例については、[単体テストレポート](../testing/unit_test_reports.md)を参照してください。次の例は、Ruby RSpecテストからJUnit XMLレポートを収集する方法を示しています:
+詳細と例については、[単体テストレポート](../testing/unit_test_reports.md)を参照してください。次の例は、Ruby RSpecテストからJUnit XMLレポートを収集する方法を示しています。
 
 ```yaml
 rspec:
@@ -293,12 +293,12 @@ rspec:
       junit: rspec.xml
 ```
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエスト[**テストのサマリー**パネル](../testing/unit_test_reports.md#view-test-results-in-merge-requests)。
 - [パイプラインの**テスト**タブ](../testing/unit_test_reports.md#view-test-results-in-pipelines)。
 
-JUnitツールによっては、複数のXMLファイルにエクスポートできます。単一のジョブで複数のテストレポートパスを指定して、それらを単一のファイルに連結できます。以下のいずれかを使用します:
+JUnitツールによっては、複数のXMLファイルにエクスポートできます。単一のジョブで複数のテストレポートパスを指定して、それらを単一のファイルに連結できます。以下のいずれかを使用します。
 
 - ファイル名のパターン（`junit: rspec-*.xml`、`junit: test-results/**/*.xml`）。
 - ファイル名の配列（`junit: [rspec-1.xml, rspec-2.xml, rspec-3.xml]`）。
@@ -347,16 +347,16 @@ GitLabは、単一または複数のレポートの結果を[プロジェクト�
 
 `sast`レポートは、[SASTの脆弱性](../../user/application_security/sast/_index.md)を収集します。収集されたSASTレポートは、アーティファクトとしてGitLabにアップロードされます。
 
-詳細については、以下を参照してください:
+詳細については、以下を参照してください。
 
 - [SASTの結果を表示する](../../user/application_security/sast/_index.md#understanding-the-results)
 - [SASTの出力](../../user/application_security/sast/_index.md#download-a-sast-report)
 
 ## `artifacts:reports:secret_detection` {#artifactsreportssecret_detection}
 
-`secret-detection`レポートは、[検出されたシークレット](../../user/application_security/secret_detection/pipeline/_index.md)を収集します。収集されたシークレット検出レポートは、GitLabにアップロードされます。
+`secret-detection`レポートは、[検出されたシークレット](../../user/application_security/secret_detection/pipeline/_index.md)を収集します。収集されたシークレット検出レポートはGitLabにアップロードされます。
 
-GitLabは、単一または複数のレポートの結果を以下で表示できます:
+GitLabは、単一または複数のレポートの結果を以下で表示できます。
 
 - マージリクエストの[シークレットスキャンウィジェット](../../user/application_security/secret_detection/pipeline/_index.md)。
 - [パイプラインのセキュリティタブ](../../user/application_security/detect/security_scanning_results.md)。

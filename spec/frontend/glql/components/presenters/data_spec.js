@@ -1,30 +1,29 @@
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import ColumnChartPresenter from '~/glql/components/presenters/column_chart.vue';
 import ListPresenter from '~/glql/components/presenters/list.vue';
 import TablePresenter from '~/glql/components/presenters/table.vue';
-import ColumnChart from '~/glql/components/presenters/column_chart.vue';
 import DataPresenter from '~/glql/components/presenters/data.vue';
-import { MOCK_FIELDS, MOCK_ISSUES, MOCK_AGGREGATE, MOCK_GROUP_BY } from '../../mock_data';
+import {
+  MOCK_FIELDS,
+  MOCK_ISSUES,
+  MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+  MOCK_AGGREGATED_DATA_ONE_DIM,
+} from '../../mock_data';
 
 describe('DataPresenter', () => {
   it.each`
-    displayType      | presenterProps                                           | PresenterComponent
-    ${'list'}        | ${{ fields: MOCK_FIELDS, listType: 'ul' }}               | ${ListPresenter}
-    ${'orderedList'} | ${{ fields: MOCK_FIELDS, listType: 'ol' }}               | ${ListPresenter}
-    ${'table'}       | ${{ fields: MOCK_FIELDS }}                               | ${TablePresenter}
-    ${'columnChart'} | ${{ aggregate: MOCK_AGGREGATE, groupBy: MOCK_GROUP_BY }} | ${ColumnChart}
+    displayType      | fields                                       | presenterProps                                           | PresenterComponent
+    ${'list'}        | ${MOCK_FIELDS}                               | ${{ fields: MOCK_FIELDS, listType: 'ul' }}               | ${ListPresenter}
+    ${'orderedList'} | ${MOCK_FIELDS}                               | ${{ fields: MOCK_FIELDS, listType: 'ol' }}               | ${ListPresenter}
+    ${'table'}       | ${MOCK_FIELDS}                               | ${{ fields: MOCK_FIELDS }}                               | ${TablePresenter}
+    ${'columnChart'} | ${MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC} | ${{ fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC }} | ${ColumnChartPresenter}
   `(
-    'inits appropriate presenter component for displayType: $displayType with presenterProps: $presenterProps',
-    ({ displayType, presenterProps, PresenterComponent }) => {
+    'inits appropriate presenter for displayType: $displayType',
+    ({ displayType, fields, presenterProps, PresenterComponent }) => {
       const data = MOCK_ISSUES;
 
       const wrapper = shallowMountExtended(DataPresenter, {
-        propsData: {
-          data,
-          displayType,
-          fields: MOCK_FIELDS,
-          aggregate: MOCK_AGGREGATE,
-          groupBy: MOCK_GROUP_BY,
-        },
+        propsData: { data, displayType, fields },
       });
 
       const presenter = wrapper.findComponent(PresenterComponent);
@@ -38,43 +37,37 @@ describe('DataPresenter', () => {
     },
   );
 
-  describe('columnChart error handling', () => {
-    const data = MOCK_ISSUES;
-    const baseProps = {
-      data,
-      displayType: 'columnChart',
-      fields: MOCK_FIELDS,
-    };
+  describe('columnChart', () => {
+    it('forwards displayConfig to the column chart presenter', () => {
+      const displayConfig = { stacked: true };
 
-    const createWrapper = (overrideProps = {}) => {
-      return shallowMountExtended(DataPresenter, {
+      const wrapper = shallowMountExtended(DataPresenter, {
         propsData: {
-          ...baseProps,
-          aggregate: MOCK_AGGREGATE,
-          groupBy: MOCK_GROUP_BY,
-          ...overrideProps,
+          data: MOCK_AGGREGATED_DATA_ONE_DIM,
+          displayType: 'columnChart',
+          fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+          displayConfig,
         },
       });
-    };
 
-    it.each`
-      scenario                    | props
-      ${'without aggregation'}    | ${{ aggregate: null }}
-      ${'without groupBy'}        | ${{ groupBy: null }}
-      ${'with empty aggregation'} | ${{ aggregate: [] }}
-      ${'with empty groupBy'}     | ${{ groupBy: [] }}
-    `('emits error when columnChart display type is used $scenario', ({ props }) => {
-      const wrapper = createWrapper(props);
-
-      expect(wrapper.emitted('error')).toEqual([
-        ['Columns charts require an aggregation to be defined'],
-      ]);
+      expect(wrapper.findComponent(ColumnChartPresenter).props('displayConfig')).toBe(
+        displayConfig,
+      );
     });
 
-    it('does not emit error when columnChart has valid aggregation and groupBy', () => {
-      const wrapper = createWrapper();
+    it('re-emits errors from the column chart presenter', () => {
+      const wrapper = shallowMountExtended(DataPresenter, {
+        propsData: {
+          data: MOCK_AGGREGATED_DATA_ONE_DIM,
+          displayType: 'columnChart',
+          fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+        },
+      });
 
-      expect(wrapper.emitted('error')).toBeUndefined();
+      const error = new Error('boom');
+      wrapper.findComponent(ColumnChartPresenter).vm.$emit('error', error);
+
+      expect(wrapper.emitted('error')).toEqual([[error]]);
     });
   });
 });

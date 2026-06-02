@@ -5,10 +5,13 @@ import SafeHtml from '~/vue_shared/directives/safe_html';
 import NoteableNote from '~/notes/components/noteable_note.vue';
 import * as types from '~/batch_comments/stores/modules/batch_comments/mutation_types';
 import { clearDraft } from '~/lib/utils/autosave';
+import { createAlert } from '~/alert';
+import { updateNoteErrorMessage } from '~/notes/utils';
 import { useBatchComments } from '~/batch_comments/store';
 import { useNotes } from '~/notes/store/legacy_notes';
 
 export default {
+  name: 'DraftNote',
   components: {
     NoteableNote,
     GlBadge,
@@ -49,6 +52,7 @@ export default {
     },
     autosaveDraftKey() {
       if (!this.autosaveKey) return null;
+      // eslint-disable-next-line @gitlab/no-hardcoded-urls -- autosave key identifier, not a URL
       return `${this.autosaveKey}/draft-note-${this.draft.id}`;
     },
   },
@@ -68,8 +72,17 @@ export default {
       setDraftEditing: types.SET_DRAFT_EDITING,
     }),
     ...mapActions(useNotes, ['setSelectedCommentPositionHover']),
-    update(data) {
-      this.updateDraft(data);
+    async update(data) {
+      try {
+        await this.updateDraft(data);
+        data.callback();
+      } catch (error) {
+        createAlert({
+          message: updateNoteErrorMessage(error),
+          parent: this.$el,
+        });
+        data.errorCallback();
+      }
     },
     handleEditing() {
       this.setDraftEditing({ draftId: this.draft.id, isEditing: true });

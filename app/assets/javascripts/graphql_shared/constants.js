@@ -1,7 +1,9 @@
 export const MINIMUM_SEARCH_LENGTH = 3;
 
+export const TYPENAME_ACHIEVEMENT = 'Achievements::Achievement';
 export const TYPENAME_ADMIN_MEMBER_ROLE = 'AdminMemberRole';
 export const TYPENAME_AI_DUO_WORKFLOW = 'Ai::DuoWorkflows::Workflow';
+export const TYPENAME_ANALYTICS_CUSTOM_DASHBOARD = 'Analytics::CustomDashboards::Dashboard';
 export const TYPENAME_BOARD = 'Board';
 export const TYPENAME_CI_BUILD = 'Ci::Build';
 export const TYPENAME_CI_JOB_TOKEN_ACCESSIBLE_GROUP = 'CiJobTokenAccessibleGroup';
@@ -33,6 +35,7 @@ export const TYPENAME_NAMESPACE = 'Namespace';
 export const TYPENAME_PROJECT_NAMESPACE = 'Namespaces::ProjectNamespace';
 export const TYPENAME_NOTE = 'Note';
 export const TYPENAME_PACKAGES_PACKAGE = 'Packages::Package';
+export const TYPENAME_PERSONAL_ACCESS_TOKEN = 'PersonalAccessToken';
 export const TYPENAME_PROJECT = 'Project';
 export const TYPENAME_SCANNER_PROFILE = 'DastScannerProfile';
 export const TYPENAME_SITE_PROFILE = 'DastSiteProfile';
@@ -43,6 +46,7 @@ export const TYPENAME_VALUE_STREAM_STAGE = 'Analytics::CycleAnalytics::Stage';
 export const TYPENAME_VULNERABILITY = 'Vulnerability';
 export const TYPENAME_WORK_ITEM = 'WorkItem';
 export const TYPENAME_WORK_ITEM_RELATED_BRANCH = 'WorkItemRelatedBranch';
+export const TYPENAME_WORK_ITEMS_TYPE = 'WorkItems::Type';
 export const TYPE_ORGANIZATION = 'Organizations::Organization';
 export const TYPE_USERS_SAVED_REPLY = 'Users::SavedReply';
 export const TYPE_WORKSPACE = 'RemoteDevelopment::Workspace';
@@ -52,3 +56,5 @@ export const TYPENAME_CUSTOM_FIELD_SELECT_OPTION = 'Issuables::CustomFieldSelect
 
 export const QUERY_PARAM_START_CURSOR = 'start_cursor';
 export const QUERY_PARAM_END_CURSOR = 'end_cursor';
+
+export const GRAPHQL_GET_QUERY_PARAM_KEYS = ['variables'];

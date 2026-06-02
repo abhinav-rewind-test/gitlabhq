@@ -20,11 +20,21 @@ RSpec.describe 'Create a new cluster agent', feature_category: :deployment_manag
     graphql_mutation_response(:create_cluster_agent)
   end
 
+  it_behaves_like 'authorizing granular token permissions for GraphQL', :create_cluster_agent do
+    let(:user) { create(:user, maintainer_of: project) }
+    let(:boundary_object) { project }
+    let(:mutation) do
+      graphql_mutation(:create_cluster_agent, { project_path: project.full_path, name: project_name }, 'errors')
+    end
+
+    let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+  end
+
   context 'without project permissions' do
     it_behaves_like 'a mutation that returns a top-level access error'
 
     it 'does not create cluster agent' do
-      expect { post_graphql_mutation(mutation, current_user: current_user) }.not_to change(Clusters::Agent, :count)
+      expect { post_graphql_mutation(mutation, current_user: current_user) }.not_to change { Clusters::Agent.count }
     end
   end
 

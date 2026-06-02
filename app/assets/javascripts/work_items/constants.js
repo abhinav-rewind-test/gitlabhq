@@ -113,13 +113,9 @@ export const MAX_WORK_ITEMS = 10;
 export const FORM_TYPES = {
   create: 'create',
   add: 'add',
-  [WORK_ITEM_TYPE_ENUM_OBJECTIVE]: {
-    icon: `work-item-objective`,
-    name: s__('WorkItem|Objective'),
-  },
 };
 
-export const DEFAULT_PAGE_SIZE_NOTES = 20; // Set to 20 to not exceed query complexity
+export const DEFAULT_PAGE_SIZE_NOTES = 15; // Reduced from 20 to lower query complexity
 export const DEFAULT_PAGE_SIZE_EMOJIS = 100;
 export const DEFAULT_PAGE_SIZE_CHILD_ITEMS = 50;
 
@@ -153,7 +149,6 @@ export const WORK_ITEM_ACTIVITY_SORT_OPTIONS = [
 
 export const TODO_ADD_ICON = 'todo-add';
 export const TODO_DONE_ICON = 'todo-done';
-export const TODO_DONE_STATE = 'done';
 export const TODO_PENDING_STATE = 'pending';
 
 export const WORK_ITEM_TO_ISSUABLE_MAP = {
@@ -191,12 +186,6 @@ export const LINKED_ITEM_TYPE_VALUE = {
 export const SAVED_VIEW_VISIBILITY = {
   PRIVATE: 'private',
   SHARED: 'shared',
-};
-
-export const LINK_ITEM_FORM_HEADER_LABEL = {
-  [WORK_ITEM_TYPE_NAME_OBJECTIVE]: s__('WorkItem|The current objective'),
-  [WORK_ITEM_TYPE_NAME_KEY_RESULT]: s__('WorkItem|The current key result'),
-  [WORK_ITEM_TYPE_NAME_TASK]: s__('WorkItem|The current task'),
 };
 
 export const LINKED_ITEMS_ANCHOR = 'linkeditems';
@@ -240,8 +229,11 @@ export const NO_WORK_ITEM_IID = 'no-work-item-iid';
 
 export const DETAIL_VIEW_QUERY_PARAM_NAME = 'show';
 export const DETAIL_VIEW_DESIGN_VERSION_PARAM_NAME = 'version';
+
+export const WORK_ITEM_DETAIL_PANEL = 'work-item-detail';
+export const AGENT_PLAN_PANEL = 'agent-plan';
 export const ROUTES = {
-  index: 'workItemList',
+  index: 'planningView',
   workItem: 'workItem',
   new: 'new',
   design: 'design',
@@ -260,24 +252,12 @@ export const WORK_ITEM_BASE_ROUTE_MAP = {
   [WORK_ITEM_TYPE_ROUTE_SERVICE_DESK]: WORK_ITEM_TYPE_ENUM_TICKET,
 };
 
-export const WORKITEM_LINKS_SHOWLABELS_LOCALSTORAGEKEY = 'workItemLinks.showLabels';
-export const WORKITEM_TREE_SHOWLABELS_LOCALSTORAGEKEY = 'workItemTree.showLabels';
+export const WORKITEM_LINKS_METADATA_LOCALSTORAGEKEY = 'workItemLinks.hiddenMetadataKeys';
 export const WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY = 'workItemTree.showClosed';
-export const WORKITEM_RELATIONSHIPS_SHOWLABELS_LOCALSTORAGEKEY = 'workItemRelationships.showLabels';
+export const WORKITEM_TREE_METADATA_LOCALSTORAGEKEY = 'workItemTree.hiddenMetadataKeys';
 export const WORKITEM_RELATIONSHIPS_SHOWCLOSED_LOCALSTORAGEKEY = 'workItemRelationships.showClosed';
-
-export const BASE_ALLOWED_CREATE_TYPES = [
-  WORK_ITEM_TYPE_NAME_INCIDENT,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-  WORK_ITEM_TYPE_NAME_TASK,
-];
-
-export const ALLOWED_CONVERSION_TYPES = [
-  WORK_ITEM_TYPE_NAME_KEY_RESULT,
-  WORK_ITEM_TYPE_NAME_OBJECTIVE,
-  WORK_ITEM_TYPE_NAME_TASK,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-];
+export const WORKITEM_RELATIONSHIPS_METADATA_LOCALSTORAGEKEY =
+  'workItemRelationships.hiddenMetadataKeys';
 
 export const NAME_TO_ENUM_MAP = {
   [WORK_ITEM_TYPE_NAME_EPIC]: WORK_ITEM_TYPE_ENUM_EPIC,
@@ -289,47 +269,6 @@ export const NAME_TO_ENUM_MAP = {
   [WORK_ITEM_TYPE_NAME_TASK]: WORK_ITEM_TYPE_ENUM_TASK,
   [WORK_ITEM_TYPE_NAME_TEST_CASE]: WORK_ITEM_TYPE_ENUM_TEST_CASE,
   [WORK_ITEM_TYPE_NAME_TICKET]: WORK_ITEM_TYPE_ENUM_TICKET,
-};
-
-export const NAME_TO_ICON_MAP = {
-  [WORK_ITEM_TYPE_NAME_EPIC]: 'work-item-epic',
-  [WORK_ITEM_TYPE_NAME_INCIDENT]: 'work-item-incident',
-  [WORK_ITEM_TYPE_NAME_ISSUE]: 'work-item-issue',
-  [WORK_ITEM_TYPE_NAME_KEY_RESULT]: 'work-item-keyresult',
-  [WORK_ITEM_TYPE_NAME_OBJECTIVE]: 'work-item-objective',
-  [WORK_ITEM_TYPE_NAME_REQUIREMENTS]: 'work-item-requirement',
-  [WORK_ITEM_TYPE_NAME_TASK]: 'work-item-task',
-  [WORK_ITEM_TYPE_NAME_TEST_CASE]: 'work-item-test-case',
-  [WORK_ITEM_TYPE_NAME_TICKET]: 'work-item-ticket',
-};
-
-export const NAME_TO_ROUTE_MAP = {
-  [WORK_ITEM_TYPE_NAME_EPIC]: WORK_ITEM_TYPE_ROUTE_EPIC,
-  [WORK_ITEM_TYPE_NAME_ISSUE]: WORK_ITEM_TYPE_ROUTE_ISSUE,
-};
-
-export const NAME_TO_TEXT_MAP = {
-  [WORK_ITEM_TYPE_NAME_EPIC]: s__('WorkItem|Epic'),
-  [WORK_ITEM_TYPE_NAME_INCIDENT]: s__('WorkItem|Incident'),
-  [WORK_ITEM_TYPE_NAME_ISSUE]: s__('WorkItem|Issue'),
-  [WORK_ITEM_TYPE_NAME_KEY_RESULT]: s__('WorkItem|Key result'),
-  [WORK_ITEM_TYPE_NAME_OBJECTIVE]: s__('WorkItem|Objective'),
-  [WORK_ITEM_TYPE_NAME_REQUIREMENTS]: s__('WorkItem|Requirement'),
-  [WORK_ITEM_TYPE_NAME_TASK]: s__('WorkItem|Task'),
-  [WORK_ITEM_TYPE_NAME_TEST_CASE]: s__('WorkItem|Test case'),
-  [WORK_ITEM_TYPE_NAME_TICKET]: s__('WorkItem|Ticket'),
-};
-
-export const NAME_TO_TEXT_LOWERCASE_MAP = {
-  [WORK_ITEM_TYPE_NAME_EPIC]: s__('WorkItem|epic'),
-  [WORK_ITEM_TYPE_NAME_INCIDENT]: s__('WorkItem|incident'),
-  [WORK_ITEM_TYPE_NAME_ISSUE]: s__('WorkItem|issue'),
-  [WORK_ITEM_TYPE_NAME_KEY_RESULT]: s__('WorkItem|key result'),
-  [WORK_ITEM_TYPE_NAME_OBJECTIVE]: s__('WorkItem|objective'),
-  [WORK_ITEM_TYPE_NAME_REQUIREMENTS]: s__('WorkItem|requirement'),
-  [WORK_ITEM_TYPE_NAME_TASK]: s__('WorkItem|task'),
-  [WORK_ITEM_TYPE_NAME_TEST_CASE]: s__('WorkItem|test case'),
-  [WORK_ITEM_TYPE_NAME_TICKET]: s__('WorkItem|ticket'),
 };
 
 export const WORK_ITEM_WIDGETS_NAME_MAP = {
@@ -402,6 +341,7 @@ export const METADATA_KEYS = {
   DATES: 'dates',
   HEALTH: 'health',
   BLOCKED: 'blocked',
+  PARENT: 'parent',
   COMMENTS: 'comments',
   POPULARITY: 'popularity',
 };
@@ -462,6 +402,12 @@ export const WORK_ITEM_LIST_PREFERENCES_METADATA_FIELDS = [
     isPresentInGroup: true,
   },
   {
+    key: 'parent',
+    label: __('Parent'),
+    icon: 'work-item-parent',
+    isPresentInGroup: true,
+  },
+  {
     key: 'comments',
     label: __('Comments'),
     icon: 'comments',
@@ -475,11 +421,8 @@ export const WORK_ITEM_LIST_PREFERENCES_METADATA_FIELDS = [
   },
 ];
 
-export const WORK_ITEMS_NO_PARENT_LIST = [
-  WORK_ITEM_TYPE_ENUM_INCIDENT,
-  WORK_ITEM_TYPE_ENUM_TEST_CASE,
-  WORK_ITEM_TYPE_ENUM_TICKET,
-];
+export const WORK_ITEM_LIST_PREFERENCES_METADATA_FIELDS_SORTED =
+  WORK_ITEM_LIST_PREFERENCES_METADATA_FIELDS.toSorted((a, b) => a.label.localeCompare(b.label));
 
 export const WORK_ITEM_CREATE_SOURCES = {
   GLOBAL_NAV: 'global_nav',
@@ -488,44 +431,16 @@ export const WORK_ITEM_CREATE_SOURCES = {
   VULNERABILITY: 'vulnerability',
 };
 
-export const WORK_ITEM_ICON_OPTIONS = [
-  'work-item-enhancement',
-  'work-item-epic',
-  'work-item-feature-flag',
-  'work-item-feature',
-  'work-item-incident',
-  'work-item-issue',
-  'work-item-keyresult',
-  'work-item-maintenance',
-  'work-item-objective',
-  'work-item-requirement',
-  'work-item-task',
-  'work-item-test-case',
-  'work-item-ticket',
-  'bug',
-];
-
-export const WI_TYPE_ICON_SELECTION_SET_SCREEN_READER_TEXT_MAP = {
-  /* eslint-disable @gitlab/require-i18n-strings */
-  'work-item-enhancement': 'Magic wand',
-  'work-item-epic': 'Stack',
-  'work-item-feature-flag': 'Flag',
-  'work-item-feature': 'Star',
-  'work-item-incident': 'Exclamation point',
-  'work-item-issue': 'Document',
-  'work-item-keyresult': 'Arrow',
-  'work-item-maintenance': 'Tools',
-  'work-item-objective': 'Target',
-  'work-item-requirement': 'Checklist',
-  'work-item-task': 'Check',
-  'work-item-test-case': 'Test tube',
-  'work-item-ticket': 'Ticket',
-  bug: 'Insect',
-  /* eslint-enable @gitlab/require-i18n-strings */
-};
-
 export const ICON_NAVIGATION_KEYS = {
   PREVIOUS: [ARROW_LEFT_KEY, ARROW_UP_KEY],
   NEXT: [ARROW_RIGHT_KEY, ARROW_DOWN_KEY],
   IGNORE: [' ', ENTER_KEY],
+};
+
+export const VIEW_CONTEXT = {
+  fullScreen: 'full_screen',
+  drawerBoard: 'drawer_board',
+  drawerList: 'drawer_list',
+  drawerWorkItem: 'drawer_work_item',
+  drawerMergeRequest: 'drawer_merge_request',
 };

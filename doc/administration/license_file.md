@@ -1,8 +1,9 @@
 ---
 stage: Fulfillment
 group: Provision
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-title: Activate GitLab EE with a license file or key
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: Activate GitLab Enterprise Edition
+description: Activate GitLab Enterprise Edition with a license file or key.
 ---
 
 If you receive a license file from GitLab (for example, for a trial), you can
@@ -18,7 +19,7 @@ Otherwise, add your license in the Admin area.
 
 1. Sign in to GitLab as an administrator.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. In the **Add License** area, add a license by either uploading the file or entering the key.
 1. Select the **Terms of Service** checkbox.
 1. Select **Add license**.
@@ -106,7 +107,7 @@ To go back to Free features, [delete all expired licenses](#remove-a-license).
 To remove a license from a GitLab Self-Managed instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Subscription**.
+1. In the left sidebar, select **Subscription**.
 1. Select **Remove license**.
 
 Repeat these steps to remove all licenses, including those applied in the past.
@@ -116,7 +117,7 @@ Repeat these steps to remove all licenses, including those applied in the past.
 To view your license details:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Subscription**.
+1. In the left sidebar, select **Subscription**.
 
 You can add and view more than one license, but only the latest license in
 the current date range is the active license.
@@ -242,7 +243,7 @@ This issue might occur if:
 - You're running GitLab Community Edition. Before you add your license, you
   must upgrade to Enterprise Edition.
 - You're using GitLab.com. You cannot add a GitLab Self-Managed license to GitLab.com.
-  To use paid features on GitLab.com, [purchase a separate subscription](../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage).
+  To use paid features on GitLab.com, [purchase a separate subscription](../subscriptions/manage_seats.md#gitlabcom-billing-and-usage).
 
 ### Users exceed license limit upon renewal
 

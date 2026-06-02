@@ -3,8 +3,12 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import ItemMilestone from '~/issuable/components/issue_milestone.vue';
 import WorkItemLinkChildMetadata from '~/work_items/components/shared/work_item_link_child_metadata.vue';
 import WorkItemRolledUpCount from '~/work_items/components/work_item_links/work_item_rolled_up_count.vue';
+import WorkItemParentMetadata from '~/work_items/components/shared/work_item_parent_metadata.vue';
 
-import { workItemObjectiveMetadataWidgets } from '../../mock_data';
+import {
+  workItemObjectiveMetadataWidgets,
+  mockParentWorkItem,
+} from 'ee_else_ce_jest/work_items/mock_data';
 
 describe('WorkItemLinkChildMetadata', () => {
   const { MILESTONE } = workItemObjectiveMetadataWidgets;
@@ -13,13 +17,18 @@ describe('WorkItemLinkChildMetadata', () => {
   let wrapper;
 
   const findRolledUpCount = () => wrapper.findComponent(WorkItemRolledUpCount);
+  const findParentMetadata = () => wrapper.findComponent(WorkItemParentMetadata);
 
-  const createComponent = ({ metadataWidgets = workItemObjectiveMetadataWidgets } = {}) => {
+  const createComponent = ({
+    metadataWidgets = workItemObjectiveMetadataWidgets,
+    namespacePath = 'test-project-path',
+  } = {}) => {
     wrapper = shallowMountExtended(WorkItemLinkChildMetadata, {
       propsData: {
         iid: '1',
         reference: 'test-project-path#1',
         metadataWidgets,
+        namespacePath,
       },
       scopedSlots: {
         'weight-metadata': `<div data-testid="weight-metadata-slot">Weight</div>`,
@@ -80,5 +89,29 @@ describe('WorkItemLinkChildMetadata', () => {
 
     expect(findRolledUpCount().exists()).toBe(true);
     expect(findRolledUpCount().props('hideCountWhenZero')).toBe(true);
+  });
+
+  describe('parent metadata', () => {
+    it('does not render parent metadata when parent is not present', () => {
+      expect(findParentMetadata().exists()).toBe(false);
+    });
+
+    it('renders parent metadata when parent is present', () => {
+      createComponent({
+        metadataWidgets: {
+          ...workItemObjectiveMetadataWidgets,
+          HIERARCHY: {
+            type: 'HIERARCHY',
+            hasChildren: false,
+            rolledUpCountsByType: [],
+            parent: mockParentWorkItem,
+            __typename: 'WorkItemWidgetHierarchy',
+          },
+        },
+      });
+
+      expect(findParentMetadata().exists()).toBe(true);
+      expect(findParentMetadata().props('parent')).toEqual(mockParentWorkItem);
+    });
   });
 });

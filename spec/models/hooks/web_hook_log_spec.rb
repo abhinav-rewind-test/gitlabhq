@@ -14,7 +14,7 @@ RSpec.describe WebHookLog, :freeze_time, feature_category: :webhooks do
   it { is_expected.to validate_presence_of(:web_hook) }
 
   describe '.created_between' do
-    let_it_be(:hook) { create(:project_hook) }
+    let_it_be(:hook, freeze: false) { create(:project_hook) }
     let_it_be(:oldest_log) { create(:web_hook_log, web_hook: hook, created_at: 6.hours.ago) }
     let_it_be(:middle_log) { create(:web_hook_log, web_hook: hook, created_at: 4.hours.ago) }
     let_it_be(:newest_log) { create(:web_hook_log, web_hook: hook, created_at: 2.hours.ago) }
@@ -46,7 +46,7 @@ RSpec.describe WebHookLog, :freeze_time, feature_category: :webhooks do
   end
 
   describe '.recent' do
-    let_it_be(:hook) { create(:project_hook) }
+    let_it_be(:hook, freeze: false) { create(:project_hook) }
     let_it_be(:too_old_log) { create(:web_hook_log, web_hook: hook, created_at: 8.days.ago) }
     let_it_be(:oldest_log)  { create(:web_hook_log, web_hook: hook, created_at: 3.days.ago) }
     let_it_be(:middle_log)  { create(:web_hook_log, web_hook: hook, created_at: 2.hours.ago) }
@@ -182,7 +182,7 @@ RSpec.describe WebHookLog, :freeze_time, feature_category: :webhooks do
   end
 
   describe '.delete_batch_for' do
-    let_it_be(:hook) { build(:project_hook) }
+    let_it_be(:hook, freeze: false) { build(:project_hook) }
     let_it_be(:hook2) { build(:project_hook) }
 
     before_all do
@@ -198,7 +198,7 @@ RSpec.describe WebHookLog, :freeze_time, feature_category: :webhooks do
       it 'deletes min(batch_size, total) records' do
         deleted = [batch_size, 3].min
 
-        expect { subject }.to change(described_class, :count).by(-deleted)
+        expect { subject }.to change { described_class.count }.by(-deleted)
       end
     end
 
@@ -296,6 +296,23 @@ RSpec.describe WebHookLog, :freeze_time, feature_category: :webhooks do
       let(:request_headers) { {} }
 
       it { expect(web_hook_log.request_headers['X-Gitlab-Token']).to be_nil }
+    end
+
+    context 'with webhook-signature header' do
+      let(:request_headers) { { 'webhook-signature' => 'v1,abc123def456==' } }
+
+      it 'preserves the signature value' do
+        expect(web_hook_log.request_headers['webhook-signature']).to eq('v1,abc123def456==')
+      end
+    end
+
+    context 'with both X-Gitlab-Token and webhook-signature headers' do
+      let(:request_headers) { { 'X-Gitlab-Token' => 'secret', 'webhook-signature' => 'v1,abc123==' } }
+
+      it 'redacts X-Gitlab-Token but preserves webhook-signature' do
+        expect(web_hook_log.request_headers['X-Gitlab-Token']).to eq(_('[REDACTED]'))
+        expect(web_hook_log.request_headers['webhook-signature']).to eq('v1,abc123==')
+      end
     end
   end
 

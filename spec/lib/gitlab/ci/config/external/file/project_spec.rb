@@ -160,7 +160,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Project, feature_category: :p
         { project: project.full_path, file: '/secret_file.yml' }
       end
 
-      let(:variables) { Gitlab::Ci::Variables::Collection.new([{ 'key' => 'GITLAB_TOKEN', 'value' => 'secret_file', 'masked' => true }]) }
+      let(:variables) { Gitlab::Ci::Variables::Collection.new([{ key: 'GITLAB_TOKEN', value: 'secret_file', masked: true }]) }
 
       around do |example|
         create_and_delete_files(project, { '/secret_file.yml' => '' }) do
@@ -186,7 +186,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Project, feature_category: :p
     end
 
     context 'when non-existing file is requested' do
-      let(:variables) { Gitlab::Ci::Variables::Collection.new([{ 'key' => 'GITLAB_TOKEN', 'value' => 'secret-invalid-file', 'masked' => true }]) }
+      let(:variables) { Gitlab::Ci::Variables::Collection.new([{ key: 'GITLAB_TOKEN', value: 'secret-invalid-file', masked: true }]) }
 
       let(:params) do
         { project: project.full_path, file: '/secret-invalid-file.yml' }
@@ -333,6 +333,153 @@ RSpec.describe Gitlab::Ci::Config::External::File::Project, feature_category: :p
 
       it 'correctly interpolates the content' do
         expect(project_file.to_hash).to eq({ rspec: { script: 'rspec --suite abc' } })
+      end
+    end
+  end
+
+  describe '#content with Gitaly timeout' do
+    let(:params) { { file: '/file.yml', ref: 'master', project: project.full_path } }
+
+    context 'when Gitaly request times out with GRPC::DeadlineExceeded' do
+      before do
+        allow_next_instance_of(Repository) do |instance|
+          allow(instance).to receive(:blobs_at).and_raise(GRPC::DeadlineExceeded)
+        end
+      end
+
+      it 'logs the timeout and raises Context::TimeoutError' do
+        expect(Gitlab::AppJsonLogger).to receive(:warn).with(
+          hash_including(
+            message: 'CI config Gitaly request timed out',
+            project_id: context_project.id
+          )
+        )
+
+        expect { project_file.content.to_s }.to raise_error(
+          Gitlab::Ci::Config::External::Context::TimeoutError,
+          /CI configuration fetch from Gitaly timed out/
+        )
+      end
+    end
+  end
+
+  describe 'content fetching optimizations', :clean_gitlab_redis_repository_cache do
+    let(:params) { { project: project.full_path, file: '/config.yml', ref: 'master' } }
+    let(:file_content) { 'test: { script: echo hello }' }
+
+    around do |example|
+      create_and_delete_files(project, { '/config.yml' => file_content }) do
+        example.run
+      end
+    end
+
+    context 'when ci_cache_project_includes is disabled' do
+      before do
+        stub_feature_flags(ci_cache_project_includes: false)
+      end
+
+      it 'does not write to cache' do
+        fresh_file = described_class.new(params, context)
+        Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([fresh_file])
+
+        cache_store = Gitlab::Redis::RepositoryCache.cache_store
+
+        content = fresh_file.content
+        expect(content).to eq(file_content)
+
+        cache_key = "ci_project_include_content:v1:#{project.id}:#{project_sha}:config.yml"
+        expect(cache_store.read(cache_key)).to be_nil
+      end
+
+      it 'does not read from cache' do
+        fresh_file = described_class.new(params, context)
+        Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([fresh_file])
+
+        cache_store = Gitlab::Redis::RepositoryCache.cache_store
+        cache_key = "ci_project_include_content:v1:#{project.id}:#{project_sha}:config.yml"
+        cache_store.write(cache_key, 'cached: value')
+
+        content = fresh_file.content
+
+        expect(content).to eq(file_content)
+        expect(content).not_to eq('cached: value')
+      end
+
+      it 'still batches multiple file fetches when flag is disabled' do
+        file1_content = 'job1: { script: echo 1 }'
+        file2_content = 'job2: { script: echo 2 }'
+
+        create_and_delete_files(project, { '/file1.yml' => file1_content, '/file2.yml' => file2_content }) do
+          params1 = { project: project.full_path, file: '/file1.yml', ref: 'master' }
+          params2 = { project: project.full_path, file: '/file2.yml', ref: 'master' }
+
+          file1 = described_class.new(params1, context)
+          file2 = described_class.new(params2, context)
+
+          expect_next_instance_of(Repository) do |instance|
+            expect(instance).to receive(:blobs_at).once.and_call_original
+          end
+
+          Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([file1, file2])
+
+          expect(file1.content).to eq(file1_content)
+          expect(file2.content).to eq(file2_content)
+        end
+      end
+    end
+
+    it 'caches content across multiple file instances' do
+      file1 = described_class.new(params, context)
+      Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([file1])
+      first_content = file1.content
+
+      expect(project.repository).not_to receive(:blobs_at)
+
+      file2 = described_class.new(params, context)
+      Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([file2])
+      second_content = file2.content
+
+      expect(second_content).to eq(first_content)
+    end
+
+    it 'uses correct cache key format with project id and sha' do
+      fresh_file = described_class.new(params, context)
+      Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([fresh_file])
+
+      content = fresh_file.content
+      expect(content).to eq(file_content)
+
+      cache_store = Gitlab::Redis::RepositoryCache.cache_store
+      cache_key = "ci_project_include_content:v1:#{project.id}:#{project_sha}:config.yml"
+
+      expect(cache_store.read(cache_key)).to eq(file_content)
+    end
+
+    context 'with multiple files from same project' do
+      let(:file1_content) { 'job1: { script: echo 1 }' }
+      let(:file2_content) { 'job2: { script: echo 2 }' }
+
+      around do |example|
+        create_and_delete_files(project, { '/file1.yml' => file1_content, '/file2.yml' => file2_content }) do
+          example.run
+        end
+      end
+
+      it 'batches all file fetches in single Gitaly call' do
+        params1 = { project: project.full_path, file: '/file1.yml', ref: 'master' }
+        params2 = { project: project.full_path, file: '/file2.yml', ref: 'master' }
+
+        file1 = described_class.new(params1, context)
+        file2 = described_class.new(params2, context)
+
+        expect_next_instance_of(Repository) do |instance|
+          expect(instance).to receive(:blobs_at).once.and_call_original
+        end
+
+        Gitlab::Ci::Config::External::Mapper::Verifier.new(context).process([file1, file2])
+
+        expect(file1.content).to eq(file1_content)
+        expect(file2.content).to eq(file2_content)
       end
     end
   end

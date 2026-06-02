@@ -6,9 +6,21 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createMockDirective } from 'helpers/vue_mock_directive';
 import getNamespaceSavedViewsQuery from '~/work_items/list/graphql/work_item_saved_views_namespace.query.graphql';
 import waitForPromises from 'helpers/wait_for_promises';
-import subscribeToViewMutation from '~/work_items/graphql/subscribe_to_saved_view.mutation.graphql';
+import { subscribeWithLimitEnforce } from 'ee_else_ce/work_items/list/utils';
 import WorkItemsExistingSavedViewsModal from '~/work_items/list/components/work_items_existing_saved_views_modal.vue';
-import { CREATED_DESC } from '~/work_items/list/constants';
+import { CREATED_DESC, BROWSE_SAVED_VIEWS_PAGE_SIZE } from '~/work_items/list/constants';
+import { helpPagePath } from '~/helpers/help_page_helper';
+
+jest.mock('ee_else_ce/work_items/list/utils', () => ({
+  ...jest.requireActual('ee_else_ce/work_items/list/utils'),
+  subscribeWithLimitEnforce: jest.fn().mockResolvedValue({
+    data: {
+      workItemSavedViewSubscribe: {
+        errors: [],
+      },
+    },
+  }),
+}));
 
 describe('WorkItemsExistingSavedViewsModal', () => {
   let wrapper;
@@ -18,7 +30,7 @@ describe('WorkItemsExistingSavedViewsModal', () => {
   const mockPush = jest.fn();
   const mockSavedViewsData = [
     {
-      __typename: 'SavedView',
+      __typename: 'WorkItemSavedViewType',
       id: 'gid://gitlab/WorkItems::SavedViews::SavedView/1',
       name: 'My Private View',
       description: 'Only I can see this',
@@ -27,13 +39,22 @@ describe('WorkItemsExistingSavedViewsModal', () => {
       filters: {},
       displaySettings: {},
       sort: CREATED_DESC,
+      updatedAt: '2026-04-08T09:50:54Z',
+      author: {
+        id: 'gid://gitlab/User/1',
+      },
+      lastUpdatedBy: {
+        id: 'gid://gitlab/User/1',
+      },
       userPermissions: {
         updateSavedView: true,
         deleteSavedView: true,
+        updateSavedViewVisibility: true,
+        __typename: 'SavedViewPermissions',
       },
     },
     {
-      __typename: 'SavedView',
+      __typename: 'WorkItemSavedViewType',
       id: 'gid://gitlab/WorkItems::SavedViews::SavedView/2',
       name: 'Team View',
       description: 'Shared with the team',
@@ -42,24 +63,28 @@ describe('WorkItemsExistingSavedViewsModal', () => {
       filters: {},
       displaySettings: {},
       sort: CREATED_DESC,
+      updatedAt: '2026-04-08T09:50:54Z',
+      author: {
+        id: 'gid://gitlab/User/1',
+      },
+      lastUpdatedBy: {
+        id: 'gid://gitlab/User/1',
+      },
       userPermissions: {
         updateSavedView: true,
         deleteSavedView: true,
+        updateSavedViewVisibility: true,
+        __typename: 'SavedViewPermissions',
       },
     },
   ];
 
-  const mockSubscribeResponse = {
-    data: {
-      workItemSavedViewSubscribe: {
-        __typename: 'WorkItemSavedViewSubscribePayload',
-        errors: [],
-        savedView: {
-          __typename: 'WorkItemSavedViewType',
-          id: 'gid://gitlab/WorkItems::SavedViews::SavedView/2',
-        },
-      },
-    },
+  const defaultPageInfo = {
+    __typename: 'PageInfo',
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: null,
+    endCursor: null,
   };
 
   const savedViewsHandler = jest.fn().mockResolvedValue({
@@ -70,6 +95,7 @@ describe('WorkItemsExistingSavedViewsModal', () => {
         savedViews: {
           __typename: 'SavedViewConnection',
           nodes: mockSavedViewsData,
+          pageInfo: defaultPageInfo,
         },
       },
     },
@@ -80,24 +106,40 @@ describe('WorkItemsExistingSavedViewsModal', () => {
       namespace: {
         savedViews: {
           nodes: [],
+          pageInfo: defaultPageInfo,
         },
       },
     },
   });
 
-  const successSubscribeMutationHandler = jest.fn().mockResolvedValue(mockSubscribeResponse);
+  const paginatedSavedViewsHandler = jest.fn().mockResolvedValue({
+    data: {
+      namespace: {
+        __typename: 'Namespace',
+        id: 'namespace',
+        savedViews: {
+          __typename: 'SavedViewConnection',
+          nodes: mockSavedViewsData,
+          pageInfo: {
+            __typename: 'PageInfo',
+            hasNextPage: true,
+            hasPreviousPage: false,
+            startCursor: 'cursor-start',
+            endCursor: 'cursor-end',
+          },
+        },
+      },
+    },
+  });
 
   const simulatedErrorHandler = jest.fn().mockRejectedValue(new Error('this is fine'));
 
   const createComponent = async ({
     props,
+    provide = {},
     mockSavedViewsHandler = savedViewsHandler,
-    subscribeMutationHandler = successSubscribeMutationHandler,
   } = {}) => {
-    const apolloProvider = createMockApollo([
-      [getNamespaceSavedViewsQuery, mockSavedViewsHandler],
-      [subscribeToViewMutation, subscribeMutationHandler],
-    ]);
+    const apolloProvider = createMockApollo([[getNamespaceSavedViewsQuery, mockSavedViewsHandler]]);
 
     wrapper = shallowMountExtended(WorkItemsExistingSavedViewsModal, {
       apolloProvider,
@@ -105,6 +147,12 @@ describe('WorkItemsExistingSavedViewsModal', () => {
         show: true,
         fullPath: 'test-project-path',
         ...props,
+      },
+      provide: {
+        canCreateSavedView: true,
+        subscribedSavedViewLimit: 10,
+        isGroup: true,
+        ...provide,
       },
       mocks: {
         $router: {
@@ -128,6 +176,8 @@ describe('WorkItemsExistingSavedViewsModal', () => {
   const findSavedViewItems = () => wrapper.findAllByTestId('saved-view-item');
   const findSubscribedIcons = () => wrapper.findAllByTestId('subscribed-view-icon');
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
+  const findNoPermissionAlert = () => wrapper.findByTestId('no-permission-alert');
+  const findLoadMoreButton = () => wrapper.findByTestId('load-more-button');
   const findWarningMessage = () => wrapper.find('.gl-bg-orange-50');
   const findWarningIcon = () => findWarningMessage().findComponent(GlIcon);
   const findLearnMoreLink = () => findWarningMessage().findComponent(GlLink);
@@ -139,6 +189,24 @@ describe('WorkItemsExistingSavedViewsModal', () => {
   it('shows loading icon while saved views are loading', () => {
     createComponent();
     expect(findLoadingIcon().exists()).toBe(true);
+  });
+
+  it('fetches saved views with correct variables', () => {
+    expect(savedViewsHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: 'NAME_ASC',
+        subscribedOnly: false,
+        fullPath: 'test-project-path',
+        first: BROWSE_SAVED_VIEWS_PAGE_SIZE,
+      }),
+    );
+  });
+
+  it('does not fetch saved views when modal is hidden', async () => {
+    savedViewsHandler.mockClear();
+    await createComponent({ props: { show: false } });
+
+    expect(savedViewsHandler).not.toHaveBeenCalled();
   });
 
   it('focuses the search input on showing modal', async () => {
@@ -184,7 +252,7 @@ describe('WorkItemsExistingSavedViewsModal', () => {
       await firstView.trigger('click');
       await nextTick();
 
-      expect(successSubscribeMutationHandler).not.toHaveBeenCalled();
+      expect(subscribeWithLimitEnforce).not.toHaveBeenCalled();
 
       expect(mockPush).toHaveBeenCalledWith({
         name: 'savedView',
@@ -198,7 +266,7 @@ describe('WorkItemsExistingSavedViewsModal', () => {
       await secondView.trigger('click');
       await nextTick();
 
-      expect(successSubscribeMutationHandler).toHaveBeenCalled();
+      expect(subscribeWithLimitEnforce).toHaveBeenCalled();
       await waitForPromises();
 
       expect(mockPush).toHaveBeenCalledWith({
@@ -211,16 +279,47 @@ describe('WorkItemsExistingSavedViewsModal', () => {
   describe('search filtering', () => {
     it('filters views by name or description', async () => {
       findSearch().vm.$emit('input', 'team');
-
       await waitForPromises();
 
-      expect(findSavedViewItems()).toHaveLength(1);
-      expect(wrapper.text()).toContain('Team View');
-      expect(wrapper.text()).not.toContain('My Private View');
+      expect(savedViewsHandler).toHaveBeenCalledWith(expect.objectContaining({ search: 'team' }));
     });
 
-    it('shows "No results found" when there are no matches', async () => {
+    it('shows "No results found" when server returns no matches for search term', async () => {
+      const noResultsHandler = jest.fn().mockImplementation(({ search }) => {
+        if (search) {
+          return Promise.resolve({
+            data: {
+              namespace: {
+                __typename: 'Namespace',
+                id: 'namespace',
+                savedViews: {
+                  __typename: 'SavedViewConnection',
+                  nodes: [],
+                  pageInfo: defaultPageInfo,
+                },
+              },
+            },
+          });
+        }
+        return Promise.resolve({
+          data: {
+            namespace: {
+              __typename: 'Namespace',
+              id: 'namespace',
+              savedViews: {
+                __typename: 'SavedViewConnection',
+                nodes: mockSavedViewsData,
+                pageInfo: defaultPageInfo,
+              },
+            },
+          },
+        });
+      });
+
+      await createComponent({ mockSavedViewsHandler: noResultsHandler });
+
       findSearch().vm.$emit('input', 'foo');
+
       await waitForPromises();
 
       expect(wrapper.text()).toContain('No results found');
@@ -229,19 +328,60 @@ describe('WorkItemsExistingSavedViewsModal', () => {
     });
   });
 
+  describe('pagination', () => {
+    describe('when there is a next page', () => {
+      beforeEach(async () => {
+        await createComponent({ mockSavedViewsHandler: paginatedSavedViewsHandler });
+      });
+
+      it('renders a load more button at the end of the list', () => {
+        expect(findLoadMoreButton().exists()).toBe(true);
+      });
+
+      it('shows a loading spinner while fetching the next page', async () => {
+        findLoadMoreButton().vm.$emit('click');
+
+        await nextTick();
+
+        expect(findLoadingIcon().exists()).toBe(true);
+      });
+
+      it('calls fetchMore with the end cursor when load more button is clicked', async () => {
+        await findLoadMoreButton().vm.$emit('click');
+
+        await waitForPromises();
+
+        expect(paginatedSavedViewsHandler).toHaveBeenCalledWith({
+          after: 'cursor-end',
+          first: 100,
+          fullPath: 'test-project-path',
+          search: undefined,
+          sort: 'NAME_ASC',
+          subscribedOnly: false,
+        });
+      });
+    });
+
+    describe('when there is no next page', () => {
+      it('does not render a load more button', () => {
+        expect(findLoadMoreButton().exists()).toBe(false);
+      });
+    });
+  });
+
   describe('when there are no saved views available', () => {
-    beforeEach(() => {
-      createComponent({
+    beforeEach(async () => {
+      await createComponent({
         mockSavedViewsHandler: emptySavedViewsHandler,
       });
     });
 
-    it('disables the search input', () => {
-      expect(findSearch().props('disabled')).toBe(true);
+    it('hides the search input', () => {
+      expect(findSearch().exists()).toBe(false);
     });
 
     it('renders empty state and redirects to New View Modal', async () => {
-      expect(wrapper.text()).toContain('No views currently exist');
+      expect(wrapper.text()).toContain('No views yet');
       expect(findNewViewButton().exists()).toBe(true);
 
       findNewViewButton().vm.$emit('click');
@@ -253,18 +393,18 @@ describe('WorkItemsExistingSavedViewsModal', () => {
   });
 
   describe('when there is an error', () => {
-    beforeEach(() => {
-      createComponent({
+    beforeEach(async () => {
+      await createComponent({
         mockSavedViewsHandler: simulatedErrorHandler,
       });
     });
 
-    it('disables the search input', () => {
-      expect(findSearch().props('disabled')).toBe(true);
+    it('hides the search input', () => {
+      expect(findSearch().exists()).toBe(false);
     });
 
     it('renders empty state and redirects to New View Modal', async () => {
-      expect(wrapper.text()).toContain('No views currently exist');
+      expect(wrapper.text()).toContain('No views yet');
       expect(findNewViewButton().exists()).toBe(true);
 
       findNewViewButton().vm.$emit('click');
@@ -293,6 +433,9 @@ describe('WorkItemsExistingSavedViewsModal', () => {
         expect(findWarningMessage().exists()).toBe(true);
         expect(findWarningIcon().props('name')).toBe('warning');
         expect(findLearnMoreLink().exists()).toBe(true);
+        expect(findLearnMoreLink().attributes('href')).toBe(
+          helpPagePath('user/work_items/saved_views.md', { anchor: 'saved-view-limits' }),
+        );
       });
 
       it('contains the correct warning text', () => {
@@ -302,6 +445,77 @@ describe('WorkItemsExistingSavedViewsModal', () => {
         expect(findWarningMessage().text()).toContain(
           'If you add a view, the last view in your list will be removed.',
         );
+      });
+    });
+  });
+
+  describe('permissions', () => {
+    it('hides empty state button when user cannot create saved view', async () => {
+      await createComponent({
+        provide: { canCreateSavedView: false },
+        mockSavedViewsHandler: emptySavedViewsHandler,
+      });
+
+      expect(findNewViewButton().exists()).toBe(false);
+    });
+
+    describe('when user cannot create saved views and views exist', () => {
+      beforeEach(async () => {
+        await createComponent({ provide: { canCreateSavedView: false } });
+      });
+
+      it('shows no-permission alert', () => {
+        expect(findNoPermissionAlert().exists()).toBe(true);
+      });
+
+      it.each`
+        isGroup  | namespaceType
+        ${true}  | ${'group'}
+        ${false} | ${'project'}
+      `(
+        'shows $namespaceType namespace type in the alert message',
+        async ({ isGroup, namespaceType }) => {
+          await createComponent({ provide: { canCreateSavedView: false, isGroup } });
+
+          expect(findNoPermissionAlert().text()).toContain(
+            `You don't have permission to create views in this ${namespaceType}`,
+          );
+        },
+      );
+    });
+
+    describe('when user cannot create saved views and no views exist', () => {
+      it('does not show no-permission alert', async () => {
+        await createComponent({
+          provide: { canCreateSavedView: false },
+          mockSavedViewsHandler: emptySavedViewsHandler,
+        });
+
+        expect(findNoPermissionAlert().exists()).toBe(false);
+      });
+
+      it.each`
+        isGroup  | namespaceType
+        ${true}  | ${'group'}
+        ${false} | ${'project'}
+      `(
+        'shows $namespaceType namespace type in the empty state description',
+        async ({ isGroup, namespaceType }) => {
+          await createComponent({
+            provide: { canCreateSavedView: false, isGroup },
+            mockSavedViewsHandler: emptySavedViewsHandler,
+          });
+
+          expect(wrapper.text()).toContain(
+            `You don't have permission to create views in this ${namespaceType}`,
+          );
+        },
+      );
+    });
+
+    describe('when user can create saved views', () => {
+      it('does not show no-permission alert even when views exist', () => {
+        expect(findNoPermissionAlert().exists()).toBe(false);
       });
     });
   });

@@ -84,8 +84,6 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
       'activity'
     elsif project.wiki_repository_exists? && can?(current_user, :read_wiki, project)
       'wiki'
-    elsif can?(current_user, :read_issue, project)
-      'projects/issues'
     else
       'activity'
     end
@@ -363,9 +361,11 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
 
     if current_user && can?(current_user, :admin_pipeline, project) && !project.has_ci_config_file?
       if auto_devops_enabled?
+        icon = container_registry_disabled? ? container_registry_disabled_icon : statistic_icon('settings', 'subtle')
+        label = icon + _('Auto DevOps enabled')
         AnchorData.new(
           false,
-          statistic_icon('settings', 'subtle') + _('Auto DevOps enabled'),
+          label,
           project_settings_ci_cd_path(project, anchor: 'autodevops-settings'),
           'btn-default'
         )
@@ -377,8 +377,25 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
         )
       end
     elsif auto_devops_enabled?
-      AnchorData.new(false, _('Auto DevOps enabled'), nil)
+      icon = container_registry_disabled? ? container_registry_disabled_icon : ''
+      label = icon + _('Auto DevOps enabled')
+      AnchorData.new(false, label, nil)
     end
+  end
+
+  def container_registry_disabled_icon
+    content_tag(
+      :span,
+      title: _('An administrator must enable the container registry for Auto DevOps to work.'),
+      class: 'gl-mr-3',
+      tabindex: 0,
+      data: { toggle: 'tooltip' },
+      aria: { label: _('Warning: Container registry disabled') }
+    ) { sprite_icon('warning', css_class: 'gl-fill-icon-warning') }
+  end
+
+  def container_registry_disabled?
+    !Gitlab.config.registry.enabled
   end
 
   def kubernetes_cluster_anchor_data
@@ -414,8 +431,8 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
   def wiki_anchor_data
     return unless project.wiki_enabled? && can_read_wiki?
 
-    if project.wiki.has_home_page?
-      AnchorData.new(false, statistic_icon('book', 'subtle') + _('Wiki'), project_wiki_path, 'btn-default', nil, nil)
+    if project.wiki.exists?
+      AnchorData.new(false, statistic_icon('book', 'subtle') + _('Wiki'), project_wiki_index_path, 'btn-default', nil, nil)
     elsif can_create_wiki?
       icon = statistic_icon('plus', 'info')
       label = icon + _('Add Wiki')
@@ -489,7 +506,7 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
   end
 
   def cicd_missing?
-    current_user && can_current_user_push_code? && !project.has_ci? && cicd_enabled?
+    current_user && can_current_user_push_code? && !project.has_ci_config_file? && cicd_enabled?
   end
 
   def can_instantiate_cluster?
@@ -507,8 +524,6 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
       'files'
     elsif project.wiki_repository_exists? && can?(current_user, :read_wiki, project)
       'wiki'
-    elsif can?(current_user, :read_issue, project)
-      'projects/issues'
     else
       'activity'
     end
@@ -551,6 +566,10 @@ class ProjectPresenter < Gitlab::View::Presenter::Delegated
 
   def project_wiki_path
     wiki_path(project.wiki)
+  end
+
+  def project_wiki_index_path
+    wiki_path(project.wiki, action: :index)
   end
 
   def project_create_wiki_path

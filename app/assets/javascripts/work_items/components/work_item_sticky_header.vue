@@ -6,6 +6,7 @@ import ArchivedBadge from '~/issuable/components/archived_badge.vue';
 import { NAMESPACE_PROJECT } from '~/issues/constants';
 import ConfidentialityBadge from '~/vue_shared/components/confidentiality_badge.vue';
 import ImportedBadge from '~/vue_shared/components/imported_badge.vue';
+import SafeHtml from '~/vue_shared/directives/safe_html';
 import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import WorkItemTypeIcon from '~/work_items/components/work_item_type_icon.vue';
 import { STATE_CLOSED } from '~/work_items/constants';
@@ -28,6 +29,9 @@ export default {
     GlButton,
     GlLink,
     WorkItemTypeIcon,
+  },
+  directives: {
+    SafeHtml,
   },
   mixins: [glFeatureFlagMixin()],
   props: {
@@ -69,6 +73,9 @@ export default {
     },
     workItemType() {
       return this.workItem.workItemType?.name;
+    },
+    workItemTypeIconName() {
+      return this.workItem.workItemType?.iconName;
     },
     workItemState() {
       return this.workItem.state;
@@ -114,12 +121,13 @@ export default {
         v-if="isStickyHeaderShowing"
         ref="stickyHeader"
         class="issue-sticky-header gl-border-b gl-z-3 gl-bg-default gl-py-2"
-        :class="{ 'gl-absolute gl-left-0 gl-top-10': isDrawer, 'gl-fixed': !isDrawer }"
+        :class="{
+          'panel-top-offset-panel-header-height gl-absolute gl-left-0': isDrawer,
+          'gl-fixed': !isDrawer,
+        }"
         data-testid="work-item-sticky-header"
       >
-        <div
-          class="work-item-sticky-header-text gl-mx-auto gl-flex gl-items-center gl-gap-3 gl-px-5 @xl/panel:gl-px-6"
-        >
+        <div class="work-item-sticky-header-text gl-mx-auto gl-flex gl-items-center gl-gap-3">
           <archived-badge v-if="archived" :issuable-type="workItemType" />
           <work-item-state-badge
             v-else-if="workItemState === $options.STATE_CLOSED"
@@ -141,14 +149,17 @@ export default {
             v-if="workItemType"
             class="gl-align-middle"
             :work-item-type="workItemType"
+            :type-icon-name="workItemTypeIconName"
             show-tooltip-on-hover
             icon-class="gl-fill-icon-subtle"
           />
-          <span v-if="isDrawer" :class="$options.TITLE_CLASS">
-            {{ workItem.title }}
-          </span>
+          <span
+            v-if="isDrawer"
+            v-safe-html="workItem.titleHtml"
+            :class="$options.TITLE_CLASS"
+          ></span>
           <gl-link v-else :class="$options.TITLE_CLASS" href="#top" :title="workItem.title">
-            {{ workItem.title }}
+            <span v-safe-html="workItem.titleHtml"></span>
           </gl-link>
           <gl-button
             v-if="canUpdate"

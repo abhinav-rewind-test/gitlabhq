@@ -26,7 +26,7 @@ class UserPolicy < BasePolicy
     enable :create_saved_replies
     enable :update_saved_replies
     enable :destroy_saved_replies
-    enable :read_user_personal_access_tokens
+    enable :read_personal_access_token
     enable :read_user_membership_counts
     enable :read_user_groups
     enable :read_user_organizations
@@ -44,9 +44,24 @@ class UserPolicy < BasePolicy
 
   rule { default }.enable :read_user_profile
   rule { (private_profile | blocked_user | unconfirmed_user) & ~(user_is_self | admin) }.prevent :read_user_profile
-  rule { (user_is_self | admin) & ~blocked }.enable :create_user_personal_access_token
-  rule { (user_is_self | admin) & ~blocked }.enable :manage_user_personal_access_token
+  rule { (user_is_self | admin) & ~blocked }.enable :create_personal_access_token
+  rule { (user_is_self | admin) & ~blocked }.enable :rotate_personal_access_token
   rule { (user_is_self | admin) & ~blocked }.enable :get_user_associations_count
+
+  desc "The user has admin_service_accounts on the target service account's provisioning scope"
+  condition(:can_admin_target_service_account) do
+    next false unless @user && @subject.service_account?
+
+    scope = @subject.provisioned_by_group || @subject.provisioned_by_project
+    next false unless scope
+
+    can?(:admin_service_accounts, scope)
+  end
+
+  rule { can_admin_target_service_account & ~blocked }.policy do
+    enable :create_personal_access_token
+    enable :rotate_personal_access_token
+  end
 
   rule { admin }.policy do
     enable :read_custom_attribute

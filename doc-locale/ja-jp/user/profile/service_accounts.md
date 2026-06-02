@@ -1,45 +1,98 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: サービスアカウント
-description: 自動化されたプロセスとサードパーティのインテグレーションのために、非メールアカウントを作成します。
+description: 自動化されたプロセスやサードパーティのサービス統合用に、非人間的なアカウントを作成します。
 ---
 
 {{< details >}}
 
-- プラン: Premium、Ultimate
+- プラン: Free、Premium、Ultimate
 - 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
 
 {{< /details >}}
 
-サービスアカウントは、個々の人ではなく、人間ではないエンティティを表すユーザーアカウントです。サービスアカウントを使用すると、自動化されたアクションの実行、データへのアクセス、スケジュールされたプロセスを実行できます。通常、サービスアカウントは、認証情報が安定しており、人間のユーザーメンバーシップの変更に影響されないことが求められる、パイプラインまたはサードパーティのインテグレーションで使用されます。
+{{< history >}}
 
-サービスアカウントには、次の2つの種類があります:
+- サービスアカウントのFree tier:
+  - GitLab 18.10で`service_accounts_available_on_free_or_unlicensed`という名前の[フラグ](../../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225913)されました。デフォルトでは無効になっています。
+  - GitLab 18.11で[一般提供](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/227910)されました。機能フラグが削除されました。
+- プロジェクトサービスアカウントは、GitLab 18.10で[introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/585509)され、`allow_projects_to_create_service_accounts`という名前の[with a flag](../../administration/feature_flags/_index.md)が付けられました。デフォルトでは無効になっています。
+- サブグループサービスアカウントは、GitLab 18.10で[introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/585513)され、`allow_subgroups_to_create_service_accounts`という名前の[with a flag](../../administration/feature_flags/_index.md)が付けられました。デフォルトでは無効になっています。
+- サブグループとプロジェクトサービスアカウントは、GitLab 18.11で[generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225485/)です。機能フラグ`allow_subgroups_to_create_service_accounts`および`allow_projects_to_create_service_accounts`は削除されました。
 
-- インスタンスサービスアカウント: GitLabインスタンス全体で利用できますが、ゲストユーザーのようにグループやプロジェクトに追加する必要があります。GitLab Self-ManagedおよびGitLab Dedicatedでのみ利用可能です。
-- グループサービスアカウント: 特定のトップレベルグループが所有しており、ゲストユーザーのようにサブグループやプロジェクトへの継承が可能です。
+{{< /history >}}
 
-[パーソナルアクセストークン](personal_access_tokens.md)を使用して、サービスアカウントとして認証できます。サービスアカウントは人間のユーザーと同じ機能を持っており、[パッケージやコンテナレジストリ](../packages/_index.md)とのやり取り、[Gitオペレーション](personal_access_tokens.md#clone-repository-using-personal-access-token)の実行、APIへのアクセスなどのアクションを実行できます。
+サービスアカウントは、個々の人ではなく、人間ではないエンティティを表すユーザーアカウントです。サービスアカウントを使用して、自動化されたアクションを実行したり、データにアクセスしたり、スケジュールされたプロセスを実行したりできます。サービスアカウントは、チームのメンバーシップの変更に関わらず認証情報が安定している必要があるパイプラインやサードパーティの統合でよく使用されます。
 
-サービスアカウント:
+サービスアカウントは、[パーソナルアクセストークン](personal_access_tokens.md)で認証するします。これらは[パッケージとコンテナレジストリ](../packages/_index.md)と対話したり、[Gitオペレーション](personal_access_tokens.md#clone-repository-using-personal-access-token)を実行したり、APIにアクセスしたりできます。
 
-- シートを使用しません。
-- UIからGitLabにサインインできません。
-- グループおよびプロジェクトのメンバーシップでサービスアカウントとして識別されます。
-- カスタムメールアドレスを[追加](../../api/service_accounts.md#create-an-instance-service-account)しない限り、通知メールを受信しません。
-- [請求対象ユーザー](../../subscriptions/manage_users_and_seats.md#billable-users)や[内部ユーザー](../../administration/internal_users.md)ではありません。
-- GitLab.comの[トライアルバージョン](https://gitlab.com/-/trial_registrations/new?glm_source=docs.gitlab.com&glm_content=free-user-limit-faq/ee/user/free_user_limit.html)では使用できません。
-- GitLab Self-ManagedおよびGitLab Dedicatedのトライアルバージョンで使用できます。
+サービスアカウントには、次の特徴があります:
 
-[サービスアカウントAPI](../../api/service_accounts.md)を使用して、サービスアカウントを管理することもできます。
+- これらはシートを使用しません。
+- これらは[請求対象ユーザー](../../subscriptions/manage_seats.md#billable-users)でも[internal users](../../administration/internal_users.md)でもありません。
+- これらは常に[external users](../../administration/external_users.md)としてマークされます。
+- これらはUIを介してGitLabにサインインできません。
+- これらはLDAPなどのサービスを介して管理できません。
+- これらは、サブグループやプロジェクトによってプロビジョニングされた場合、トップレベルグループや他のサービスアカウントを作成できません。
+- これらは、通常のユーザーとしてではなく、サービスアカウントとしてグループおよびプロジェクトのメンバーシップリストに表示されます。
+- [カスタムメールアドレス](../../api/service_accounts.md#create-an-instance-service-account)を追加しない限り、これらは通知メールを受け取りません。
+- これらはGitLabの[トライアルバージョン](https://gitlab.com/-/trial_registrations/new?glm_source=docs.gitlab.com&glm_content=free-user-limit-faq/ee/user/free_user_limit.html)で利用できます。GitLab.comでは、トップレベルグループのオーナーが最初に本人確認を行う必要があります。
 
-## 前提要件 {#prerequisites}
+[サービスアカウントAPI](../../api/service_accounts.md)を通じてサービスアカウントを管理することもできます。
 
-- GitLab.comでは、トップレベルグループのオーナーロールを持っている必要があります。
-- GitLab Self-ManagedまたはGitLab Dedicatedでは、次の条件を満たす必要があります:
+作成できるサービスアカウントの数は、サブスクリプションとオファリングによって異なります:
+
+- PremiumとUltimateでは、すべてのオファリングで無制限のサービスアカウントを作成できます。
+- GitLab Freeでは、オファリングによって制限が異なります:
+  - GitLab.comでは、トップレベルグループごとに最大100のサービスアカウントを作成できます。これには、サブグループまたはプロジェクトで作成されたサービスアカウントが含まれます。
+  - GitLab Self-Managed Enterprise Edition (EE)では、インスタンス全体で最大100のサービスアカウントを作成できます。
+  - GitLab Self-Managed GitLab CEでは、サービスアカウントを作成できません。
+
+## サービスアカウントのタイプ {#types-of-service-accounts}
+
+サービスアカウントには3つのタイプがあり、それぞれ異なるスコープと前提条件があります:
+
+{{< tabs >}}
+
+{{< tab title="インスタンスサービスアカウント" >}}
+
+インスタンスサービスアカウントは、管理者エリアを通じて作成され、インスタンス上の任意のグループまたはプロジェクトに招待できます。
+
+前提条件: 
+
+- インスタンスへの管理者アクセス権。
+
+{{< /tab >}}
+
+{{< tab title="グループのサービスアカウント" >}}
+
+グループサービスアカウントは、特定のグループによって作成され、作成されたグループ、またはその子孫のサブグループやプロジェクトに招待できます。これらはトップレベルグループやサービスアカウントを作成できません。
+
+前提条件: 
+
+- GitLab.comでは、グループのオーナーロールが必要です。
+- GitLab Self-ManagedまたはGitLab Dedicatedでは、次のいずれかの条件を満たす必要があります:
   - インスタンスの管理者である。
-  - トップレベルグループでオーナーロールを持ち、[サービスアカウントの作成を許可されている](../../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts)。
+  - グループでオーナーロールを持ち、[サービスアカウントを作成することを許可](../../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts)されていること。
+
+{{< /tab >}}
+
+{{< tab title="プロジェクトサービスアカウント" >}}
+
+プロジェクトサービスアカウントは、特定のプロジェクトによって作成され、そのプロジェクトでのみ利用できます。これらはトップレベルグループやサービスアカウントを作成できません。
+
+前提条件: 
+
+- GitLab.comでは、プロジェクトのオーナーまたはメンテナーロールが必要です。
+- GitLab Self-ManagedまたはGitLab Dedicatedでは、次のいずれかの条件を満たす必要があります:
+  - インスタンスの管理者である。
+  - プロジェクトでオーナーまたはメンテナーロールを持っていること。
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ## サービスアカウントの表示と管理 {#view-and-manage-service-accounts}
 
@@ -49,7 +102,7 @@ description: 自動化されたプロセスとサードパーティのインテ�
 
 {{< /history >}}
 
-サービスアカウントページには、トップレベルグループまたはインスタンスのサービスアカウントに関する情報が表示されます。各トップレベルグループとGitLab Self-Managedインスタンスには、個別のサービスアカウントページがあります。これらのページから、次のことができます:
+サービスアカウントページには、グループ、プロジェクト、またはインスタンス内のサービスアカウントに関する情報が表示されます。各グループ、プロジェクト、およびSelf-Managedインスタンスには、個別のサービスアカウントページがあります。これらのページから、次のことができます。
 
 - グループまたはインスタンスのすべてのサービスアカウントを表示する。
 - サービスアカウントを削除する
@@ -58,20 +111,29 @@ description: 自動化されたプロセスとサードパーティのインテ�
 
 {{< tabs >}}
 
-{{< tab title="インスタンス全体のサービスアカウント" >}}
+{{< tab title="インスタンスサービスアカウント" >}}
 
 インスタンス全体のサービスアカウントを表示するには:
 
-1. 左側のサイドバーの下部で、**管理者**を選択します。
-1. **設定** > **サービスアカウント**を選択します。
+1. 右上隅で、**管理者**を選択します。
+1. 左サイドバーで、**設定** > **サービスアカウント**を選択します。
 
 {{< /tab >}}
 
 {{< tab title="グループのサービスアカウント" >}}
 
-トップレベルグループのサービスアカウントを表示するには:
+グループのサービスアカウントを表示するには:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、グループを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、グループを見つけます。
+1. **設定** > **サービスアカウント**を選択します。
+
+{{< /tab >}}
+
+{{< tab title="プロジェクトサービスアカウント" >}}
+
+プロジェクトのサービスアカウントを表示するには:
+
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **設定** > **サービスアカウント**を選択します。
 
 {{< /tab >}}
@@ -88,15 +150,17 @@ description: 自動化されたプロセスとサードパーティのインテ�
 
 {{< /history >}}
 
-GitLab.comでは、トップレベルグループのオーナーのみがサービスアカウントを作成できます。
+GitLab.comでは、トップレベルグループのOwnersのみがサービスアカウントを作成できます。
 
-デフォルトでは、GitLab DedicatedとGitLab Dedicatedで、管理者のみがサービスアカウントを作成できます。ただし、トップレベルグループのオーナーがグループサービスアカウントを作成できるように、[インスタンスを設定](../../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts)できます。
+デフォルトでは、GitLab Self-ManagedおよびGitLab Dedicatedでは、管理者の管理者のみがどちらのタイプのサービスアカウントも作成できます。ただし、[インスタンスを設定](../../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts)して、トップレベルグループのOwnersがグループサービスアカウントを作成できるようにすることができます。
 
-作成できるサービスアカウントの数は、ライセンスによって制限されます:
+作成できるサービスアカウントの数は、サブスクリプションとオファリングによって異なります:
 
-- GitLab Freeでは、サービスアカウントを作成できません。
-- GitLab Premiumでは、有料シートごとに1つのサービスアカウントを作成できます。
-- GitLab Ultimateでは、無制限の数のサービスアカウントを作成できます。
+- PremiumとUltimateでは、すべてのオファリングで無制限のサービスアカウントを作成できます。
+- GitLab Freeでは、オファリングによって制限が異なります:
+  - GitLab.comでは、トップレベルグループごとに最大100のサービスアカウントを作成できます。これには、サブグループまたはプロジェクトで作成されたサービスアカウントが含まれます。
+  - GitLab Self-Managed Enterprise Edition (EE)では、インスタンス全体で最大100のサービスアカウントを作成できます。
+  - GitLab Self-Managed GitLab CEでは、サービスアカウントを作成できません。
 
 サービスアカウントを作成するには:
 
@@ -107,7 +171,16 @@ GitLab.comでは、トップレベルグループのオーナーのみがサー�
 
 ### サービスアカウントを編集する {#edit-a-service-account}
 
+{{< history >}}
+
+- GitLab 18.9で、複合IDを持つサービスアカウントのユーザー名制限が[追加](https://gitlab.com/gitlab-org/gitlab/-/work_items/581050)されました。
+
+{{< /history >}}
+
 サービスアカウントの名前またはユーザー名を編集できます。
+
+> [!note]
+> [複合ID](../duo_agent_platform/composite_identity.md)に関連付けられたサービスアカウントのユーザー名を更新することはできません。
 
 サービスアカウントを編集するには:
 
@@ -117,29 +190,64 @@ GitLab.comでは、トップレベルグループのオーナーのみがサー�
 1. サービスアカウントの名前またはユーザー名を編集します。
 1. **変更を保存**を選択します。
 
-### グループとプロジェクトへのサービスアカウントアクセス {#service-account-access-to-groups-and-projects}
+### グループまたはプロジェクトにサービスアカウントを追加する {#add-a-service-account-to-a-group-or-project}
 
-サービスアカウントは[外部ユーザー](../../administration/external_users.md)に似ています。最初に作成されたときは、グループとプロジェクトへのアクセスが制限されています。リソースにサービスアカウントアクセスを付与するには、各グループまたはプロジェクトにサービスアカウントを追加する必要があります。
+サービスアカウントは、グループまたはプロジェクトのメンバーとして追加するまでアクセスが制限されます。任意の数のサービスアカウントをグループまたはプロジェクトに追加でき、各サービスアカウントは、各グループ、サブグループ、またはプロジェクトで異なるロールを持つことができます。
 
-グループまたはプロジェクトに追加できるサービスアカウントの数に制限はありません。サービスアカウントは、メンバーになっている各グループ、サブグループ、またはプロジェクトでさまざまなロールを持つことができます。GitLab.comでは、グループのサービスアカウントは、1つのトップレベルグループのみに属することができます。
+サービスアカウントのアクセスは、サービスアカウントのタイプによって異なります:
 
-人間のユーザーのアクセスを管理するのと同じ方法で、グループとプロジェクトへのサービスアカウントアクセスを管理できます。詳細については、[グループ](../group/_index.md#add-users-to-a-group)と[プロジェクトのメンバー](../project/members/_index.md#add-users-to-a-project)を参照してください。
+- インスタンスサービスアカウント: インスタンス上の任意のグループまたはプロジェクトに招待できます。
+- グループサービスアカウント: 作成されたグループ、またはその子孫のサブグループやプロジェクトに招待できます。
+- プロジェクトサービスアカウント: 作成されたプロジェクトのみに招待できます。
 
-[メンバーAPI](../../api/members.md)を使用して、グループとプロジェクトの割り当てを管理することもできます。[グローバルSAMLグループメンバーシップロック](../group/saml_sso/group_sync.md#global-saml-group-memberships-lock)または[グローバルLDAPグループメンバーシップロック](../../administration/auth/ldap/ldap_synchronization.md#global-ldap-group-memberships-lock)が有効になっている場合は、このAPIを使用する必要があります。
+グループが[別のグループと共有](../project/members/sharing_projects_groups.md#invite-a-group-to-a-group)されると、サービスアカウントを含むそのグループのすべてのメンバーが共有グループにアクセスできます。
+
+サービスアカウントをグループとプロジェクトに割り当てるには、次の方法を使用します:
+
+- GitLab UI:
+  - [ユーザーをグループに追加](../group/_index.md#add-users-to-a-group)。
+  - [ユーザーをプロジェクトに追加](../project/members/_index.md#add-users-to-a-project)。
+- API:
+  - [グループメンバーAPI](../../api/group_members.md)。
+  - [プロジェクトメンバーAPI](../../api/project_members.md)。
+
+> [!note]
+> [グローバルSAMLグループメンバーシップロック](../group/saml_sso/group_sync.md#global-saml-group-memberships-lock)または[グローバルLDAPグループメンバーシップロック](../../administration/auth/ldap/ldap_synchronization.md#global-ldap-group-memberships-lock)の設定が有効になっている場合、サービスアカウントのメンバーシップを制御するにはAPIを使用する必要があります。
+
+## サービスアカウントでプロジェクトをフォークする {#fork-projects-with-a-service-account}
+
+サービスアカウントは、[プロジェクトフォークAPI](../../api/project_forks.md)を通じてプロジェクトをフォークすることができますが、個人のネームスペースにフォークすることはできません。サービスアカウントでフォークする場合、ターゲットグループのネームスペースを指定する必要があります。
+
+前提条件: 
+
+- サービスアカウントにはデベロッパーロールがあり、ターゲットグループのメンバーです。
+- サービスアカウントのパーソナルアクセストークンに対して`api`スコープがオンになっています。
+
+サービスアカウントを使用してプロジェクトをフォークするには:
+
+1. フォークが作成されるターゲットグループを特定します。
+1. サービスアカウントが適切な権限を持つそのグループのメンバーであることを確認します。
+1. `namespace_id`または`namespace_path`のいずれかを使用して、[プロジェクトフォークAPI](../../api/project_forks.md)を使用します:
+
+   ```shell
+    curl --request POST --header "PRIVATE-TOKEN: <service_account_token>" \
+      --data "namespace_path=target-group" \
+      "https://gitlab.example.com/api/v4/projects/<project_id>/fork"
+   ```
 
 ### サービスアカウントを削除する {#delete-a-service-account}
 
-サービスアカウントを削除した場合、アカウントによって行われたコントリビュートが保持され、所有権がシステム全体のGhostユーザーアカウントに移転します。これらのコントリビュートには、マージリクエスト、イシュー、プロジェクト、グループなどのアクティビティーが含まれます。
+サービスアカウントを削除すると、そのアカウントによる貢献は保持され、所有権はゴーストユーザーに転送されます。これらのコントリビュートには、マージリクエスト、イシュー、プロジェクト、グループなどのアクティビティが含まれます。
 
 サービスアカウントを削除するには:
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
-1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アカウントを削除**を選択します。
+1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アカウントの削除**を選択します。
 1. サービスアカウントの名前を入力します。
 1. **ユーザーを削除**を選択します。
 
-サービスアカウントと、アカウントによって行われたコントリビュートを削除することもできます。これらのコントリビュートには、マージリクエスト、イシュー、グループ、プロジェクトなどのアクティビティーが含まれます。
+サービスアカウントと、アカウントによって行われたコントリビュートを削除することもできます。これらのコントリビュートには、マージリクエスト、イシュー、グループ、プロジェクトなどのアクティビティが含まれます。
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
@@ -149,12 +257,12 @@ GitLab.comでは、トップレベルグループのオーナーのみがサー�
 
 APIを通じてサービスアカウントを削除することもできます。
 
-- インスタンスのサービスアカウントの場合は、[users API](../../api/users.md#delete-a-user)を使用します。
-- グループのサービスアカウントの場合は、[サービスアカウントAPI](../../api/service_accounts.md#delete-a-group-service-account)を使用します。
+- インスタンスサービスアカウントの場合は、[ユーザーAPI](../../api/users.md#delete-a-user)を使用します。
+- グループサービスアカウントの場合は、[サービスアカウントAPI](../../api/service_accounts.md#delete-a-group-service-account)を使用します。
 
 ## サービスアカウントのパーソナルアクセストークンの表示と管理 {#view-and-manage-personal-access-tokens-for-a-service-account}
 
-パーソナルアクセストークンページには、トップレベルグループまたはインスタンスのサービスアカウントに関連付けられたパーソナルアクセストークンに関する情報が表示されます。これらのページから、次のことができます:
+パーソナルアクセストークンページには、トップレベルグループまたはインスタンスのサービスアカウントに関連付けられたパーソナルアクセストークンに関する情報が表示されます。これらのページから、次のことができます。
 
 - パーソナルアクセストークンをフィルタリングしたり、ソートしたり、その詳細を表示したりする。
 - パーソナルアクセストークンをローテーションする。
@@ -162,14 +270,14 @@ APIを通じてサービスアカウントを削除することもできます�
 
 APIを通じてサービスアカウントのパーソナルアクセストークンを管理することもできます。
 
-- インスタンスのサービスアカウントの場合は、[パーソナルアクセストークンAPI](../../api/personal_access_tokens.md)を使用します。
-- グループのサービスアカウントの場合は、[サービスアカウントAPI](../../api/service_accounts.md)を使用します。
+- インスタンスサービスアカウントの場合は、[パーソナルアクセストークンAPI](../../api/personal_access_tokens.md)を使用します。
+- グループサービスアカウントの場合は、[サービスアカウントAPI](../../api/service_accounts.md)を使用します。
 
 サービスアカウントのパーソナルアクセストークンページを表示するには:
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
-1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンの管理**を選択します。
+1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンを管理**を選択します。
 
 ### サービスアカウントのパーソナルアクセストークンを作成する {#create-a-personal-access-token-for-a-service-account}
 
@@ -179,7 +287,7 @@ APIを通じてサービスアカウントのパーソナルアクセストー�
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
-1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンの管理**を選択します。
+1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンを管理**を選択します。
 1. **新しいトークンを追加**を選択します。
 1. **トークン名**に、トークンの名前を入力します。
 1. オプション。**トークンの説明**に、トークンの説明を入力します。
@@ -188,24 +296,21 @@ APIを通じてサービスアカウントのパーソナルアクセストー�
    - 有効期限を入力しない場合、有効期限は現在の日付より365日後に自動的に設定されます。
    - デフォルトでは、この日付は現在の日付より最大365日後に設定できます。GitLab 17.6以降では、[この制限を400日に延長](https://gitlab.com/gitlab-org/gitlab/-/issues/461901)できます。
 1. [必要なスコープ](personal_access_tokens.md#personal-access-token-scopes)を選択します。
-1. **Create personal access token**（パーソナルアクセストークンを作成）を選択します。
+1. **パーソナルアクセストークンを作成**を選択します。
 
 ### パーソナルアクセストークンをローテーションする {#rotate-a-personal-access-token}
 
 パーソナルアクセストークンをローテーションして、現在のトークンを無効にし、新しい値を生成できます。
 
-{{< alert type="warning" >}}
-
-これは元に戻せません。ローテーションされたトークンに依存するサービスは動作を停止します。
-
-{{< /alert >}}
+> [!warning]
+> これは元に戻せません。回転されたトークンに依存するサービスは動作を停止します。
 
 サービスアカウントのパーソナルアクセストークンをローテーションするには:
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
-1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンの管理**を選択します。
-1. アクティブなトークンの横にある縦方向の省略記号（{{< icon name="ellipsis_v" >}}）を選択します。
+1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンを管理**を選択します。
+1. アクティブなトークンの横にある縦方向の省略記号 ({{< icon name="ellipsis_v" >}}) を選択します。
 1. **ローテーション**を選択します。
 1. 確認ダイアログで、**ローテーション**を選択します。
 
@@ -213,33 +318,30 @@ APIを通じてサービスアカウントのパーソナルアクセストー�
 
 パーソナルアクセストークンをローテーションして、現在のトークンを無効にすることができます。
 
-{{< alert type="warning" >}}
-
-これは元に戻せません。取り消されたトークンに依存するサービスは動作を停止します。
-
-{{< /alert >}}
+> [!warning]
+> これは元に戻せません。失効されたトークンに依存するサービスは動作を停止します。
 
 サービスアカウントのパーソナルアクセストークンを取り消すには:
 
 1. [サービスアカウント](#view-and-manage-service-accounts)ページに移動します。
 1. サービスアカウントを特定します。
-1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンの管理**を選択します。
-1. アクティブなトークンの横にある縦方向の省略記号（{{< icon name="ellipsis_v" >}}）を選択します。
+1. 縦方向の省略記号（{{< icon name="ellipsis_v" >}}） > **アクセストークンを管理**を選択します。
+1. アクティブなトークンの横にある縦方向の省略記号 ({{< icon name="ellipsis_v" >}}) を選択します。
 1. **取り消し**を選択します。
 1. 確認ダイアログで、**取り消し**を選択します。
 
 ## レート制限 {#rate-limits}
 
-[レート制限](../../security/rate_limits.md)がサービスアカウントに適用されます:
+[レート制限](../../security/rate_limits.md)がサービスアカウントに適用されます。
 
 - GitLab.comでは、[GitLab.com固有のレート制限](../gitlab_com/_index.md#rate-limits-on-gitlabcom)が適用されます。
-- GitLab Self-ManagedとGitLab Dedicatedでは、次のレート制限が適用されます:
-  - [設定可能なレート制限](../../security/rate_limits.md#configurable-limits)。
-  - [設定不可のレート制限](../../security/rate_limits.md#non-configurable-limits)。
+- GitLab Self-ManagedとGitLab Dedicatedでは、次のレート制限が適用されます。
+  - [設定可能なレート制限](../../security/rate_limits.md#configurable-limits)
+  - [設定不可能なレート制限](../../security/rate_limits.md#non-configurable-limits)
 
 ## 関連トピック {#related-topics}
 
-- [請求対象ユーザー](../../subscriptions/manage_users_and_seats.md#billable-users)
+- [請求対象ユーザー](../../subscriptions/manage_seats.md#billable-users)
 - [関連レコード](account/delete_account.md#associated-records)
 - [プロジェクトアクセストークン - ボットユーザー](../project/settings/project_access_tokens.md#bot-users-for-projects)
 - [グループアクセストークン - ボットユーザー](../group/settings/group_access_tokens.md#bot-users-for-groups)

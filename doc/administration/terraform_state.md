@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Terraform state administration
 description: Administer Terraform state storage.
 ---
@@ -23,7 +23,7 @@ The storage location of these files defaults to:
 
 These locations can be configured using the options described below.
 
-Use [external object storage](https://docs.gitlab.com/charts/advanced/external-object-storage/#lfs-artifacts-uploads-packages-external-diffs-terraform-state-dependency-proxy) configuration for [GitLab Helm chart](https://docs.gitlab.com/charts/) installations.
+Use [external object storage](https://docs.gitlab.com/charts/advanced/external-object-storage/#lfs-artifacts-uploads-packages-external-diffs-terraform-state-dependency-proxy-secure-files) configuration for [GitLab Helm chart](https://docs.gitlab.com/charts/) installations.
 
 ## Disabling Terraform state
 
@@ -32,7 +32,7 @@ or because your instance doesn't use Terraform.
 
 When Terraform state administration is disabled:
 
-- On the left sidebar, you cannot select **Operate** > **Terraform states**.
+- In the left sidebar, you cannot select **Operate** > **Terraform states**.
 - Any CI/CD jobs that access the Terraform state fail with this error:
 
   ```shell
@@ -105,7 +105,7 @@ For self-compiled installations:
 {{< /details >}}
 
 Instead of storing Terraform state files on disk, we recommend the use of
-[one of the supported object storage options](object_storage.md#supported-object-storage-providers).
+[one of the supported object storage options](object_storage.md#object-storage-provider-support).
 This configuration relies on valid credentials to be configured already.
 
 [Read more about using object storage with GitLab](object_storage.md).
@@ -145,7 +145,7 @@ To migrate Terraform state files to object storage:
   ```
 
 You can optionally track progress and verify that all Terraform state files migrated successfully using the
-[PostgreSQL console](https://docs.gitlab.com/omnibus/settings/database/#connecting-to-the-bundled-postgresql-database):
+[PostgreSQL console](https://docs.gitlab.com/omnibus/settings/database/#connecting-to-the-postgresql-database):
 
 - `sudo gitlab-rails dbconsole --database main` for Linux package installations.
 - `sudo -u git -H psql -d gitlabhq_production` for self-compiled installations.

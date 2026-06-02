@@ -43,6 +43,7 @@ describe('WorkItemCrmContacts component', () => {
     updateWorkItemMutationHandler = successUpdateWorkItemMutationHandler,
     workItemIid = '1',
     items = [],
+    provide = {},
   } = {}) => {
     const workItemQueryResponse = workItemByIidResponseFactory({
       canUpdate: true,
@@ -62,6 +63,7 @@ describe('WorkItemCrmContacts component', () => {
         fullPath: 'test-project-path',
         workItemType: 'Task',
       },
+      provide,
     });
   };
 
@@ -79,17 +81,6 @@ describe('WorkItemCrmContacts component', () => {
     await waitForPromises();
 
     findWorkItemSidebarDropdownWidget().vm.$emit('updateValue', items);
-  };
-
-  const getMutationInput = (contactIds) => {
-    return {
-      input: {
-        id: workItemId,
-        crmContactsWidget: {
-          contactIds,
-        },
-      },
-    };
   };
 
   it('renders the work item sidebar dropdown widget with default props', async () => {
@@ -194,7 +185,15 @@ describe('WorkItemCrmContacts component', () => {
     updateItems([item1Id]);
     await waitForPromises();
 
-    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith(getMutationInput([item1Id]));
+    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: workItemId,
+        crmContactsWidget: {
+          contactIds: [item1Id],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
   });
 
   it('clears all items when updateValue has no items', async () => {
@@ -202,7 +201,15 @@ describe('WorkItemCrmContacts component', () => {
     findWorkItemSidebarDropdownWidget().vm.$emit('updateValue', []);
     await waitForPromises();
 
-    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith(getMutationInput([]));
+    expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+      input: {
+        id: workItemId,
+        crmContactsWidget: {
+          contactIds: [],
+        },
+      },
+      useWorkItemFeatures: false,
+    });
   });
 
   it('only returns active contacts or selected items when searching', async () => {
@@ -300,6 +307,7 @@ describe('WorkItemCrmContacts component', () => {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_contact',
         property: 'type_Task',
+        extra: { viewContext: 'full_screen' },
       });
     });
   });
@@ -322,4 +330,25 @@ describe('WorkItemCrmContacts component', () => {
       expect(wrapper.emitted('error')).toEqual([[expectedErrorMessage]]);
     },
   );
+
+  describe('when workItemFeaturesField feature flag is enabled', () => {
+    it('passes useWorkItemFeatures as true to the mutation', async () => {
+      createComponent({
+        provide: { glFeatures: { workItemFeaturesField: true } },
+      });
+      showDropdown();
+      updateItems([item1Id]);
+      await waitForPromises();
+
+      expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+        input: {
+          id: workItemId,
+          crmContactsWidget: {
+            contactIds: [item1Id],
+          },
+        },
+        useWorkItemFeatures: true,
+      });
+    });
+  });
 });

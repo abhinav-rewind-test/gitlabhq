@@ -6,6 +6,14 @@ module MergeRequests
 
     attr_reader :push
 
+    # Staggered delays for auto-merge worker enqueue.
+    # Each MR gets a delay of index * INTERVAL seconds, spaced 3 seconds apart
+    # (0s, 3s, 6s, ..., 57s) to avoid workers from the same or overlapping push
+    # events landing at the same time. Capped at 20 MRs per push event; remaining
+    # MRs are picked up in subsequent rounds as merges trigger new pushes.
+    AUTO_MERGE_DELAY_INTERVAL = 3
+    AUTO_MERGE_BATCH_LIMIT = 20
+
     def execute(oldrev, newrev, ref)
       @push = Gitlab::Git::Push.new(@project, oldrev, newrev, ref)
       return true unless @push.branch_push?
@@ -156,31 +164,49 @@ module MergeRequests
         .preload_merge_data(@project)
 
       merge_requests_array = merge_requests.to_a + merge_requests_from_forks.to_a
-      filter_merge_requests(merge_requests_array).each do |merge_request|
-        skip_merge_status_trigger = true
+      filtered_merge_requests = filter_merge_requests(merge_requests_array)
 
-        if branch_and_project_match?(merge_request) || @push.force_push?
-          merge_request.reload_diff(current_user)
-          schedule_duo_code_review(merge_request)
-          # Clear existing merge error if the push were directed at the
-          # source branch. Clearing the error when the target branch
-          # changes will hide the error from the user.
-          merge_request.merge_error = nil
-
-          # Don't skip trigger since we to update the MR's merge status in real-time
-          # when the push if for the MR's source branch and project.
-          skip_merge_status_trigger = false
-        elsif merge_request.merge_request_diff.includes_any_commits?(push_commit_ids)
-          merge_request.reload_diff(current_user)
-        end
-
-        merge_request.skip_merge_status_trigger = skip_merge_status_trigger
-        merge_request.mark_as_unchecked
-      end
+      recheck_merge_requests_batched(filtered_merge_requests)
 
       # Upcoming method calls need the refreshed version of
       # @source_merge_requests diffs (for MergeRequest#commit_shas for instance).
       merge_requests_for_source_branch(reload: true)
+    end
+
+    def recheck_merge_requests_batched(filtered_merge_requests)
+      source_branch_or_force_pushed_mrs = []
+      all_mr_ids = []
+
+      filtered_merge_requests.each do |merge_request|
+        all_mr_ids << merge_request.id
+
+        if branch_and_project_match?(merge_request) || @push.force_push?
+          merge_request.reload_diff(current_user)
+          schedule_duo_code_review(merge_request)
+          source_branch_or_force_pushed_mrs << merge_request
+        elsif merge_request.merge_request_diff.includes_any_commits?(push_commit_ids)
+          merge_request.reload_diff(current_user)
+        end
+      end
+
+      MergeRequest.batch_mark_as_unchecked(all_mr_ids, mrs_to_trigger: source_branch_or_force_pushed_mrs)
+
+      # Clear existing merge error if the push were directed at the
+      # source branch. Clearing the error when the target branch
+      # changes will hide the error from the user.
+      MergeRequest.batch_clear_merge_error(source_branch_or_force_pushed_mrs.map(&:id))
+
+      enqueue_auto_merge_for_unchecked(filtered_merge_requests)
+    end
+
+    def enqueue_auto_merge_for_unchecked(merge_requests)
+      auto_merge_mrs = merge_requests.select(&:auto_merge_enabled?)
+      return if auto_merge_mrs.empty?
+
+      auto_merge_mrs.first(AUTO_MERGE_BATCH_LIMIT).each_with_index do |mr, index|
+        delay = index * AUTO_MERGE_DELAY_INTERVAL
+        AutoMergeProcessWorker.perform_in(delay.seconds, { 'merge_request_id' => mr.id })
+      end
     end
 
     def push_commit_ids
@@ -251,8 +277,7 @@ module MergeRequests
           # Since any number of commits could have been made to the restored branch,
           # find the common root to see what has been added.
           common_ref = @project.repository.merge_base(merge_request.diff_head_sha, @push.newrev)
-          # If the a commit no longer exists in this repo, gitlab_git throws
-          # a Rugged::OdbError. This is fixed in https://gitlab.com/gitlab-org/gitlab_git/merge_requests/52
+          # If a commit no longer exists in this repo, the call may raise an error.
           @commits = @project.repository.commits_between(common_ref, @push.newrev) if common_ref
         rescue StandardError
         end
@@ -290,22 +315,17 @@ module MergeRequests
         existing_commits, @push.oldrev
       )
 
-      if Feature.enabled?(:split_refresh_worker_notify_about_push, @current_user)
-        new_commits_data, total_new = prepare_commits_for_notification(new_commits)
-        existing_commits_data, total_existing = prepare_commits_for_notification(existing_commits, first_and_last_only: true)
+      new_commits_data, total_new = prepare_commits_for_notification(new_commits)
+      existing_commits_data, total_existing = prepare_commits_for_notification(existing_commits, first_and_last_only: true)
 
-        MergeRequests::Refresh::NotifyAboutPushWorker.perform_async(
-          merge_request.id,
-          @current_user.id,
-          new_commits_data,
-          total_new,
-          existing_commits_data,
-          total_existing
-        )
-      else
-        notification_service.push_to_merge_request(
-          merge_request, @current_user, new_commits: new_commits, existing_commits: existing_commits)
-      end
+      MergeRequests::Refresh::NotifyAboutPushWorker.perform_async(
+        merge_request.id,
+        @current_user.id,
+        new_commits_data,
+        total_new,
+        existing_commits_data,
+        total_existing
+      )
     end
 
     def mark_mr_as_draft_from_commits(merge_request)
@@ -326,11 +346,6 @@ module MergeRequests
           draft_commit
         )
       end
-    end
-
-    # Call merge request webhook with update branches
-    def execute_mr_web_hooks(merge_request)
-      execute_hooks(merge_request, 'update', old_rev: @push.oldrev)
     end
 
     # If the merge requests closes any issues, save this information in the

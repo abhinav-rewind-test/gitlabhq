@@ -125,6 +125,7 @@ class Note < ApplicationRecord
   # Scopes
   scope :for_commit_id, ->(commit_id) { where(noteable_type: "Commit", commit_id: commit_id) }
   scope :system, -> { where(system: true) }
+  scope :with_possible_mentions, -> { where('note LIKE ?', "%#{User.reference_prefix}%") } # rubocop:disable GitlabSecurity/SqlInjection,Database/PreventWildcardInjection -- User.reference_prefix is a hardcoded constant ("@"), not user input, so wildcard injection is not possible
   scope :user, -> { where(system: false) }
   scope :not_internal, -> { where(internal: false) }
   scope :common, -> { where(noteable_type: ["", nil]) }
@@ -208,6 +209,9 @@ class Note < ApplicationRecord
   before_create :set_internal_flag
   after_save :keep_around_commit, if: :for_project_noteable?, unless: -> { importing? || skip_keep_around_commits }
   after_save :touch_noteable, if: :touch_noteable?
+  after_commit :enqueue_keep_around_commit, on: [:create, :update], if: :for_project_noteable?, unless: -> {
+    importing? || skip_keep_around_commits
+  }
   after_commit :notify_after_create, on: :create
   after_commit :notify_after_destroy, on: :destroy
 
@@ -240,7 +244,8 @@ class Note < ApplicationRecord
       id: self.id,
       model_name: self.class.name,
       discussion_id: self.discussion_id,
-      last_discussion_note: discussion.notes == [self]
+      last_discussion_note: discussion.notes == [self],
+      noteable: noteable
     }
 
     GraphqlTriggers.work_item_note_deleted(noteable.to_work_item_global_id, deleted_note_data)
@@ -262,6 +267,13 @@ class Note < ApplicationRecord
 
     def parent_object_field
       :noteable
+    end
+
+    def supported_keyset_orderings
+      {
+        created_at: [:asc, :desc],
+        updated_at: [:asc, :desc]
+      }
     end
 
     # Group diff discussions by line code or file path.
@@ -435,9 +447,17 @@ class Note < ApplicationRecord
     return commit if for_commit?
 
     super
-  rescue StandardError
+  rescue StandardError => e
     # Temp fix to prevent app crash
     # if note commit id doesn't exist
+    Gitlab::ErrorTracking.track_exception(
+      e,
+      note_id: id,
+      noteable_type: noteable_type,
+      noteable_id: noteable_id,
+      commit_id: commit_id,
+      discussion_id: discussion_id
+    )
     nil
   end
 
@@ -664,6 +684,7 @@ class Note < ApplicationRecord
   def show_outdated_changes?
     return false unless for_merge_request?
     return false unless system?
+    return false unless change_position.is_a?(Gitlab::Diff::Position)
     return false if change_position&.on_file?
     return false unless change_position&.line_range
 
@@ -781,8 +802,26 @@ class Note < ApplicationRecord
   end
 
   def keep_around_commit
+    return if async_keep_around_refs?
+
     project.repository.keep_around(self.commit_id, source: "#{noteable_type}/#{self.class.name}")
   end
+
+  def enqueue_keep_around_commit
+    return unless commit_id.present?
+    return unless async_keep_around_refs?
+
+    MergeRequests::KeepAroundRefsWorker.perform_async(
+      [project.id],
+      [commit_id],
+      "#{noteable_type}/#{self.class.name}"
+    )
+  end
+
+  def async_keep_around_refs?
+    Feature.enabled?(:async_keep_around_refs_for_merge_request_diffs, project, type: :gitlab_com_derisk)
+  end
+  strong_memoize_attr :async_keep_around_refs?
 
   def ensure_organization_id
     return if organization_id.present? && !noteable_changed? && !project_changed?

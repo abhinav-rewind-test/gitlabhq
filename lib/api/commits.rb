@@ -38,9 +38,9 @@ module API
       def authorize_push_to_branch!(branch)
         authenticate!
 
-        unless user_access.can_push_to_branch?(branch)
-          forbidden!("You are not allowed to push into this branch")
-        end
+        return if user_access.can_push_to_branch?(branch)
+
+        forbidden!("You are not allowed to push into this branch")
       end
 
       def web_ide_request?
@@ -49,11 +49,13 @@ module API
         access_token.application&.id == WebIde::DefaultOauthApplication.oauth_application_id
       end
 
-      def track_web_ide_commit_events
+      def track_web_ide_commit_events(attrs)
         return unless web_ide_request?
 
         Gitlab::InternalEvents.track_event('create_commit_from_web_ide', user: current_user, project: user_project)
         Gitlab::InternalEvents.track_event('g_edit_by_web_ide', user: current_user, project: user_project)
+
+        track_ci_config_creation_from_web_ide(attrs)
 
         namespace = user_project.namespace
 
@@ -71,7 +73,29 @@ module API
         )
       end
 
+      def track_ci_config_creation_from_web_ide(attrs)
+        creates_ci_config = attrs[:actions].any? do |action|
+          action[:action].to_s == 'create' && action[:file_path].to_s == user_project.ci_config_path_or_default
+        end
+
+        return unless creates_ci_config
+
+        Gitlab::InternalEvents.track_event(
+          'create_ci_config_file_from_web_ide',
+          user: current_user,
+          project: user_project,
+          namespace: user_project.namespace
+        )
+      end
+
       def validate_commits_attrs!(attrs)
+        validate_string_param!(attrs, :branch)
+        validate_string_param!(attrs, :commit_message)
+        validate_string_param!(attrs, :start_branch)
+        validate_string_param!(attrs, :start_sha)
+        validate_string_param!(attrs, :author_email)
+        validate_string_param!(attrs, :author_name)
+
         bad_request!('branch is required') if attrs[:branch].blank?
         bad_request!('commit_message is required') if attrs[:commit_message].blank?
         validate_actions_allow_empty!(attrs)
@@ -82,6 +106,10 @@ module API
         end
 
         attrs[:actions].each_with_index do |action, index|
+          validate_string_param!(action, :file_path, prefix: "actions[#{index}]")
+          validate_string_param!(action, :previous_path, prefix: "actions[#{index}]")
+          validate_string_param!(action, :last_commit_id, prefix: "actions[#{index}]")
+
           bad_request!("actions[#{index}][action] is required") if action[:action].blank?
           bad_request!("actions[#{index}][file_path] is required") if action[:file_path].blank?
 
@@ -94,17 +122,19 @@ module API
       end
 
       def validate_actions_allow_empty!(attrs)
-        if !attrs.key?(:actions) || (attrs[:actions].is_a?(Array) && attrs[:actions].empty?)
-          if attrs.key?(:allow_empty) && [nil, true, false, "", "true", "false"].exclude?(attrs[:allow_empty])
-            bad_request!('allow_empty must be a boolean')
-          end
+        actions_missing = !attrs.key?(:actions)
+        actions_empty = attrs[:actions].is_a?(Array) && attrs[:actions].empty?
+        return unless actions_missing || actions_empty
 
-          attrs[:allow_empty] = ActiveModel::Type::Boolean.new.cast(attrs[:allow_empty]) == true
-
-          bad_request!('Provide at least one action, or set allow_empty to true') unless attrs[:allow_empty]
-
-          attrs[:actions] = []
+        if attrs.key?(:allow_empty) && [nil, true, false, "", "true", "false"].exclude?(attrs[:allow_empty])
+          bad_request!('allow_empty must be a boolean')
         end
+
+        attrs[:allow_empty] = ActiveModel::Type::Boolean.new.cast(attrs[:allow_empty]) == true
+
+        bad_request!('Provide at least one action, or set allow_empty to true') unless attrs[:allow_empty]
+
+        attrs[:actions] = []
       end
 
       def validate_commit_action!(action, index)
@@ -167,7 +197,8 @@ module API
       requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
     end
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS, urgency: :low do
-      desc 'Get a project repository commits' do
+      desc 'List all repository commits' do
+        detail 'Lists all commits for a specified project repository.'
         success code: 200, model: Entities::Commit
         tags %w[commits]
         is_array true
@@ -194,6 +225,9 @@ module API
           type: String,
           desc: 'The file path',
           documentation: { example: 'README.md' }
+        optional :follow,
+          type: Boolean,
+          desc: 'Follow file renames when filtering by path'
         optional :author,
           type: String,
           desc: 'Search commits by commit author',
@@ -235,7 +269,8 @@ module API
           first_parent: first_parent,
           order: order,
           author: author,
-          trailers: params[:trailers])
+          trailers: params[:trailers],
+          follow: params[:follow])
 
         serializer = with_stats ? Entities::CommitWithStats : Entities::Commit
 
@@ -263,12 +298,13 @@ module API
         tags %w[commits]
         hidden true
       end
-      route_setting :authorization, permissions: :authorize_commit, boundary_type: :project
+      route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
       post ':id/repository/commits/authorize' do
         workhorse_authorize_commits_body_upload!
       end
 
-      desc 'Create a new commit' do
+      desc 'Create a commit' do
+        detail 'Creates a commit in the specified project.'
         success code: 200, model: Entities::CommitDetail
         tags %w[commits]
         failure [
@@ -288,16 +324,19 @@ module API
 
         attrs = file_params_from_body_upload
 
+        # Validate branch type before using it in authorize_push_to_branch!
+        validate_string_param!(attrs, :branch)
+
         authorize_push_to_branch!(attrs[:branch])
 
         validate_commits_attrs!(attrs)
 
         if attrs[:start_project]
           start_project = find_project!(attrs[:start_project])
+          fork_error = "Project is not included in the fork network for #{start_project.full_name}"
 
-          unless can?(current_user, :read_code, start_project) && user_project.forked_from?(start_project)
-            forbidden!("Project is not included in the fork network for #{start_project.full_name}")
-          end
+          forbidden!(fork_error) unless can?(current_user, :read_code, start_project)
+          forbidden!(fork_error) unless start_project == user_project || user_project.forked_from?(start_project)
         end
 
         attrs[:branch_name] = attrs.delete(:branch)
@@ -311,7 +350,7 @@ module API
         if result[:status] == :success
           commit_detail = user_project.repository.commit(result[:result])
 
-          track_web_ide_commit_events
+          track_web_ide_commit_events(attrs)
 
           present commit_detail, with: Entities::CommitDetail, include_stats: attrs[:stats], current_user: current_user
         else
@@ -319,7 +358,8 @@ module API
         end
       end
 
-      desc 'Get a specific commit of a project' do
+      desc 'Retrieve a commit' do
+        detail 'Retrieves a specified commit identified by the commit hash or name of a branch or tag.'
         success code: 200, model: Entities::CommitDetail
         tags %w[commits]
         failure [
@@ -341,7 +381,8 @@ module API
         present commit, with: Entities::CommitDetail, include_stats: params[:stats], current_user: current_user
       end
 
-      desc 'Get the diff for a specific commit of a project' do
+      desc 'Retrieve a commit diff' do
+        detail 'Retrieves the diff of a commit in a project.'
         success code: 200, model: Entities::Diff
         tags %w[commits]
         is_array true
@@ -365,7 +406,8 @@ module API
         present paginate(raw_diffs), with: Entities::Diff, enable_unidiff: declared_params[:unidiff]
       end
 
-      desc "Get a commit's comments" do
+      desc 'List all commit comments' do
+        detail 'Lists all the comments of a commit in a project.'
         success code: 200, model: Entities::CommitNote
         tags %w[commits]
         is_array true
@@ -387,7 +429,8 @@ module API
         present paginate(notes), with: Entities::CommitNote
       end
 
-      desc 'Get the sequence count of a commit SHA' do
+      desc 'Retrieve a commit sequence' do
+        detail 'Retrieves the commit sequence for a specified commit.'
         success code: 200, model: Entities::CommitSequence
         tags %w[commits]
         failure [
@@ -403,14 +446,14 @@ module API
         commit = user_project.commit(params[:sha])
 
         not_found! 'Commit' unless commit
-        count = user_project.repository.count_commits(ref: params[:sha], first_parent: params[:first_parent])
+        count = user_project.repository.count_commits(revisions: params[:sha], first_parent: params[:first_parent])
         count_hash = { count: count }
 
         present count_hash, with: Entities::CommitSequence
       end
 
-      desc 'Cherry pick commit into a branch' do
-        detail 'This feature was introduced in GitLab 8.15'
+      desc 'Cherry-pick a commit' do
+        detail 'Cherry-picks a commit to a specified branch.'
         success code: 200, model: Entities::Commit
         tags %w[commits]
         failure [
@@ -468,8 +511,8 @@ module API
         end
       end
 
-      desc 'Revert a commit in a branch' do
-        detail 'This feature was introduced in GitLab 11.5'
+      desc 'Revert a commit' do
+        detail 'Reverts a commit in a specified branch.'
         success code: 200, model: Entities::Commit
         tags %w[commits]
         failure [
@@ -522,8 +565,9 @@ module API
         end
       end
 
-      desc 'Get all references a commit is pushed to' do
-        detail 'This feature was introduced in GitLab 10.6'
+      desc 'List all references a commit is pushed to' do
+        detail 'Lists all references (from branches or tags) a commit is pushed to. The pagination parameters `page` ' \
+          'and `per_page` can be used to restrict the list of references.'
         success code: 200, model: Entities::BasicRef
         tags %w[commits]
         is_array true
@@ -569,8 +613,10 @@ module API
         present paginate(refs, without_count: true), with: Entities::BasicRef
       end
 
-      desc 'Post comment to commit' do
-        success  code: 200, model: Entities::CommitNote
+      desc 'Create a comment on a commit' do
+        detail 'Creates a comment on a commit. To comment on a specific line in a file, specify the full ' \
+          'commit SHA, `path`, `line`, and set `line_type` to `new`.'
+        success code: 200, model: Entities::CommitNote
         tags %w[commits]
         failure [
           { code: 400, message: 'Bad request' },
@@ -631,7 +677,8 @@ module API
         end
       end
 
-      desc 'Get Merge Requests associated with a commit' do
+      desc 'List all merge requests for a commit' do
+        detail 'Lists all merge requests associated with a specified commit.'
         success code: 200, model: Entities::MergeRequestBasic
         tags %w[commits]
         is_array true
@@ -640,14 +687,19 @@ module API
         ]
       end
       params do
-        requires :sha, type: String, desc: 'A commit sha, or the name of a branch or tag on which to find Merge Requests'
+        requires :sha, type: String,
+          desc: 'A commit sha, or the name of a branch or tag on which to find Merge Requests'
         optional :state, type: String, desc: 'Filter merge-requests by state', documentation: { example: 'merged' }
         use :pagination
       end
       route_setting :authentication, job_token_allowed: true
-      route_setting :authorization, permissions: :read_commit_merge_request, boundary_type: :project, job_token_policies: :read_repositories,
+      route_setting :authorization,
+        permissions: :read_commit_merge_request,
+        boundary_type: :project,
+        job_token_policies: :read_repositories,
         allow_public_access_for_enabled_project_features: [:repository, :merge_requests]
-      get ':id/repository/commits/:sha/merge_requests', requirements: API::COMMIT_ENDPOINT_REQUIREMENTS, urgency: :low do
+      get ':id/repository/commits/:sha/merge_requests', requirements: API::COMMIT_ENDPOINT_REQUIREMENTS,
+        urgency: :low do
         authorize! :read_merge_request, user_project
 
         commit = user_project.commit(params[:sha])
@@ -663,7 +715,9 @@ module API
         present paginate(commit_merge_requests), with: Entities::MergeRequestBasic
       end
 
-      desc "Get a commit's signature" do
+      desc 'Retrieve a commit signature' do
+        detail 'Retrieves the signature from a commit, if it is signed. For unsigned commits, it results in a 404 ' \
+          'response.'
         success code: 200, model: Entities::CommitSignature
         tags %w[commits]
         failure [

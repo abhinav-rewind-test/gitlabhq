@@ -1,4 +1,4 @@
-import { GlBadge } from '@gitlab/ui';
+import { GlBadge, GlBreadcrumb } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import SuperTopbar from '~/super_sidebar/components/super_topbar.vue';
 import SuperSidebarToggle from '~/super_sidebar/components/super_sidebar_toggle.vue';
@@ -13,6 +13,7 @@ import waitForPromises from 'helpers/wait_for_promises';
 import { stubComponent } from 'helpers/stub_component';
 import { defaultOrganization as mockCurrentOrganization } from 'jest/organizations/mock_data';
 import { EVENT_OPEN_GLOBAL_SEARCH } from '~/vue_shared/global_search/constants';
+import { staticBreadcrumbs } from '~/lib/utils/breadcrumbs_state';
 import { sidebarData as mockSidebarData } from '../mock_data';
 
 describe('SuperTopbar', () => {
@@ -31,10 +32,15 @@ describe('SuperTopbar', () => {
   const findNextBadge = () => wrapper.findComponent(GlBadge);
   const findOrganizationSwitcher = () => wrapper.findComponent(OrganizationSwitcherStub);
   const findSearchButton = () => wrapper.findByTestId('super-topbar-search-button');
+  const findSmallSearchButton = () => wrapper.findByTestId('super-topbar-search-button-xs');
   const findSearchModal = () => wrapper.findComponent(SearchModal);
   const findUserCounts = () => wrapper.findComponent(UserCounts);
   const findUserMenu = () => wrapper.findComponent(UserMenu);
   const findPromoMenu = () => wrapper.findComponent(PromoMenu);
+  const findBreadcrumbComponent = () => wrapper.findComponent(GlBreadcrumb);
+  const findBreadcrumbSlot = () => wrapper.find('#js-super-topbar-breadcrumbs-slot');
+  const findAnalyticsDashboardsButton = () =>
+    wrapper.findByTestId('topbar-analytics-dashboards-button');
 
   const createComponent = (props = {}, provideOverrides = {}) => {
     wrapper = shallowMountExtended(SuperTopbar, {
@@ -85,27 +91,22 @@ describe('SuperTopbar', () => {
 
     describe('Organization switcher', () => {
       describe.each`
-        isFeatureFlagEnabled | isLoggedIn | currentOrganization        | hasMultipleOrganizations | expected
-        ${false}             | ${false}   | ${undefined}               | ${false}                 | ${false}
-        ${false}             | ${false}   | ${undefined}               | ${true}                  | ${false}
-        ${false}             | ${false}   | ${mockCurrentOrganization} | ${false}                 | ${false}
-        ${false}             | ${false}   | ${mockCurrentOrganization} | ${true}                  | ${false}
-        ${false}             | ${true}    | ${undefined}               | ${false}                 | ${false}
-        ${false}             | ${true}    | ${undefined}               | ${true}                  | ${false}
-        ${false}             | ${true}    | ${mockCurrentOrganization} | ${false}                 | ${false}
-        ${false}             | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${false}
-        ${true}              | ${false}   | ${undefined}               | ${false}                 | ${false}
-        ${true}              | ${false}   | ${undefined}               | ${true}                  | ${false}
-        ${true}              | ${false}   | ${mockCurrentOrganization} | ${false}                 | ${false}
-        ${true}              | ${false}   | ${mockCurrentOrganization} | ${true}                  | ${false}
-        ${true}              | ${true}    | ${undefined}               | ${false}                 | ${false}
-        ${true}              | ${true}    | ${undefined}               | ${true}                  | ${false}
-        ${true}              | ${true}    | ${mockCurrentOrganization} | ${false}                 | ${false}
-        ${true}              | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${true}
+        uiForOrganizations | organizationSwitching | isLoggedIn | currentOrganization        | hasMultipleOrganizations | expected
+        ${false}           | ${false}              | ${false}   | ${undefined}               | ${false}                 | ${false}
+        ${false}           | ${false}              | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${false}
+        ${false}           | ${true}               | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${false}
+        ${true}            | ${false}              | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${false}
+        ${true}            | ${true}               | ${false}   | ${undefined}               | ${false}                 | ${false}
+        ${true}            | ${true}               | ${false}   | ${mockCurrentOrganization} | ${true}                  | ${false}
+        ${true}            | ${true}               | ${true}    | ${undefined}               | ${false}                 | ${false}
+        ${true}            | ${true}               | ${true}    | ${undefined}               | ${true}                  | ${false}
+        ${true}            | ${true}               | ${true}    | ${mockCurrentOrganization} | ${false}                 | ${false}
+        ${true}            | ${true}               | ${true}    | ${mockCurrentOrganization} | ${true}                  | ${true}
       `(
-        'when `ui_for_organizations` feature flag is $isFeatureFlagEnabled, logged in state is $isLoggedIn, current organization $currentOrganization, and has_multiple_organizations is $hasMultipleOrganizations',
+        'when uiForOrganizations is $uiForOrganizations, organizationSwitching is $organizationSwitching, logged in state is $isLoggedIn, current organization $currentOrganization, and has_multiple_organizations is $hasMultipleOrganizations',
         ({
-          isFeatureFlagEnabled,
+          uiForOrganizations,
+          organizationSwitching,
           isLoggedIn,
           currentOrganization,
           hasMultipleOrganizations,
@@ -121,7 +122,7 @@ describe('SuperTopbar', () => {
                   has_multiple_organizations: hasMultipleOrganizations,
                 },
               },
-              { glFeatures: { uiForOrganizations: isFeatureFlagEnabled } },
+              { glFeatures: { uiForOrganizations, organizationSwitching } },
             );
             await waitForPromises();
           });
@@ -133,6 +134,41 @@ describe('SuperTopbar', () => {
       );
     });
 
+    describe('Breadcrumbs', () => {
+      const mockBreadcrumbItems = [{ text: 'Project', href: '/project' }];
+
+      beforeEach(() => {
+        staticBreadcrumbs.items = mockBreadcrumbItems;
+      });
+
+      afterEach(() => {
+        staticBreadcrumbs.items = [];
+        staticBreadcrumbs.hasInjectedBreadcrumbs = false;
+      });
+
+      it('does not render breadcrumbs when pageBreadcrumbsInTopBar feature flag is disabled', () => {
+        createComponent();
+
+        expect(findBreadcrumbComponent().exists()).toBe(false);
+        expect(findBreadcrumbSlot().exists()).toBe(false);
+      });
+
+      it('renders breadcrumbs when pageBreadcrumbsInTopBar feature flag is enabled', () => {
+        createComponent({}, { glFeatures: { pageBreadcrumbsInTopBar: true } });
+
+        expect(findBreadcrumbComponent().exists()).toBe(true);
+        expect(findBreadcrumbComponent().props('items')).toEqual(mockBreadcrumbItems);
+        expect(findBreadcrumbSlot().exists()).toBe(true);
+      });
+
+      it('hides static GlBreadcrumb when hasInjectedBreadcrumbs is true', () => {
+        createComponent({}, { glFeatures: { pageBreadcrumbsInTopBar: true } });
+        staticBreadcrumbs.hasInjectedBreadcrumbs = true;
+
+        expect(wrapper.find('nav.gl-breadcrumbs').exists()).toBe(false);
+      });
+    });
+
     describe('Search', () => {
       beforeEach(async () => {
         createComponent();
@@ -141,6 +177,18 @@ describe('SuperTopbar', () => {
 
       it('should render search button', () => {
         expect(findSearchButton().exists()).toBe(true);
+      });
+
+      it('should hide the full search button below sm breakpoint', () => {
+        expect(findSearchButton().classes()).toContain('!gl-hidden');
+        expect(findSearchButton().classes()).toContain('sm:!gl-flex');
+      });
+
+      it('should render a small search button for small screens', () => {
+        expect(findSmallSearchButton().exists()).toBe(true);
+        expect(findSmallSearchButton().classes()).toContain('sm:!gl-hidden');
+        expect(findSmallSearchButton().attributes('icon')).toBe('search');
+        expect(findSmallSearchButton().attributes('size')).toBe('small');
       });
 
       it('should render search modal', () => {
@@ -478,6 +526,65 @@ describe('SuperTopbar', () => {
         it('does not render', () => {
           createComponent();
           expect(findSignupButton().exists()).toBe(false);
+        });
+      });
+    });
+
+    describe('Analytics dashboards button', () => {
+      describe('when exploreAnalyticsDashboards feature is enabled', () => {
+        it('renders with correct href', () => {
+          createComponent(
+            {
+              sidebarData: {
+                ...mockSidebarData,
+                explore_analytics_dashboards_path: '/explore/analytics/dashboards',
+              },
+            },
+            { glFeatures: { exploreAnalyticsDashboards: true } },
+          );
+
+          expect(findAnalyticsDashboardsButton().exists()).toBe(true);
+          expect(findAnalyticsDashboardsButton().attributes('href')).toBe(
+            '/explore/analytics/dashboards',
+          );
+          expect(findAnalyticsDashboardsButton().attributes('icon')).toBe('chart');
+          expect(findAnalyticsDashboardsButton().attributes('size')).toBe('small');
+          expect(findAnalyticsDashboardsButton().attributes('aria-label')).toBe(
+            'View analytics dashboards',
+          );
+        });
+      });
+
+      describe('when exploreAnalyticsDashboards feature is disabled', () => {
+        it('does not render', () => {
+          createComponent(
+            {
+              sidebarData: {
+                ...mockSidebarData,
+                explore_analytics_dashboards_path: '/explore/analytics/dashboards',
+              },
+            },
+            { glFeatures: { exploreAnalyticsDashboards: false } },
+          );
+
+          expect(findAnalyticsDashboardsButton().exists()).toBe(false);
+        });
+      });
+
+      describe('when user is not logged in', () => {
+        it('does not render', () => {
+          createComponent(
+            {
+              sidebarData: {
+                ...mockSidebarData,
+                is_logged_in: false,
+                explore_analytics_dashboards_path: '/explore/analytics/dashboards',
+              },
+            },
+            { glFeatures: { exploreAnalyticsDashboards: true } },
+          );
+
+          expect(findAnalyticsDashboardsButton().exists()).toBe(false);
         });
       });
     });

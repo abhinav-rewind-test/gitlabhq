@@ -26,6 +26,128 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
     let(:invalid_items_for_bulk_insertion) { [] } # class does not have any validations defined
   end
 
+  # rubocop:disable Database/MultipleDatabases -- This is a test for a partitioned table, which doesn't have an ActiveRecord model
+  def load_partitioned_diff_commits(project_id, commits_metadata_id, diff_id)
+    ActiveRecord::Base.connection.execute(
+      <<~SQL
+        SELECT *
+        FROM merge_request_diff_commits_b5377a7a34
+        WHERE project_id = #{project_id}
+        AND merge_request_commits_metadata_id = #{commits_metadata_id}
+        AND merge_request_diff_id = #{diff_id}
+      SQL
+    )
+  end
+
+  def truncate_partitioned_table
+    ActiveRecord::Base.connection.execute('TRUNCATE merge_request_diff_commits_b5377a7a34')
+  end
+  # rubocop:enable Database/MultipleDatabases
+
+  describe 'data migration to partitioned table' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:mr_diff) { create(:merge_request_diff, project_id: project.id) }
+    let_it_be(:commits_metadata) { create(:merge_request_commits_metadata, project: project) }
+
+    let(:partitioned_diff_commits) { load_partitioned_diff_commits(project.id, commits_metadata.id, mr_diff.id) }
+
+    context 'when record is created' do
+      it 'creates a new record in the partitioned table' do
+        diff_commit = create(
+          :merge_request_diff_commit,
+          merge_request_diff: mr_diff,
+          merge_request_commits_metadata: commits_metadata,
+          project_id: project.id
+        )
+
+        partitioned_diff_commit = partitioned_diff_commits.first
+
+        expect(partitioned_diff_commit['project_id']).to eq(project.id)
+        expect(partitioned_diff_commit['merge_request_commits_metadata_id']).to eq(diff_commit.merge_request_commits_metadata_id)
+        expect(partitioned_diff_commit['merge_request_diff_id']).to eq(diff_commit.merge_request_diff_id)
+        expect(partitioned_diff_commit['relative_order']).to eq(diff_commit.relative_order)
+      end
+
+      context 'when new record has no project' do
+        it 'does not create a new record in the partitioned table' do
+          create(
+            :merge_request_diff_commit,
+            merge_request_diff: mr_diff,
+            merge_request_commits_metadata: commits_metadata,
+            project_id: nil
+          )
+
+          expect(partitioned_diff_commits.to_a).to be_empty
+        end
+      end
+
+      context 'when new record has no merge_request_commits_metadata_id' do
+        it 'does not create a new record in the partitioned table' do
+          create(
+            :diff_commit_without_metadata,
+            merge_request_diff: mr_diff
+          )
+
+          expect(partitioned_diff_commits.to_a).to be_empty
+        end
+      end
+    end
+
+    context 'when record is destroyed' do
+      it 'deletes the corresponding record in the partitioned table' do
+        diff_commit = create(
+          :merge_request_diff_commit,
+          merge_request_diff: mr_diff,
+          merge_request_commits_metadata: commits_metadata,
+          project_id: project.id
+        )
+
+        expect(mr_diff.merge_request_diff_commits.count).to eq(1)
+        expect(partitioned_diff_commits.to_a.size).to eq(1)
+
+        diff_commit.destroy!
+
+        partitioned_diff_commits = load_partitioned_diff_commits(project.id, commits_metadata.id, mr_diff.id)
+
+        expect(mr_diff.reload.merge_request_diff_commits.count).to eq(0)
+        expect(partitioned_diff_commits.to_a.size).to eq(0)
+      end
+
+      context 'when old record has no project' do
+        it 'does nothing (no record in partitioned table to delete)' do
+          diff_commit = create(
+            :merge_request_diff_commit,
+            merge_request_diff: mr_diff,
+            merge_request_commits_metadata: commits_metadata,
+            project_id: nil
+          )
+
+          expect(partitioned_diff_commits.to_a.size).to eq(0)
+
+          expect { diff_commit.destroy! }.not_to raise_error
+
+          expect(partitioned_diff_commits.to_a.size).to eq(0)
+        end
+      end
+
+      context 'when old record does not match any record in the partitioned table' do
+        it 'does nothing' do
+          diff_commit = create(
+            :merge_request_diff_commit,
+            merge_request_diff: mr_diff,
+            merge_request_commits_metadata: commits_metadata,
+            project_id: project.id
+          )
+
+          # Truncate partitioned table to ensure it's empty
+          truncate_partitioned_table
+
+          expect { diff_commit.destroy! }.not_to raise_error
+        end
+      end
+    end
+  end
+
   describe 'associations' do
     it { is_expected.to belong_to(:commit_author) }
     it { is_expected.to belong_to(:committer) }
@@ -34,14 +156,15 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
 
   describe 'scopes' do
     describe '.for_merge_request_diff' do
-      let_it_be(:merge_request2) { create(:merge_request) }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:merge_request2) { create(:merge_request, source_project: project, target_project: project) }
       let_it_be(:diff_1) { create(:merge_request_diff, merge_request: merge_request2) }
-      let_it_be(:commit_1) { create(:merge_request_diff_commit, merge_request_diff: diff_1, relative_order: 0) }
-      let_it_be(:commit_2) { create(:merge_request_diff_commit, merge_request_diff: diff_1, relative_order: 1) }
+      let_it_be(:commit_1) { create(:merge_request_diff_commit, merge_request_diff: diff_1, relative_order: 0, project_id: project.id) }
+      let_it_be(:commit_2) { create(:merge_request_diff_commit, merge_request_diff: diff_1, relative_order: 1, project_id: project.id) }
 
       before do
         merge_request_diff_2 = create(:merge_request_diff, merge_request: merge_request2)
-        create(:merge_request_diff_commit, merge_request_diff: merge_request_diff_2)
+        create(:merge_request_diff_commit, merge_request_diff: merge_request_diff_2, project_id: project.id)
       end
 
       it 'returns commits for the specified merge request diff' do
@@ -54,6 +177,145 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
 
       it 'returns empty collection when diff_id is nil' do
         expect(described_class.for_merge_request_diff(nil)).to be_empty
+      end
+
+      context 'when project_id is provided' do
+        it 'filters by both merge_request_diff_id and project_id' do
+          expect(described_class.for_merge_request_diff(diff_1.id, project.id)).to contain_exactly(commit_1, commit_2)
+        end
+
+        it 'returns empty collection when project_id does not match' do
+          expect(described_class.for_merge_request_diff(diff_1.id, non_existing_record_id)).to be_empty
+        end
+      end
+    end
+  end
+
+  describe '.oldest_merge_request_id_per_commit' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:merge_request) { create(:merge_request, :merged, source_project: project, target_project: project) }
+    let_it_be(:merge_request_diff) { merge_request.merge_request_diff }
+
+    let(:commit_sha) { merge_request_diff.merge_request_diff_commits.first.sha }
+
+    before_all do
+      merge_request_diff.merge_request_diff_commits.find_each do |commit|
+        commit.update_columns(project_id: project.id, sha: commit.merge_request_commits_metadata.sha)
+      end
+    end
+
+    before do
+      stub_feature_flags(mr_diff_commits_read_new_table: false)
+    end
+
+    it 'returns the oldest merge request id for the given commit shas' do
+      result = described_class.oldest_merge_request_id_per_commit(project.id, [commit_sha])
+
+      expect(result.map(&:merge_request_id)).to contain_exactly(merge_request.id)
+    end
+
+    it 'returns empty result when shas do not exist' do
+      result = described_class.oldest_merge_request_id_per_commit(project.id, ['nonexistent'])
+
+      expect(result).to be_empty
+    end
+
+    context 'when mr_diff_commits_read_new_table is enabled' do
+      before do
+        stub_feature_flags(mr_diff_commits_read_new_table: project, merge_request_diff_commits_partition: project)
+      end
+
+      it 'filters by project_id' do
+        result = described_class.oldest_merge_request_id_per_commit(project.id, [commit_sha])
+
+        expect(result.map(&:merge_request_id)).to contain_exactly(merge_request.id)
+      end
+
+      it 'returns empty result when project_id does not match' do
+        result = described_class.oldest_merge_request_id_per_commit(non_existing_record_id, [commit_sha])
+
+        expect(result).to be_empty
+      end
+    end
+
+    context 'when mr_diff_commits_read_new_table is disabled' do
+      before do
+        stub_feature_flags(mr_diff_commits_read_new_table: false)
+      end
+
+      it 'does not filter by project_id' do
+        result = described_class.oldest_merge_request_id_per_commit(project.id, [commit_sha])
+
+        expect(result.map(&:merge_request_id)).to contain_exactly(merge_request.id)
+      end
+    end
+  end
+
+  describe '.commit_shas_from_metadata' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
+    let_it_be(:merge_request_diff) { create(:merge_request_diff, merge_request: merge_request) }
+
+    let_it_be(:commits_metadata) do
+      create(:merge_request_commits_metadata, project: project, sha: 'abc123')
+    end
+
+    let_it_be(:diff_commit_with_metadata) do
+      create(
+        :merge_request_diff_commit,
+        merge_request_diff: merge_request_diff,
+        merge_request_commits_metadata: commits_metadata,
+        relative_order: 0,
+        sha: nil,
+        project_id: project.id
+      )
+    end
+
+    let_it_be(:diff_commit_without_metadata) do
+      create(
+        :merge_request_diff_commit,
+        merge_request_diff: merge_request_diff,
+        relative_order: 1,
+        sha: 'def456',
+        project_id: project.id
+      )
+    end
+
+    before do
+      stub_feature_flags(mr_diff_commits_read_new_table: false)
+    end
+
+    it 'returns commit shas from both metadata and diff commits' do
+      result = described_class
+        .for_merge_request_diff(merge_request_diff.id, project.id)
+        .commit_shas_from_metadata(project_id: project.id, limit: nil)
+
+      expect(result).to contain_exactly('abc123', 'def456')
+    end
+
+    it 'respects the limit parameter' do
+      result = described_class
+        .for_merge_request_diff(merge_request_diff.id, project.id)
+        .commit_shas_from_metadata(project_id: project.id, limit: 1)
+
+      expect(result.size).to eq(1)
+    end
+
+    context 'when partition_enabled is true' do
+      it 'filters by project_id' do
+        result = described_class
+          .for_merge_request_diff(merge_request_diff.id, project.id)
+          .commit_shas_from_metadata(project_id: project.id, limit: nil, partition_enabled: true)
+
+        expect(result).to contain_exactly('abc123', 'def456')
+      end
+
+      it 'returns empty result when project_id does not match' do
+        result = described_class
+          .for_merge_request_diff(merge_request_diff.id, non_existing_record_id)
+          .commit_shas_from_metadata(project_id: non_existing_record_id, limit: nil, partition_enabled: true)
+
+        expect(result).to be_empty
       end
     end
   end
@@ -180,6 +442,23 @@ RSpec.describe MergeRequestDiffCommit, feature_category: :code_review_workflow d
     end
 
     it_behaves_like 'inserts the commits into the database en masse'
+
+    context 'when there are more rows than the batch size' do
+      before do
+        stub_const("#{described_class}::BULK_INSERT_BATCH_SIZE", 1)
+      end
+
+      it 'inserts rows in multiple batches' do
+        expect(ApplicationRecord).to receive(:legacy_bulk_insert)
+          .with(described_class.table_name, [deduplicated_rows.first])
+          .ordered
+        expect(ApplicationRecord).to receive(:legacy_bulk_insert)
+          .with(described_class.table_name, [deduplicated_rows.second])
+          .ordered
+
+        create_bulk(merge_request_diff_id)
+      end
+    end
 
     it 'creates diff commit users' do
       diff = create(:merge_request_diff, merge_request: merge_request)

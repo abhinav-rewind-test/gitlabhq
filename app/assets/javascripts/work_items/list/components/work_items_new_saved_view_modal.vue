@@ -10,12 +10,16 @@ import {
   GlFormRadio,
   GlAlert,
   GlLink,
+  GlFormCharacterCount,
+  GlSprintf,
 } from '@gitlab/ui';
-import { s__ } from '~/locale';
+import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
+import { __, s__, n__, sprintf } from '~/locale';
 import { SAVED_VIEW_VISIBILITY, ROUTES } from '~/work_items/constants';
 import { saveSavedView } from 'ee_else_ce/work_items/list/utils';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { helpPagePath } from '~/helpers/help_page_helper';
 
 export default {
   name: 'WorkItemsNewSavedViewModal',
@@ -30,20 +34,24 @@ export default {
     GlModal,
     GlAlert,
     GlLink,
+    GlFormCharacterCount,
+    GlSprintf,
+    TimeAgoTooltip,
   },
   i18n: {
-    descriptionValidation: s__('WorkItem|140 characters max'),
     validateTitle: s__('WorkItem|Title is required.'),
     privateView: s__('WorkItem|Only you can see and edit this view.'),
-    sharedView: s__(
-      'WorkItem|Anyone with access to this project can add the view, and those with the Planner and above roles can edit it.',
-    ),
     subscriptionLimitWarningMessage: s__(
       'WorkItem|You have reached the maximum number of views in your list. If you add a view, the last view in your list will be removed.',
     ),
     learnMoreAboutViewLimits: s__('WorkItem|Learn more about view limits.'),
+    authorInfoCreatedBy: s__('WorkItem|Created by %{author}'),
+    authorInfoUpdatedBy: s__('WorkItem|Updated %{timeAgo} by %{updatedBy}'),
   },
-  inject: ['subscribedSavedViewLimit'],
+  savedViewLimitsHelpPath: helpPagePath('user/work_items/saved_views.md', {
+    anchor: 'saved-view-limits',
+  }),
+  inject: ['subscribedSavedViewLimit', 'isGroup'],
   model: {
     prop: 'show',
     event: 'hide',
@@ -83,6 +91,7 @@ export default {
     },
   },
   emits: ['hide'],
+  MAX_TITLE_LENGTH: 40,
   MAX_DESCRIPTION_LENGTH: 140,
   SAVED_VIEW_VISIBILITY,
   data() {
@@ -90,12 +99,31 @@ export default {
       savedViewDescription: this.savedView?.description,
       savedViewTitle: this.savedView?.name,
       isTitleValid: true,
+      isDescriptionValid: true,
       savedViewVisibility: this.getSavedViewVisibility(),
       error: '',
       showWarningOnOpen: false,
     };
   },
   computed: {
+    savedViewAuthor() {
+      return this.savedView?.author ?? null;
+    },
+    savedViewAuthorId() {
+      return this.savedViewAuthor ? this.getUserId(this.savedViewAuthor) : '';
+    },
+    savedViewLastUpdatedBy() {
+      return this.savedView?.lastUpdatedBy ?? null;
+    },
+    savedViewLastUpdatedById() {
+      return this.savedViewLastUpdatedBy ? this.getUserId(this.savedViewLastUpdatedBy) : '';
+    },
+    savedViewUpdatedAt() {
+      return this.savedView?.updatedAt ?? '';
+    },
+    showAuthorInfo() {
+      return this.isEdit && Boolean(this.savedViewAuthorId) && !this.savedView?.isPrivate;
+    },
     modalTitle() {
       return this.isEdit ? s__('WorkItem|Edit view') : s__('WorkItem|New view');
     },
@@ -104,6 +132,20 @@ export default {
     },
     isEdit() {
       return Boolean(this.savedView?.id);
+    },
+    canUpdateSavedViewVisibility() {
+      return !this.isEdit || this.savedView?.userPermissions?.updateSavedViewVisibility;
+    },
+    visibilityText() {
+      return sprintf(
+        s__(
+          'WorkItem|Anyone with access to this %{namespaceType} can add the view, and those with the Planner and above roles can edit it.',
+        ),
+        { namespaceType: this.isGroup ? __('group') : __('project') },
+      );
+    },
+    emptyTitleFeedback() {
+      return this.savedViewTitle ? '' : this.$options.i18n.validateTitle;
     },
   },
   watch: {
@@ -118,18 +160,32 @@ export default {
         }
       },
     },
+    savedViewTitle(newTitle, oldTitle) {
+      if (newTitle && newTitle !== oldTitle) {
+        this.validateTitle();
+      }
+    },
+    savedViewDescription() {
+      this.validateDescription();
+    },
   },
   methods: {
+    getUserId(user) {
+      return getIdFromGraphQLId(user.id);
+    },
     focusTitleInput() {
       this.$refs.savedViewTitle?.$el.focus();
     },
     validateTitle() {
-      this.isTitleValid = Boolean(this.savedViewTitle?.trim());
+      const trimmedTitle = this.savedViewTitle?.trim() ?? '';
+      this.isTitleValid =
+        trimmedTitle.length > 0 && trimmedTitle.length <= this.$options.MAX_TITLE_LENGTH;
     },
     async saveView() {
       this.validateTitle();
+      this.validateDescription();
 
-      if (!this.isTitleValid) {
+      if (!this.isTitleValid || !this.isDescriptionValid) {
         return;
       }
       const mutationKey = this.isEdit ? 'workItemSavedViewUpdate' : 'workItemSavedViewCreate';
@@ -154,14 +210,16 @@ export default {
         });
 
         if (data[mutationKey].errors?.length) {
-          this.error = this.isEdit
+          const fallback = this.isEdit
             ? s__('WorkItem|Something went wrong while saving the view')
             : s__('WorkItem|Something went wrong while creating the view');
+          this.error = data[mutationKey].errors[0] || fallback;
           return;
         }
 
         if (!this.isEdit) {
           const newViewId = getIdFromGraphQLId(data[mutationKey].savedView.id);
+
           this.$router.push({
             name: ROUTES.savedView,
             params: { view_id: newViewId.toString() },
@@ -181,8 +239,13 @@ export default {
           : s__('WorkItem|Something went wrong while creating the view');
       }
     },
+    validateDescription() {
+      this.isDescriptionValid =
+        (this.savedViewDescription?.length ?? 0) <= this.$options.MAX_DESCRIPTION_LENGTH;
+    },
     resetModal() {
       this.isTitleValid = true;
+      this.isDescriptionValid = true;
       this.savedViewTitle = '';
       this.savedViewDescription = '';
       this.savedViewVisibility = SAVED_VIEW_VISIBILITY.PRIVATE;
@@ -198,6 +261,9 @@ export default {
       return this.savedView?.isPrivate
         ? SAVED_VIEW_VISIBILITY.PRIVATE
         : SAVED_VIEW_VISIBILITY.SHARED;
+    },
+    overLimitText(count) {
+      return n__('%d character over limit.', '%d characters over limit.', count);
     },
   },
 };
@@ -224,13 +290,19 @@ export default {
       <gl-icon name="warning" :size="16" class="gl-mt-1 gl-shrink-0 gl-text-orange-500" />
       <span class="gl-text-sm">
         {{ $options.i18n.subscriptionLimitWarningMessage }}
-        <gl-link href="#" target="_blank">
+        <gl-link :href="$options.savedViewLimitsHelpPath" target="_blank">
           {{ $options.i18n.learnMoreAboutViewLimits }}
         </gl-link>
       </span>
     </div>
     <gl-form data-testid="add-new-saved-view-form" @submit.prevent="saveView">
-      <gl-alert v-if="error" variant="danger" :dismissible="true" @dismiss="error = undefined">
+      <gl-alert
+        v-if="error"
+        class="gl-mb-3"
+        variant="danger"
+        :dismissible="true"
+        @dismiss="error = undefined"
+      >
         {{ error }}
       </gl-alert>
       <gl-form-group
@@ -238,7 +310,7 @@ export default {
         label-for="saved-view-title"
         data-testid="saved-view-title"
         :state="isTitleValid"
-        :invalid-feedback="$options.i18n.validateTitle"
+        :invalid-feedback="emptyTitleFeedback"
       >
         <gl-form-input
           id="saved-view-title"
@@ -247,25 +319,44 @@ export default {
           autocomplete="off"
           autofocus
           :state="isTitleValid"
-          @input="isTitleValid = true"
         />
+        <template #description>
+          <gl-form-character-count
+            :value="savedViewTitle"
+            :limit="$options.MAX_TITLE_LENGTH"
+            count-text-id="title-character-count-text"
+          >
+            <template #over-limit-text="{ count }">{{ overLimitText(count) }}</template>
+          </gl-form-character-count>
+        </template>
       </gl-form-group>
 
       <gl-form-group
         :label="__('Description (optional)')"
-        :description="$options.i18n.descriptionValidation"
         label-for="saved-view-description"
+        :state="isDescriptionValid"
         data-testid="saved-view-description"
       >
         <gl-form-textarea
           id="saved-view-description"
           v-model="savedViewDescription"
           size="sm"
-          :maxlength="$options.MAX_DESCRIPTION_LENGTH"
+          :state="isDescriptionValid"
+          rows="3"
         />
+        <template #description>
+          <gl-form-character-count
+            :value="savedViewDescription"
+            :limit="$options.MAX_DESCRIPTION_LENGTH"
+            count-text-id="description-character-count-text"
+          >
+            <template #over-limit-text="{ count }">{{ overLimitText(count) }}</template>
+          </gl-form-character-count>
+        </template>
       </gl-form-group>
 
       <gl-form-group
+        v-if="canUpdateSavedViewVisibility"
         :label="__('Visibility')"
         label-for="saved-view-visibility"
         data-testid="saved-view-visibility"
@@ -287,9 +378,75 @@ export default {
             <gl-icon name="users" class="gl-shrink-0" variant="subtle" />
             {{ s__('WorkItem|Shared') }}
           </span>
-          <template #help>{{ $options.i18n.sharedView }}</template>
+          <template #help>{{ visibilityText }}</template>
         </gl-form-radio>
       </gl-form-group>
+      <div v-else class="gl-mb-5 gl-flex gl-flex-col gl-gap-3">
+        <label class="gl-m-0 gl-text-base gl-font-bold gl-text-strong">
+          {{ __('Visibility') }}
+        </label>
+        <div class="gl-flex gl-items-start gl-gap-3">
+          <div
+            class="gl-flex gl-shrink-0 gl-items-center gl-justify-center gl-rounded-full gl-bg-strong gl-p-3"
+          >
+            <gl-icon name="users" variant="subtle" />
+          </div>
+          <div class="gl-flex gl-flex-col">
+            <span class="gl-text-subtle">
+              {{ s__('WorkItem|Shared') }}
+            </span>
+            <span data-testid="shared-read-only-help-text" class="gl-text-sm gl-text-subtle">
+              {{ visibilityText }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="showAuthorInfo"
+        class="gl-mb-5 gl-flex gl-flex-wrap gl-items-center gl-gap-x-4 gl-gap-y-3 gl-rounded-base gl-bg-strong gl-px-4 gl-py-3 gl-text-sm gl-leading-16 gl-text-subtle"
+        data-testid="saved-view-author-info"
+      >
+        <span class="gl-flex-auto">
+          <gl-sprintf :message="$options.i18n.authorInfoCreatedBy">
+            <template #author>
+              <gl-link
+                :data-user-id="savedViewAuthorId"
+                :data-username="savedViewAuthor.username"
+                :data-name="savedViewAuthor.name"
+                :data-avatar-url="savedViewAuthor.avatarUrl"
+                :href="savedViewAuthor.webPath"
+                data-testid="saved-view-author"
+                class="author-link js-user-link gl-text-strong"
+                @click.stop
+              >
+                <span class="author">{{ savedViewAuthor.name }}</span>
+              </gl-link>
+            </template>
+          </gl-sprintf>
+        </span>
+
+        <div v-if="savedViewUpdatedAt && savedViewLastUpdatedBy">
+          <gl-sprintf :message="$options.i18n.authorInfoUpdatedBy">
+            <template #timeAgo>
+              <time-ago-tooltip :time="savedViewUpdatedAt" />
+            </template>
+            <template #updatedBy
+              ><gl-link
+                :data-user-id="savedViewLastUpdatedById"
+                :data-username="savedViewLastUpdatedBy.username"
+                :data-name="savedViewLastUpdatedBy.name"
+                :data-avatar-url="savedViewLastUpdatedBy.avatarUrl"
+                :href="savedViewLastUpdatedBy.webPath"
+                class="author-link js-user-link gl-text-strong"
+                @click.stop
+              >
+                <span class="author">{{ savedViewLastUpdatedBy?.name }}</span>
+              </gl-link></template
+            >
+          </gl-sprintf>
+        </div>
+      </div>
 
       <div class="gl-mb-5 gl-flex gl-justify-end gl-gap-3">
         <gl-button type="button" data-testid="cancel-button" @click="hideAddNewViewModal">
@@ -298,7 +455,7 @@ export default {
         <gl-button
           type="submit"
           variant="confirm"
-          :disabled="!isTitleValid"
+          :disabled="!isTitleValid || !isDescriptionValid"
           data-testid="create-view-button"
         >
           {{ submitButtonLabel }}

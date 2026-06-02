@@ -1,4 +1,4 @@
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import { GROUPS_LOCAL_STORAGE_KEY, PROJECTS_LOCAL_STORAGE_KEY } from './constants';
 
 const createState = ({
@@ -10,6 +10,7 @@ const createState = ({
   zoektAvailable,
   groupInitialJson,
   projectInitialJson,
+  workItemTypes,
   defaultBranchName,
   repositoryRef,
 }) => ({
@@ -30,6 +31,7 @@ const createState = ({
     fetching: false,
     data: [],
   },
+  workItemTypes: workItemTypes || [],
   searchLabelString: '',
   searchType,
   searchLevel,

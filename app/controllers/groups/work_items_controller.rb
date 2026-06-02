@@ -5,17 +5,22 @@ module Groups
     include SearchRateLimitable
     include WorkItemsCollections
 
+    feature_category :portfolio_management, [:index, :rss, :calendar]
     feature_category :team_planning
+
+    urgency :low, [:rss, :calendar]
 
     before_action do
       push_frontend_feature_flag(:notifications_todos_buttons, current_user)
       push_force_frontend_feature_flag(:glql_load_on_click, !!group&.glql_load_on_click_feature_flag_enabled?)
-      push_force_frontend_feature_flag(:work_item_planning_view,
-        !!group&.work_items_consolidated_list_enabled?(current_user))
-      push_force_frontend_feature_flag(:work_items_saved_views, !!group&.work_items_saved_views_enabled?(current_user))
       push_force_frontend_feature_flag(:use_work_item_url, !!group&.use_work_item_url?)
       push_force_frontend_feature_flag(:work_item_features_field,
         Feature.enabled?(:work_item_features_field, current_user))
+      push_frontend_feature_flag(:vue3_migrate_work_items, current_user)
+      push_frontend_feature_flag(:work_item_rest_api_frontend_users, current_user)
+      push_frontend_feature_flag(:planning_view_boards, current_user)
+      push_frontend_feature_flag(:work_item_rest_api, current_user)
+      push_frontend_feature_flag(:work_item_list_display_settings_drawer, current_user)
     end
 
     before_action :handle_new_work_item_path, only: [:show]
@@ -26,17 +31,13 @@ module Groups
     prepend_before_action(only: [:calendar]) { authenticate_sessionless_user!(:ics) }
     prepend_before_action(only: [:rss]) { authenticate_sessionless_user!(:rss) }
 
-    urgency :low, [:rss, :calendar]
-
-    def index
-      dismiss_work_items_badge
-    end
+    def index; end
 
     def show
       not_found unless group.supports_work_items?
 
       @work_item = ::WorkItems::WorkItemsFinder.new(current_user, group_id: group.id)
-        .execute.with_work_item_type.find_by_iid(show_params[:iid])
+        .execute.find_by_iid(show_params[:iid])
     end
 
     def rss
@@ -72,14 +73,6 @@ module Groups
 
     def show_params
       params.permit(:iid)
-    end
-
-    def dismiss_work_items_badge
-      return unless current_user
-
-      ::Users::DismissCalloutService.new(
-        container: nil, current_user: current_user, params: { feature_name: :work_items_nav_badge }
-      ).execute
     end
   end
 end

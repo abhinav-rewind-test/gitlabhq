@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Geo
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use Geo for planned failover to migrate GitLab with minimal downtime by following preflight checks and sync steps to promote a secondary site without data loss.
 title: Disaster recovery for planned failover
 ---
@@ -147,7 +147,6 @@ site:
 
 1. Copy the backup tarball generated from your primary site to the `/var/opt/gitlab/backups` folder
    on your secondary site.
-
 1. On your secondary site, restore the registry following the
    [Restore GitLab](../../backup_restore/_index.md#restore-gitlab) documentation.
 
@@ -238,7 +237,7 @@ For pre-maintenance validation while the primary is still operational, use the m
 
 ### DNS TTL
 
-If you plan to [update the primary domain DNS record](_index.md#step-4-optional-updating-the-primary-domain-dns-record),
+If you plan to [update the primary domain DNS record](_index.md#optional-updating-the-primary-domain-dns-record),
 consider setting a low TTL (time-to-live) to ensure fast propagation of DNS changes.
 
 ### Object storage
@@ -310,7 +309,7 @@ ensure these processes are close to 100% as possible during active use.
 On the secondary site:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Geo** > **Sites**.
+1. In the left sidebar, select **Geo** > **Sites**.
    Replicated objects (shown in green) should be close to 100%,
    and there should be no failures (shown in red). If a large proportion of
    objects aren't yet replicated (shown in gray), consider giving the site more
@@ -339,7 +338,7 @@ For more information, see [automatic background verification](background_verific
 On the primary site:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Messages**.
+1. In the left sidebar, select **Messages**.
 1. Add a message notifying users on the maintenance window. To estimate the time needed to finish
    syncing, go to **Geo** > **Sites**.
 1. Select **Add broadcast message**.
@@ -369,6 +368,34 @@ and the configuration options `unhealthy_requests_limit` and `unhealthy_interval
   [how to handle secondary runners](../secondary_proxy/runners.md#handling-a-planned-failover-with-secondary-runners)
   during the failover.
 
+### OpenBao prerequisites
+
+If you have [OpenBao](https://docs.gitlab.com/charts/charts/openbao/) installed with the GitLab Helm chart,
+complete these checks while the primary cluster is still accessible.
+
+#### Verify the unseal secret is present on the secondary
+
+The `gitlab-openbao-unseal` Kubernetes secret must exist on the secondary cluster.
+Verify it is present:
+
+```shell
+kubectl --namespace gitlab get secret gitlab-openbao-unseal
+```
+
+If the secret is missing, copy it from the primary before proceeding.
+For more information, see
+[Back up the secrets](https://docs.gitlab.com/charts/backup-restore/backup/#back-up-the-secrets).
+
+#### Validate OpenBao database replication
+
+The secondary OpenBao database is a read replica of the primary PostgreSQL,
+including the `openbao` schema. Before a planned failover, verify that
+replication is current and the secondary data is consistent with the primary.
+
+If the primary database is already unavailable, the secondary contains data
+up to the last replicated transaction. Any secrets written to the primary after
+the last replication are lost.
+
 ## Prevent updates to the primary site
 
 To ensure that all data replicates to a secondary site, disable updates (write requests)
@@ -376,7 +403,7 @@ on the primary site to give the secondary site time to catch up:
 
 1. Enable [maintenance mode](../../maintenance_mode/_index.md) on the primary site.
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Background jobs**.
+1. In the left sidebar, select **Monitoring** > **Background jobs**.
 1. On the Sidekiq dashboard, select **Cron**.
 1. Select `Disable All` to disable non-Geo periodic background jobs.
 1. Select `Enable` for these cron jobs:

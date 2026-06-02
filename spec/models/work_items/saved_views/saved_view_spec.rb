@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe WorkItems::SavedViews::SavedView, feature_category: :portfolio_management do
-  let_it_be(:namespace) { create(:namespace) }
-  let_it_be(:saved_view) { create(:saved_view, namespace: namespace) }
+  let_it_be(:namespace, freeze: false) { create(:namespace) }
+  let_it_be(:saved_view, freeze: false) { create(:saved_view, namespace: namespace) }
   let_it_be(:user) { create(:user) }
   let_it_be(:other_user) { create(:user) }
   let_it_be(:group) { create(:group) }
@@ -19,6 +19,7 @@ RSpec.describe WorkItems::SavedViews::SavedView, feature_category: :portfolio_ma
     it { is_expected.to belong_to(:author).class_name('User').with_foreign_key(:created_by_id).optional }
     it { is_expected.to have_many(:user_saved_views).class_name('WorkItems::SavedViews::UserSavedView') }
     it { is_expected.to have_many(:subscribed_users).through(:user_saved_views).source(:user) }
+    it { is_expected.to belong_to(:updated_by).class_name('User').optional }
   end
 
   describe 'validations' do
@@ -134,6 +135,28 @@ RSpec.describe WorkItems::SavedViews::SavedView, feature_category: :portfolio_ma
 
           expect(result.to_a).to eq([other_view, private_view, saved_view2, saved_view1, saved_view])
         end
+      end
+    end
+
+    context 'when sort is :name_asc' do
+      let_it_be(:view_alpha) { create(:saved_view, namespace: group, name: 'Alpha view', author: user) }
+      let_it_be(:view_beta) { create(:saved_view, namespace: group, name: 'beta view', author: user) }
+      let_it_be(:view_gamma) { create(:saved_view, namespace: group, name: 'Gamma view', author: user) }
+
+      it 'returns saved views sorted alphabetically by name case-insensitive' do
+        result = described_class.in_namespace(group).sort_by_attributes(:name_asc)
+        names = result.map(&:name)
+
+        expect(names.index('Alpha view')).to be < names.index('beta view')
+        expect(names.index('beta view')).to be < names.index('Gamma view')
+      end
+
+      it 'uses id descending as tiebreaker for identical names' do
+        duplicate_view = create(:saved_view, namespace: group, name: 'Alpha view', author: user)
+
+        result = described_class.in_namespace(group).sort_by_attributes(:name_asc)
+
+        expect(result.to_a.index(duplicate_view)).to be < result.to_a.index(view_alpha)
       end
     end
   end

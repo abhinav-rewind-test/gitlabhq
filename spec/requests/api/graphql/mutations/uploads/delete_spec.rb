@@ -49,7 +49,7 @@ RSpec.describe 'Delete an upload', feature_category: :navigation do
           expect(mutation_response['upload']).to be_nil
           expect(mutation_response['errors']).to match_array(
             [
-              "The resource that you are attempting to access does not "\
+              "The resource that you are attempting to access does not " \
               "exist or you don't have permission to perform this action."
             ])
         end
@@ -63,6 +63,13 @@ RSpec.describe 'Delete an upload', feature_category: :navigation do
     let(:extra_params) { { project_path: project.full_path } }
 
     it_behaves_like 'upload deletion'
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :delete_markdown_upload do
+      let(:user) { maintainer }
+      let(:boundary_object) { project }
+      let(:authz_mutation) { graphql_mutation(:uploadDelete, params) { 'errors' } }
+      let(:request) { post_graphql_mutation(authz_mutation, token: { personal_access_token: pat }) }
+    end
   end
 
   context 'when deleting group upload' do
@@ -71,5 +78,12 @@ RSpec.describe 'Delete an upload', feature_category: :navigation do
     let(:extra_params) { { group_path: group.full_path } }
 
     it_behaves_like 'upload deletion'
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :delete_markdown_upload do
+      let(:user) { maintainer }
+      let(:boundary_object) { group }
+      let(:authz_mutation) { graphql_mutation(:uploadDelete, params) { 'errors' } }
+      let(:request) { post_graphql_mutation(authz_mutation, token: { personal_access_token: pat }) }
+    end
   end
 end

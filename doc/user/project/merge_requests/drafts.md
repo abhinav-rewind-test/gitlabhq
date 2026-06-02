@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Prevent an incomplete merge request from merging until it's ready by setting it as a draft.
 title: Draft merge requests
 ---
@@ -17,7 +17,7 @@ If a merge request isn't ready to merge, you can block it from merging until you
 [mark it as ready](#mark-merge-requests-as-ready). Merge requests marked as **Draft**
 cannot merge until you remove the **Draft** flag, even if they meet all other merge criteria:
 
-![merge blocked](img/merge_request_draft_blocked_v16_0.png)
+![A merge request showing the draft status with merge blocked until marked as ready.](img/merge_request_draft_blocked_v16_0.png)
 
 ## Mark merge requests as drafts
 
@@ -41,7 +41,7 @@ You can flag a merge request as a draft in several ways:
 When a merge request is ready to merge, you can remove the `Draft` flag in several ways:
 
 - Viewing a merge request: In the upper-right corner of the merge request, select **Mark as ready**.
-  Users with at least the Developer role can also scroll to the bottom of the merge request
+  Users with the Developer, Maintainer, or Owner role can also scroll to the bottom of the merge request
   description and select **Mark as ready**.
 - Editing an existing merge request: Remove `[Draft]`, `Draft:` or `(Draft)`
   from the beginning of the title, or clear **Mark as draft** below the **Title** field.
@@ -56,7 +56,7 @@ When you mark a merge request as ready, GitLab notifies
 When you view or search in your project's merge requests list, to include or exclude
 draft merge requests:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**.
 1. To filter by merge request status, select **Open**, **Merged**, **Closed**,
    or **All** in the navigation bar.
@@ -66,10 +66,10 @@ draft merge requests:
 1. Select **Yes** to include drafts, or **No** to exclude, and press **Return**
    to update the list of merge requests:
 
-   ![Filter draft merge requests](img/filter_draft_merge_requests_v16_0.png)
+   ![The merge request filter dropdown list showing draft filter options with selection options.](img/filter_draft_merge_requests_v16_0.png)
 
 ## Pipelines for drafts
 
 Draft merge requests run the same pipelines as merge requests marked as ready.
 
-To skip a pipeline for a draft merge request, see [Skip pipelines for draft merge requests](../../../ci/yaml/workflow.md#skip-pipelines-for-draft-merge-requests).
+To skip a pipeline for a draft merge request, see [skip pipelines for draft merge requests](../../../ci/yaml/workflow.md#skip-pipelines-for-draft-merge-requests).

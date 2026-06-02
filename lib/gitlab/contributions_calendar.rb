@@ -14,7 +14,7 @@ module Gitlab
       @contributor = contributor
       @contributor_time_instance = local_timezone_instance(contributor.timezone).now
       @current_user = current_user
-      @groups = [] # Overriden in EE
+      @groups = [] # Overridden in EE
       @projects = ContributedProjectsFinder.new(
         user: @contributor,
         current_user: current_user,
@@ -29,10 +29,9 @@ module Gitlab
 
       start_time = @contributor_time_instance.years_ago(1).beginning_of_day
       end_time = @contributor_time_instance.end_of_day
+      timezone_name = @contributor_time_instance.time_zone.tzinfo.identifier
 
-      date_interval = "INTERVAL '#{@contributor_time_instance.utc_offset} seconds'"
-
-      contributions_between(start_time, end_time).count_by_dates(date_interval)
+      contributions_between(start_time, end_time).count_by_dates_in_timezone(timezone_name)
     end
 
     def events_by_date(date)

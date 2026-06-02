@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Calculations, quotas, purchase information.
 title: Compute minutes
 ---
@@ -46,7 +46,10 @@ For instance runners on GitLab.com, GitLab Self-Managed, and self-hosted instanc
 For GitLab.com:
 
 - The base monthly compute quota is determined by your subscription tier.
-- You can [purchase additional compute minutes](../../subscriptions/gitlab_com/compute_minutes.md) if you need more.
+  Free tier namespaces receive 400 compute minutes per month.
+  Paid tiers receive a higher monthly quota.
+- You can [purchase additional compute minutes](../../subscriptions/gitlab_com/compute_minutes.md)
+  if you need more.
 
 ## Compute minute usage
 

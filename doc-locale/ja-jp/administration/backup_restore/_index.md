@@ -1,8 +1,9 @@
 ---
-stage: Data Access
-group: Durability
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+stage: Tenant Scale
+group: Geo
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: バックアップと復元の概要
+description: GitLabインスタンスのバックアップと復元。
 ---
 
 {{< details >}}
@@ -21,11 +22,8 @@ GitLabインスタンスには、ソフトウェア開発や組織にとって�
 - 移行: GitLabを新しいサーバーや環境に容易に移行できるようにします。
 - テストと開発: 本番環境のデータに影響を与えることなく、アップグレードや新機能をテストするためのコピーを作成します。
 
-{{< alert type="note" >}}
-
-このドキュメントは、GitLab Community EditionおよびEnterprise Editionに適用されます。GitLab.comではデータの安全性は保証されていますが、これらの方法を使ってGitLab.comからデータをエクスポートしたりバックアップしたりすることはできません。
-
-{{< /alert >}}
+> [!note]
+> このドキュメントは、GitLab Community EditionおよびEnterprise Editionに適用されます。GitLab.comではデータの安全性は保証されていますが、これらの方法を使ってGitLab.comからデータをエクスポートしたりバックアップしたりすることはできません。
 
 ## GitLabをバックアップする {#back-up-gitlab}
 
@@ -39,7 +37,7 @@ GitLabインスタンスのバックアップ手順は、デプロイ固有の�
 
 ## 新しいサーバーに移行する {#migrate-to-a-new-server}
 
-GitLabのバックアップと復元機能を使用して、インスタンスを新しいサーバーに移行します。GitLab Geoをデプロイしている場合は、[計画フェイルオーバーにおけるGeoのディザスタリカバリの利用](../geo/disaster_recovery/planned_failover.md)をご検討ください。詳細については、[新しいサーバーに移行する](migrate_to_new_server.md)を参照してください。
+GitLabのバックアップと復元機能を使用して、インスタンスを新しいサーバーに移行します。GitLab Geoをデプロイしている場合は、[計画フェイルオーバーにおけるGeoのディザスターリカバリーの利用](../geo/disaster_recovery/planned_failover.md)をご検討ください。詳細については、[新しいサーバーに移行する](migrate_to_new_server.md)を参照してください。
 
 ## 大規模リファレンスアーキテクチャをバックアップおよび復元する {#back-up-and-restore-large-reference-architectures}
 
@@ -53,8 +51,8 @@ GitLabのバックアップと復元機能を使用して、インスタンス�
 
 - [Geo](../geo/_index.md)
 - [ディザスターリカバリー（Geo）](../geo/disaster_recovery/_index.md)
-- [GitLabグループを移行する](../../user/group/import/_index.md)
-- [プロジェクトをインポートおよび移行する](../../user/project/import/_index.md)
-- [GitLab Linuxパッケージ（Omnibus）- バックアップと復元](https://docs.gitlab.com/omnibus/settings/backups.html)
+- [GitLabグループの移行](../../user/group/import/_index.md)
+- [GitLabにインポートおよび移行する](../../user/import/_index.md)
+- [GitLab Linuxパッケージ（Omnibus）- バックアップと復元](https://docs.gitlab.com/omnibus/settings/backups/)
 - [GitLab Helmチャート - バックアップと復元](https://docs.gitlab.com/charts/backup-restore/)
-- [GitLab Operator - バックアップと復元](https://docs.gitlab.com/operator/backup_and_restore.html)
+- [GitLab Operator - バックアップと復元](https://docs.gitlab.com/operator/backup_and_restore/)

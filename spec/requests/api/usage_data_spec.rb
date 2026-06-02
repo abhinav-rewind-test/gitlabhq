@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe API::UsageData, feature_category: :service_ping do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   shared_examples 'does not allow web request without CSRF token' do
     it 'returns 401 response when CSRF check fails on web request' do
@@ -18,6 +18,14 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
 
   describe 'GET /usage_data/service_ping' do
     let(:endpoint) { '/usage_data/service_ping' }
+
+    it_behaves_like 'authorizing granular token permissions', :read_service_ping do
+      let(:boundary_object) { :instance }
+      let(:user) { create(:admin) }
+      let(:request) do
+        get api(endpoint, personal_access_token: pat)
+      end
+    end
 
     context 'without authentication' do
       it 'returns 401 response' do
@@ -119,6 +127,13 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
 
           expect(response).to have_gitlab_http_status(:ok)
         end
+
+        it_behaves_like 'authorizing granular token permissions', :increment_usage_data_metric do
+          let(:boundary_object) { :instance }
+          let(:request) do
+            post api(endpoint, personal_access_token: pat), params: { event: known_event }
+          end
+        end
       end
 
       context 'with unknown event' do
@@ -186,6 +201,13 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
           post api(endpoint, user), params: { event: known_event }
 
           expect(response).to have_gitlab_http_status(:ok)
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :increment_usage_data_metric do
+          let(:boundary_object) { :instance }
+          let(:request) do
+            post api(endpoint, personal_access_token: pat), params: { event: known_event }
+          end
         end
       end
 
@@ -301,6 +323,91 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
               )
 
             post api(endpoint, user), params: { event: known_event, namespace_id: namespace.id, project_id: project.id }
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it_behaves_like 'authorizing granular token permissions', :track_internal_event do
+            let(:known_event) { 'web_ide_viewed' }
+            let(:boundary_object) { :instance }
+            let(:request) do
+              post api(endpoint, personal_access_token: pat),
+                params: { event: known_event, namespace_id: namespace.id, project_id: project.id }
+            end
+          end
+        end
+      end
+
+      describe 'project_path resolution' do
+        before_all do
+          project.add_developer(user)
+        end
+
+        context 'when project_path is provided without project_id' do
+          it 'resolves the project and namespace from project_path' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                known_event,
+                send_snowplow_event: false,
+                user: user,
+                namespace: project.namespace,
+                project: project,
+                additional_properties: {}
+              )
+
+            post api(endpoint, user), params: { event: known_event, project_path: project.full_path }
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'when project_path and namespace_id are provided' do
+          it 'resolves project from project_path and uses the provided namespace_id' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                known_event,
+                send_snowplow_event: false,
+                user: user,
+                namespace: project.namespace,
+                project: project,
+                additional_properties: {}
+              )
+
+            post api(endpoint, user), params: {
+              event: known_event,
+              namespace_id: project.namespace_id,
+              project_path: project.full_path
+            }
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'when both project_id and project_path are provided' do
+          it 'returns bad request due to mutual exclusivity' do
+            post api(endpoint, user), params: {
+              event: known_event,
+              project_id: project.id,
+              project_path: project.full_path
+            }
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+          end
+        end
+
+        context 'when project_path does not resolve to a project' do
+          it 'tracks the event without project or namespace' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                known_event,
+                send_snowplow_event: false,
+                user: user,
+                namespace: nil,
+                project: nil,
+                additional_properties: {}
+              )
+
+            post api(endpoint, user), params: { event: known_event, project_path: 'non/existent' }
 
             expect(response).to have_gitlab_http_status(:ok)
           end
@@ -447,6 +554,17 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
         expect(response).to have_gitlab_http_status(:ok)
       end
 
+      it_behaves_like 'authorizing granular token permissions', :track_internal_event do
+        let(:boundary_object) { :instance }
+        let(:request) do
+          post api(endpoint, personal_access_token: pat), params: params
+        end
+
+        before do
+          allow(Gitlab::InternalEvents).to receive(:track_event)
+        end
+      end
+
       context 'with incorrect params' do
         let(:params) do
           {
@@ -461,6 +579,124 @@ RSpec.describe API::UsageData, feature_category: :service_ping do
         it 'returns bad request' do
           expect { post(api(endpoint, user), params: params) }
             .not_to trigger_internal_events(event)
+        end
+      end
+
+      context 'with project_path resolution' do
+        before_all do
+          project.add_developer(user)
+        end
+
+        context 'when project_path is provided without project_id' do
+          let(:params) do
+            {
+              events: [
+                {
+                  event: event,
+                  project_path: project.full_path,
+                  additional_properties: additional_properties
+                }
+              ]
+            }
+          end
+
+          it 'resolves the project and namespace from project_path' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                event,
+                send_snowplow_event: false,
+                namespace: project.namespace,
+                user: user,
+                project: project,
+                additional_properties: additional_properties
+              )
+
+            post api(endpoint, user), params: params
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'when project_path and namespace_id are provided' do
+          let(:params) do
+            {
+              events: [
+                {
+                  event: event,
+                  namespace_id: project.namespace_id,
+                  project_path: project.full_path,
+                  additional_properties: additional_properties
+                }
+              ]
+            }
+          end
+
+          it 'resolves project from project_path and uses the provided namespace_id' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                event,
+                send_snowplow_event: false,
+                namespace: project.namespace,
+                user: user,
+                project: project,
+                additional_properties: additional_properties
+              )
+
+            post api(endpoint, user), params: params
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'when both project_id and project_path are provided' do
+          let(:params) do
+            {
+              events: [
+                {
+                  event: event,
+                  project_id: project.id,
+                  project_path: project.full_path,
+                  additional_properties: additional_properties
+                }
+              ]
+            }
+          end
+
+          it 'returns bad request due to mutual exclusivity' do
+            post api(endpoint, user), params: params
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+          end
+        end
+
+        context 'when project_path does not resolve to a project' do
+          let(:params) do
+            {
+              events: [
+                {
+                  event: event,
+                  project_path: 'non/existent',
+                  additional_properties: additional_properties
+                }
+              ]
+            }
+          end
+
+          it 'tracks the event without project or namespace' do
+            expect(Gitlab::InternalEvents).to receive(:track_event)
+              .with(
+                event,
+                send_snowplow_event: false,
+                namespace: nil,
+                user: user,
+                project: nil,
+                additional_properties: additional_properties
+              )
+
+            post api(endpoint, user), params: params
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
         end
       end
     end

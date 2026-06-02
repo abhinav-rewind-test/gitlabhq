@@ -1,22 +1,20 @@
 <script>
 import { visitUrl, getParameterByName, updateHistory, removeParams } from '~/lib/utils/url_utility';
-import { TYPENAME_WORK_ITEM } from '~/graphql_shared/constants';
+import { TYPENAME_WORK_ITEM, TYPENAME_NAMESPACE } from '~/graphql_shared/constants';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
 import CreateWorkItem from '../components/create_work_item.vue';
 import CreateWorkItemCancelConfirmationModal from '../components/create_work_item_cancel_confirmation_modal.vue';
 import {
   ROUTES,
   RELATED_ITEM_ID_URL_QUERY_PARAM,
-  BASE_ALLOWED_CREATE_TYPES,
   CREATION_CONTEXT_NEW_ROUTE,
   WORK_ITEM_TYPE_NAME_EPIC,
   WORK_ITEM_TYPE_NAME_INCIDENT,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-  WORK_ITEM_TYPE_NAME_TASK,
   WORK_ITEM_TYPE_ROUTE_WORK_ITEM,
   WORK_ITEM_TYPE_ROUTE_ISSUE,
 } from '../constants';
 import workItemRelatedItemQuery from '../graphql/work_item_related_item.query.graphql';
+import namespaceWorkItemTypesQuery from '../graphql/namespace_work_item_types.query.graphql';
 import { convertTypeEnumToName } from '../utils';
 
 export default {
@@ -89,19 +87,6 @@ export default {
     isIncident() {
       return this.workItemType === WORK_ITEM_TYPE_NAME_INCIDENT;
     },
-    allowedWorkItemTypes() {
-      if (
-        [
-          WORK_ITEM_TYPE_NAME_ISSUE,
-          WORK_ITEM_TYPE_NAME_INCIDENT,
-          WORK_ITEM_TYPE_NAME_TASK,
-        ].includes(this.workItemType)
-      ) {
-        return BASE_ALLOWED_CREATE_TYPES;
-      }
-
-      return [];
-    },
     isNewGroupWorkItem() {
       return !this.isEpic && this.isGroup;
     },
@@ -119,6 +104,21 @@ export default {
         if (numberOfDiscussionsResolved) {
           routerPushObject.query = { resolves_discussion: numberOfDiscussionsResolved };
         }
+
+        const { cache } = this.$apollo.provider.defaultClient;
+        const cachedData = cache.readQuery({
+          query: namespaceWorkItemTypesQuery,
+          variables: { fullPath: this.rootPageFullPath },
+        });
+
+        if (cachedData?.namespace?.id) {
+          cache.evict({
+            id: cache.identify({ __typename: TYPENAME_NAMESPACE, id: cachedData.namespace.id }),
+            fieldName: 'workItems',
+          });
+          cache.gc();
+        }
+
         this.$router.push(routerPushObject);
       } else {
         visitUrl(workItem.webUrl);
@@ -177,11 +177,10 @@ export default {
       :should-discard-draft="shouldDiscardDraft"
       :always-show-work-item-type-select="!isEpic"
       :show-project-selector="isNewGroupWorkItem"
-      :allowed-work-item-types="allowedWorkItemTypes"
       @updateType="updateWorkItemType($event)"
       @confirmCancel="handleConfirmCancellation"
       @discardDraft="handleDiscardDraft('createPage')"
-      @workItemCreated="workItemCreated"
+      @work-item-created="workItemCreated"
     />
     <create-work-item-cancel-confirmation-modal
       v-if="workItemType"

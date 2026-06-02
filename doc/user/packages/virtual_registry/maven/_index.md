@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Package Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Maven virtual registry
 description: Use the Maven virtual registry to configure and manage multiple private and public upstream registries.
 ---
@@ -42,7 +42,7 @@ This approach provides better package performance over time,
 and makes it easier to manage your Maven packages.
 
 For general information about managing virtual registries and upstream registries, see
-[Virtual registry](../../virtual_registry/_index.md).
+[Virtual registry](../_index.md).
 
 ## Prerequisites
 
@@ -50,6 +50,7 @@ Before you can use the Maven virtual registry:
 
 - Review the [prerequisites](../_index.md#prerequisites) to use the virtual registry.
 - Configure authentication to the virtual registry. For more information, see [Authenticate to the virtual registry](../_index.md#authenticate-to-the-virtual-registry).
+- On GitLab Self-Managed: Allow outbound requests to the local network. For more information, see [allow requests to the local network](../../../../security/webhooks.md#allow-requests-to-the-local-network-from-webhooks-and-integrations).
 
 When using the Maven virtual registry, remember the following restrictions:
 
@@ -67,23 +68,25 @@ When using the Maven virtual registry, remember the following restrictions:
 
 {{< /history >}}
 
-Manage virtual registries for your group.
+Manage Maven virtual registries for your group.
 
-You can also [use the API](../../../../api/maven_virtual_registries.md#manage-virtual-registries).
+You can also [use the API](../../../../api/maven_virtual_registries.md#manage-maven-virtual-registries).
 
 ### Create a Maven virtual registry
 
 To create a Maven virtual registry:
 
-1. On the top bar, select **Search or go to** and find your group. This group must be at the top level.
+1. In the top bar, select **Search or go to** and find your group. This group must be at the top level.
 1. Select **Deploy** > **Virtual registry**.
-1. Select **Create registry**.
+1. If you:
+   - Have an existing registry, select **Create registry**. From the dropdown list, select **Maven**.
+   - Do not have an existing registry, from the dropdown list, select **Maven**. Then, select **Create registry**.
 1. Enter a **Name** and optional **Description**.
-1. Select **Create Maven registry**.
+1. Select **Create registry**.
 
 ## Manage upstream registries
 
-Manage upstream registries in a virtual registry.
+Manage upstream Maven registries in a virtual registry.
 
 ### Create a Maven upstream registry
 
@@ -91,11 +94,11 @@ Create a Maven upstream registry to connect to the virtual registry.
 
 Prerequisites:
 
-- You must have a virtual registry. For more information, see [Create a virtual registry](#create-a-maven-virtual-registry).
+- You must have a Maven virtual registry. For more information, see [Create a virtual registry](#create-a-maven-virtual-registry).
 
 To create a Maven upstream registry:
 
-1. On the top bar, select **Search or go to** and find your group. This group must be at the top level.
+1. In the top bar, select **Search or go to** and find your group. This group must be at the top level.
 1. Select **Deploy** > **Virtual registry**.
 1. Under **Registry types**, select **View registries**.
 1. Under the **Registries** tab, select a registry.
@@ -118,7 +121,7 @@ To create a Maven upstream registry:
 
 1. Select **Create upstream**.
 
-For more information about cache validity settings, see [Set the cache validity period](../../virtual_registry/_index.md#set-the-cache-validity-period).
+For more information about cache validity settings, see [Set the cache validity period](../_index.md#set-the-cache-validity-period).
 
 ## Use the Maven virtual registry
 
@@ -147,6 +150,7 @@ You should use one of the configurations below for each client.
 | Group deploy token    | `Deploy-Token`  | Paste token as-is, or define an environment variable to hold the token. |
 | Group access token    | `Private-Token` | Paste token as-is, or define an environment variable to hold the token. |
 | CI/CD Job token          | `Job-Token`     | `${CI_JOB_TOKEN}`                                                       |
+| OAuth 2.0 token       | `Authorization` | `Bearer <your_oauth_token>`                                             |
 
 Add the following section to your
 [`settings.xml`](https://maven.apache.org/settings.html) file.
@@ -218,6 +222,7 @@ To configure a Maven virtual registry as a replacement of the default registry, 
 | Group deploy token    | `Deploy-Token`  | Paste token as-is, or define an environment variable to hold the token. |
 | Group access token    | `Private-Token` | Paste token as-is, or define an environment variable to hold the token. |
 | CI/CD Job token          | `Job-Token`     | `${CI_JOB_TOKEN}`                                                       |
+| OAuth 2.0 token       | `Authorization` | `Bearer <your_oauth_token>`                                             |
 
 In [your `GRADLE_USER_HOME` directory](https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home),
 create a file `gradle.properties` with the following content:
@@ -301,3 +306,33 @@ Make sure that the first argument of `Credentials` is `"GitLab Virtual Registry"
 {{< /tab >}}
 
 {{< /tabs >}}
+
+## Troubleshooting
+
+When working with Maven virtual registries, you might encounter the following issues.
+
+### Error: `Connect to gitlab.example.com:443 failed: Connection timed out`
+
+You might get intermittent connection timeout errors when pulling
+Maven dependencies through the virtual registry, such as:
+
+```plaintext
+Connect to gitlab.example.com:443 failed: Connect timed out
+```
+
+This issue can occur on GitLab Self-Managed instances when the upstream
+registry URL resolves to a local network address. By default, GitLab
+blocks outbound requests to local network addresses for security reasons.
+
+To resolve this issue:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings > Network**.
+1. Expand **Outbound requests**.
+1. Select the **Allow requests to the local network from webhooks and integrations** checkbox.
+1. Optional. If you prefer to allow only specific addresses instead of all local network requests,
+   in **Local IP addresses and domain names that hooks and integrations can access**,
+   add the hostname or IP address of your upstream registry.
+1. Select **Save changes**.
+
+For more information, see [allow requests to the local network](../../../../security/webhooks.md#allow-requests-to-the-local-network-from-webhooks-and-integrations).

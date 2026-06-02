@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Ci::CancelPipelineService, :aggregate_failures, feature_category: :continuous_integration do
   let_it_be(:project) { create(:project) }
   let_it_be(:current_user) { project.owner }
-  let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+  let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
 
   let(:service) do
     described_class.new(
@@ -214,11 +214,16 @@ RSpec.describe Ci::CancelPipelineService, :aggregate_failures, feature_category:
             described_class.new(pipeline: pipeline2, current_user: current_user).force_execute
           end
 
-          extra_update_queries = 5 # transition ... => :canceled, queue pop
+          extra_update_queries = 4 # transition ... => :canceled, queue pop
           extra_generic_commit_status_validation_queries = 2 # name_uniqueness_across_types
+          extra_savepoint_operations = 6
 
-          expect(control2.count)
-            .to be <= (control1.count + extra_update_queries + extra_generic_commit_status_validation_queries)
+          expected_count = control1.count +
+            extra_update_queries +
+            extra_generic_commit_status_validation_queries +
+            extra_savepoint_operations
+
+          expect(control2.count).to be <= expected_count
         end
       end
     end

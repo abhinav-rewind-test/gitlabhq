@@ -1,4 +1,4 @@
-import { isString, memoize } from 'lodash';
+import { isString, memoize } from 'lodash-es';
 import { sprintf, __ } from '~/locale';
 import { base64ToBuffer, bufferToBase64 } from '~/authentication/webauthn/util';
 import {
@@ -163,6 +163,23 @@ export const truncateWidth = (string, options = {}) => {
  * @returns {String}
  */
 export const truncateSha = (sha) => sha.substring(0, 8);
+
+/**
+ * Truncates text to a maximum number of words
+ *
+ * @param {String} text - The text to truncate
+ * @param {Number} maxWords - Maximum number of words to keep (default: 7)
+ * @returns {String} - Truncated text with ellipsis if truncated, original text otherwise
+ */
+export const truncateByWords = (text, maxWords = 7) => {
+  if (!text) return text;
+
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/).slice(0, maxWords);
+  const truncated = words.join(' ');
+
+  return truncated.length < trimmed.length ? `${truncated}…` : trimmed;
+};
 
 /**
  * Capitalizes first character
@@ -502,6 +519,7 @@ export function base64DecodeUnicode(str) {
 }
 
 // returns an array of errors (if there are any)
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- '//' is an invalid branch name character, not a URL
 const INVALID_BRANCH_NAME_CHARS = [' ', '~', '^', ':', '?', '*', '[', '..', '@{', '\\', '//'];
 
 /**

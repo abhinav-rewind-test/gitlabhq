@@ -7,30 +7,31 @@ class DraftNote < ApplicationRecord
   include BulkInsertSafe
 
   PUBLISH_ATTRS = %i[noteable type note internal].freeze
-  DIFF_ATTRS = %i[position original_position change_position commit_id].freeze
+  DIFF_ATTRS = %i[position original_position change_position commit_id line_code].freeze
 
   sha_attribute :commit_id
 
   # Attribute used to store quick actions changes and users referenced.
   attr_accessor :commands_changes
-  attr_accessor :users_referenced
-  attr_accessor :suggestions
+  attr_accessor :users_referenced, :suggestions, :review
 
   # Text with quick actions filtered out
   attr_accessor :rendered_note
 
-  attr_accessor :review
-
   belongs_to :author, class_name: 'User'
   belongs_to :merge_request
+  belongs_to :project
 
   validates :merge_request_id, presence: true
   validates :author_id, presence: true, uniqueness: { scope: [:merge_request_id, :discussion_id] }, if: :discussion_id?
   validates :discussion_id, allow_nil: true, format: { with: /\A\h{40}\z/ }
   validates :line_code, length: { maximum: 255 }, allow_nil: true
+  validates :note, bytesize: { maximum: -> { Gitlab::CurrentSettings.description_and_note_max_size } },
+    if: :note_changed?
 
   validates :position, :original_position, :change_position,
     'notes/position_serialized_size': { max_bytesize: 100.kilobytes }
+  validate :valid_commit_id
 
   enum :note_type, {
     Note: 0,
@@ -39,6 +40,7 @@ class DraftNote < ApplicationRecord
   }
 
   scope :authored_by, ->(u) { where(author_id: u.id) }
+  before_validation :set_project, prepend: true
 
   delegate :file_path, :file_hash, :file_identifier_hash, to: :diff_file, allow_nil: true
 
@@ -60,10 +62,6 @@ class DraftNote < ApplicationRecord
     records.find(&:on_diff?)&.keep_around_commits
   end
 
-  def project
-    merge_request.target_project
-  end
-
   # noteable_id and noteable_type methods
   # are used to generate discussion_id on Discussion.discussion_id
   def noteable_id
@@ -79,7 +77,7 @@ class DraftNote < ApplicationRecord
   end
 
   def for_commit?
-    commit_id.present?
+    false
   end
 
   def importing?
@@ -150,5 +148,18 @@ class DraftNote < ApplicationRecord
 
   def commit
     @commit ||= project.commit(commit_id) if commit_id.present?
+  end
+
+  private
+
+  def valid_commit_id
+    return unless commit_id.present?
+    return if project&.commit(commit_id)
+
+    errors.add(:commit_id, 'is not a valid commit')
+  end
+
+  def set_project
+    self.project_id ||= merge_request&.target_project_id
   end
 end

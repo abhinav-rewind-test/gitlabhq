@@ -4,9 +4,9 @@ module WebHooks
   class LogExecutionService
     include ::Gitlab::ExclusiveLeaseHelpers
 
-    LOCK_TTL = 15.seconds.freeze
+    LOCK_TTL = 5.seconds.freeze
     LOCK_SLEEP = 0.25.seconds.freeze
-    LOCK_RETRY = 65
+    LOCK_RETRY = 25
 
     attr_reader :hook, :log_data, :response_category
 
@@ -35,7 +35,7 @@ module WebHooks
       return unless hook.url_variables?
       return unless log_data.key?('response_headers')
 
-      variables_map = hook.url_variables.invert.transform_values { "{#{_1}}" }
+      variables_map = hook.url_variables.invert.transform_values { |variable| "{#{variable}}" }
       regex = Regexp.union(variables_map.keys)
 
       log_data['response_headers'].transform_values! do |value|

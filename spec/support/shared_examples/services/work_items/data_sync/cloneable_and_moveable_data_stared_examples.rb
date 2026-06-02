@@ -250,13 +250,17 @@ RSpec.shared_examples 'cloneable and moveable widget data' do
                          [:group_level, { namespace: original_work_item.namespace }]
                        end
 
-    child_item_type1 = ::WorkItems::Type.find(WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.where(
-      parent_type_id: original_work_item.work_item_type.id
-    ).min_by(&:id).child_type_id).base_type
+    child_item_type1 = ::WorkItems::TypesFramework::SystemDefined::Type.find(
+      WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.where(
+        parent_type_id: original_work_item.work_item_type.id
+      ).min_by(&:id).child_type_id
+    ).base_type
 
-    child_item_type2 = ::WorkItems::Type.find(WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.where(
-      parent_type_id: original_work_item.work_item_type.id
-    ).max_by(&:id).child_type_id).base_type
+    child_item_type2 = ::WorkItems::TypesFramework::SystemDefined::Type.find(
+      WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.where(
+        parent_type_id: original_work_item.work_item_type.id
+      ).max_by(&:id).child_type_id
+    ).base_type
 
     child_item1 = create(:work_item, child_item_type1, *namespace_params)
     create(:parent_link, work_item: child_item1, work_item_parent: original_work_item)
@@ -267,6 +271,9 @@ RSpec.shared_examples 'cloneable and moveable widget data' do
   end
 
   let_it_be(:parent) do
+    # The original work item is type of issue and it has parent only in EE.
+    next nil unless Gitlab.ee?
+
     parent = create(:work_item, :epic)
     create(:parent_link, work_item: original_work_item, work_item_parent: parent)
     parent

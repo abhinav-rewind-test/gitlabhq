@@ -12,13 +12,27 @@ RSpec.shared_context 'with claiming tools' do
     claims_records_for(subject, only: only)
   end
 
+  def destroy_claims_records(only: {})
+    destroy_claims_records_for(subject, only: only)
+  end
+
   def claims_records_for(instance, only: {})
     instance.class.cells_claims_attributes.filter_map do |attribute, config|
       value = only[attribute]
+      next unless only.empty? || value
+      next unless instance.__send__(:cells_claims_attribute_claimable?, config)
 
-      if only.empty? || value # rubocop:disable Style/IfUnlessModifier -- I think this is easier to read
-        claims_records_attribute_for(instance, attribute, config, value)
-      end
+      claims_records_attribute_for(instance, attribute, config, value)
+    end
+  end
+
+  def destroy_claims_records_for(instance, only: {})
+    instance.class.cells_claims_attributes.filter_map do |attribute, config|
+      value = only[attribute]
+      next unless only.empty? || value
+      next unless instance.__send__(:cells_claims_attribute_claimable?, config)
+
+      claims_records_attribute_for(instance, attribute, config, value)
     end
   end
 
@@ -61,11 +75,8 @@ RSpec.shared_context 'with claiming tools' do
         # We delay defining this mock because only after saving we have
         # the id we can use for the metadata.
         mock = expect(claim_service).to receive(:begin_update).with(
-          Gitlab::Cells::TopologyService::Claims::V1::BeginUpdateRequest.new(
-            create_records: sort_records(create_records),
-            destroy_records: sort_records(destroy_records),
-            cell_id: claim_service.cell_id
-          ),
+          create_records: sort_records(create_records),
+          destroy_records: sort_records(destroy_records),
           deadline: deadline
         )
 
@@ -83,9 +94,12 @@ RSpec.shared_context 'with claiming tools' do
   end
 
   def expect_commit_update(success: true)
-    mock = expect(claim_service).to receive(:commit_update).with(lease_uuid, deadline: deadline)
-
-    mock.and_raise(fake_error.new) unless success
+    if success
+      expect(claim_service).to receive(:commit_update).with(lease_uuid, deadline: deadline)
+    else
+      allow(claim_service).to receive(:commit_update).with(lease_uuid, deadline: deadline)
+        .and_raise(GRPC::Unavailable.new("service unavailable"))
+    end
   end
 
   def expect_rollback_update
@@ -162,11 +176,11 @@ RSpec.shared_examples 'creating new claims' do
     end
 
     context 'when commit_update fails' do
-      it 'saves subject but leaves the outstanding lease' do
+      it 'saves subject but leaves the outstanding lease for recovery' do
         expect_begin_update(:save)
         expect_commit_update(success: false)
 
-        expect { subject.save }.to raise_error(fake_error) # rubocop:disable Rails/SaveBang -- We're checking exceptions already
+        expect(subject.save).to be(true)
         expect(subject.class.count).to eq(1)
         expect(Cells::OutstandingLease.count).to eq(1)
       end
@@ -180,7 +194,7 @@ RSpec.shared_examples 'deleting existing claims' do
   context 'when deleting the record' do
     subject! { super().tap(&:save!) }
 
-    let(:destroy_records) { claims_records }
+    let(:destroy_records) { destroy_claims_records }
 
     it 'deletes the claimed attributes cleanly when created' do
       expect_begin_update(:destroy)
@@ -216,11 +230,12 @@ RSpec.shared_examples 'deleting existing claims' do
     end
 
     context 'when commit_update fails' do
-      it 'deletes record but leaves the outstanding lease' do
+      it 'deletes record but leaves the outstanding lease for recovery' do
         expect_begin_update(:destroy)
         expect_commit_update(success: false)
 
-        expect { subject.destroy }.to raise_error(fake_error) # rubocop:disable Rails/SaveBang -- We're checking exceptions already
+        subject.destroy!
+        expect(subject.destroyed?).to be(true)
         expect(subject.class.count).to eq(0)
         expect(Cells::OutstandingLease.count).to eq(1)
       end
@@ -234,7 +249,7 @@ RSpec.shared_examples 'updating existing claims' do
   context 'when updating the record' do
     subject! { super().tap(&:save!) }
 
-    let!(:destroy_records) { claims_records(only: original_attributes) }
+    let!(:destroy_records) { destroy_claims_records(only: original_attributes) }
     let!(:create_records) { claims_records(only: transform_attributes) }
 
     let(:original_attributes) do
@@ -284,11 +299,11 @@ RSpec.shared_examples 'updating existing claims' do
     end
 
     context 'when commit_update fails' do
-      it 'updates attributes but leaves the outstanding lease' do
+      it 'updates attributes but leaves the outstanding lease for recovery' do
         expect_begin_update(:save)
         expect_commit_update(success: false)
 
-        expect { subject.update(transform_attributes) }.to raise_error(fake_error) # rubocop:disable Rails/SaveBang -- We're checking exceptions already
+        expect(subject.update(transform_attributes)).to be(true)
 
         subject.reload
         transform_attributes.each do |key, value|

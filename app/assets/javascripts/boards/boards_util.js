@@ -1,4 +1,4 @@
-import { sortBy, cloneDeep, find, inRange } from 'lodash';
+import { sortBy, cloneDeep, find, inRange } from 'lodash-es';
 import {
   TYPENAME_BOARD,
   TYPENAME_CUSTOM_FIELD,
@@ -396,6 +396,11 @@ export function transformBoardConfig() {
 
 export function getBoardQuery(boardType) {
   return boardQuery[boardType].query;
+}
+
+export function getBoardListTitleId(listId) {
+  if (!listId) return null;
+  return `board-list-title-${listId.replace(/[^\w-]/g, '-')}`;
 }
 
 export function getListByTypeId(lists, type, id) {

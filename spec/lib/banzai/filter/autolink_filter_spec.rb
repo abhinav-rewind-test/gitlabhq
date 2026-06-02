@@ -249,8 +249,7 @@ RSpec.describe Banzai::Filter::AutolinkFilter, feature_category: :markdown do
     end
   end
 
-  it 'protects against malicious backtracking',
-    quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16814' do
+  it 'protects against malicious backtracking' do
     doc = "http://#{'&' * 1_000_000}x"
 
     expect do
@@ -316,6 +315,81 @@ RSpec.describe Banzai::Filter::AutolinkFilter, feature_category: :markdown do
 
         expect(found_links.size).to eq(limit)
       end
+    end
+  end
+
+  context 'when text contains HTML entities near URLs' do
+    let(:text) { "See #{link} and &lt;tag&gt; http://other.com/path" }
+
+    subject(:doc) { filter(text, context) }
+
+    it 'autolinks URLs in text with entities' do
+      found_links = doc.css('a')
+
+      expect(found_links.size).to eq(2)
+      expect(found_links[0]['href']).to eq link
+      expect(found_links[1]['href']).to eq 'http://other.com/path'
+    end
+
+    context 'with an ampersand entity adjacent to a URL' do
+      let(:text) { "See #{link} &amp; stuff" }
+
+      it 'still autolinks the URL' do
+        expect(doc.at_css('a')['href']).to eq link
+      end
+    end
+  end
+
+  context 'when text node exceeds TEXT_LENGTH_LIMIT' do
+    before do
+      stub_const("#{described_class}::TEXT_LENGTH_LIMIT", 100)
+    end
+
+    %i[single_line commit_description].each do |pipeline|
+      context "with #{pipeline} pipeline" do
+        let(:pipeline_context) { { pipeline: pipeline } }
+
+        it 'does not autolink URLs in oversized text nodes' do
+          long_text = "#{'a' * 80} http://example.com/ #{'b' * 80}"
+          doc = filter(long_text, pipeline_context)
+
+          expect(doc.at_css('a')).to be_nil
+        end
+
+        it 'autolinks URLs in text nodes within the limit' do
+          short_text = "See http://example.com/"
+          doc = filter(short_text, pipeline_context)
+
+          expect(doc.at_css('a')['href']).to eq 'http://example.com/'
+        end
+      end
+    end
+
+    it 'autolinks URLs in text nodes exactly at the limit' do
+      padding = 'a' * (100 - 'http://example.com/'.bytesize - 1)
+      text_at_limit = "#{padding} http://example.com/"
+      expect(text_at_limit.bytesize).to eq(100)
+
+      doc = filter(text_at_limit, context)
+
+      expect(doc.at_css('a')['href']).to eq 'http://example.com/'
+    end
+  end
+
+  context 'when StringRangeMarker yields nil due to out-of-bounds range' do
+    let(:text) { "See #{link}" }
+
+    before do
+      allow_next_instance_of(Gitlab::StringRegexMarker) do |instance|
+        allow(instance).to receive(:mark_with_ranges).and_yield(nil, true, true, nil)
+      end
+    end
+
+    it 'returns a valid document without autolinking' do
+      doc = filter(text, context)
+
+      expect(doc).to be_a(Nokogiri::HTML::DocumentFragment)
+      expect(doc.at_css('a')).to be_nil
     end
   end
 

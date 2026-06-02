@@ -1,15 +1,15 @@
 ---
 stage: AI-powered
-group: Code Creation
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: AIがマージリクエストのレビューで使用する手順をカスタマイズします。
-title: GitLab Duoのレビュー手順をカスタマイズする
+group: AI Coding
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: マージリクエストのレビューでAIが使用する指示をカスタマイズします。
+title: GitLab Duoへのレビューの指示をカスタマイズする
 ---
 
 {{< details >}}
 
 - プラン: Premium、Ultimate
-- アドオン: GitLab Duo Core、Pro、またはEnterprise
+- アドオン: GitLab Duo Enterprise
 - 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
 
 {{< /details >}}
@@ -19,34 +19,25 @@ title: GitLab Duoのレビュー手順をカスタマイズする
 - GitLab 18.2で`duo_code_review_custom_instructions`[機能フラグ](../../../administration/feature_flags/_index.md)とともに[ベータ版](../../../policy/development_stages_support.md#beta)として[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/545136)されました。デフォルトでは無効になっています。
 - 機能フラグ`duo_code_review_custom_instructions`は、GitLab 18.3で[デフォルトで有効](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/199802)になっています。
 - 機能フラグ`duo_code_review_custom_instructions`は、GitLab 18.4で[削除](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/202262)されました。
+- `fileFilters`におけるユニオンパターン（例: `{rb,ts}`）は、GitLab 19.1で[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/237952)されました。
 
 {{< /history >}}
 
-マージリクエストのカスタムレビュー手順を作成して、GitLab Duoがプロジェクトに一貫性のある特定のコードレビュー標準を適用するようにします。
+カスタムマージリクエストレビュー指示を作成して、GitLab Duoがプロジェクト内で一貫性のある具体的なコードレビュー標準を適用するようにします。
 
-GitLab Duoコードレビュー（クラシック）とコードレビューフローは、カスタムレビュー手順をサポートしています。
+たとえば、Rubyファイルに対してのみRubyスタイルの規則を適用し、Goファイルに対してはGoスタイルの規則を適用できます。
 
-たとえば、Rubyファイルに対してのみRubyスタイルの規則を適用し、Goファイルに対してGoスタイルの規則を適用できます。
+GitLab Duoは、標準のレビュー基準を置き換えるのではなく、カスタムレビュー指示を追加する形で適用します。
 
-GitLab Duoは、カスタムレビュー手順を標準のレビュー基準に追加します（置き換えるのではなく）。
+GitLab Duoコードレビューは、特定のプロジェクトまたはグループ内のすべてのプロジェクトに対して設定されたカスタムレビュー指示をサポートします。
 
-## カスタムレビュー手順を設定する {#configure-custom-review-instructions}
+## プロジェクトのカスタムレビュー指示を設定する {#configure-custom-review-instructions-for-a-project}
 
-カスタムマージリクエストのレビュー手順を設定するには、次のようにします:
+カスタムマージリクエストレビュー指示を設定するには:
 
-1. リポジトリのルートディレクトリに、`.gitlab/duo`ディレクトリが存在しない場合は作成します。
+1. リポジトリのルートで、`.gitlab/duo`ディレクトリが存在しない場合は作成します。
 1. `.gitlab/duo`ディレクトリに、`mr-review-instructions.yaml`という名前のファイルを作成します。
-1. オプション。[GitLab Duo Chat（エージェント）](../../gitlab_duo_chat/agentic_chat.md)にコードベースとドキュメントを分析させ、カスタムレビュー手順を生成させます。
-
-   プロンプトの例:
-
-   ```plaintext
-   I need to create custom rules for GitLab Duo Code Review. When you look at the source code,
-   which languages are missing and need to be added to the mr-review-instructions.yaml
-   file?
-   ```
-
-1. 次の形式を使用して、カスタム手順を追加します:
+1. 次の形式を使用して、カスタム指示を追加します:
 
    ```yaml
    instructions:
@@ -59,7 +50,7 @@ GitLab Duoは、カスタムレビュー手順を標準のレビュー基準に�
          <your_custom_review_instructions>
    ```
 
-   `fileFilters`セクションのglobパターンを使用して、カスタムレビュールールに合わせて特定のファイルをターゲットにします。
+   `fileFilters`セクションは必須です。このセクションでglobパターンを使用して、カスタムレビュールールの対象となる特定のファイルを指定します。
 
    例: 
 
@@ -103,9 +94,15 @@ GitLab Duoは、カスタムレビュー手順を標準のレビュー基準に�
          1. Test both happy paths and edge cases
          2. Include error scenarios
          3. Use shared examples to reduce duplication
+
+     - name: All Files
+       fileFilters:
+         - "**/*"   # All files in the repository
+       instructions: |
+         1. Explain the "why" behind each suggestion
    ```
 
-   glob構文の例については、[ファイルパターン参照](#file-pattern-reference)を参照してください。
+   glob構文の例については、[ファイルパターンのリファレンス](#file-pattern-reference)を参照してください。
 
 1. オプション: `mr-review-instructions.yaml`ファイルへの変更を保護するために、[コードオーナー](../../project/codeowners/_index.md)エントリを追加します。
 
@@ -114,30 +111,56 @@ GitLab Duoは、カスタムレビュー手順を標準のレビュー基準に�
    .gitlab/duo @default-owner @tech-lead
    ```
 
-1. 変更を[作成し、マージリクエスト](../../project/merge_requests/creating_merge_requests.md)してレビューし、マージします:
+1. 変更内容をレビューしてマージするための[マージリクエストを作成](../../project/merge_requests/creating_merge_requests.md)します:
 
-   - ファイルパターンが一致すると、GitLab Duoは自動的にカスタム手順を適用します。
-   - 複数の手順グループを1つのファイルに適用できます。
-   - カスタム手順によってトリガーされたレビューコメントの場合、GitLab Duoはこの形式を使用します:
+   - ファイルパターンが一致した場合、GitLab Duoはカスタム指示を自動的に適用します。
+   - 複数の指示グループを1つのファイルに適用できます。
+   - カスタム指示によってトリガーされたレビューコメントについて、GitLab Duoは次の形式を使用します:
 
      ```plaintext
      According to custom instructions in '[instruction_name]': [feedback comments]
      ```
 
      `instruction_name`の値は、`.gitlab/duo/mr-review-instructions.yaml`ファイルの`name`プロパティに対応しています。標準のGitLab Duoコメントでは、この形式は使用されません。
+     <br><br>
+     GitLab Duoが問題を検出しない場合、レビューサマリ―コメントを残します。カスタム指示は、このサマリ―コメントには適用されません。
 1. オプション: 
-   - フィードバックをレビューし、必要に応じて手順を調整します。
+   - フィードバックをレビューし、必要に応じて指示を調整します。
    - パターンをテストして、意図したファイルと一致することを確認します。
+
+## グループのカスタムレビュー指示を設定する {#configure-custom-review-instructions-for-a-group}
+
+{{< history >}}
+
+- GitLab 19.0で[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230090)。
+
+{{< /history >}}
+
+テンプレートとして使用するプロジェクトを指定することで、グループのカスタムレビュー指示を定義できます。テンプレートプロジェクトには、グループとそのサブグループ内のすべてのプロジェクトに適用されるレビュー指示を含む`.gitlab/duo/mr-review-instructions.yaml`ファイルが必要です。
+
+GitLab Duoがコードレビューを実行すると、トップレベルグループからの指示と個々のプロジェクトで定義された指示が組み合わされます。
+
+前提条件: 
+
+- トップレベルグループのオーナーロール。
+- グループ内のプロジェクトには、テンプレートとして使用するカスタムレビュー指示が含まれています。
+
+グループのカスタムレビュー指示を設定するには:
+
+1. 上部のバーで**検索または移動先**を選択し、トップレベルグループを見つけます。
+1. 左サイドバーで、**設定** > **GitLab Duo**を選択します。
+1. **グループ向けのカスタムレビュー指示**の下で、グループのレビュー指示が記述されている`.gitlab/duo/mr-review-instructions.yaml`ファイルを含むプロジェクトを選択します。
+1. **変更を保存**を選択します。
 
 ## ベストプラクティス {#best-practices}
 
-カスタムレビュー手順を作成する場合:
+カスタムレビュー指示を作成する場合、次の点に留意してください:
 
-- 具体的かつ実行可能であること。
-- わかりやすくするために、手順に番号を付けます。
-- 最も重要な標準に焦点を当てます。
-- 役立つ場合は、「理由」を説明します。
-- 簡単な手順から始め、必要に応じて複雑さを増していきます。
+- 具体的かつ実行可能な指示を作成する。
+- わかりやすくするために、指示に番号を付ける。
+- 最も重要な標準に焦点を当てる。
+- 有用な場合は、「理由」を説明する。
+- 簡単な指示から始め、必要に応じてより複雑な指示を追加する。
 
 例: 
 
@@ -150,23 +173,23 @@ instructions: |
   5. Avoid hardcoded credentials - use environment variables
 ```
 
-言語固有の例については、[ユースケースの例](#use-case-examples)を参照してください。
+言語別の例については、[ユースケースの例](#use-case-examples)を参照してください。
 
-## ファイルパターン参照 {#file-pattern-reference}
+## ファイルパターンのリファレンス {#file-pattern-reference}
 
 `fileFilters`のglobパターンを使用して、特定のファイルをターゲットにします。
 
-たとえば、Rubyファイルを含むプロジェクトの場合:
+たとえば、Rubyファイルを含むプロジェクトの場合は次のとおりです:
 
 | パターン | マッチ |
 | --- | --- |
 | `**/*.rb`       | 任意のディレクトリ内のすべてのRubyファイル |
-| `*.rb`          | ルートディレクトリ内のRubyファイルのみ |
+| `*.rb`          | ルートディレクトリ直下のRubyファイルのみ |
 | `lib/**/*.rb`   | `lib`ディレクトリとそのサブディレクトリ内のRubyファイル |
 | `!**/*.test.rb` | すべてのRubyテストファイルを除外する |
 | `!spec/**/*.rb` | `spec`ディレクトリとそのサブディレクトリ内のすべてのRubyファイルを除外する |
 | `!tests/**/*`   | `tests`ディレクトリとそのサブディレクトリ内のすべてのファイルを除外する |
-| `**/*.{js,jsx}` | すべてのディレクトリ内のJavaScriptファイルとJSXファイル |
+| `**/*.{js,jsx}` | 全てのディレクトリ内のJavaScriptおよびJSXファイル（GitLab 19.1以降） |
 
 次の例は、`**/*.rb`と`*.rb`の違いを示しています:
 
@@ -180,15 +203,15 @@ project/
         └── user.rb     ← matched only by **/*.rb
 ```
 
-- `*.rb`はapp.rbとのみ一致します
-- `**/*.rb`は3つすべてのファイルと一致します
+- `*.rb`はapp.rbのみに一致します
+- `**/*.rb`は3つすべてのファイルに一致します
 
-`mr-review-instructions.yaml`ファイルの場合、`**/*.rb`を使用すると、レビュー手順がプロジェクト構造内の任意の場所にあるRubyファイルに適用されるようになります（ルートディレクトリだけではありません）。
+`mr-review-instructions.yaml`ファイルでは、`**/*.rb`を使用することで、ルートディレクトリに限らず、プロジェクト構造内のあらゆる場所にあるRubyファイルにレビュー指示を適用できます。
 
 ## ユースケースの例 {#use-case-examples}
 
 <!-- 2025-11-12 Use case examples are maintained by DevRel, @dnsmichi
-Inspired by the reference in https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads
+Inspired by the reference in <https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads>
 -->
 
 {{< tabs >}}
@@ -573,7 +596,7 @@ instructions:
 
 {{< /tab >}}
 
-{{< tab title="構成ファイル" >}}
+{{< tab title="設定ファイル" >}}
 
 ```yaml
 instructions:
@@ -682,13 +705,14 @@ instructions:
 
 ### プロジェクトの例 {#example-projects}
 
-カスタムレビュー手順のその他のユースケースについては、次の本番環境の例を参照してください:
+カスタムレビュー指示のその他のユースケースについては、次の本番環境の例を参照してください:
 
-- [`gitlab-org/gitlab`gitlab-org/gitlabでのGitLab開発](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/duo/mr-review-instructions.yaml)
-- [GitLabハンドブック](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yml)
+- [`gitlab-org/gitlab`におけるGitLabの開発](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/duo/mr-review-instructions.yaml)
+- [GitLabハンドブック](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [GitLab Webサイト](https://gitlab.com/gitlab-com/marketing/digital-experience/about-gitlab-com/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [デベロッパーアドボカシー: Tanuki IoT Platform](https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 
 ## 関連トピック {#related-topics}
 
 - [マージリクエストにおけるGitLab Duo](../../project/merge_requests/duo_in_merge_requests.md)
+- [GitLab Duoコードレビュー](../code_review.md)

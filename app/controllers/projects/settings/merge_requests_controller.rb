@@ -38,13 +38,14 @@ module Projects
       def project_setting_attributes
         %i[
           squash_option
+          automatic_rebase_enabled
           allow_editing_commit_messages
           mr_default_target_self
         ]
       end
 
       def project_params_attributes
-        [
+        attrs = [
           :allow_merge_on_skipped_pipeline,
           :resolve_outdated_diff_discussions,
           :only_allow_merge_if_all_discussions_are_resolved,
@@ -56,9 +57,10 @@ module Projects
           :merge_commit_template_or_default,
           :squash_commit_template_or_default,
           :suggestion_commit_message,
-          :merge_request_title_regex,
-          :merge_request_title_regex_description
-        ] + [project_setting_attributes: project_setting_attributes]
+          :mr_default_title_template
+        ]
+
+        attrs + [project_setting_attributes: project_setting_attributes]
       end
     end
   end

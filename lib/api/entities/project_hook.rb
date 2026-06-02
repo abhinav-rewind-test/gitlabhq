@@ -3,7 +3,7 @@
 module API
   module Entities
     class ProjectHook < Hook
-      expose :project_id, documentation: { type: 'String', example: 1 }
+      expose :project_id, documentation: { type: 'Integer', example: 1 }
       expose :issues_events, documentation: { type: 'Boolean' }
       expose :confidential_issues_events, documentation: { type: 'Boolean' }
       expose :note_events, documentation: { type: 'Boolean' }
@@ -17,6 +17,7 @@ module API
       expose :milestone_events, documentation: { type: 'Boolean' }
       expose :emoji_events, documentation: { type: 'Boolean' }
       expose :resource_access_token_events, documentation: { type: 'Boolean' }
+      expose :resource_deploy_token_events, documentation: { type: 'Boolean' }
       expose :vulnerability_events, documentation: { type: 'Boolean' }
     end
   end

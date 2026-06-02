@@ -32,12 +32,24 @@ module Authz
         namespace&.full_path
       end
 
+      def type_label
+        access.to_s.tr('_', ' ')
+      end
+
+      def visible_to?(_user)
+        true
+      end
+
       attr_reader :boundary
     end
 
     class GroupBoundary < Base
       def access
         GranularScope::Access::SELECTED_MEMBERSHIPS
+      end
+
+      def type_label
+        'group'
       end
 
       def namespace
@@ -47,11 +59,19 @@ module Authz
       def member?(user)
         boundary.member?(user)
       end
+
+      def visible_to?(user)
+        ::Gitlab::VisibilityLevel.levels_for_user(user).include?(boundary.visibility_level)
+      end
     end
 
     class ProjectBoundary < Base
       def access
         GranularScope::Access::SELECTED_MEMBERSHIPS
+      end
+
+      def type_label
+        'project'
       end
 
       def namespace
@@ -60,6 +80,10 @@ module Authz
 
       def member?(user)
         boundary.member?(user)
+      end
+
+      def visible_to?(user)
+        ::Gitlab::VisibilityLevel.levels_for_user(user).include?(boundary.visibility_level)
       end
     end
 

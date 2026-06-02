@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI/CD components
 description: Reusable, versioned CI/CD components for pipelines.
 ---
@@ -41,7 +41,7 @@ that have the functionality you need in the [CI/CD Catalog](#cicd-catalog).
 
 <i class="fa-youtube-play" aria-hidden="true"></i>
 For an introduction and hands-on examples, see [Efficient DevSecOps workflows with reusable CI/CD components](https://www.youtube.com/watch?v=-yvfSFKAgbA).
-<!-- Video published on 2024-01-22. DRI: Developer Relations, https://gitlab.com/groups/gitlab-com/marketing/developer-relations/-/epics/399 -->
+<!-- Video published on 2024-01-22. DRI: Developer Relations, <https://gitlab.com/groups/gitlab-com/marketing/developer-relations/-/epics/399> -->
 
 For common questions and additional support, see the [FAQ: GitLab CI/CD Catalog](https://about.gitlab.com/blog/faq-gitlab-ci-cd-catalog/)
 blog post.
@@ -272,7 +272,7 @@ To use component context in a component, you must:
 
 1. Declare which component context fields the component needs in the [`spec:component`](../yaml/_index.md#speccomponent) header.
    `spec:component` supports `name`, `sha`, `version`, and `reference` fields.
-1. Reference the context fields using the CI/CD expression `$[[ component.field-name ]]` in the component template.
+1. Reference the context fields using the CI/CD expression `$[[ component.field-name ]]` in the component template (outside the `spec` section).
 
 For example, a component that references a Docker image built with the same version:
 
@@ -280,11 +280,12 @@ For example, a component that references a Docker image built with the same vers
 spec:
   component: [name, version, reference]
   inputs:
-    image_tag:
-      default: latest
+    stage:
+      default: build
 ---
 
 build-image:
+  stage: $[[ inputs.stage ]]
   image: registry.example.com/$[[ component.name ]]:$[[ component.version ]]
   script:
     - echo "Building with component version $[[ component.version ]]"
@@ -298,6 +299,7 @@ You can also use component context to [reference versioned resources](examples.m
 The `spec` section in a component template defines the component's configuration and inputs.
 You can use the following keywords in the `spec` section:
 
+- [`description`](../yaml/_index.md#specdescription): Provide a short description of the component that is displayed in the CI/CD Catalog.
 - [`inputs`](../yaml/_index.md#specinputs): Define input parameters for users to customize component configuration.
 - [`component`](../yaml/_index.md#speccomponent): Declare which component context fields to make available for interpolation (like `name`, `sha`, `version`, and `reference`).
 
@@ -441,7 +443,7 @@ ensure that your component also works when used on another instance, for example
 ### Do not assume API resources are always public
 
 Ensure that the component and its testing pipeline work also [on GitLab Self-Managed](#use-a-gitlabcom-component-on-gitlab-self-managed).
-While some API resources of public projects on GitLab.com could be accessed via unauthenticated requests
+While some API resources of public projects on GitLab.com could be accessed with unauthenticated requests,
 on a GitLab Self-Managed instance a component project could be mirrored as private or internal project.
 
 It's important that an access token can optionally be provided via inputs or variables to
@@ -699,12 +701,62 @@ This view shows:
 - **Usage statistics**: The number of unique projects that used a component from this catalog resource in a pipeline in the last 30 days.
 - **Components**: A list of components available in the latest version of the catalog resource.
 
+For example:
+
+![The catalog resource analytics page showing 3 components and their usage numbers.](img/catalog_analytics_v18_10.png)
+
 You can use this information to:
 
 - Identify which catalog resources are most widely adopted.
 - Track usage trends for your components over time.
 - Understand which projects are using your catalog resources.
 - Make informed decisions about component maintenance and deprecation.
+
+### View component usage details
+
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/579460) in GitLab 19.0.
+
+{{< /history >}}
+
+If you maintain CI/CD catalog component projects, you can view detailed component usage information to understand which projects use the components and which versions they use.
+This helps you plan upgrades, communicate deprecations, and identify projects that use outdated versions.
+
+Prerequisites:
+
+- You must have the Maintainer or Owner role for the catalog resource project.
+
+To view component usage details:
+
+1. In the top bar, select **Search or go to** > **Explore**.
+1. Select **CI/CD Catalog**.
+1. Select a component project from the catalog.
+1. On the detail page, select the **Usage** tab.
+
+This tab lists the projects that included any of this project's component in a pipeline in the last 30 days.
+The list only includes projects that you have permission to view.
+
+The details include:
+
+- **Project path**: The full path of the project, with a link to the project.
+- **Status**: If the project used the latest version of the component, it is labeled as **Up to date**. Otherwise, it is **Outdated**.
+- **Components used**: The names and versions of the components used by the project.
+
+Projects not visible to you are displayed as **Private project** without a link.
+
+You can use this information to:
+
+- Identify projects that use outdated component versions and need to upgrade.
+- Notify project maintainers when a new version is available or when deprecating a component.
+- Understand the adoption of specific component versions across your organization.
 
 ### Publish a component project
 
@@ -724,8 +776,8 @@ Prerequisites:
 
 To set the project as a catalog project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Turn on the **CI/CD Catalog project** toggle.
 
@@ -822,7 +874,7 @@ and is maintained by users verified by GitLab or the instance administrator:
   GitLab partners can contact a member of the GitLab Partner Alliance to have their
   namespace on GitLab.com flagged as GitLab-verified. Then any CI/CD components located in the
   namespace are badged as GitLab Partner components. The Partner Alliance member
-  creates an [internal request issue (GitLab team members only)](https://gitlab.com/gitlab-com/support/internal-requests/-/issues/new?issuable_template=CI%20Catalog%20Badge%20Request)
+  creates an [internal request issue (GitLab team members only)](https://gitlab.com/gitlab-com/support/internal-requests/-/issues/new?description_template=CI%20Catalog%20Badge%20Request)
   on behalf of the verified partner.
 
   > [!warning]

@@ -1,18 +1,18 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting GitLab Duo
 ---
 
 When working with GitLab Duo, you might encounter issues.
 
-Start by [running a health check](../../administration/gitlab_duo/configure/gitlab_self_managed.md#run-a-health-check-for-gitlab-duo)
+Start by [running a health check](../../administration/gitlab_duo/configure/_index.md#run-a-health-check-for-gitlab-duo)
 to determine if your instance meets the requirements to use GitLab Duo.
 
 For more information on troubleshooting GitLab Duo, see:
 
-- [Troubleshooting Code Suggestions (Classic)](../project/repository/code_suggestions/troubleshooting.md).
+- [Troubleshooting Code Suggestions](../project/repository/code_suggestions/troubleshooting.md).
 - [GitLab Duo Chat troubleshooting](../gitlab_duo_chat/troubleshooting.md).
 - [Troubleshooting GitLab Duo Self-Hosted](../../administration/gitlab_duo_self_hosted/troubleshooting.md).
 
@@ -88,7 +88,7 @@ you can also do the following:
    curl --verbose --proxy "http://USERNAME:PASSWORD@example.com:8080" "https://customers.gitlab.com"
    ```
 
-1. Optional. If you are using a [proxy server](../../administration/gitlab_duo/configure/gitlab_self_managed.md#allow-outbound-connections-from-the-gitlab-instance-to-gitlab-duo) between the GitLab
+1. Optional. If you are using a [proxy server](../../administration/gitlab_duo/configure/_index.md#allow-outbound-connections-from-the-gitlab-instance-to-gitlab-duo) between the GitLab
    application and the public internet,
    [disable DNS rebinding protection](../../security/webhooks.md#enforce-dns-rebinding-attack-protection).
 
@@ -105,7 +105,9 @@ hardcoded 10-second timeout in GitLab VS Code Extension 6.8.0 and later.
 
 To resolve this issue:
 
-1. In VS Code, select **Code** > **Preferences** > **Settings**.
+1. In VS Code, open the Settings editor:
+   - For macOS, press <kbd>Command</kbd>+<kbd>,</kbd>.
+   - For Windows or Linux, press <kbd>Control</kbd>+<kbd>,</kbd>.
 1. Select **Open Settings (JSON)** to edit your `settings.json` file.
    Alternatively, press <kbd>F1</kbd>, enter **Preferences: Open Settings (JSON)**,
    and select it.
@@ -120,7 +122,7 @@ To resolve this issue:
 ## Troubleshooting GitLab Duo on GitLab Dedicated
 
 GitLab Duo Core should work out-of-the-box on GitLab 18.3 and later for Premium
-and Ultimate customers.
+and Ultimate customers, for all GitLab Duo features excluding GitLab Duo Non-Agentic Chat.
 
 Pre-production GitLab Dedicated instances do not support GitLab Duo Core by design.
 
@@ -150,7 +152,7 @@ To resolve this issue:
 1. Verify outbound connections to `cloud.gitlab.com:443` and `customers.gitlab.com:443`.
 1. Add [Cloudflare IP ranges](https://www.cloudflare.com/ips/) to your allowlist if needed.
 1. Check for allowlist or firewall restrictions with
-   [private link](../../administration/dedicated/configure_instance/network_security.md#aws-private-link-connectivity).
+   [private link](../../administration/dedicated/configure_instance/network_security.md#aws-privatelink-connectivity).
 1. Follow [filtering outbound requests](../../security/webhooks.md#gitlab-duo-functionality-is-blocked)
    to troubleshoot connectivity issues.
 1. Test connectivity from the instance.
@@ -164,12 +166,12 @@ This issue occurs when CORS policies block required resources.
 
 To resolve this issue:
 
-1. Update to GitLab Workflow Extension version 6.35.1 or later.
+1. Update to GitLab for VS Code version 6.35.1 or later.
 1. Add `https://*.cdn.web-ide.gitlab-static.net` to your CORS policy.
 1. To troubleshoot further, check HAR files for logs. For more information, see
-   [create HAR files](../../user/application_security/api_fuzzing/create_har_files.md).
+   [create HAR files](../application_security/api_fuzzing/create_har_files.md).
 
-For more information, see [CORS issues](../../user/project/web_ide/_index.md#cors-issues).
+For more information, see [CORS issues](../project/web_ide/_index.md#cors-issues).
 
 ## GitLab Duo features not available for users
 
@@ -179,6 +181,8 @@ you can also do the following:
 - If you have GitLab Duo Core, verify that you have:
   - A Premium or Ultimate subscription.
   - [Turned on IDE features](turn_on_off.md#turn-gitlab-duo-core-on-or-off).
+  > [!note]
+  > GitLab Duo Non-Agentic Chat is not available for GitLab Duo Core users.
 - If you have GitLab Duo Pro or Enterprise:
   - Verify that [a subscription add-on has been purchased](../../subscriptions/subscription-add-ons.md#purchase-gitlab-duo).
   - Ensure that [seats are assigned to users](../../subscriptions/subscription-add-ons.md#assign-gitlab-duo-seats).

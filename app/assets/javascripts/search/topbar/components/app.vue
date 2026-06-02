@@ -1,6 +1,6 @@
 <script>
 import { GlButton } from '@gitlab/ui';
-import { isEmpty, debounce } from 'lodash';
+import { isEmpty, debounce } from 'lodash-es';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions, mapGetters } from 'vuex';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
@@ -119,15 +119,22 @@ export default {
 <template>
   <section>
     <div class="search-page-form gl-mt-5">
-      <search-type-indicator />
-      <template v-if="showSyntaxOptions">
-        <div class="gl-inline-block">
-          <gl-button category="tertiary" variant="link" @click="onToggleDrawer"
-            >{{ $options.i18n.syntaxOptionsLabel }}
-          </gl-button>
-        </div>
-        <markdown-drawer ref="markdownDrawer" :document-path="documentBasedOnSearchType" />
-      </template>
+      <div class="gl-align-items-center gl-flex gl-gap-1">
+        <search-type-indicator />
+        <gl-button
+          v-if="showSyntaxOptions"
+          category="tertiary"
+          variant="link"
+          @click="onToggleDrawer"
+        >
+          {{ $options.i18n.syntaxOptionsLabel }}
+        </gl-button>
+      </div>
+      <markdown-drawer
+        v-if="showSyntaxOptions"
+        ref="markdownDrawer"
+        :document-path="documentBasedOnSearchType"
+      />
       <global-search-input
         id="dashboard_search"
         v-model="search"

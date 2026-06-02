@@ -41,11 +41,11 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
   end
 
   describe '.max_access_members' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:subgroup) { create(:group, parent: group) }
 
-    let_it_be(:user) { create(:user) }
-    let_it_be(:developer_member) { create(:group_member, :developer, group: group, user: user) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:developer_member, freeze: false) { create(:group_member, :developer, group: group, user: user) }
 
     let(:group_ids) { [group.id] }
 
@@ -75,7 +75,7 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
   end
 
   describe '#prevent_role_assignement?' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be_with_reload(:current_user) { create(:user) }
     let_it_be_with_reload(:member) do
       create(:group_member, access_level: Gitlab::Access::GUEST, group: group)
@@ -87,7 +87,7 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
     subject(:prevent_assignement?) { member.prevent_role_assignement?(current_user, params) }
 
     context 'when current user is a DEVELOPER' do
-      before do
+      before_all do
         group.add_developer(current_user)
       end
 
@@ -109,7 +109,7 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
     end
 
     context 'when current user is a MAINTAINER' do
-      before do
+      before_all do
         group.add_maintainer(current_user)
       end
 
@@ -128,9 +128,33 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
           expect(prevent_assignement?).to be(true)
         end
       end
+
+      context 'when current user has a lower role than the member' do
+        before do
+          member.update!(access_level: Gitlab::Access::OWNER)
+        end
+
+        it { is_expected.to be(true) }
+      end
+
+      context 'when current user has the same role as the member' do
+        before do
+          member.update!(access_level: Gitlab::Access::MAINTAINER)
+        end
+
+        it { is_expected.to be(false) }
+      end
+
+      context 'when current user has a higher role than the member' do
+        before do
+          member.update!(access_level: Gitlab::Access::DEVELOPER)
+        end
+
+        it { is_expected.to be(false) }
+      end
     end
 
-    context 'when current user is an admin', :enable_admin_mode do
+    context 'when current user is an ADMIN', :enable_admin_mode do
       before do
         current_user.update!(admin: true)
       end
@@ -151,10 +175,16 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
         end
       end
     end
+
+    context 'when current user is an OWNER' do
+      before_all { group.add_owner(current_user) }
+
+      it { is_expected.to be(false) }
+    end
   end
 
   describe '#permissible_access_level_roles' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     it 'returns Gitlab::Access.options_with_owner' do
       result = described_class.permissible_access_level_roles(group.first_owner, group)
@@ -191,7 +221,7 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
 
   describe '#last_owner_of_the_group?' do
     let_it_be(:parent_group) { create(:group) }
-    let_it_be(:group) { create(:group, parent: parent_group) }
+    let_it_be(:group, freeze: false) { create(:group, parent: parent_group) }
     let_it_be(:group_member) { create(:group_member, :owner, source: group) }
 
     subject { group_member.last_owner_of_the_group? }
@@ -223,12 +253,8 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
         it { is_expected.to be(true) }
 
         context 'and member is also owner of a parent group' do
-          before do
+          before_all do
             parent_group.add_owner(group_member.user)
-          end
-
-          after do
-            parent_group.members.delete_all
           end
 
           it { is_expected.to be(false) }
@@ -237,15 +263,15 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
 
       context 'and there is another owner' do
         context 'and that other owner is a project bot' do
-          let(:project_bot) { create(:user, :project_bot) }
-          let!(:other_owner_bot) { create(:group_member, :owner, source: group, user: project_bot) }
+          let_it_be(:project_bot, freeze: false) { create(:user, :project_bot) }
+          let_it_be(:other_owner_bot, freeze: false) { create(:group_member, :owner, source: group, user: project_bot) }
 
           it { is_expected.to be(true) }
         end
 
         context 'and that other owner is not a project bot' do
-          let(:other_user) { create(:user) }
-          let!(:other_owner) { create(:group_member, :owner, source: group, user: other_user) }
+          let_it_be(:other_user, freeze: false) { create(:user) }
+          let_it_be(:other_owner, freeze: false) { create(:group_member, :owner, source: group, user: other_user) }
 
           it { is_expected.to be(false) }
         end
@@ -294,11 +320,11 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
   end
 
   context 'authorization refresh on addition/updation/deletion' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:project_a) { create(:project, group: group) }
     let_it_be(:project_b) { create(:project, group: group) }
     let_it_be(:project_c) { create(:project, group: group) }
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
 
     shared_examples_for 'calls AuthorizedProjectsWorker inline to recalculate authorizations' do
       # this is inline with the overridden behaviour in stubbed_member.rb
@@ -315,9 +341,9 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
       let(:action) { group.add_member(user, Gitlab::Access::GUEST) }
 
       it 'changes access level' do
-        expect { action }.to change { user.can?(:guest_access, project_a) }.from(false).to(true)
-          .and change { user.can?(:guest_access, project_b) }.from(false).to(true)
-          .and change { user.can?(:guest_access, project_c) }.from(false).to(true)
+        expect { action }.to change { user.can?(:read_project, project_a) }.from(false).to(true)
+          .and change { user.can?(:read_project, project_b) }.from(false).to(true)
+          .and change { user.can?(:read_project, project_c) }.from(false).to(true)
       end
 
       it_behaves_like 'calls AuthorizedProjectsWorker inline to recalculate authorizations'
@@ -331,9 +357,9 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
       let(:action) { group.members.find_by(user: user).update!(access_level: Gitlab::Access::DEVELOPER) }
 
       it 'changes access level' do
-        expect { action }.to change { user.can?(:developer_access, project_a) }.from(false).to(true)
-          .and change { user.can?(:developer_access, project_b) }.from(false).to(true)
-          .and change { user.can?(:developer_access, project_c) }.from(false).to(true)
+        expect { action }.to change { user.can?(:push_code, project_a) }.from(false).to(true)
+          .and change { user.can?(:push_code, project_b) }.from(false).to(true)
+          .and change { user.can?(:push_code, project_c) }.from(false).to(true)
       end
 
       it_behaves_like 'calls AuthorizedProjectsWorker inline to recalculate authorizations'
@@ -347,9 +373,9 @@ RSpec.describe GroupMember, feature_category: :groups_and_projects do
       let(:action) { group.members.find_by(user: user).destroy! }
 
       it 'changes access level' do
-        expect { action }.to change { user.can?(:guest_access, project_a) }.from(true).to(false)
-          .and change { user.can?(:guest_access, project_b) }.from(true).to(false)
-          .and change { user.can?(:guest_access, project_c) }.from(true).to(false)
+        expect { action }.to change { user.can?(:read_project, project_a) }.from(true).to(false)
+          .and change { user.can?(:read_project, project_b) }.from(true).to(false)
+          .and change { user.can?(:read_project, project_c) }.from(true).to(false)
       end
 
       it_behaves_like 'calls AuthorizedProjectsWorker inline to recalculate authorizations'

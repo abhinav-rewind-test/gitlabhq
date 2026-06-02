@@ -1,6 +1,6 @@
 <script>
 import { GlFilteredSearch } from '@gitlab/ui';
-import { map } from 'lodash';
+import { map } from 'lodash-es';
 import { s__ } from '~/locale';
 import Tracking from '~/tracking';
 import { OPERATORS_IS } from '~/vue_shared/components/filtered_search_bar/constants';
@@ -12,6 +12,7 @@ import PipelineTagNameToken from '../tokens/pipeline_tag_name_token.vue';
 import PipelineTriggerAuthorToken from '../tokens/pipeline_trigger_author_token.vue';
 
 export default {
+  name: 'PipelinesFilteredSearch',
   userType: 'username',
   branchType: 'ref',
   tagType: 'tag',
@@ -106,7 +107,7 @@ export default {
   methods: {
     onSubmit(filters) {
       this.track('click_filtered_search', { label: TRACKING_CATEGORIES.search });
-      this.$emit('filterPipelines', filters);
+      this.$emit('filter-pipelines', filters);
     },
   },
 };

@@ -44,6 +44,23 @@ RSpec.describe Issuable, feature_category: :team_planning do
           expect(authors).not_to include(system_user)
         end
       end
+
+      describe 'notes_with_possible_mentions' do
+        let!(:user_note) { create(:note, noteable: issue, project: issue.project) }
+        let!(:system_note_with_mention) do
+          create(:system_note, noteable: issue, project: issue.project, note: 'assigned to @user')
+        end
+
+        let!(:system_note_without_mention) do
+          create(:system_note, noteable: issue, project: issue.project, note: 'merged')
+        end
+
+        it 'returns user notes and system notes with mentions' do
+          results = issue.notes_with_possible_mentions
+
+          expect(results).to contain_exactly(note, user_note, system_note_with_mention)
+        end
+      end
     end
   end
 
@@ -76,9 +93,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
 
     describe '#validate_assignee_length' do
-      let(:assignee_1) { create(:user) }
-      let(:assignee_2) { create(:user) }
-      let(:assignee_3) { create(:user) }
+      let_it_be(:assignee_1) { create(:user) }
+      let_it_be(:assignee_2) { create(:user) }
+      let_it_be(:assignee_3) { create(:user) }
 
       subject { create(:merge_request) }
 
@@ -102,8 +119,13 @@ RSpec.describe Issuable, feature_category: :team_planning do
     describe '.non_archived' do
       let_it_be(:archived_project) { create(:project, :archived) }
       let_it_be(:non_archived_project) { create(:project) }
-      let_it_be(:mr_in_archived_project) { create(:merge_request, source_project: archived_project, target_project: archived_project) }
-      let_it_be(:mr_in_non_archived_project) { create(:merge_request, source_project: non_archived_project, target_project: non_archived_project) }
+      let_it_be(:mr_in_archived_project) do
+        create(:merge_request, source_project: archived_project, target_project: archived_project)
+      end
+
+      let_it_be(:mr_in_non_archived_project) do
+        create(:merge_request, source_project: non_archived_project, target_project: non_archived_project)
+      end
 
       it 'excludes merge requests from archived projects' do
         expect(MergeRequest.non_archived).to include(mr_in_non_archived_project)
@@ -191,23 +213,15 @@ RSpec.describe Issuable, feature_category: :team_planning do
 
   describe '.participant_includes' do
     it 'returns participant associations' do
-      expect(issuable_class.participant_includes).to contain_exactly(:assignees, :author, :award_emoji, { notes: [:author, :award_emoji] })
-    end
-
-    context 'with remove_per_source_permission_from_participants disabled' do
-      before do
-        stub_feature_flags(remove_per_source_permission_from_participants: false)
-      end
-
-      it 'includes system_note_metadata association' do
-        expect(issuable_class.participant_includes).to contain_exactly(:assignees, :author, :award_emoji, { notes: [:author, :award_emoji, :system_note_metadata] })
-      end
+      expect(issuable_class.participant_includes).to contain_exactly(
+        :assignees, :author, :award_emoji, { notes_with_possible_mentions: [:author, :award_emoji] }
+      )
     end
   end
 
   describe ".search" do
-    let!(:searchable_issue) { create(:issue, title: "Searchable awesome issue") }
-    let!(:searchable_issue2) { create(:issue, title: 'Aw') }
+    let_it_be(:searchable_issue) { create(:issue, title: "Searchable awesome issue") }
+    let_it_be(:searchable_issue2) { create(:issue, title: 'Aw') }
 
     it 'returns issues with a matching title' do
       expect(issuable_class.search(searchable_issue.title))
@@ -233,11 +247,11 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe ".full_search" do
-    let!(:searchable_issue) do
+    let_it_be(:searchable_issue) do
       create(:issue, title: "Searchable awesome issue", description: 'Many cute kittens')
     end
 
-    let!(:searchable_issue2) { create(:issue, title: "Aw", description: "Cu") }
+    let_it_be(:searchable_issue2) { create(:issue, title: "Aw", description: "Cu") }
 
     it 'returns issues with a matching title' do
       expect(issuable_class.full_search(searchable_issue.title))
@@ -388,7 +402,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe "#sort_by_attribute" do
-    let(:project) { create(:project) }
+    let_it_be(:project) { create(:project) }
 
     context "by milestone due date" do
       # Correct order is:
@@ -396,12 +410,13 @@ RSpec.describe Issuable, feature_category: :team_planning do
       # Issues/MRs with milestones without dates
       # Issues/MRs without milestones
 
-      let!(:issue) { create(:issue, project: project) }
-      let!(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
-      let!(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
-      let!(:issue1) { create(:issue, project: project, milestone: early_milestone) }
-      let!(:issue2) { create(:issue, project: project, milestone: late_milestone) }
-      let!(:issue3) { create(:issue, project: project) }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:issue) { create(:issue, project: project) }
+      let_it_be(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
+      let_it_be(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
+      let_it_be(:issue1) { create(:issue, project: project, milestone: early_milestone) }
+      let_it_be(:issue2) { create(:issue, project: project, milestone: late_milestone) }
+      let_it_be(:issue3) { create(:issue, project: project) }
 
       it "sorts desc" do
         issues = project.issues.sort_by_attribute('milestone_due_desc')
@@ -429,10 +444,11 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
 
     context 'by title' do
-      let!(:issue1) { create(:issue, project: project, title: 'foo') }
-      let!(:issue2) { create(:issue, project: project, title: 'bar') }
-      let!(:issue3) { create(:issue, project: project, title: 'baz') }
-      let!(:issue4) { create(:issue, project: project, title: 'Baz 2') }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:issue1) { create(:issue, project: project, title: 'foo') }
+      let_it_be(:issue2) { create(:issue, project: project, title: 'bar') }
+      let_it_be(:issue3) { create(:issue, project: project, title: 'baz') }
+      let_it_be(:issue4) { create(:issue, project: project, title: 'Baz 2') }
 
       it 'sorts asc' do
         issues = project.issues.sort_by_attribute('title_asc')
@@ -525,7 +541,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           changes: hash_not_including(:total_time_spent, :labels, :assignees),
-          action: 'open')
+          action: 'open',
+          actioned_at: nil
+        )
 
         # In some cases, old_associations is empty, e.g. on a close event
         issue.to_hook_data(user, action: 'open')
@@ -545,6 +563,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'labels' => [[labels[0].hook_attrs], [labels[1].hook_attrs]]
           ))
@@ -565,6 +584,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'total_time_spent' => [1, 2]
           ))
@@ -582,10 +602,12 @@ RSpec.describe Issuable, feature_category: :team_planning do
           .to receive(:new).with(issue).and_return(builder)
       end
 
-      it 'delegates to Gitlab::DataBuilder::Issuable#build', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16826' do
+      it 'delegates to Gitlab::DataBuilder::Issuable#build',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16826' do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'assignees' => [[user.hook_attrs], [user.hook_attrs, user2.hook_attrs]]
           ))
@@ -609,6 +631,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'assignees' => [[user.hook_attrs], [user.hook_attrs, user2.hook_attrs]]
           ))
@@ -632,6 +655,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'reviewers' => [
               [hash_including(user.hook_attrs.merge(state: 'unreviewed', re_requested: false))],
@@ -641,7 +665,8 @@ RSpec.describe Issuable, feature_category: :team_planning do
               ]
             ]
           ))
-        merge_request.to_hook_data(user, old_associations: { reviewers_hook_attrs: [user.hook_attrs.merge(state: 'unreviewed', re_requested: false)] }, action: 'update')
+        merge_request.to_hook_data(user,
+          old_associations: { reviewers_hook_attrs: [user.hook_attrs.merge(state: 'unreviewed', re_requested: false)] }, action: 'update')
       end
     end
 
@@ -661,6 +686,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'reviewers' => [
               [hash_including(reviewer.hook_attrs.merge(state: 'unreviewed', re_requested: false))],
@@ -695,6 +721,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_excluding('reviewers')
         )
 
@@ -723,6 +750,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'severity' => %w[unknown low]
           ))
@@ -745,6 +773,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'escalation_status' => %i[triggered acknowledged]
           ))
@@ -754,7 +783,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
 
     context 'merge_request saved twice' do
-      let(:merge_request) { create(:merge_request, :unchanged, target_branch: "initial-branch", title: "initial title") }
+      let(:merge_request) do
+        create(:merge_request, :unchanged, target_branch: "initial-branch", title: "initial title")
+      end
 
       before do
         merge_request.update!(target_branch: "some-other-branch")
@@ -768,11 +799,32 @@ RSpec.describe Issuable, feature_category: :team_planning do
         expect(builder).to receive(:build).with(
           user: user,
           action: 'update',
+          actioned_at: nil,
           changes: hash_including(
             'title' => ["initial title", "final title"],
             'target_branch' => %w[initial-branch final-branch]
           ))
         merge_request.to_hook_data(user, action: 'update')
+      end
+    end
+
+    context 'when actioned_at is provided' do
+      let(:merge_request) { create(:merge_request) }
+      let(:actioned_at) { Time.current }
+
+      before do
+        expect(Gitlab::DataBuilder::Issuable)
+          .to receive(:new).with(merge_request).and_return(builder)
+      end
+
+      it 'passes actioned_at to the builder' do
+        expect(builder).to receive(:build).with(
+          user: user,
+          changes: anything,
+          action: 'update',
+          actioned_at: actioned_at)
+
+        merge_request.to_hook_data(user, action: 'update', actioned_at: actioned_at)
       end
     end
   end
@@ -793,9 +845,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe '#labels_array' do
-    let(:project) { create(:project) }
-    let(:bug) { create(:label, project: project, title: 'bug') }
-    let(:issue) { create(:issue, project: project) }
+    let_it_be(:project) { create(:project) }
+    let_it_be(:bug) { create(:label, project: project, title: 'bug') }
+    let_it_be(:issue) { create(:issue, project: project) }
 
     before do
       issue.labels << bug
@@ -807,9 +859,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe "#labels_hook_attrs" do
-    let(:project) { create(:project) }
-    let(:label) { create(:label) }
-    let(:issue) { create(:labeled_issue, project: project, labels: [label]) }
+    let_it_be(:project) { create(:project) }
+    let_it_be(:label) { create(:label) }
+    let_it_be(:issue) { create(:labeled_issue, project: project, labels: [label]) }
 
     it "returns a list of label hook attributes" do
       expect(issue.labels_hook_attrs).to match_array([label.hook_attrs])
@@ -817,9 +869,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe '.labels_hash' do
-    let(:feature_label) { create(:label, title: 'Feature') }
-    let(:second_label) { create(:label, title: 'Second Label') }
-    let!(:issues) { create_list(:labeled_issue, 3, labels: [feature_label, second_label]) }
+    let_it_be(:feature_label) { create(:label, title: 'Feature') }
+    let_it_be(:second_label) { create(:label, title: 'Second Label') }
+    let_it_be(:issues) { create_list(:labeled_issue, 3, labels: [feature_label, second_label]) }
     let(:issue_id) { issues.first.id }
 
     it 'maps issue ids to labels titles' do
@@ -851,9 +903,9 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe '#user_notes_count' do
-    let(:project) { create(:project) }
-    let(:issue1) { create(:issue, project: project) }
-    let(:issue2) { create(:issue, project: project) }
+    let_it_be(:project) { create(:project) }
+    let_it_be(:issue1) { create(:issue, project: project) }
+    let_it_be(:issue2) { create(:issue, project: project) }
 
     before do
       create_list(:note, 3, noteable: issue1, project: project)
@@ -881,7 +933,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe '.order_due_date_and_labels_priority' do
-    let(:project) { create(:project) }
+    let_it_be(:project) { create(:project) }
 
     def create_issue(milestone, labels)
       create(:labeled_issue, milestone: milestone, labels: labels, project: project)
@@ -935,15 +987,15 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe ".with_label" do
-    let(:project) { create(:project, :public) }
-    let(:bug) { create(:label, project: project, title: 'bug') }
-    let(:feature) { create(:label, project: project, title: 'feature') }
-    let(:enhancement) { create(:label, project: project, title: 'enhancement') }
-    let(:issue1) { create(:issue, title: "Bugfix1", project: project) }
-    let(:issue2) { create(:issue, title: "Bugfix2", project: project) }
-    let(:issue3) { create(:issue, title: "Feature1", project: project) }
+    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:bug) { create(:label, project: project, title: 'bug') }
+    let_it_be(:feature) { create(:label, project: project, title: 'feature') }
+    let_it_be(:enhancement) { create(:label, project: project, title: 'enhancement') }
+    let_it_be(:issue1) { create(:issue, title: "Bugfix1", project: project) }
+    let_it_be(:issue2) { create(:issue, title: "Bugfix2", project: project) }
+    let_it_be(:issue3) { create(:issue, title: "Feature1", project: project) }
 
-    before do
+    before_all do
       issue1.labels << bug
       issue1.labels << feature
       issue2.labels << bug
@@ -1032,52 +1084,31 @@ RSpec.describe Issuable, feature_category: :team_planning do
     it 'returns notes with associations' do
       expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji)
     end
-
-    context 'with remove_per_source_permission_from_participants disabled' do
-      before do
-        stub_feature_flags(remove_per_source_permission_from_participants: false)
-      end
-
-      it 'includes project and system_note_metadata associations' do
-        expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :project, :system_note_metadata)
-      end
-
-      context 'when notes already have projects loaded' do
-        before do
-          allow(issue.notes).to receive(:projects_loaded?).and_return(true)
-        end
-
-        it 'does not include project in includes' do
-          expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :system_note_metadata)
-        end
-      end
-
-      context 'when notes already have system_note_metadata loaded' do
-        before do
-          allow(issue.notes).to receive(:system_note_metadata_loaded?).and_return(true)
-        end
-
-        it 'does not include system_note_metadata in includes' do
-          expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :project)
-        end
-      end
-    end
   end
 
   describe '#first_contribution?', feature_category: :code_review_workflow do
-    let(:group) { create(:group) }
-    let(:project) { create(:project, namespace: group) }
-    let(:other_project) { create(:project) }
-    let(:guest) { create(:user) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, namespace: group) }
+    let_it_be(:other_project) { create(:project) }
+    let_it_be(:guest) { create(:user) }
 
-    let(:contributor) { create(:user) }
-    let(:first_time_contributor) { create(:user) }
+    let_it_be(:contributor) { create(:user) }
+    let_it_be(:first_time_contributor) { create(:user) }
 
-    let(:merged_mr) { create(:merge_request, :merged, author: contributor, target_project: project, source_project: project) }
-    let(:open_mr) { create(:merge_request, author: first_time_contributor, target_project: project, source_project: project) }
-    let(:merged_mr_other_project) { create(:merge_request, :merged, author: first_time_contributor, target_project: other_project, source_project: other_project) }
+    let_it_be(:merged_mr) do
+      create(:merge_request, :merged, author: contributor, target_project: project, source_project: project)
+    end
 
-    before do
+    let_it_be(:open_mr) do
+      create(:merge_request, author: first_time_contributor, target_project: project, source_project: project)
+    end
+
+    let_it_be(:merged_mr_other_project) do
+      create(:merge_request, :merged, author: first_time_contributor, target_project: other_project,
+        source_project: other_project)
+    end
+
+    before_all do
       project.add_guest(guest)
       project.add_guest(contributor)
       project.add_guest(first_time_contributor)
@@ -1282,7 +1313,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
   end
 
   describe '#title_html' do
-    let(:expected_title) { 'An <em>issue</em>' }
+    let(:expected_title) { 'An _issue_' }
 
     subject { issue.title_html }
 

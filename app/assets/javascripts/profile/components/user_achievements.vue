@@ -1,6 +1,6 @@
 <script>
 import { GlAvatar, GlBadge, GlPopover, GlSprintf } from '@gitlab/ui';
-import { groupBy } from 'lodash';
+import { groupBy } from 'lodash-es';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
 import { s__ } from '~/locale';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
@@ -103,7 +103,7 @@ export default {
         <br />
         <gl-badge
           v-if="showCountBadge(userAchievement.count)"
-          class="gl-absolute gl-left-7 gl-top-7 gl-z-1"
+          class="gl-absolute -gl-right-4 gl-top-7 gl-z-1"
           variant="info"
           >{{ getCountBadge(userAchievement.count) }}</gl-badge
         >

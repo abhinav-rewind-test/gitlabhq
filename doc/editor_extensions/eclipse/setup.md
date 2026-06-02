@@ -1,14 +1,14 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Connect and use GitLab Duo in Eclipse.
 title: Install and set up GitLab for Eclipse
 ---
 
 {{< details >}}
 
-- Tier: Premium, Ultimate
+- Tier: [Free](../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 - Status: Beta
 
@@ -17,10 +17,11 @@ title: Install and set up GitLab for Eclipse
 {{< history >}}
 
 - [Changed](https://gitlab.com/gitlab-org/editor-extensions/gitlab-eclipse-plugin/-/issues/163) from experiment to beta in GitLab 17.11.
+- Access to GitLab Duo Non-Agentic Chat removed for GitLab Duo Core customers on May 21, 2026 as part of GitLab 19.0, with a feature flag named `no_duo_classic_for_duo_core_users`. Enabled by default.
 
 {{< /history >}}
 
-{{< alert type="disclaimer" />}}
+> [!disclaimer]
 
 ## Install the GitLab for Eclipse plugin
 
@@ -45,31 +46,23 @@ If the Eclipse Marketplace is unavailable, follow the
 for adding a new software site. For **Work with**, use
 `https://gitlab.com/gitlab-org/editor-extensions/gitlab-eclipse-plugin/-/releases/permalink/latest/downloads/`.
 
-## Connect to GitLab
+## Authenticate with GitLab
 
-After you install the extension, connect it to your GitLab account by creating a personal access token and authenticating with GitLab.
+After you install the plugin, authenticate and connect it to your GitLab account.
 
-### Create a personal access token
+Prerequisites:
 
-If you are on a GitLab Self-Managed instance, create a personal access token.
+- A [personal access token](../../user/profile/personal_access_tokens.md#create-a-personal-access-token) with the `api` scope.
 
-1. In GitLab, in the upper-right corner, select your avatar.
-1. Select **Edit profile**.
-1. On the left sidebar, select **Personal access tokens**.
-1. Select **Add new token**.
-1. Enter a name, description, and expiration date.
-1. Select the `api` scope.
-1. Select **Create personal access token**.
+To authenticate with GitLab:
 
-### Authenticate with GitLab
-
-After you configure the plugin in your IDE, connect it to your GitLab account:
-
-1. In your IDE, select **Eclipse** > **Settings**.
-1. On the left sidebar, select **GitLab**.
-1. Provide the **Connection URL**. For GitLab.com, use `https://gitlab.com`.
-1. For **GitLab Personal Access Token**, paste in the personal access token you created.
-   The token is displayed while being entered for the first time. After applying, the
-   token is not displayed and stored using the Eclipse secure storage.
-1. Under the GitLab settings, select **Apply**.
+1. In your IDE, open preferences:
+   - For macOS, select **Eclipse** > **Settings**.
+   - For Windows or Linux, select **Window** > **Preferences**.
+1. In the left sidebar, select **GitLab Duo**.
+1. Under **Connection**, enter the URL for your GitLab instance. For GitLab.com,
+   use `https://gitlab.com`.
+1. Under **Authentication**, enter your personal access token.
+   Your token is hidden and stored using Eclipse secure storage.
+1. Select **Verify Setup**.
 1. Select **Apply and Close**.

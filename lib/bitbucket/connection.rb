@@ -10,29 +10,30 @@ module Bitbucket
 
     delegate_missing_to :connection
 
-    def initialize(options = {})
+    def initialize(options = {}, refresh_strategy: nil)
       @options = options
+      @refresh_strategy = refresh_strategy
     end
 
     def connection
       @connection ||= if api_connection?
                         Bitbucket::ApiConnection.new(options)
                       else
-                        Bitbucket::OauthConnection.new(options)
+                        Bitbucket::OauthConnection.new(options, refresh_strategy: @refresh_strategy)
                       end
+    end
+
+    def get(...)
+      connection.get(...)
+    end
+
+    def get_response_code(...)
+      connection.get_response_code(...)
     end
 
     private
 
     def api_connection?
-      app_password_connection? || api_token_connection?
-    end
-
-    def app_password_connection?
-      options.key?(:username) && options.key?(:app_password)
-    end
-
-    def api_token_connection?
       options.key?(:email) && options.key?(:api_token)
     end
   end

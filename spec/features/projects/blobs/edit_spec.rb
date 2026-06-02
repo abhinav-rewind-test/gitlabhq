@@ -7,7 +7,7 @@ RSpec.describe 'Editing file blob', :js, feature_category: :source_code_manageme
   include TreeHelper
   include Features::BlobSpecHelpers
 
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
   let_it_be(:merge_request) { create(:merge_request, source_project: project, source_branch: 'feature', target_branch: 'master') }
   let(:branch) { 'master' }
   let(:file_path) { project.repository.ls_files(project.repository.root_ref)[1] }
@@ -149,22 +149,20 @@ RSpec.describe 'Editing file blob', :js, feature_category: :source_code_manageme
 
   context 'visit blob edit' do
     context 'redirects to sign in and returns' do
-      with_and_without_sign_in_form_vue do
-        context 'as developer' do
-          let(:user) { create(:user) }
+      context 'as developer' do
+        let(:user) { create(:user) }
 
-          before do
-            project.add_developer(user)
-            visit project_edit_blob_path(project, tree_join(branch, file_path))
-          end
+        before do
+          project.add_developer(user)
+          visit project_edit_blob_path(project, tree_join(branch, file_path))
+        end
 
-          it 'redirects to sign in and returns' do
-            expect(page).to have_current_path(new_user_session_path)
+        it 'redirects to sign in and returns' do
+          expect(page).to have_current_path(new_user_session_path)
 
-            gitlab_sign_in(user)
+          gitlab_sign_in(user)
 
-            expect(page).to have_current_path(project_edit_blob_path(project, tree_join(branch, file_path)))
-          end
+          expect(page).to have_current_path(project_edit_blob_path(project, tree_join(branch, file_path)))
         end
       end
 

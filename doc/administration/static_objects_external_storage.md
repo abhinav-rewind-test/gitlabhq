@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Remote Development
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure external storage, such as a CDN, for static objects in your GitLab repository.
 title: External storage for static objects
 ---
@@ -25,7 +25,7 @@ Prerequisites:
 To configure external storage for static objects:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Repository**.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **External storage for repository static objects**.
 1. Enter the base URL and an arbitrary token. When you [set up external storage](#set-up-external-storage),
    use a script that sets these values as `ORIGIN_HOSTNAME` and `STORAGE_TOKEN`.

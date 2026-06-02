@@ -46,7 +46,7 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
 
     it 'does not allow empty variable key' do
       pipeline_schedule = build(:ci_pipeline_schedule,
-        variables_attributes: [{ secret_value: 'test_value' }],
+        variables_attributes: [{ value: 'test_value' }],
         project: project)
 
       expect(pipeline_schedule).not_to be_valid
@@ -145,9 +145,9 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
   end
 
   describe '.owned_by' do
-    let(:user) { create(:user) }
-    let!(:owned_pipeline_schedule) { create(:ci_pipeline_schedule, owner: user, project: project) }
-    let!(:other_pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
+    let_it_be(:user) { create(:user) }
+    let_it_be(:owned_pipeline_schedule) { create(:ci_pipeline_schedule, owner: user, project: project) }
+    let_it_be(:other_pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
 
     subject { described_class.owned_by(user) }
 
@@ -157,8 +157,8 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
   end
 
   describe '.for_project' do
-    let!(:project_pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
-    let!(:other_pipeline_schedule) { create(:ci_pipeline_schedule) }
+    let_it_be(:project_pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
+    let_it_be(:other_pipeline_schedule) { create(:ci_pipeline_schedule) }
 
     subject { described_class.for_project(project) }
 
@@ -169,10 +169,11 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
 
   describe '#set_next_run_at' do
     let(:now) { Time.zone.local(2021, 3, 2, 1, 0) }
-    let(:pipeline_schedule) { create(:ci_pipeline_schedule, cron: "0 1 * * *", project: project) }
+    let_it_be_with_reload(:pipeline_schedule) { create(:ci_pipeline_schedule, cron: "0 1 * * *", project: project) }
 
     it 'calls fallback method next_run_at if there is no plan limit' do
-      allow(Settings).to receive(:cron_jobs).and_return({ 'pipeline_schedule_worker' => { 'cron' => "0 1 2 3 *" } })
+      allow(Gitlab::SidekiqConfig).to receive(:cron_jobs)
+        .and_return({ 'pipeline_schedule_worker' => { 'cron' => "0 1 2 3 *" } })
 
       travel_to(now) do
         expect(pipeline_schedule).to receive(:calculate_next_run_at).and_call_original
@@ -251,7 +252,7 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
   end
 
   describe '#schedule_next_run!' do
-    let!(:pipeline_schedule) { create(:ci_pipeline_schedule, :nightly, project: project) }
+    let_it_be_with_reload(:pipeline_schedule) { create(:ci_pipeline_schedule, :nightly, project: project) }
 
     before do
       pipeline_schedule.update_column(:next_run_at, nil)
@@ -298,9 +299,9 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
   end
 
   describe '#job_variables' do
-    let!(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
+    let_it_be(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
 
-    let!(:pipeline_schedule_variables) do
+    let_it_be(:pipeline_schedule_variables) do
       create_list(:ci_pipeline_schedule_variable, 2, pipeline_schedule: pipeline_schedule)
     end
 
@@ -397,11 +398,11 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
 
   describe '#worker_cron' do
     before do
-      allow(Settings).to receive(:cron_jobs)
-        .and_return({ pipeline_schedule_worker: { cron: "* 1 2 3 4" } }.with_indifferent_access)
+      allow(Gitlab::SidekiqConfig).to receive(:cron_jobs)
+        .and_return({ 'pipeline_schedule_worker' => { 'cron' => "* 1 2 3 4" } })
     end
 
-    it "returns cron expression set in Settings" do
+    it "returns cron expression" do
       expect(subject.worker_cron_expression).to eq("* 1 2 3 4")
     end
   end
@@ -565,6 +566,64 @@ RSpec.describe Ci::PipelineSchedule, feature_category: :continuous_integration d
 
       it 'returns only the existing state with count' do
         expect(result).to eq(true => 1)
+      end
+    end
+  end
+
+  describe 'next_run_at updates when active status changes' do
+    let(:now) { Time.zone.local(2021, 3, 2, 1, 0) }
+    let!(:inactive_schedule) do
+      travel_to(now) do
+        create(:ci_pipeline_schedule, cron: "0 1 * * *", active: false, project: project)
+      end
+    end
+
+    context 'when active is changed from false to true' do
+      it 'recalculates next_run_at when it is in the future' do
+        future_next_run = now + 3.days
+        inactive_schedule.update_column(:next_run_at, future_next_run)
+
+        travel_to(now + 2.days) do
+          inactive_schedule.update!(active: true)
+
+          expect(inactive_schedule.next_run_at).not_to eq(future_next_run)
+          expect(inactive_schedule.next_run_at).to be_future
+        end
+      end
+
+      it 'recalculates next_run_at when it was in the past' do
+        past_next_run = now - 1.day
+        inactive_schedule.update_column(:next_run_at, past_next_run)
+
+        inactive_schedule.update!(active: true)
+        expect(inactive_schedule.next_run_at).to be_future
+        expect(inactive_schedule.next_run_at).not_to eq(past_next_run)
+      end
+    end
+
+    context 'when active is changed from true to false' do
+      let!(:active_schedule) do
+        travel_to(now) do
+          create(:ci_pipeline_schedule, cron: "0 1 * * *", active: true, project: project)
+        end
+      end
+
+      it 'does not update next_run_at' do
+        original_next_run = active_schedule.next_run_at
+
+        active_schedule.update!(active: false)
+
+        expect(active_schedule.next_run_at).to eq(original_next_run)
+      end
+    end
+
+    context 'when other attributes are updated' do
+      it 'does not update next_run_at' do
+        original_next_run = inactive_schedule.next_run_at
+
+        inactive_schedule.update!(description: 'new description')
+
+        expect(inactive_schedule.next_run_at).to eq(original_next_run)
       end
     end
   end

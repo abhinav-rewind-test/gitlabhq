@@ -28,13 +28,18 @@ class SearchController < ApplicationController
 
   around_action :allow_gitaly_ref_name_caching
 
+  # Ensure organization is resolved before authenticate_user! because
+  # authenticate? calls search_service which needs Current.organization.
+  skip_before_action :set_current_organization
+  prepend_before_action :set_current_organization
+
   skip_before_action :authenticate_user!, unless: :authenticate?
 
   before_action :check_scope_global_search_enabled, except: :opensearch
 
   requires_cross_project_access if: -> do
-    search_term_present = params[:search].present? || params[:term].present?
-    search_term_present && !params[:project_id].present?
+    search_term_present = search_params[:search].present? || autocomplete_params[:term].present?
+    search_term_present && !search_params[:project_id].present?
   end
   before_action :check_search_rate_limit!, only: search_rate_limited_endpoints
 
@@ -59,8 +64,8 @@ class SearchController < ApplicationController
 
     return if check_single_commit_result?
 
-    @search_term = params[:search]
-    @sort = params[:sort] || default_sort
+    @search_term = search_params[:search]
+    @sort = search_params[:sort] || default_sort
 
     @search_level = @search_service_presenter.level
 
@@ -102,7 +107,8 @@ class SearchController < ApplicationController
   def settings
     return render(json: []) unless current_user
 
-    project_id, group_id = params.permit(:project_id, :group_id).values_at(:project_id, :group_id)
+    project_id = search_params[:project_id]
+    group_id = search_params[:group_id]
 
     if project_id
       render json: settings_for_project(project_id)
@@ -114,25 +120,28 @@ class SearchController < ApplicationController
   end
 
   def autocomplete
-    term = params[:term]
+    term = autocomplete_params[:term]
     if term.blank?
       render json: Gitlab::Json.dump([])
       return
     end
 
     @project = search_service.project
-    @ref = params[:project_ref] if params[:project_ref].present?
-    @filter = params[:filter]
-    @scope = params[:scope]
-    @search_type = search_type
-    @search_level = search_service.level
+    @ref = autocomplete_params[:project_ref] if autocomplete_params[:project_ref].present?
+    @filter = autocomplete_params[:filter]
+    autocomplete_scope = autocomplete_params[:scope]
+
+    # @scope, @search_type, @search_level are not meaningful for autocomplete SLI
+    @scope = nil
+    @search_type = nil
+    @search_level = nil
 
     # Cache the response on the frontend
     expires_in 1.minute
 
     results = nil
     @global_search_duration_s = Benchmark.realtime do
-      results = search_autocomplete_opts(term, filter: @filter, scope: @scope)
+      results = search_autocomplete_opts(term, filter: @filter, scope: autocomplete_scope)
     end
 
     render json: Gitlab::Json.dump(results)
@@ -159,7 +168,7 @@ class SearchController < ApplicationController
     # If we raise an error somewhere in the @global_search_duration_s benchmark block, we will end up here
     # with a 200 status code, but an empty @global_search_duration_s.
     Gitlab::Metrics::GlobalSearchSlis.record_error_rate(
-      error: @global_search_duration_s.nil? || (status < 200 || status >= 400),
+      error: @global_search_duration_s.nil? || status >= 500,
       search_type: @search_type,
       search_level: @search_level,
       search_scope: @scope
@@ -205,15 +214,15 @@ class SearchController < ApplicationController
   end
 
   def search_term_valid?
-    return false if params[:search].blank?
+    return false if search_params[:search].blank?
 
     unless search_service.valid_query_length?
-      flash[:alert] = t('errors.messages.search_chars_too_long', count: Gitlab::Search::Params::SEARCH_CHAR_LIMIT)
+      flash[:alert] = t('errors.messages.search_chars_too_long', count: Search::Params::SEARCH_CHAR_LIMIT)
       return false
     end
 
     unless search_service.valid_terms_count?
-      flash[:alert] = t('errors.messages.search_terms_too_long', count: Gitlab::Search::Params::SEARCH_TERM_LIMIT)
+      flash[:alert] = t('errors.messages.search_terms_too_long', count: Search::Params::SEARCH_TERM_LIMIT)
       return false
     end
 
@@ -221,8 +230,6 @@ class SearchController < ApplicationController
   end
 
   def search_type_valid?
-    return true if params[:search_type].nil?
-
     search_type_errors = search_service.search_type_errors
     if search_type_errors
       flash[:alert] = search_type_errors
@@ -233,11 +240,11 @@ class SearchController < ApplicationController
   end
 
   def check_single_commit_result?
-    return false if params[:force_search_results]
+    return false if search_params[:force_search_results]
     return false unless @project.present?
     return false unless Ability.allowed?(current_user, :read_code, @project)
 
-    query = params[:search].strip.downcase
+    query = search_params[:search].strip.downcase
     return false unless Commit.valid_hash?(query)
 
     commit = @project.commit_by(oid: query)
@@ -261,7 +268,7 @@ class SearchController < ApplicationController
   def increment_search_counters
     track_internal_event('perform_search', user: current_user)
 
-    return if params[:nav_source] != 'navbar'
+    return if search_params[:nav_source] != 'navbar'
 
     track_internal_event('perform_navbar_search', user: current_user)
   end
@@ -272,27 +279,56 @@ class SearchController < ApplicationController
     # Merging to :metadata will ensure these are logged as top level keys
     payload[:metadata] ||= {}
     payload[:metadata].merge!(payload_metadata)
-
-    return unless search_service.abuse_detected?
-
-    payload[:metadata]['abuse.confidence'] = Gitlab::Abuse.confidence(:certain)
-    payload[:metadata]['abuse.messages'] = search_service.abuse_messages
+    payload[:metadata].merge!(abuse_payload_metadata)
   rescue ActiveRecord::QueryCanceled # rubocop:disable Database/RescueQueryCanceled -- Safetynet on timeout during instrumentation
     payload
   end
 
   def payload_metadata
-    {}.tap do |metadata|
-      metadata['meta.search.group_id'] = params[:group_id]
-      metadata['meta.search.project_id'] = params[:project_id]
-      metadata['meta.search.scope'] = search_service.scope
-      metadata['meta.search.page'] = params[:page] || '1'
-      metadata['meta.search.filters.confidential'] = filter_params[:confidential]
-      metadata['meta.search.filters.state'] = filter_params[:state]
-      metadata['meta.search.force_search_results'] = params[:force_search_results]
-      metadata['meta.search.filters.language'] = filter_params[:language]
-      metadata['meta.search.type'] = @search_type if @search_type.present?
-      metadata['meta.search.level'] = @search_level if @search_level.present?
+    case action_name.to_sym
+    when :show, :count, :aggregations
+      search_payload_metadata
+    when :autocomplete
+      autocomplete_payload_metadata
+    else
+      {}
+    end
+  end
+
+  def abuse_payload_metadata
+    return {} unless search_service.abuse_detected?
+
+    {
+      'abuse.confidence' => Gitlab::Abuse.confidence(:certain),
+      'abuse.messages' => search_service.abuse_messages
+    }
+  end
+
+  def search_payload_metadata
+    {
+      'meta.search.group_id' => search_params[:group_id],
+      'meta.search.project_id' => search_params[:project_id],
+      'meta.search.scope' => search_service.scope,
+      'meta.search.page' => search_params[:page] || '1',
+      'meta.search.force_search_results' => search_params[:force_search_results],
+      'meta.search.filters.confidential' => search_params[:confidential],
+      'meta.search.filters.state' => search_params[:state],
+      'meta.search.filters.language' => search_params[:language],
+      'meta.search.filters.type' => search_params[:type]
+    }.tap do |metadata|
+      metadata['meta.search.type']        = @search_type         if @search_type.present?
+      metadata['meta.search.level']       = @search_level        if @search_level.present?
+      metadata[:global_search_duration_s] = @global_search_duration_s if @global_search_duration_s.present?
+    end
+  end
+
+  def autocomplete_payload_metadata
+    {
+      'meta.search.autocomplete.filter' => autocomplete_params[:filter],
+      'meta.search.autocomplete.scope' => autocomplete_params[:scope],
+      'meta.search.group_id' => autocomplete_params[:group_id],
+      'meta.search.project_id' => autocomplete_params[:project_id]
+    }.tap do |metadata|
       metadata[:global_search_duration_s] = @global_search_duration_s if @global_search_duration_s.present?
     end
   end
@@ -334,8 +370,16 @@ class SearchController < ApplicationController
     search_service.search_type
   end
 
-  def filter_params
-    params.permit(:confidential, :state, language: [], type: [])
+  def search_params
+    params.permit(
+      :search, :scope, :group_id, :project_id, :page, :sort,
+      :force_search_results, :nav_source, :include_archived, :search_type,
+      :confidential, :state, language: [], type: []
+    )
+  end
+
+  def autocomplete_params
+    params.permit(:term, :scope, :filter, :group_id, :project_id, :project_ref)
   end
 
   def settings_for_project(project_id)

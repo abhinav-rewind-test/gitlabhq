@@ -1,12 +1,14 @@
 <script>
 import DefaultActions from 'jh_else_ce/blob/components/blob_header_default_actions.vue';
+import BlameHeader from './blame_header.vue';
 import BlobFilepath from './blob_header_filepath.vue';
 import ViewerSwitcher from './blob_header_viewer_switcher.vue';
-import { SIMPLE_BLOB_VIEWER, BLAME_VIEWER } from './constants';
+import { RICH_BLOB_VIEWER, SIMPLE_BLOB_VIEWER, BLAME_VIEWER } from './constants';
 import TableOfContents from './table_contents.vue';
 
 export default {
   components: {
+    BlameHeader,
     ViewerSwitcher,
     DefaultActions,
     BlobFilepath,
@@ -62,7 +64,13 @@ export default {
       required: false,
       default: true,
     },
+    showBlameInfo: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
+  emits: ['viewer-changed', 'copy'],
   data() {
     return {
       viewer: this.hideViewerSwitcher ? null : this.activeViewerType,
@@ -74,6 +82,11 @@ export default {
     },
   },
   watch: {
+    showBlameInfo(newVal) {
+      if (!newVal && this.viewer === BLAME_VIEWER) {
+        this.viewer = this.activeViewerType;
+      }
+    },
     viewer(newVal, oldVal) {
       if (newVal !== BLAME_VIEWER && newVal !== oldVal) {
         this.$emit('viewer-changed', newVal);
@@ -85,11 +98,14 @@ export default {
       this.$emit('copy');
     },
   },
+  RICH_BLOB_VIEWER,
 };
 </script>
 <template>
-  <div class="js-file-title file-title-flex-parent">
-    <div class="gl-mb-3 gl-flex gl-gap-3 @md/panel:gl-mb-0">
+  <div
+    class="js-file-title file-title-flex-parent gl-flex-wrap gl-justify-between gl-gap-3 gl-px-4 gl-py-3 @xl/panel:gl-flex-nowrap"
+  >
+    <div class="gl-flex gl-gap-3 @xl/panel:gl-mb-0">
       <blob-filepath
         :blob="blob"
         :show-path="showPath"
@@ -102,7 +118,9 @@ export default {
       </blob-filepath>
     </div>
 
-    <div class="file-actions gl-flex gl-flex-wrap gl-gap-3">
+    <div class="file-actions gl-ml-auto gl-flex gl-flex-wrap gl-items-center gl-gap-3">
+      <blame-header v-if="showBlameInfo" />
+      <table-of-contents v-if="activeViewerType === $options.RICH_BLOB_VIEWER" class="gl-pr-2" />
       <viewer-switcher
         v-if="!hideViewerSwitcher"
         v-model="viewer"
@@ -110,7 +128,6 @@ export default {
         :show-viewer-toggles="Boolean(blob.simpleViewer && blob.richViewer)"
         v-on="$listeners"
       />
-      <table-of-contents class="gl-pr-2" />
       <slot name="ee-duo-workflow-action" data-test-id="ee-duo-workflow-action"></slot>
 
       <slot name="actions"></slot>

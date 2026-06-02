@@ -357,7 +357,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers::V2, feature_category: :databa
       model.with_lock_retries(env: env, logger: in_memory_logger) {}
 
       buffer.rewind
-      expect(buffer.read).to include("\"class\":\"#{model.class}\"")
+      expect(buffer.read).to include("\"class_name\":\"#{model.class}\"")
     end
 
     where(raise_on_exhaustion: [true, false])
@@ -415,7 +415,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers::V2, feature_category: :databa
             with_lock_retries can not be run inside an already open transaction.
 
             Lock retries are enabled by default for transactional migrations, so this can be run without `with_lock_retries`.
-            For more details, see: https://docs.gitlab.com/ee/development/migration_style_guide.html#transactional-migrations
+            For more details, see: https://docs.gitlab.com/development/migration_style_guide/#transactional-migrations
           MESSAGE
         end
 

@@ -2,11 +2,13 @@ import { GlIntersectionObserver } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import Draggable from '~/lib/utils/vue3compat/draggable_compat.vue';
 import { DraggableItemTypes, ListType, WIP_ITEMS, WIP_WEIGHT } from 'ee_else_ce/boards/constants';
-import { DETAIL_VIEW_QUERY_PARAM_NAME, WORK_ITEM_TYPE_ENUM_ISSUE } from '~/work_items/constants';
+import { DETAIL_VIEW_QUERY_PARAM_NAME } from '~/work_items/constants';
 import { TYPE_ISSUE, NAMESPACE_PROJECT } from '~/issues/constants';
 import * as cacheUpdates from '~/boards/graphql/cache_updates';
+import toast from '~/vue_shared/plugins/global_toast';
 import { useFakeRequestAnimationFrame } from 'helpers/fake_request_animation_frame';
 import issueCreateMutation from '~/boards/graphql/issue_create.mutation.graphql';
+import issueMoveListMutation from 'ee_else_ce/boards/graphql/issue_move_list.mutation.graphql';
 import waitForPromises from 'helpers/wait_for_promises';
 import createComponent from 'jest/boards/board_list_helper';
 import { ESC_KEY_CODE } from '~/lib/utils/keycodes';
@@ -16,6 +18,7 @@ import BoardCutLine from '~/boards/components/board_cut_line.vue';
 import BoardCardMoveToPosition from '~/boards/components/board_card_move_to_position.vue';
 import listIssuesQuery from '~/boards/graphql/lists_issues.query.graphql';
 import namespaceWorkItemTypesQuery from '~/work_items/graphql/namespace_work_item_types.query.graphql';
+import listQuery from 'ee_else_ce/boards/graphql/board_lists_deferred.query.graphql';
 import { getParameterByName } from '~/lib/utils/url_utility';
 import setWindowLocation from 'helpers/set_window_location_helper';
 
@@ -23,10 +26,13 @@ import { namespaceWorkItemTypesQueryResponse } from 'ee_else_ce_jest/work_items/
 import { mockIssues, mockIssuesMore, mockGroupIssuesResponse } from './mock_data';
 
 jest.mock('~/lib/utils/url_utility');
+jest.mock('~/vue_shared/plugins/global_toast');
 
 describe('Board list component', () => {
   /** @type {import('@vue/test-utils').Wrapper} */
   let wrapper;
+  let resolveQuery;
+  let resolveMutation;
 
   const findByTestId = (testId) => wrapper.find(`[data-testid="${testId}"]`);
   const findDraggable = () => wrapper.findComponent(Draggable);
@@ -34,6 +40,7 @@ describe('Board list component', () => {
   const findIntersectionObserver = () => wrapper.findComponent(GlIntersectionObserver);
   const findBoardListCount = () => wrapper.find('.board-list-count');
   const findBoardCardButtons = () => wrapper.findAll('a.board-card-button');
+  const findBoardListCardsArea = () => findByTestId('board-list-cards-area');
   const queryHandlerFailure = jest.fn().mockRejectedValue(new Error('error'));
   const namespaceWorkItemTypesQueryHandler = jest
     .fn()
@@ -64,23 +71,25 @@ describe('Board list component', () => {
 
   describe('When Expanded', () => {
     beforeEach(async () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         apolloQueryHandlers: [
-          [listIssuesQuery, jest.fn().mockResolvedValue(mockGroupIssuesResponse())],
+          [listIssuesQuery, () => mockGroupIssuesResponse()],
           [namespaceWorkItemTypesQuery, namespaceWorkItemTypesQueryHandler],
         ],
-      });
-      await waitForPromises();
+      }));
+      await resolveQuery(listQuery);
+      await resolveQuery(listIssuesQuery);
+      await resolveQuery(namespaceWorkItemTypesQuery);
     });
 
     it('renders component', () => {
-      expect(wrapper.find('.board-list-component').exists()).toBe(true);
+      expect(findBoardListCardsArea().exists()).toBe(true);
     });
 
     it('renders loading icon', () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         state: { listsFlags: { 'gid://gitlab/List/1': { isLoading: true } } },
-      });
+      }));
 
       expect(findByTestId('board_list_loading').exists()).toBe(true);
     });
@@ -94,22 +103,22 @@ describe('Board list component', () => {
     });
 
     it('shows new issue form when showNewForm prop is true', async () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         componentProps: { showNewForm: true },
-      });
+      }));
 
       await nextTick();
       expect(wrapper.find('.board-new-issue-form').exists()).toBe(true);
     });
 
     it('does not show new issue form for closed list', async () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         listProps: {
           listType: ListType.closed,
         },
         componentProps: { showNewForm: true },
-      });
-      await waitForPromises();
+      }));
+      await resolveQuery(listQuery);
 
       expect(wrapper.find('.board-new-issue-form').exists()).toBe(false);
     });
@@ -121,11 +130,11 @@ describe('Board list component', () => {
 
   describe('when ListType is Closed', () => {
     beforeEach(() => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         listProps: {
           listType: ListType.closed,
         },
-      });
+      }));
     });
 
     it('Board card move to position is not visible', () => {
@@ -136,7 +145,7 @@ describe('Board list component', () => {
   describe('load more issues', () => {
     describe('when loading is not in progress', () => {
       beforeEach(async () => {
-        wrapper = createComponent({
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
           apolloQueryHandlers: [
             [
               listIssuesQuery,
@@ -151,8 +160,9 @@ describe('Board list component', () => {
               template: '<div><slot /><slot name="footer"></slot></div>',
             },
           },
-        });
-        await waitForPromises();
+        }));
+        await resolveQuery(listQuery);
+        await resolveQuery(listIssuesQuery);
       });
 
       it('has intersection observer when the number of board list items are more than 5', () => {
@@ -171,8 +181,10 @@ describe('Board list component', () => {
   describe('max issue count warning', () => {
     describe('when issue count exceeds max issue count', () => {
       beforeEach(async () => {
-        wrapper = createComponent({ listProps: { issuesCount: 4, maxIssueCount: 2 } });
-        await waitForPromises();
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+          listProps: { issuesCount: 4, maxIssueCount: 2 },
+        }));
+        await resolveQuery(listQuery);
       });
       it('sets background to warning color', () => {
         const block = wrapper.find(maxIssueWeightOrCountWarningClass);
@@ -191,8 +203,10 @@ describe('Board list component', () => {
 
     describe('when list issue count does NOT exceed list max issue count', () => {
       beforeEach(async () => {
-        wrapper = createComponent({ list: { issuesCount: 2, maxIssueCount: 3 } });
-        await waitForPromises();
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+          list: { issuesCount: 2, maxIssueCount: 3 },
+        }));
+        await resolveQuery(listQuery);
       });
       it('does not sets background to warning color', () => {
         expect(wrapper.find(maxIssueWeightOrCountWarningClass).exists()).toBe(false);
@@ -204,8 +218,10 @@ describe('Board list component', () => {
 
     describe('when list max issue count is 0', () => {
       beforeEach(async () => {
-        wrapper = createComponent({ list: { maxIssueCount: 0 } });
-        await waitForPromises();
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+          list: { maxIssueCount: 0 },
+        }));
+        await resolveQuery(listQuery);
       });
       it('does not sets background to warning color', () => {
         expect(wrapper.find(maxIssueWeightOrCountWarningClass).exists()).toBe(false);
@@ -218,15 +234,14 @@ describe('Board list component', () => {
   describe('drag & drop issue', () => {
     describe('when dragging is allowed', () => {
       beforeEach(async () => {
-        wrapper = createComponent({
-          apolloQueryHandlers: [
-            [listIssuesQuery, jest.fn().mockResolvedValue(mockGroupIssuesResponse())],
-          ],
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+          apolloQueryHandlers: [[listIssuesQuery, () => mockGroupIssuesResponse()]],
           componentProps: {
             disabled: false,
           },
-        });
-        await waitForPromises();
+        }));
+        await resolveQuery(listQuery);
+        await resolveQuery(listIssuesQuery);
       });
 
       it('Draggable is used', () => {
@@ -263,11 +278,11 @@ describe('Board list component', () => {
           expect(document.addEventListener).toHaveBeenCalledWith('keyup', expect.any(Function));
         });
 
-        it('emits the `dragStart` event with the item type to the parent', () => {
+        it('emits the `dragStart` event with the item id to the parent', () => {
           startDrag();
 
           expect(wrapper.emitted('dragStart')[0]).toEqual([
-            { itemType: WORK_ITEM_TYPE_ENUM_ISSUE },
+            { itemId: 'gid://gitlab/WorkItems::Type/1' },
           ]);
         });
       });
@@ -339,11 +354,11 @@ describe('Board list component', () => {
 
     describe('when dragging is not allowed', () => {
       beforeEach(() => {
-        wrapper = createComponent({
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
           provide: {
             disabled: true,
           },
-        });
+        }));
       });
 
       it('Draggable is not used', () => {
@@ -358,13 +373,13 @@ describe('Board list component', () => {
     // it should not affect ce lists because there should not be any status lists
     describe('when dragging between lists', () => {
       beforeEach(async () => {
-        wrapper = createComponent({
+        ({ wrapper, resolveQuery, resolveMutation } = createComponent({
           componentProps: {
-            draggedType: 'ISSUE',
+            draggedItemId: 'gid://gitlab/WorkItems::Type/1',
           },
-        });
+        }));
 
-        await waitForPromises();
+        await resolveQuery(listQuery);
 
         startDrag();
       });
@@ -380,9 +395,91 @@ describe('Board list component', () => {
     });
   });
 
+  describe('moveToPosition', () => {
+    const listId = 'gid://gitlab/List/1';
+    const movedItem = mockIssuesMore[1];
+    let hideToastMock;
+    let moveMutationHandler;
+
+    beforeEach(async () => {
+      hideToastMock = jest.fn();
+      toast.mockReturnValue({ hide: hideToastMock });
+
+      moveMutationHandler = jest.fn().mockResolvedValue({
+        data: { issuableMoveList: { issuable: movedItem, errors: [] } },
+      });
+
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+        apolloQueryHandlers: [
+          [
+            listIssuesQuery,
+            jest.fn().mockResolvedValue(mockGroupIssuesResponse(listId, mockIssuesMore)),
+          ],
+          [issueMoveListMutation, moveMutationHandler],
+        ],
+      }));
+
+      await resolveQuery(listQuery);
+      await resolveQuery(listIssuesQuery);
+    });
+
+    const moveToPosition = (positionInList) =>
+      wrapper.vm.moveToPosition(positionInList, 1, movedItem);
+
+    it.each([
+      [0, 'Item moved to start of list.'],
+      [-1, 'Item moved to end of list.'],
+    ])('shows a toast for position %s', async (positionInList, message) => {
+      moveToPosition(positionInList);
+
+      await resolveMutation(issueMoveListMutation);
+
+      expect(toast).toHaveBeenCalledWith(
+        message,
+        expect.objectContaining({
+          action: expect.objectContaining({
+            text: 'Undo',
+            onClick: expect.any(Function),
+          }),
+        }),
+      );
+    });
+
+    it('clicking undo on the toast dismisses the toast', async () => {
+      moveToPosition(-1);
+      await resolveMutation(issueMoveListMutation);
+
+      const undoAction = toast.mock.calls[0][1].action.onClick;
+      undoAction();
+
+      expect(hideToastMock).toHaveBeenCalled();
+    });
+
+    it('clears pending move toast when drag and drop ends', async () => {
+      moveToPosition(-1);
+      await resolveMutation(issueMoveListMutation);
+
+      endDrag({
+        newIndex: 1,
+        oldIndex: 1,
+        from: { dataset: { listId } },
+        to: { dataset: { listId }, children: [] },
+        item: {
+          dataset: {
+            draggableItemType: DraggableItemTypes.card,
+            itemId: movedItem.id,
+            itemIid: movedItem.iid,
+          },
+        },
+      });
+
+      expect(hideToastMock).toHaveBeenCalled();
+    });
+  });
+
   describe('when using keyboard', () => {
     beforeEach(async () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         apolloQueryHandlers: [
           [
             listIssuesQuery,
@@ -392,8 +489,9 @@ describe('Board list component', () => {
           ],
         ],
         mountOptions: { attachTo: document.body },
-      });
-      await waitForPromises();
+      }));
+      await resolveQuery(listQuery);
+      await resolveQuery(listIssuesQuery);
     });
 
     it('traverses up and down cards in list', async () => {
@@ -409,7 +507,7 @@ describe('Board list component', () => {
     const listResolver = jest.fn().mockResolvedValue(mockGroupIssuesResponse());
     const mutationHandler = jest.fn();
     cacheUpdates.setError = jest.fn();
-    wrapper = createComponent({
+    ({ wrapper, resolveQuery, resolveMutation } = createComponent({
       componentProps: { showNewForm: true },
       provide: {
         boardType: NAMESPACE_PROJECT,
@@ -430,12 +528,12 @@ describe('Board list component', () => {
       stubs: {
         BoardNewIssue,
       },
-    });
+    }));
 
     expect(wrapper.findComponent(BoardNewIssue).exists()).toBe(true);
     wrapper.findComponent(BoardNewIssue).vm.$emit('addNewIssue', { title: 'Foo' });
 
-    await waitForPromises();
+    await resolveMutation(issueCreateMutation);
 
     expect(cacheUpdates.setError).toHaveBeenCalled();
     expect(mutationHandler).not.toHaveBeenCalled();
@@ -453,15 +551,16 @@ describe('Board list component', () => {
 
       getParameterByName.mockReturnValue(show);
 
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         apolloQueryHandlers: [[listIssuesQuery, listResolver]],
         apolloResolvers: {
           Mutation: {
             setActiveBoardItem: mutationHandler,
           },
         },
-      });
-      await waitForPromises();
+      }));
+      await resolveQuery(listQuery);
+      await resolveQuery(listIssuesQuery);
     };
 
     it('calls `getParameterByName` to get the `show` parameter', async () => {
@@ -514,27 +613,92 @@ describe('Board list component', () => {
   });
   describe('when handling Weight vs Items in the wipLimitText', () => {
     it('displays weight-based WIP limit when limitMetric is WIP_WEIGHT', () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         listProps: {
           maxIssueWeight: 5,
           maxIssueCount: 0,
           limitMetric: WIP_WEIGHT,
         },
-      });
+      }));
 
       expect(wrapper.vm.wipLimitText).toBe('Work in progress limit: 5 weight');
     });
 
     it('displays item-based WIP limit when limitMetric is WIP_ITEMS', () => {
-      wrapper = createComponent({
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
         listProps: {
           maxIssueWeight: 0,
           maxIssueCount: 3,
           limitMetric: WIP_ITEMS,
         },
-      });
+      }));
 
       expect(wrapper.vm.wipLimitText).toBe('Work in progress limit: 3 items');
+    });
+  });
+
+  describe('keyboard navigation', () => {
+    const findListWrapper = () => findByTestId('tree-root-wrapper');
+
+    beforeEach(async () => {
+      ({ wrapper, resolveQuery, resolveMutation } = createComponent({
+        apolloQueryHandlers: [[listIssuesQuery, () => mockGroupIssuesResponse()]],
+      }));
+      await resolveQuery(listQuery);
+      await resolveQuery(listIssuesQuery);
+    });
+
+    it('has tabindex="0" when focused prop is true', () => {
+      ({ wrapper } = createComponent({ componentProps: { focused: true } }));
+      expect(findBoardListCardsArea().attributes('tabindex')).toBe('0');
+    });
+
+    it('has tabindex="-1" when focused prop is false', () => {
+      ({ wrapper } = createComponent({ componentProps: { focused: false } }));
+      expect(findBoardListCardsArea().attributes('tabindex')).toBe('-1');
+    });
+
+    it('has role="group" on the board list cards area', () => {
+      expect(findBoardListCardsArea().attributes('role')).toBe('group');
+    });
+
+    it('has aria-labelledby referencing the list title id', () => {
+      const labelledBy = findBoardListCardsArea().attributes('aria-labelledby');
+      expect(labelledBy).toMatch(/^board-list-title-/);
+    });
+
+    it('does not have tabindex on the inner list wrapper', () => {
+      expect(findListWrapper().attributes('tabindex')).toBeUndefined();
+    });
+
+    describe('keyboard events', () => {
+      it('emits focus-adjacent with -1 on left arrow keydown', async () => {
+        await findBoardListCardsArea().trigger('keydown.left');
+        expect(wrapper.emitted('focus-adjacent')).toEqual([[-1]]);
+      });
+
+      it('emits focus-adjacent with 1 on right arrow keydown', async () => {
+        await findBoardListCardsArea().trigger('keydown.right');
+        expect(wrapper.emitted('focus-adjacent')).toEqual([[1]]);
+      });
+    });
+
+    describe('focused prop watcher', () => {
+      it('calls $el.focus() when focused changes to true', async () => {
+        jest.spyOn(findBoardListCardsArea().element, 'focus');
+        await wrapper.setProps({ focused: true });
+        await nextTick();
+        expect(findBoardListCardsArea().element.focus).toHaveBeenCalled();
+      });
+
+      it('does not call $el.focus() when focused changes to false', async () => {
+        await wrapper.setProps({ focused: true });
+        await nextTick();
+        jest.spyOn(findBoardListCardsArea().element, 'focus');
+        await wrapper.setProps({ focused: false });
+        await nextTick();
+        expect(findBoardListCardsArea().element.focus).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -5,10 +5,12 @@ module API
     class Jobs < ::API::Base
       include PaginationParams
       include APIGuard
+      include ::API::Concerns::McpAccess
 
       helpers ::API::Helpers::ProjectStatsRefreshConflictsHelpers
 
       allow_access_with_scope :ai_workflows, if: ->(request) { request.get? || request.head? }
+      allow_mcp_access_read
 
       resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         before { authenticate! }
@@ -37,7 +39,9 @@ module API
           end
         end
 
-        desc 'Get a projects jobs' do
+        desc 'List all jobs for a project' do
+          detail 'Lists all jobs for a specified project. By default, this request returns 20 results at a time ' \
+            'because the API results are paginated.'
           success code: 200, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -69,7 +73,8 @@ module API
         end
         # rubocop: enable CodeReuse/ActiveRecord
 
-        desc 'Get a specific job of a project' do
+        desc 'Retrieve a job' do
+          detail 'Retrieves a job with the specified job ID.'
           success code: 200, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -94,6 +99,7 @@ module API
         #       is saved in the DB instead of file). But before that, we need to consider how to replace the value of
         #       `runners_token` with some mask (like `xxxxxx`) when sending trace file directly by workhorse.
         desc 'Get a trace of a specific job of a project' do
+          detail 'Retrieves a log file for a job.'
           success code: 200, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -103,9 +109,15 @@ module API
           tags ['ci_jobs']
         end
         params do
+          requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
           requires :job_id, type: Integer, desc: 'The ID of a job', documentation: { example: 88 }
+          optional :byte_offset, type: Integer, desc: 'Byte offset to start reading from',
+            values: 0.., documentation: { example: 0 }
+          optional :byte_limit, type: Integer, desc: 'Maximum number of bytes to return',
+            values: 1..Gitlab::Ci::Trace::Stream::LIMIT_SIZE, documentation: { example: 51200 }
         end
 
+        route_setting :mcp, tool_name: :get_job_log, params: [:id, :job_id]
         route_setting :authorization, permissions: :read_job, boundary_type: :project
         get ':id/jobs/:job_id/trace', urgency: :low, feature_category: :continuous_integration do
           authorize_read_builds!
@@ -118,12 +130,21 @@ module API
           content_type 'text/plain'
           env['api.format'] = :binary
 
-          # The trace can be nil bu body method expects a string as an argument.
-          trace = build.trace.raw || ''
-          body trace
+          trace = if params[:byte_offset] || params[:byte_limit]
+                    byte_offset = params[:byte_offset] || 0
+                    byte_limit = params[:byte_limit]
+
+                    build.trace.raw_range(byte_offset: byte_offset, byte_limit: byte_limit)
+                  else
+                    build.trace.raw
+                  end
+
+          # The trace can be nil but body method expects a string as an argument.
+          body trace || ''
         end
 
-        desc 'Cancel a specific job of a project' do
+        desc 'Cancel a job' do
+          detail 'Cancels a specified job in a project.'
           success code: 201, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -145,7 +166,7 @@ module API
           authorize!(:cancel_build, build)
 
           if params[:force]
-            authorize!(:maintainer_access, build)
+            authorize!(:force_cancel_build, build)
             build.force_cancel
           else
             build.cancel
@@ -154,7 +175,8 @@ module API
           present build, with: Entities::Ci::Job
         end
 
-        desc 'Retry a specific job of a project' do
+        desc 'Retry a job' do
+          detail 'Retries a specified job in a project.'
           success code: 201, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -177,10 +199,6 @@ module API
 
           inputs = params[:inputs] || {}
 
-          if inputs.present? && !Feature.enabled?(:ci_job_inputs, @project)
-            forbidden!('The inputs parameter is not available')
-          end
-
           response = ::Ci::RetryJobService.new(@project, current_user).execute(job, inputs: inputs)
 
           if response.success?
@@ -192,7 +210,8 @@ module API
           end
         end
 
-        desc 'Erase job (remove artifacts and the trace)' do
+        desc 'Erase a job' do
+          detail 'Erases a specified job in a project. This removes job artifacts and the job log.'
           success code: 201, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -218,8 +237,8 @@ module API
           present build, with: Entities::Ci::Job
         end
 
-        desc 'Trigger an actionable job (manual, delayed, etc)' do
-          detail 'This feature was added in GitLab 8.11'
+        desc 'Run a job' do
+          detail 'Runs a specified job. For a job in manual status, triggers an action to start the job.'
           success code: 200, model: Entities::Ci::JobBasic
           failure [
             { code: 400, message: 'Bad request' },
@@ -276,7 +295,8 @@ module API
             .with_sessions.use_primary { authenticate! }
         end
 
-        desc 'Get current job using job token' do
+        desc 'Retrieve a job by job token' do
+          detail 'Retrieves a job that was generated by a specified job token.'
           success code: 200, model: Entities::Ci::Job
           failure [
             { code: 400, message: 'Bad request' },
@@ -286,15 +306,15 @@ module API
           tags ['ci_jobs']
         end
         route_setting :authentication, job_token_allowed: true
-        route_setting :authorization, skip_job_token_policies: true
+        route_setting :authorization, skip_job_token_policies: true, skip_granular_token_authorization: :job_token_auth
         get '', feature_category: :continuous_integration, urgency: :low do
           validate_current_authenticated_job
 
           present current_authenticated_job, with: Entities::Ci::Job
         end
 
-        desc 'Get current agents' do
-          detail 'Retrieves a list of agents for the given job token'
+        desc 'List all GitLab agents for Kubernetes by job token' do
+          detail 'Lists all GitLab agents for Kubernetes with a specified `CI_JOB_TOKEN`.'
           success code: 200, model: Entities::Ci::Job
           failure [
             { code: 400, message: 'Bad request' },
@@ -304,7 +324,7 @@ module API
           tags ['agents']
         end
         route_setting :authentication, job_token_allowed: true
-        route_setting :authorization, skip_job_token_policies: true
+        route_setting :authorization, skip_job_token_policies: true, skip_granular_token_authorization: :job_token_auth
         get '/allowed_agents', urgency: :default, feature_category: :deployment_management do
           validate_current_authenticated_job
 

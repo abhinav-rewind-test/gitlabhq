@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Package Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Packages API
 ---
 
@@ -65,6 +65,7 @@ Example response:
     "version": "1.0-SNAPSHOT",
     "package_type": "maven",
     "created_at": "2019-11-27T03:37:38.711Z",
+    "creator_id": 1,
     "pipeline": {
       "id": 123,
       "status": "pending",
@@ -78,7 +79,8 @@ Example response:
         "avatar_url": "https://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon"
       }
     },
-    "pipelines": []
+    "pipelines": [],
+    "tags": []
   },
   {
     "id": 2,
@@ -86,8 +88,6 @@ Example response:
     "version": "1.0.3",
     "package_type": "npm",
     "created_at": "2019-11-27T03:37:38.711Z",
-  },
-  ],
     "tags": []
   }
 ]
@@ -100,10 +100,17 @@ can result in malformed data or broken packages.
 
 ### For a group
 
+Prerequisites:
+
+- The Reporter, Security Manager, Developer, Maintainer, or Owner role on at least one project in the group hierarchy.
+
 Lists all packages for a specified group.
 When accessed without authentication, only packages of public projects are returned.
 By default, packages with `default`, `deprecated`, and `error` status are returned. Use the `status` parameter to view other
 packages.
+
+This permission model matches the GraphQL `Group.packages` field, so the REST and GraphQL endpoints
+return the same packages for the same caller.
 
 ```plaintext
 GET /groups/:id/packages
@@ -140,6 +147,7 @@ Example response:
       "delete_api_path": "/namespace1/project1/-/packages/1"
     },
     "created_at": "2019-11-27T03:37:38.711Z",
+    "creator_id": 1,
     "pipelines": [
       {
         "id": 123,
@@ -186,6 +194,9 @@ Example response:
 ```
 
 By default, the `GET` request returns 20 results, because the API is [paginated](rest/_index.md#pagination).
+
+The `creator_id` field contains the ID of the user who created the package. This field is `null` when the
+package was created by a deploy token or job token.
 
 The `_links` object contains the following properties:
 
@@ -233,6 +244,7 @@ Example response:
   },
   "created_at": "2019-11-27T03:37:38.711Z",
   "last_downloaded_at": "2022-09-07T07:51:50.504Z",
+  "creator_id": 1,
   "pipelines": [
     {
       "id": 123,
@@ -272,6 +284,9 @@ Example response:
   ]
 }
 ```
+
+The `creator_id` field contains the ID of the user who created the package. This field is `null` when the
+package was created by a deploy token or job token.
 
 The `_links` object contains the following properties:
 

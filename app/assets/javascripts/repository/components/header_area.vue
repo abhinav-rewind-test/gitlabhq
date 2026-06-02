@@ -14,6 +14,7 @@ import { FIND_FILE_BUTTON_CLICK, REF_SELECTOR_CLICK } from '~/tracking/constants
 import { visitUrl, joinPaths, webIDEUrl } from '~/lib/utils/url_utility';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import FileTreeBrowserToggle from '~/repository/file_tree_browser/components/file_tree_browser_toggle.vue';
+import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { generateRefDestinationPath } from '~/repository/utils/ref_switcher_utils';
 import RefSelector from '~/ref/components/ref_selector.vue';
@@ -56,7 +57,7 @@ export default {
   directives: {
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [glFeatureFlagsMixin(), InternalEvents.mixin()],
+  mixins: [glFeatureFlagsMixin(), InternalEvents.mixin(), glAbilitiesMixin()],
   inject: [
     'canCollaborate',
     'canEditTree',
@@ -219,7 +220,7 @@ export default {
     },
   },
   mounted() {
-    if (this.glFeatures.repositoryFileTreeBrowser) {
+    if (this.glFeatures.repositoryFileTreeBrowser && !this.isReadmeView) {
       this.initializeFileTreeBrowser();
       this.bindShortcuts();
     }
@@ -284,8 +285,12 @@ export default {
   >
     <div
       class="tree-ref-container !gl-mb-3 gl-flex gl-flex-wrap gl-items-center gl-gap-3 @md/panel:!gl-mb-0"
+      :class="{
+        'gl-flex-grow': isProjectOverview,
+      }"
     >
       <file-tree-browser-toggle
+        v-if="!isReadmeView"
         v-show="showFileTreeBrowserToggle"
         ref="toggle"
         :aria-keyshortcuts="toggleFileBrowserShortcutKey"

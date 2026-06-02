@@ -8,7 +8,7 @@ import {
   GlAvatar,
   GlSprintf,
 } from '@gitlab/ui';
-import { debounce, intersectionWith, groupBy, differenceBy, intersectionBy } from 'lodash';
+import { debounce, intersectionWith, groupBy, differenceBy, intersectionBy } from 'lodash-es';
 import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
 import { createAlert } from '~/alert';
 import { __, s__, n__ } from '~/locale';
@@ -297,7 +297,7 @@ export default {
       }
     },
     consolidateData(deployKeysResponse, usersResponse = [], groupsResponse = []) {
-      // This re-assignment is intentional as level.type property is being used for comparision,
+      // This re-assignment is intentional as level.type property is being used for comparison,
       // and accessLevelsData is provided by gon.create_access_levels which doesn't have `type` included.
       // See this discussion https://gitlab.com/gitlab-org/gitlab/merge_requests/1629#note_31285823
       this.roles = this.accessLevelsData.map((role) => ({ ...role, type: LEVEL_TYPES.ROLE }));

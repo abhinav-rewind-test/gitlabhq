@@ -3,60 +3,66 @@
 require 'spec_helper'
 
 RSpec.describe Import::UrlController, feature_category: :importers do
-  let_it_be(:user) { create(:user, :with_namespace) }
+  let_it_be_with_reload(:user, freeze: false) { create(:user, :with_namespace) }
 
   before do
     login_as(user)
   end
 
   describe 'GET #new' do
-    context 'when import_by_url_new_page feature flag is enabled' do
+    it 'renders the new template' do
+      get new_import_url_path
+
+      expect(response).to have_gitlab_http_status(:ok)
+    end
+
+    context 'when user is not allowed to import projects' do
       before do
-        stub_feature_flags(import_by_url_new_page: true)
+        allow(Ability).to receive(:allowed?).and_call_original
+        allow(Ability).to receive(:allowed?)
+          .with(user, :import_projects, user.namespace)
+          .and_return(false)
       end
 
-      it 'renders the new template' do
+      it 'returns access denied' do
         get new_import_url_path
 
-        expect(response).to have_gitlab_http_status(:ok)
-      end
-
-      context 'when user is allowed to create projects in this namespace' do
-        let(:namespace) { create(:namespace, owner: user) }
-
-        it 'includes namespace data in the response' do
-          get new_import_url_path(namespace_id: namespace.id)
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response.body).to include("data-namespace-id=\"#{namespace.id}\"")
-        end
-      end
-
-      context 'when user is not allowed to create projects in this namespace' do
-        let(:new_namespace) { create(:namespace) }
-
-        it 'does not include namespace in response' do
-          get new_import_url_path(namespace_id: new_namespace.id)
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response.body).to include('data-namespace-id=""')
-        end
-      end
-
-      context 'without namespace_id param' do
-        it 'does not include namespace in the response' do
-          get new_import_url_path
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response.body).to include('data-namespace-id=""')
-        end
+        expect(response).to have_gitlab_http_status(:forbidden)
+        expect(response.body).to match(/You do not have permission to import projects/)
       end
     end
 
-    context 'when import_by_url_new_page feature flag is disabled' do
-      before do
-        stub_feature_flags(import_by_url_new_page: false)
+    context 'when user is allowed to import projects in this namespace' do
+      let(:namespace) { create(:namespace, owner: user) }
+
+      it 'includes namespace data in the response' do
+        get new_import_url_path(namespace_id: namespace.id)
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.body).to include("data-namespace-id=\"#{namespace.id}\"")
+      end
+    end
+
+    context 'when user cannot create personal projects but can import into a group' do
+      let_it_be(:group) { create(:group) }
+
+      before_all do
+        group.add_maintainer(user)
+        user.update!(projects_limit: 0)
       end
 
-      it 'returns 404' do
-        get new_import_url_path
+      it 'allows access and includes namespace data' do
+        get new_import_url_path(namespace_id: group.id)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.body).to include("data-namespace-id=\"#{group.id}\"")
+      end
+    end
+
+    context 'when user is not allowed to import projects in this namespace' do
+      let(:new_namespace) { create(:namespace) }
+
+      it 'returns not found' do
+        get new_import_url_path(namespace_id: new_namespace.id)
 
         expect(response).to have_gitlab_http_status(:not_found)
       end

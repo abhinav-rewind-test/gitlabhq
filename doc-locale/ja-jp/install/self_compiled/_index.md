@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: 自己コンパイルによるインストール
 ---
 
@@ -43,7 +43,7 @@ Linuxパッケージが信頼性の高い理由の1つは、いずれかのク�
 
 ## GitLabディレクトリ構造 {#gitlab-directory-structure}
 
-インストール手順を実行すると、次のディレクトリが作成されます:
+インストール手順を実行すると、次のディレクトリが作成されます。
 
 ```plaintext
 |-- home
@@ -65,7 +65,7 @@ Linuxパッケージが信頼性の高い理由の1つは、いずれかのク�
 
 ## インストールのワークフロー {#installation-workflow}
 
-GitLabのインストールは、次のコンポーネントの設定で構成されています:
+GitLabのインストールは、次のコンポーネントの設定で構成されています。
 
 1. [パッケージと依存関係](#1-packages-and-dependencies)。
 1. [Ruby](#2-ruby)。
@@ -93,7 +93,7 @@ apt-get install sudo -y
 
 ### ビルドの依存関係 {#build-dependencies}
 
-必要なパッケージ（Rubyおよびネイティブ拡張機能をRuby gemにコンパイルするために必要）をインストールします:
+必要なパッケージ（Rubyおよびネイティブ拡張機能をRuby gemにコンパイルするために必要）をインストールします。
 
 ```shell
 sudo apt-get install -y build-essential zlib1g-dev libyaml-dev libssl-dev libgdbm-dev libre2-dev \
@@ -102,26 +102,23 @@ sudo apt-get install -y build-essential zlib1g-dev libyaml-dev libssl-dev libgdb
   runit-systemd
 ```
 
-{{< alert type="note" >}}
-
-GitLabにはOpenSSLバージョン1.1が必要です。Linuxディストリビューションに異なるバージョンのOpenSSLが含まれている場合は、1.1を手動でインストールする必要があるかもしれません。
-
-{{< /alert >}}
+> [!note] 
+> GitLabにはOpenSSLバージョン1.1が必要です。Linuxディストリビューションに異なるバージョンのOpenSSLが含まれている場合は、1.1を手動でインストールする必要があるかもしれません。
 
 ### Git {#git}
 
-次の[Gitalyから提供されるGitバージョン](https://gitlab.com/gitlab-org/gitaly/-/issues/2729)を使用する必要があります:
+次の[Gitalyから提供されるGitバージョン](https://gitlab.com/gitlab-org/gitaly/-/issues/2729)を使用する必要があります。
 
 - GitLabに必要なバージョン。
 - 適切な動作に必要なカスタムパッチが含まれている。
 
-1. 必要な依存関係をインストールします:
+1. 必要な依存関係をインストールします。
 
    ```shell
    sudo apt-get install -y libcurl4-openssl-dev libexpat1-dev gettext libz-dev libssl-dev libpcre2-dev build-essential git-core
    ```
 
-1. Gitalyリポジトリをクローンし、Gitをコンパイルします。インストールするGitLabバージョンに一致する安定したブランチで`<X-Y-stable>`を置き換えます。たとえば、GitLab 16.7をインストールする場合は、ブランチ名`16-7-stable`を使用します:
+1. Gitalyリポジトリをクローンし、Gitをコンパイルします。インストールするGitLabバージョンに一致する安定したブランチで`<X-Y-stable>`を置き換えます。たとえば、GitLab 16.7をインストールする場合は、ブランチ名`16-7-stable`を使用します。
 
    ```shell
    git clone https://gitlab.com/gitlab-org/gitaly.git -b <X-Y-stable> /tmp/gitaly
@@ -129,14 +126,14 @@ GitLabにはOpenSSLバージョン1.1が必要です。Linuxディストリビ�
    sudo make git GIT_PREFIX=/usr/local
    ```
 
-1. オプションで、システムGitとその依存関係を削除できます:
+1. オプションで、システムGitとその依存関係を削除できます。
 
    ```shell
    sudo apt remove -y git-core
    sudo apt autoremove
    ```
 
-[後で`config/gitlab.yml`を編集](#configure-it)する場合は、Gitパスを変更することを忘れないでください:
+[後で`config/gitlab.yml`を編集](#configure-it)する場合は、Gitパスを変更することを忘れないでください。
 
 - 変更前:
 
@@ -162,13 +159,13 @@ sudo apt-get install -y graphicsmagick
 
 ### メールサーバー {#mail-server}
 
-メール通知を受信するには、メールサーバーがインストールされていることを確認してください。デフォルトでは、Debianには`exim4`が付属していますが、これには[問題があり](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/12754)、Ubuntuには付属していません。推奨されるメールサーバーは`postfix`であり、次の方法でインストールできます:
+メール通知を受信するには、メールサーバーがインストールされていることを確認してください。デフォルトでは、Debianには`exim4`が付属していますが、これには[問題があり](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/12754)、Ubuntuには付属していません。推奨されるメールサーバーは`postfix`であり、次の方法でインストールできます。
 
 ```shell
 sudo apt-get install -y postfix
 ```
 
-次に、`Internet Site`を選択し、<kbd>Enter</kbd>を押して、ホスト名を確認します。
+次に`Internet Site`を選択し、<kbd>Enter</kbd>を押してホスト名を確認します。
 
 ### ExifTool {#exiftool}
 
@@ -217,12 +214,12 @@ rm go1.22.5.linux-amd64.tar.gz
 
 ## 5\.Node {#5-node}
 
-GitLabでは、JavaScriptアセットをコンパイルするためにNodeを使用し、JavaScriptの依存関係を管理するためにYarnを使用する必要があります。これらの現在の最小要件は次のとおりです:
+GitLabでは、JavaScriptアセットをコンパイルするためにNodeを使用し、JavaScriptの依存関係を管理するためにYarnを使用する必要があります。これらの現在の最小要件は次のとおりです。
 
 - `node` 20.xリリース（v20.13.0以降）。[Node.jsのその他のLTSバージョン](https://github.com/nodejs/release#release-schedule)はアセットを構築できるかもしれませんが、Node.js 20.xのみを保証します。
 - `yarn`= v1.22.x（Yarn 2はまだサポートされていません）
 
-多くのディストリビューションでは、公式パッケージリポジトリによって提供されるバージョンが古くなっているため、次のコマンドを使用してインストールする必要があります:
+多くのディストリビューションでは、公式パッケージリポジトリによって提供されるバージョンが古くなっているため、次のコマンドを使用してインストールする必要があります。
 
 ```shell
 # install node v20.x
@@ -236,7 +233,7 @@ npm install --global yarn
 
 ## 6\.システムユーザー {#6-system-users}
 
-GitLabの`git`ユーザーを作成します:
+GitLabの`git`ユーザーを作成します。
 
 ```shell
 sudo adduser --disabled-login --gecos 'GitLab' git
@@ -244,11 +241,8 @@ sudo adduser --disabled-login --gecos 'GitLab' git
 
 ## 7\.データベース {#7-database}
 
-{{< alert type="note" >}}
-
-PostgreSQLのみがサポートされています。GitLab 18.0以降では、[PostgreSQL 16以降](../requirements.md#postgresql)が必要です。
-
-{{< /alert >}}
+> [!note] 
+> PostgreSQLのみがサポートされています。GitLab 18.0以降では、[PostgreSQL 16以降](../requirements.md#postgresql)が必要です。
 
 1. データベースパッケージをインストールします。
 
@@ -258,7 +252,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    sudo apt install -y postgresql postgresql-client libpq-dev postgresql-contrib
    ```
 
-   Ubuntu 20.04以前の場合、利用可能なPostgreSQLは最小バージョン要件を満たしていません。PostgreSQLリポジトリを追加する必要があります:
+   Ubuntu 20.04以前の場合、利用可能なPostgreSQLは最小バージョン要件を満たしていません。PostgreSQLリポジトリを追加する必要があります。
 
    ```shell
    sudo curl --fail --silent --show-error --output /etc/apt/keyrings/postgresql.asc \
@@ -269,56 +263,56 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    sudo apt-get -y install postgresql-16
    ```
 
-1. インストールしているGitLabのバージョンでサポートされているPostgreSQLバージョンを確認します:
+1. インストールしているGitLabのバージョンでサポートされているPostgreSQLバージョンを確認します。
 
    ```shell
    psql --version
    ```
 
-1. PostgreSQLサービスを開始し、サービスが実行されていることを確認します:
+1. PostgreSQLサービスを開始し、サービスが実行されていることを確認します。
 
    ```shell
    sudo service postgresql start
    sudo service postgresql status
    ```
 
-1. GitLabのデータベースユーザーを作成します:
+1. GitLabのデータベースユーザーを作成します。
 
    ```shell
    sudo -u postgres psql -d template1 -c "CREATE USER git CREATEDB;"
    ```
 
-1. `pg_trgm`拡張機能を作成します:
+1. `pg_trgm`拡張機能を作成します。
 
    ```shell
    sudo -u postgres psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
    ```
 
-1. `btree_gist`拡張機能を作成します:
+1. `btree_gist`拡張機能を作成します。
 
    ```shell
    sudo -u postgres psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
    ```
 
-1. `plpgsql`拡張機能を作成します:
+1. `plpgsql`拡張機能を作成します。
 
    ```shell
    sudo -u postgres psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS plpgsql;"
    ```
 
-1. GitLab本番環境のデータベースを作成し、データベースに対するすべての特権を付与します:
+1. GitLab本番環境のデータベースを作成し、データベースに対するすべての特権を付与します。
 
    ```shell
    sudo -u postgres psql -d template1 -c "CREATE DATABASE gitlabhq_production OWNER git;"
    ```
 
-1. 新しいユーザーで新しいデータベースへの接続を試みます:
+1. 新しいユーザーで新しいデータベースへの接続を試みます。
 
    ```shell
    sudo -u git -H psql -d gitlabhq_production
    ```
 
-1. `pg_trgm`拡張機能が有効であるかを確認します:
+1. `pg_trgm`拡張機能が有効であるかを確認します。
 
    ```sql
    SELECT true AS enabled
@@ -327,7 +321,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    AND installed_version IS NOT NULL;
    ```
 
-   拡張機能が有効である場合、次の出力が生成されます:
+   拡張機能が有効である場合、次の出力が生成されます。
 
    ```plaintext
    enabled
@@ -336,7 +330,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    (1 row)
    ```
 
-1. `btree_gist`拡張機能が有効であるかを確認します:
+1. `btree_gist`拡張機能が有効であるかを確認します。
 
    ```sql
    SELECT true AS enabled
@@ -345,7 +339,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    AND installed_version IS NOT NULL;
    ```
 
-   拡張機能が有効である場合、次の出力が生成されます:
+   拡張機能が有効である場合、次の出力が生成されます。
 
    ```plaintext
    enabled
@@ -354,7 +348,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    (1 row)
    ```
 
-1. `plpgsql`拡張機能が有効であるかを確認します:
+1. `plpgsql`拡張機能が有効であるかを確認します。
 
    ```sql
    SELECT true AS enabled
@@ -363,7 +357,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    AND installed_version IS NOT NULL;
    ```
 
-   拡張機能が有効である場合、次の出力が生成されます:
+   拡張機能が有効である場合、次の出力が生成されます。
 
    ```plaintext
    enabled
@@ -372,7 +366,7 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
    (1 row)
    ```
 
-1. データベースセッションを終了します:
+1. データベースセッションを終了します。
 
    ```shell
    gitlabhq_production> \q
@@ -382,13 +376,13 @@ PostgreSQLのみがサポートされています。GitLab 18.0以降では、[P
 
 最小Redis要件については、[要件ページ](../requirements.md#redis)を参照してください。
 
-次でRedisをインストールします:
+次でRedisをインストールします。
 
 ```shell
 sudo apt-get install redis-server
 ```
 
-完了したら、Redisを設定できます:
+完了したら、Redisを設定できます。
 
 ```shell
 # Configure redis to use sockets
@@ -409,13 +403,13 @@ sudo usermod -aG redis git
 
 ### systemdでRedisを管理する {#supervise-redis-with-systemd}
 
-ディストリビューションがsystemd initを使用し、次のコマンドの出力が`notify`の場合、変更を加えないでください:
+ディストリビューションがsystemd initを使用し、次のコマンドの出力が`notify`の場合、変更を加えないでください。
 
 ```shell
 systemctl show --value --property=Type redis-server.service
 ```
 
-出力が`notify`**でない**場合は、以下を実行します:
+出力が`notify`**でない**場合は、以下を実行します。
 
 ```shell
 # Configure Redis to not daemonize, but be supervised by systemd instead and disable the pidfile
@@ -442,7 +436,7 @@ sudo systemctl restart redis-server.service
 
 ### Redisを管理しない {#leave-redis-unsupervised}
 
-システムがSysV initを使用している場合は、これらのコマンドを実行します:
+システムがSysV initを使用している場合は、これらのコマンドを実行します。
 
 ```shell
 # Create the directory which contains the socket
@@ -468,14 +462,14 @@ cd /home/git
 
 ### ソースのクローンを作成する {#clone-the-source}
 
-Community Editionのクローンを作成する:
+Community Editionのクローンを作成する
 
 ```shell
 # Clone GitLab repository
 sudo -u git -H git clone https://gitlab.com/gitlab-org/gitlab-foss.git -b <X-Y-stable> gitlab
 ```
 
-Enterprise Editionのクローンを作成する:
+Enterprise Editionのクローンを作成する
 
 ```shell
 # Clone GitLab repository
@@ -484,11 +478,8 @@ sudo -u git -H git clone https://gitlab.com/gitlab-org/gitlab.git -b <X-Y-stable
 
 インストールするバージョンに一致する安定したブランチで`<X-Y-stable>`を必ず置き換えてください。たとえば、11.8をインストールする場合は、ブランチ名`11-8-stable`を使用します。
 
-{{< alert type="warning" >}}
-
-「最新」バージョンが必要な場合は`<X-Y-stable>`を`master`に変更できますが、本番環境サーバーに`master`をインストールしないでください。
-
-{{< /alert >}}
+> [!warning]
+> 「edge」バージョンが必要な場合は、`<X-Y-stable>`を`master`に変更できますが、本番環境サーバーに`master`をインストールしないでください。
 
 ### 設定する {#configure-it}
 
@@ -554,11 +545,8 @@ HTTPSを使用する場合は、追加の手順について[HTTPSの使用](#usi
 
 ### GitLab DB設定を構成する {#configure-gitlab-db-settings}
 
-{{< alert type="note" >}}
-
-[GitLab 15.9](https://gitlab.com/gitlab-org/gitlab/-/issues/387898)以降、セクションが`main:`のみの`database.yml`は非推奨になりました。GitLab 17.0以降では、`database.yml`に`main:`セクションと`ci:`セクションの2つが必要です。
-
-{{< /alert >}}
+> [!note] 
+> [GitLab 15.9](https://gitlab.com/gitlab-org/gitlab/-/issues/387898)以降、`database.yml`（`main:`セクションのみ）は非推奨になりました。GitLab 17.0以降では、`database.yml`に`main:`セクションと`ci:`セクションの2つが必要です。
 
 ```shell
 sudo -u git cp config/database.yml.postgresql config/database.yml
@@ -598,18 +586,15 @@ sudo -u git -H chmod o-rwx config/database.yml
 
 ### Gemsをインストールする {#install-gems}
 
-{{< alert type="note" >}}
+> [!note] 
+> Bundler 1.5.2以降、`bundle install -jN`（`N`はプロセッサーコアの数）を実行すると、完了時間が大幅に異なる並列gemインストールを利用できます（約60%高速）。`nproc`でコア数を確認してください。詳細については、[こちらの投稿](https://thoughtbot.com/blog/parallel-gem-installing-using-bundler)を参照してください。
 
-Bundler 1.5.2以降では、`bundle install -jN`（`N`はプロセッサコアの数）を実行することで、gemの並列インストールを完了するのにかかる時間をかなり短縮（約60%高速）できます。`nproc`でコア数を確認してください。詳細については、[こちらの投稿](https://thoughtbot.com/blog/parallel-gem-installing-using-bundler)を参照してください。
-
-{{< /alert >}}
-
-`bundle`があることを確認してください（`bundle -v`を実行）:
+`bundle`があることを確認してください（`bundle -v`を実行）。
 
 - `>= 1.5.2`、一部の[イシュー](https://devcenter.heroku.com/changelog-items/411)は1.5.2で[修正](https://github.com/rubygems/bundler/pull/2817)されたためです。
 - `< 2.x`。
 
-ユーザー認証にKerberosを使用する場合は、以下のコマンドの`--without`オプションで`kerberos`を省略して、gemをインストールします:
+ユーザー認証にKerberosを使用する場合は、以下のコマンドの`--without`オプションで`kerberos`を省略して、gemをインストールします。
 
 ```shell
 sudo -u git -H bundle config set --local deployment 'true'
@@ -643,7 +628,7 @@ GitLab-Workhorseは[GNU Make](https://www.gnu.org/software/make/)を使用しま
 sudo -u git -H bundle exec rake "gitlab:workhorse:install[/home/git/gitlab-workhorse]" RAILS_ENV=production
 ```
 
-追加のパラメータとして指定することで、別のGitリポジトリを指定できます:
+追加のパラメータとして指定することで、別のGitリポジトリを指定できます。
 
 ```shell
 sudo -u git -H bundle exec rake "gitlab:workhorse:install[/home/git/gitlab-workhorse,https://example.com/gitlab-workhorse.git]" RAILS_ENV=production
@@ -664,7 +649,7 @@ GitLab-Elasticsearch-Indexerは[GNU Make](https://www.gnu.org/software/make/)を
 sudo -u git -H bundle exec rake "gitlab:indexer:install[/home/git/gitlab-elasticsearch-indexer]" RAILS_ENV=production
 ```
 
-追加のパラメータとして指定することで、別のGitリポジトリを指定できます:
+追加のパラメータとして指定することで、別のGitリポジトリを指定できます。
 
 ```shell
 sudo -u git -H bundle exec rake "gitlab:indexer:install[/home/git/gitlab-elasticsearch-indexer,https://example.com/gitlab-elasticsearch-indexer.git]" RAILS_ENV=production
@@ -695,13 +680,13 @@ cd /home/git/gitlab
 sudo -u git -H bundle exec rake "gitlab:gitaly:install[/home/git/gitaly,/home/git/repositories]" RAILS_ENV=production
 ```
 
-追加のパラメータとして指定することで、別のGitリポジトリを指定できます:
+追加のパラメータとして指定することで、別のGitリポジトリを指定できます。
 
 ```shell
 sudo -u git -H bundle exec rake "gitlab:gitaly:install[/home/git/gitaly,/home/git/repositories,https://example.com/gitaly.git]" RAILS_ENV=production
 ```
 
-次に、Gitalyが設定されていることを確認します:
+次に、Gitalyが設定されていることを確認します。
 
 ```shell
 # Restrict Gitaly socket access
@@ -723,7 +708,7 @@ GitLabは常にSysV initスクリプトをサポートしてきました。こ�
 
 systemdをinitとして使用する場合は、次の手順を実行します。それ以外の場合は、[SysV initスクリプトの手順](#install-sysv-init-script)に従ってください。
 
-サービスをコピーして`systemctl daemon-reload`を実行し、systemdがそれらを認識するようにします:
+サービスをコピーして`systemctl daemon-reload`を実行し、systemdがそれらを認識するようにします。
 
 ```shell
 cd /home/git/gitlab
@@ -736,15 +721,15 @@ GitLabによって提供されるユニットは、RedisおよびPostgreSQLを�
 
 GitLabを別のディレクトリにインストールした場合、またはデフォルト以外のユーザーとしてインストールした場合は、ユニット内のこれらの値も変更する必要があります。
 
-たとえば、GitLabと同じマシンでRedisとPostgreSQLを実行している場合は、次の手順を実行する必要があります:
+たとえば、GitLabと同じマシンでRedisとPostgreSQLを実行している場合は、次の手順を実行する必要があります。
 
-- Pumaサービスを編集します:
+- Pumaサービスを編集します。
 
   ```shell
   sudo systemctl edit gitlab-puma.service
   ```
 
-  開いたエディタで、以下を追加してファイルを保存します:
+  開いたエディタで、以下を追加してファイルを保存します。
 
   ```plaintext
   [Unit]
@@ -752,13 +737,13 @@ GitLabを別のディレクトリにインストールした場合、または�
   After=redis-server.service postgresql.service
   ```
 
-- Sidekiqサービスを編集します:
+- Sidekiqサービスを編集します。
 
   ```shell
   sudo systemctl edit gitlab-sidekiq.service
   ```
 
-  以下を追加してファイルを保存します:
+  以下を追加してファイルを保存します。
 
   ```plaintext
   [Unit]
@@ -768,13 +753,13 @@ GitLabを別のディレクトリにインストールした場合、または�
 
 `systemctl edit`は、`/etc/systemd/system/<name of the unit>.d/override.conf`にドロップイン設定ファイルをインストールするため、後でユニットファイルをアップグレードするときにローカル設定が上書きされることはありません。ドロップイン設定ファイルを分割するには、`/etc/systemd/system/<name of the unit>.d/`にある`.conf`ファイルに先程のスニペットを追加します。
 
-`systemctl edit`を使用せずに、ユニットファイルを手動で変更した場合、またはドロップイン設定ファイルを追加した場合は、次のコマンドを実行して有効にします:
+`systemctl edit`を使用せずに、ユニットファイルを手動で変更した場合、またはドロップイン設定ファイルを追加した場合は、次のコマンドを実行して有効にします。
 
 ```shell
 sudo systemctl daemon-reload
 ```
 
-ブート時にGitLabを起動させます:
+ブート時にGitLabを起動させます。
 
 ```shell
 sudo systemctl enable gitlab.target
@@ -784,14 +769,14 @@ sudo systemctl enable gitlab.target
 
 SysV initスクリプトを使用する場合は、次の手順を実行します。systemdを使用する場合は、[systemdユニットの手順](#install-systemd-units)に従ってください。
 
-initスクリプト（`/etc/init.d/gitlab`）をダウンロードします:
+initスクリプト（`/etc/init.d/gitlab`）をダウンロードします。
 
 ```shell
 cd /home/git/gitlab
 sudo cp lib/support/init.d/gitlab /etc/init.d/gitlab
 ```
 
-また、デフォルト以外のフォルダーまたはユーザーでインストールする場合は、デフォルトファイルをコピーして編集します:
+また、デフォルト以外のフォルダまたはユーザーでインストールする場合は、デフォルトファイルをコピーして編集します。
 
 ```shell
 sudo cp lib/support/init.d/gitlab.default.example /etc/default/gitlab
@@ -799,7 +784,7 @@ sudo cp lib/support/init.d/gitlab.default.example /etc/default/gitlab
 
 GitLabを別のディレクトリにインストールした場合、またはデフォルト以外のユーザーとしてインストールした場合は、`/etc/default/gitlab`でこれらの設定を変更する必要があります。アップグレード時に変更されるため、`/etc/init.d/gitlab`を編集しないでください。
 
-ブート時にGitLabを起動させます:
+ブート時にGitLabを起動させます。
 
 ```shell
 sudo update-rc.d gitlab defaults 21
@@ -859,7 +844,7 @@ sudo -u git -H bundle exec rake gitlab:setup RAILS_ENV=production GITLAB_ROOT_PA
 
 ### アプリケーションの状態を確認する {#check-application-status}
 
-GitLabとその環境が正しく設定されているかどうかを検証します:
+GitLabとその環境が正しく設定されているかどうかを検証します。
 
 ```shell
 sudo -u git -H bundle exec rake gitlab:env:info RAILS_ENV=production
@@ -900,14 +885,14 @@ sudo apt-get install -y nginx
 
 ### サイトの設定 {#site-configuration}
 
-サイト設定の例をコピーします:
+サイト設定の例をコピーします。
 
 ```shell
 sudo cp lib/support/nginx/gitlab /etc/nginx/sites-available/gitlab
 sudo ln -s /etc/nginx/sites-available/gitlab /etc/nginx/sites-enabled/gitlab
 ```
 
-セットアップに合わせて設定ファイルを編集してください。特に`git`ユーザー以外のユーザー用にインストールする場合は、GitLabへのパスが一致していることを確認してください:
+セットアップに合わせて設定ファイルを編集してください。特に`git`ユーザー以外のユーザー用にインストールする場合は、GitLabへのパスが一致していることを確認してください。
 
 ```shell
 # Change YOUR_SERVER_FQDN to the fully-qualified
@@ -930,7 +915,7 @@ NGINXがGitLab-Workhorseソケットを読み取れるようにするには、Gi
 
 ### 設定をテストする {#test-configuration}
 
-次のコマンドを使用して、`gitlab`または`gitlab-ssl` NGINX設定ファイルを検証します:
+次のコマンドを使用して、`gitlab`または`gitlab-ssl` NGINX設定ファイルを検証します。
 
 ```shell
 sudo nginx -t
@@ -938,13 +923,13 @@ sudo nginx -t
 
 `syntax is okay`および`test is successful`メッセージが表示されるはずです。エラーメッセージが表示される場合は、そこに示されているように、`gitlab`または`gitlab-ssl` NGINX設定ファイルにタイプミスがないか確認してください。
 
-インストールされているバージョンが1.12.1以降であることを確認します:
+インストールされているバージョンが1.12.1以降であることを確認します。
 
 ```shell
 nginx -v
 ```
 
-それより前のバージョンの場合は、次のエラーが表示されることがあります:
+それより前のバージョンの場合は、次のエラーが表示されることがあります。
 
 ```plaintext
 nginx: [emerg] unknown "start$temp=[filtered]$rest" variable
@@ -965,7 +950,7 @@ sudo service nginx restart
 
 ### アプリケーションの状態を再確認 {#double-check-application-status}
 
-何か見落としがないか確認するには、次のコマンドでより徹底的なチェックを実行します:
+何か見落としがないか確認するには、次のコマンドでより徹底的なチェックを実行します。
 
 ```shell
 sudo -u git -H bundle exec rake gitlab:check RAILS_ENV=production
@@ -973,11 +958,8 @@ sudo -u git -H bundle exec rake gitlab:check RAILS_ENV=production
 
 すべての項目が緑色の場合は、GitLabのインストールに成功しました。
 
-{{< alert type="note" >}}
-
-チェックコマンドの出力からプロジェクト名を省略するには、`SANITIZE=true`環境変数を`gitlab:check`に指定します。
-
-{{< /alert >}}
+> [!note]
+> チェックコマンドの出力からプロジェクト名を省略するには、`SANITIZE=true`環境変数を`gitlab:check`に指定します。
 
 ### 最初のログイン {#initial-login}
 
@@ -1019,7 +1001,7 @@ HTTPSでGitLabを使用するには:
    1. `ssl_certificate`と`ssl_certificate_key`を更新します。
    1. 設定ファイルを確認し、他のセキュリティおよびパフォーマンス強化機能の適用を検討してください。
 
-自己署名証明書を使用することはおすすめできません。どうしても使用する必要がある場合は、標準的な指示に従って自己署名SSL証明書を生成します:
+自己署名証明書を使用することはおすすめできません。どうしても使用する必要がある場合は、標準的な指示に従って自己署名SSL証明書を生成します。
 
    ```shell
    mkdir -p /etc/nginx/ssl/
@@ -1070,7 +1052,7 @@ production:
   url: unix:/path/to/redis/socket
 ```
 
-また、`config/resque.yml`ファイルで環境変数を使用することもできます:
+また、`config/resque.yml`ファイルで環境変数を使用することもできます。
 
 ```yaml
 # example
@@ -1098,7 +1080,7 @@ host localhost          # Give your setup a name (here: override localhost)
 
 ### Prometheusサーバーの設定 {#prometheus-server-setup}
 
-`config/gitlab.yml`でPrometheusサーバーを設定できます:
+`config/gitlab.yml`でPrometheusサーバーを設定できます。
 
 ```yaml
 # example
@@ -1109,15 +1091,15 @@ prometheus:
 
 ## トラブルシューティング {#troubleshooting}
 
-### 「空のリポジトリを複製したようです」 {#you-appear-to-have-cloned-an-empty-repository}
+### メッセージ: `You appear to have cloned an empty repository.` {#message-you-appear-to-have-cloned-an-empty-repository}
 
 GitLabがホストするリポジトリを複製しようとしたときにこのメッセージが表示される場合、これは、NGINXまたはApacheの設定が古くなっているか、GitLab Workhorseインスタンスがないか、誤って設定されていることが原因である可能性があります。[Goをインストール](#4-go)し、[GitLab Workhorseをインストール](#install-gitlab-workhorse)し、[NGINXを正しく設定](#site-configuration)したことを再確認してください。
 
-### `google-protobuf`「LoadError: /lib/x86_64-linux-gnu/libc.so.6: バージョン 'GLIBC_2.14' が見つかりません」 {#google-protobuf-loaderror-libx86_64-linux-gnulibcso6-version-glibc_214-not-found}
+### `google-protobuf`エラー：`LoadError: /lib/x86_64-linux-gnu/libc.so.6: version 'GLIBC_2.14' not found` {#google-protobuf-error-loaderror-libx86_64-linux-gnulibcso6-version-glibc_214-not-found}
 
 これは、一部のバージョンの`google-protobuf` gemを使うプラットフォームで発生する可能性があります。回避策は、このgemのソースのみのバージョンをインストールすることです。
 
-まず、GitLabインストールに必要な`google-protobuf`の正確なバージョンを見つける必要があります:
+まず、GitLabインストールに必要な`google-protobuf`の正確なバージョンを見つける必要があります。
 
 ```shell
 cd /home/git/gitlab
@@ -1128,14 +1110,14 @@ bundle list | grep google-protobuf
 bundle check | grep google-protobuf
 ```
 
-次のコマンドでは、`3.2.0`を例として使用しています。これを先ほど見つけたバージョン番号に置き換えてください:
+次のコマンドでは、`3.2.0`を例として使用しています。以前に見つけたバージョン番号に置き換えます:
 
 ```shell
 cd /home/git/gitlab
 sudo -u git -H gem install google-protobuf --version 3.2.0 --platform ruby
 ```
 
-最後に、`google-protobuf`が正しく読み込まれるかどうかをテストできます。次は`OK`と表示されるはずです。
+最後に、`google-protobuf`が正しく読み込まれるかどうかをテストできます。以下を実行すると、`OK`が出力されるはずです。
 
 ```shell
 sudo -u git -H bundle exec ruby -rgoogle/protobuf -e 'puts :OK'
@@ -1157,7 +1139,7 @@ sudo yum groupinstall 'Development Tools'
 
 ### GitLabアセットのコンパイルエラー {#error-compiling-gitlab-assets}
 
-アセットをコンパイル中に、次のエラーメッセージが表示されることがあります:
+アセットをコンパイル中に、次のエラーメッセージが表示されることがあります。
 
 ```plaintext
 Killed
@@ -1166,21 +1148,21 @@ error Command failed with exit code 137.
 
 これは、Yarnがメモリ不足で実行されているコンテナを強制終了した場合に発生する可能性があります。これを修正するには:
 
-1. システムのメモリを8 GiB以上に増やします。
+1. システムのメモリを8 GB以上に増やします。
 
-1. 次のコマンドを実行して、アセットをクリーンアップします:
+1. 次のコマンドを実行して、アセットをクリーンアップします。
 
    ```shell
    sudo -u git -H bundle exec rake gitlab:assets:clean RAILS_ENV=production NODE_ENV=production
    ```
 
-1. `yarn`コマンドを再度実行して、競合を解決します:
+1. `yarn`コマンドを再度実行して、競合を解決します。
 
    ```shell
    sudo -u git -H yarn install --production --pure-lockfile
    ```
 
-1. アセットを再コンパイルします:
+1. アセットを再コンパイルします。
 
    ```shell
    sudo -u git -H bundle exec rake gitlab:assets:compile RAILS_ENV=production NODE_ENV=production

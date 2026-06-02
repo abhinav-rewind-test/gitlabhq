@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>
 title: Email One-Time Passwords (Email OTP) development
 ---
 
@@ -34,7 +34,7 @@ json.message: "Email Verification" AND json.username:replace_username_here
 Add the `json.event` column to see event types. These logs appear when:
 
 - Account requires Email OTP.
-- Account is in grace period (`email_otp_required_after` is 7 days or less)
+- Account is in warning period (`email_otp_required_after` is 7 days or less)
 - Account is locked (pre-existing `VerifiesWithEmail` behavior)
 
 Example log showing successful sign-in flow, searching by IP address:
@@ -43,27 +43,6 @@ Example log showing successful sign-in flow, searching by IP address:
 
 Event reasons are defined in
 [`VerifiesWithEmail` constants](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/controllers/concerns/verifies_with_email.rb#L11-L15).
-
-### Password API authentication failures
-
-As with other 2FA methods, users enrolled in Email OTP cannot
-authenticate API requests with passwords. Look for successful password
-validation followed by 401 responses.
-
-Search for `find_with_user_password succeeded`, then look at
-time-adjacent records or records with the same IP to identify the
-request record and its response.
-
-```plaintext
-json.message: "find_with_user_password" AND json.username:replace_username_here
-```
-
-Example showing Git operations with Email OTP enrolled:
-
-![Git operation logs showing the GitLab::Auth log followed by the request log with 401 status](img/email_otp_git_unauthorized_elasticsearch_logs_v18_9.png)
-
-Note the `find_with_user_password succeeded` message appears even though
-authentication ultimately fails with 401.
 
 ### Enrollment changes
 
@@ -141,15 +120,21 @@ registration flow.
 The `email_otp_required_after` value is automatically managed by
 [`Users::EmailOtpEnrollment#set_email_otp_required_after_based_on_restrictions`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/models/concerns/users/email_otp_enrollment.rb).
 Enrollment states include nil (not enrolled), a future date (upcoming or
-current grace period), or a past date (enforcement active).
+current warning period), or a past date (enforcement active).
 
 Updating a User through
 [`Users::UpdateService`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/services/users/update_service.rb)
 enforces state management, potentially overriding the value, using
-`set_email_otp_required_after_based_on_restrictions`. The same check
-also occurs during sign in.
-This behavior is expected and generates logs with the method name in
-`event.message`. Code comments explain the state transitions.
+`set_email_otp_required_after_based_on_restrictions`. It was done for the rollout
+purposes and [may be removed in the future](https://gitlab.com/gitlab-org/gitlab/-/work_items/551258#refactor-the-state-management-of-email_otp_required_after).
+
+The same `set_email_otp_required_after_based_on_restrictions` method call
+also occurs in `User#email_based_otp_required?` as this method is the SSoT for
+checking whether email OTP is required for a user and
+is being used for all flows where email OTP requirement is applicable.
+
+This behavior is expected and generates logs with `set_email_otp_required_after_based_on_restrictions`
+method name in `event.message`. Code comments explain the state transitions.
 
 ### Security
 
@@ -201,23 +186,23 @@ they cannot access their primary email address.
 **Feature flags:**
 
 - [`email_based_mfa`](https://gitlab.com/gitlab-org/gitlab/-/issues/584355) - Global toggle for Email OTP enforcement
-- [`enrol_new_users_in_email_otp`](https://gitlab.com/gitlab-org/gitlab/-/issues/561975) - Controls automatic enrollment for new users
 
 **Application setting:**
 
-- [`require_minimum_email_based_otp_for_users_with_passwords`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/models/application_setting.rb#L765) - Makes Email OTP mandatory for users without other 2FA
+- `email_otp_enabled` - Global toggle for Email OTP enforcement availability.
+- `require_minimum_email_based_otp_for_users_with_passwords` - Makes Email OTP mandatory for users without other 2FA, and enrolls new users with passwords. Requires `email_otp_enabled` to be enabled.
 
 ## Testing
 
 Configure GDK to match GitLab.com:
 
 ```ruby
-# Admin > Settings > General > Sign-up restrictions
+# Admin > Settings > General > New user account restrictions
 ApplicationSetting.current.update!(
   require_admin_approval_after_user_signup: false,
   email_confirmation_setting: 'hard' )
 
-# Admin > Settings > General > Sign-in restrictions
+# Admin > Settings > General > New user account restrictions
 ApplicationSetting.current.update!(
   anti_abuse_settings: {
     require_email_verification_on_account_locked: true
@@ -235,15 +220,10 @@ Feature.enable(:email_based_mfa, user)
 # Disable Email OTP
 Feature.disable(:email_based_mfa, user)
 
-# Require Email OTP as a minimum
+# Require Email OTP as a minimum (also enrols new users with passwords)
 ApplicationSetting.current.update!(sign_in_restrictions: {require_minimum_email_based_otp_for_users_with_passwords: true })
 # Or allow users to disable it
 ApplicationSetting.current.update!(sign_in_restrictions: {require_minimum_email_based_otp_for_users_with_passwords: false })
-
-# Enrol new users when they sign up
-Feature.enable(:enrol_new_users_in_email_otp)
-# Or make it opt-in
-Feature.disable(:enrol_new_users_in_email_otp)
 
 # Set enrollment date via UpdateService (triggers automatic enrollment logic)
 Users::UpdateService.new( user, { user: user, email_otp_required_after: date } ).execute!
@@ -253,7 +233,7 @@ user.update(email_otp_required_after: date) # nil to unenroll
 
 View emails at `https://gdk.test:3443/rails/letter_opener`.
 
-Grace period phases are defined in code - see
+Warning period phases are defined in code - see
 [`VerifiesWithEmail`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/controllers/concerns/verifies_with_email.rb)
 and
 [`VerifiesWithEmailHelper`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/helpers/verifies_with_email_helper.rb)

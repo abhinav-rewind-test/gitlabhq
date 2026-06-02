@@ -6,8 +6,6 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
   include Gitlab::Utils::StrongMemoize
   include RequestPayloadLogger
 
-  alias_method :auth_user, :current_user
-
   prepend_before_action :set_current_organization
 
   before_action :add_gon_variables
@@ -40,6 +38,12 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
   end
 
   private
+
+  # In Rails 8 alias_method at class-body level fails when the aliased method
+  # is not yet in the ancestor chain at load time. Define explicitly instead.
+  def auth_user
+    current_user
+  end
 
   def audit_oauth_authorization
     return unless performed? && (response.successful? || response.redirect?) && pre_auth&.client
@@ -79,10 +83,15 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
     # Cannot be achieved with a before_action hook, due to the execution order.
     downgrade_scopes! if action_name == 'new'
 
-    # Force scope to `mcp` for MCP server requests and dynamic MCP applications.
+    # Force the appropriate MCP scope for MCP server requests and dynamic MCP applications.
     # This ensures that even if a client requests other scopes, dynamic MCP applications
-    # are restricted to the mcp scope only, regardless of what was requested.
-    params[:scope] = Gitlab::Auth::MCP_SCOPE.to_s if resource_is_mcp_server? || should_force_mcp_scope_for_dynamic_app?
+    # are restricted to the correct scope only, regardless of what was requested.
+    if resource_is_mcp_orbit_server? || should_force_scope_for_dynamic_app?(Gitlab::Auth::MCP_ORBIT_SCOPE)
+      params[:scope] = Gitlab::Auth::MCP_ORBIT_SCOPE.to_s
+    elsif resource_is_mcp_server? || should_force_scope_for_dynamic_app?(Gitlab::Auth::MCP_SCOPE)
+      params[:scope] = Gitlab::Auth::MCP_SCOPE.to_s
+    end
+
     params[:organization_id] = ::Current.organization.id
 
     super
@@ -92,12 +101,13 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
     params[:resource].present? && params[:resource].end_with?('/api/v4/mcp')
   end
 
-  def should_force_mcp_scope_for_dynamic_app?
+  def resource_is_mcp_orbit_server?
+    params[:resource].present? && params[:resource].end_with?('/api/v4/orbit/mcp')
+  end
+
+  def should_force_scope_for_dynamic_app?(scope)
     doorkeeper_application&.dynamic? &&
-      # Verify application only has mcp scope. Dynamic apps are always created with
-      # only mcp scope (see dynamic_registrations_controller.rb), but this check
-      # guards against future changes or manual modifications.
-      doorkeeper_application&.scopes == Doorkeeper::OAuth::Scopes.from_string(Gitlab::Auth::MCP_SCOPE.to_s)
+      doorkeeper_application&.scopes == Doorkeeper::OAuth::Scopes.from_string(scope.to_s)
   end
 
   # limit scopes when signing in with GitLab

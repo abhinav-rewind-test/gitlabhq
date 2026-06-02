@@ -9,6 +9,8 @@ import {
 import { machine } from '~/lib/utils/finite_state_machine';
 import { cleanLeadingSeparator } from '~/lib/utils/url_utility';
 import { badgeState } from '~/merge_requests/badge_state';
+import { convertToGraphQLId } from '~/graphql_shared/utils';
+import { TYPENAME_CI_STAGE } from '~/graphql_shared/constants';
 import {
   MT_MERGE_STRATEGY,
   MWCP_MERGE_STRATEGY,
@@ -129,6 +131,7 @@ export default class MergeRequestStore {
     );
     this.ffOnlyEnabled = data.ff_only_enabled;
     this.ffMergePossible = data.ff_merge_possible;
+    this.showAutomaticRebaseInfo = data.show_automatic_rebase_info;
     this.isRemovingSourceBranch = this.isRemovingSourceBranch || false;
     this.mergeRequestState = data.state;
     this.isOpen = this.mergeRequestState === STATUS_OPEN;
@@ -227,6 +230,58 @@ export default class MergeRequestStore {
     this.setState();
   }
 
+  setPipelineStatusData(data, isPostMerge = false) {
+    if (!data) return;
+
+    const pipelineKey = isPostMerge ? 'mergePipeline' : 'pipeline';
+    const existingPipeline = this[pipelineKey];
+
+    // subscription fed status updates
+    this.ciStatus = data.status?.toLowerCase();
+    this.isPipelineActive = data?.active || false;
+    this.isPipelineBlocked = this.onlyAllowMergeIfPipelineSucceeds && this.ciStatus === 'manual';
+    this.isPipelineFailed = this.ciStatus === 'failed' || this.ciStatus === 'canceled';
+    this.isPipelinePassing =
+      this.ciStatus === 'success' || this.ciStatus === 'success-with-warnings';
+    this.isPipelineSkipped = this.ciStatus === 'skipped';
+    this.pipelineDetailedStatus = {
+      ...this.pipelineDetailedStatus,
+      ...data.detailedStatus,
+      details_path: data.detailedStatus?.detailsPath,
+    };
+
+    const updatedStages =
+      existingPipeline.details?.stages?.map((existingStage) => {
+        const updatedStage = data.stages?.nodes?.find(
+          (stageUpdated) =>
+            stageUpdated.id === convertToGraphQLId(TYPENAME_CI_STAGE, existingStage.id),
+        );
+
+        if (!updatedStage) return existingStage;
+
+        return {
+          ...existingStage,
+          status: {
+            ...existingStage.status,
+            ...updatedStage.detailedStatus,
+            details_path: updatedStage.detailedStatus?.detailsPath,
+          },
+        };
+      }) || [];
+
+    // subscription fed pipeline or mergePipeline status updates
+    this[pipelineKey] = {
+      ...existingPipeline,
+      details: {
+        ...existingPipeline.details,
+        status: { ...this.pipelineDetailedStatus },
+        stages: updatedStages,
+      },
+    };
+
+    this.setState();
+  }
+
   updateStatusState(state) {
     if (this.mergeRequestState !== state && badgeState.updateStatus) {
       badgeState.updateStatus();
@@ -294,7 +349,6 @@ export default class MergeRequestStore {
     this.userCalloutsPath = data.user_callouts_path;
     this.suggestPipelineFeatureId = data.suggest_pipeline_feature_id;
     this.migrateJenkinsFeatureId = data.migrate_jenkins_feature_id;
-    this.isDismissedSuggestPipeline = data.is_dismissed_suggest_pipeline;
     this.isDismissedJenkinsMigration = data.is_dismissed_jenkins_migration;
     this.securityReportsDocsPath = data.security_reports_docs_path;
     this.securityConfigurationPath = data.security_configuration_path;
@@ -322,8 +376,10 @@ export default class MergeRequestStore {
     return {
       mergedBy: MergeRequestStore.formatUserObject(metrics.merged_by),
       closedBy: MergeRequestStore.formatUserObject(metrics.closed_by),
-      closedAt: localeDateFormat.asDateTimeFull.format(newDate(metrics.closed_at)),
-      mergedAt: localeDateFormat.asDateTimeFull.format(newDate(metrics.merged_at)),
+      closedAt:
+        metrics.closed_at && localeDateFormat.asDateTimeFull.format(newDate(metrics.closed_at)),
+      mergedAt:
+        metrics.merged_at && localeDateFormat.asDateTimeFull.format(newDate(metrics.merged_at)),
       readableMergedAt: MergeRequestStore.getReadableDate(metrics.merged_at),
       readableClosedAt: MergeRequestStore.getReadableDate(metrics.closed_at),
     };

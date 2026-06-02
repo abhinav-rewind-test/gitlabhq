@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuous_delivery do
+RSpec.describe API::DeployKeys, :with_current_organization, :aggregate_failures, feature_category: :continuous_delivery do
   let_it_be(:user)        { create(:user) }
   let_it_be(:maintainer)  { create(:user) }
   let_it_be(:admin)       { create(:admin) }
@@ -376,7 +376,7 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
       let(:api_user) { user }
 
       it 'does not update a public deploy key' do
-        expect { subject }.not_to change(deploy_key, :title)
+        expect { subject }.not_to change { deploy_key.title }
 
         expect(response).to have_gitlab_http_status(:not_found)
       end

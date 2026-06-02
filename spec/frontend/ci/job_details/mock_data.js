@@ -11,9 +11,53 @@ export const mockJobResponse = {
           nodes: [],
           __typename: 'CiManualVariableConnection',
         },
+        inputsSpec: [],
         __typename: 'CiJob',
         manualJob: false,
         name: 'artifact_job',
+        source: null,
+        detailedStatus: {
+          id: 'success-13051-13051',
+          icon: 'status_success',
+          text: 'Passed',
+          detailsPath: '/root/ci-project/-/jobs/13051',
+          __typename: 'DetailedStatus',
+        },
+        startedAt: '',
+        createdAt: '2025-04-21T16:19:15Z',
+      },
+      __typename: 'Project',
+    },
+  },
+};
+
+export const mockJobWithInputsResponse = {
+  data: {
+    project: {
+      ...mockJobResponse.data.project,
+      job: {
+        ...mockJobResponse.data.project.job,
+        inputsSpec: [{ name: 'test' }],
+      },
+    },
+  },
+};
+
+export const mockManualJobResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/20',
+      job: {
+        id: 'gid://gitlab/Ci::Build/13051',
+        manualVariables: {
+          nodes: [],
+          __typename: 'CiManualVariableConnection',
+        },
+        inputsSpec: [],
+        __typename: 'CiJob',
+        manualJob: true,
+        name: 'artifact_job',
+        source: null,
         detailedStatus: {
           id: 'success-13051-13051',
           icon: 'status_success',
@@ -47,7 +91,9 @@ export const mockJobWithVariablesResponse = {
           ],
           __typename: 'CiManualVariableConnection',
         },
+        inputsSpec: [],
         name: 'manual_job',
+        source: null,
         detailedStatus: {
           id: 'manual-13046-13046',
           icon: 'status_manual',
@@ -82,6 +128,7 @@ export const mockJobPlayMutationData = {
           __typename: 'CiManualVariableConnection',
         },
         webPath: '/Commit451/lab-coat/-/jobs/401',
+        source: null,
         __typename: 'CiJob',
       },
       errors: [],
@@ -107,6 +154,7 @@ export const mockJobRetryMutationData = {
           __typename: 'CiManualVariableConnection',
         },
         webPath: '/Commit451/lab-coat/-/jobs/401',
+        source: null,
         __typename: 'CiJob',
       },
       errors: [],
@@ -133,6 +181,36 @@ export const mockPendingJobData = {
       button_title: 'Retry job',
       method: 'post',
       path: '/path',
+    },
+  },
+};
+
+export const mockPolicyJobResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/20',
+      job: {
+        id: 'gid://gitlab/Ci::Build/13051',
+        manualVariables: {
+          nodes: [],
+          __typename: 'CiManualVariableConnection',
+        },
+        inputsSpec: [],
+        __typename: 'CiJob',
+        manualJob: false,
+        name: 'sast-analyzer',
+        source: 'scan_execution_policy',
+        detailedStatus: {
+          id: 'success-13051-13051',
+          icon: 'status_success',
+          text: 'Passed',
+          detailsPath: '/root/ci-project/-/jobs/13051',
+          __typename: 'DetailedStatus',
+        },
+        startedAt: '',
+        createdAt: '2025-04-21T16:19:15Z',
+      },
+      __typename: 'Project',
     },
   },
 };

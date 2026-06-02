@@ -7,16 +7,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
   include WorkhorseHelpers
   include StubRequests
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:user1) { create(:user) }
   let_it_be(:user2) { create(:user) }
-  let_it_be(:user3) { create(:user) }
+  let_it_be(:user3, freeze: false) { create(:user) }
   let_it_be(:admin) { create(:admin) }
-  let_it_be(:project, reload: true) { create(:project, :repository, create_branch: 'something_else', namespace: user.namespace, updated_at: 5.days.ago) }
-  let_it_be(:project2, reload: true) { create(:project, namespace: user.namespace, updated_at: 4.days.ago) }
+  let_it_be_with_reload(:project) { create(:project, :repository, create_branch: 'something_else', namespace: user.namespace, updated_at: 5.days.ago) }
+  let_it_be_with_reload(:project2) { create(:project, namespace: user.namespace, updated_at: 4.days.ago) }
   let_it_be(:project_member) { create(:project_member, :developer, user: user3, project: project) }
   let_it_be(:user4) { create(:user, username: 'user.withdot') }
-  let_it_be(:project3, reload: true) do
+  let_it_be_with_reload(:project3) do
     create(
       :project,
       :private,
@@ -39,7 +39,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     )
   end
 
-  let_it_be(:project4, reload: true) do
+  let_it_be_with_reload(:project4) do
     create(:project, creator_id: user4.id, namespace: user4.namespace)
   end
 
@@ -71,10 +71,10 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
     before do
       allow(project.repository).to receive(:languages).and_return(
-        [{ value: 66.69, label: "Ruby", color: "#701516", highlight: "#701516" },
-         { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
-         { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26" },
-         { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776" }]
+        [{ value: 66.69, label: "Ruby", color: "#701516", highlight: "#701516", language_id: 326 },
+          { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a", language_id: 183 },
+          { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26", language_id: 146 },
+          { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776", language_id: 63 }]
       )
     end
 
@@ -374,10 +374,10 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       context 'when projects is in a subgroup' do
         let_it_be(:group) { create(:group) }
-        let_it_be(:group_member) { create(:group_member, :developer, group: group, user: user) }
+        let_it_be(:group_member, freeze: false) { create(:group_member, :developer, group: group, user: user) }
 
         let_it_be(:subgroup) { create(:group, parent: group) }
-        let_it_be(:project) { create(:project, group: subgroup) }
+        let_it_be(:project, freeze: false) { create(:project, group: subgroup) }
 
         before do
           get api(path, user)
@@ -397,7 +397,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
 
         context 'when user has multiple group membership' do
-          let_it_be(:subgroup_member) { create(:group_member, :owner, group: subgroup, user: user) }
+          let_it_be(:subgroup_member, freeze: false) { create(:group_member, :owner, group: subgroup, user: user) }
 
           it 'returns the highest access level', :aggregate_failures do
             project_response = json_response.find { |p| p['id'] == project.id }
@@ -535,7 +535,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
 
       context 'filter by topic_id' do
-        let_it_be(:topic1) { create(:topic, organization_id: project.organization_id) }
+        let_it_be(:topic1, freeze: false) { create(:topic, organization_id: project.organization_id) }
         let_it_be(:topic2) { create(:topic, organization_id: project.organization_id) }
 
         let(:current_user) { user }
@@ -1190,7 +1190,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
 
     context 'when using the marked_for_deletion_on filter' do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
       let_it_be(:group) { create(:group, owners: user) }
       let_it_be(:marked_for_deletion_project) do
         create(:project, marked_for_deletion_at: Date.parse('2024-01-01'), group: group)
@@ -2660,7 +2660,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     let_it_be(:root_group) { create(:group, :public, name: 'root group', path: 'root-group-path') }
     let_it_be(:project_group1) { create(:group, :public, parent: root_group, name: 'group1', path: 'group-1-path') }
     let_it_be(:project_group2) { create(:group, :public, parent: root_group, name: 'group2', path: 'group-2-path') }
-    let_it_be(:project) { create(:project, :private, group: project_group1) }
+    let_it_be(:project, freeze: false) { create(:project, :private, group: project_group1) }
     let(:path) { "/projects/#{project.id}/share_locations" }
 
     it_behaves_like 'GET request permissions for admin mode' do
@@ -2893,12 +2893,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             approvals_before_merge
             compliance_frameworks
             mirror
+            pre_receive_secret_detection_enabled
             requirements_access_level
             requirements_enabled
             security_and_compliance_enabled
             issues_template
             merge_requests_template
             secret_push_protection_enabled
+            pre_receive_secret_detection_enabled
           ]
         end
 
@@ -2967,6 +2969,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response).to have_key('emails_disabled')
         expect(json_response).to have_key('emails_enabled')
         expect(json_response).to have_key('show_diff_preview_in_email')
+        expect(json_response['protect_merge_request_pipelines']).to eq(project.protect_merge_request_pipelines)
+        expect(json_response['ci_display_pipeline_variables']).to eq(project.ci_display_pipeline_variables)
       end
 
       it 'exposes all necessary attributes' do
@@ -3425,8 +3429,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
 
       context 'when project belongs to a user namespace' do
-        let_it_be(:user) { create(:user) }
-        let_it_be(:project) { create(:project, namespace: user.namespace) }
+        let_it_be(:user, freeze: false) { create(:user) }
+        let_it_be(:project, freeze: false) { create(:project, namespace: user.namespace) }
 
         it 'returns user web_url and avatar_url' do
           get api(path, user)
@@ -3475,14 +3479,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           'auto_devops_enabled',
           'auto_devops_deploy_strategy',
           'import_error',
-          'ci_push_repository_for_job_token_allowed'
+          'ci_push_repository_for_job_token_allowed',
+          'protect_merge_request_pipelines',
+          'ci_display_pipeline_variables'
         )
       end
     end
 
     it_behaves_like 'storing arguments in the application context for the API' do
-      let_it_be(:user) { create(:user) }
-      let_it_be(:project) { create(:project, :public) }
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be(:project, freeze: false) { create(:project, :public) }
       let(:expected_params) { { user: user.username, project: project.full_path } }
 
       subject { get api(path, user) }
@@ -3665,6 +3671,35 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
       end
 
+      context 'and user is a maintainer of target group' do
+        let_it_be_with_reload(:target_group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
+        let_it_be_with_reload(:project_fork_target) { create(:project, namespace: target_group) }
+
+        before do
+          target_group.add_maintainer(user)
+          project_fork_target.add_owner(user)
+        end
+
+        it 'allows project to be forked from an existing project' do
+          expect(project_fork_target).not_to be_forked
+
+          post api(path, user)
+
+          project_fork_target.reload
+          expect(response).to have_gitlab_http_status(:created)
+          expect(project_fork_target.forked_from_project.id).to eq(project_fork_source.id)
+          expect(project_fork_target.fork_network_member).to be_present
+          expect(project_fork_target).to be_forked
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :create_fork_relationship do
+          let(:boundary_object) { project_fork_target }
+          let(:request) do
+            post api("/projects/#{project_fork_target.id}/fork/#{project_fork_source.id}", personal_access_token: pat)
+          end
+        end
+      end
+
       context 'user is owner' do
         before do
           project_fork_target.add_owner(user)
@@ -3681,8 +3716,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           it 'fails as target namespace is unauthorized' do
             post api(path, user)
 
-            expect(response).to have_gitlab_http_status(:unauthorized)
-            expect(json_response['message']).to eq "401 Unauthorized - Target Namespace"
+            expect(response).to have_gitlab_http_status(:forbidden)
+            expect(json_response['message']).to eq "403 Forbidden"
           end
         end
 
@@ -3700,17 +3735,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             post api(path, user)
             project_fork_target.reload
 
-            expect(response).to have_gitlab_http_status(:created)
-            expect(project_fork_target.forked_from_project.id).to eq(project_fork_source.id)
-            expect(project_fork_target.fork_network_member).to be_present
-            expect(project_fork_target).to be_forked
-          end
-
-          it_behaves_like 'authorizing granular token permissions', :create_fork_relationship do
-            let(:boundary_object) { project_fork_target }
-            let(:request) do
-              post api("/projects/#{project_fork_target.id}/fork/#{project_fork_source.id}", personal_access_token: pat)
-            end
+            expect(response).to have_gitlab_http_status(:forbidden)
+            expect(json_response['message']).to eq('403 Forbidden')
           end
         end
 
@@ -3728,7 +3754,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         it 'denies project to be forked from a private project' do
           post api("/projects/#{project_fork_target.id}/fork/#{private_project_fork_source.id}", user)
 
-          expect(response).to have_gitlab_http_status(:not_found)
+          expect(response).to have_gitlab_http_status(:forbidden)
         end
       end
 
@@ -3750,7 +3776,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         it 'refreshes the forks count cachce' do
           expect do
             post api(path, admin, admin_mode: true)
-          end.to change(project_fork_source, :forks_count).by(1)
+          end.to change { project_fork_source.forks_count }.by(1)
         end
 
         it 'fails if forked_from project which does not exist' do
@@ -4089,7 +4115,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(group_ids).to contain_exactly(direct_group1.id, direct_group2.id, inherited_group.id)
       end
 
-      it_behaves_like 'authorizing granular token permissions', :read_invited_group do
+      it_behaves_like 'authorizing granular token permissions', :read_project_invited_group do
         let(:boundary_object) { main_project }
         let(:request) do
           get api("/projects/#{main_project.id}/invited_groups", personal_access_token: pat)
@@ -4309,16 +4335,15 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     let_it_be(:group) { create(:group, owners: user) }
     let_it_be_with_reload(:project) { create(:project, group: group) }
 
-    context 'when project is archived' do
+    context 'when project is scheduled for deletion' do
       before do
-        project.update!(archived: true, marked_for_deletion_at: 1.day.ago, deleting_user: user)
+        project.project_namespace.schedule_deletion!(transition_user: user)
       end
 
       it 'restores project' do
         post api("/projects/#{project.id}/restore", user)
 
         expect(response).to have_gitlab_http_status(:created)
-        expect(json_response['archived']).to be_falsey
         expect(json_response['marked_for_deletion_at']).to be_falsey
         expect(json_response['marked_for_deletion_on']).to be_falsey
       end
@@ -4492,6 +4517,34 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       let(:boundary_object) { project }
       let(:request) do
         put api("/projects/#{project.id}", personal_access_token: pat), params: { name: 'new name' }
+      end
+    end
+
+    describe 'updating protect_merge_request_pipelines attribute' do
+      it 'is enabled by default' do
+        expect(project.protect_merge_request_pipelines).to be_truthy
+      end
+
+      it 'disables protect_merge_request_pipelines' do
+        put(api(path, user), params: { protect_merge_request_pipelines: false })
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(project.reload.protect_merge_request_pipelines).to be_falsey
+        expect(json_response['protect_merge_request_pipelines']).to eq(false)
+      end
+    end
+
+    describe 'updating ci_display_pipeline_variables attribute' do
+      it 'is disabled by default' do
+        expect(project.ci_display_pipeline_variables).to be_falsey
+      end
+
+      it 'enables ci_display_pipeline_variables' do
+        put(api(path, user), params: { ci_display_pipeline_variables: true })
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(project.reload.ci_display_pipeline_variables).to be_truthy
+        expect(json_response['ci_display_pipeline_variables']).to eq(true)
       end
     end
 
@@ -4899,12 +4952,12 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             expect(response).to have_gitlab_http_status(:ok)
           end
 
-          it 'rejects to ci_pipeline_variables_minimum_override_role to owner' do
+          it 'allows setting ci_pipeline_variables_minimum_override_role to owner' do
             project_param = { ci_pipeline_variables_minimum_override_role: 'owner' }
 
             put api("/projects/#{project3.id}", current_user), params: project_param
 
-            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(response).to have_gitlab_http_status(:ok)
           end
         end
 
@@ -4998,7 +5051,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       context 'with changes to the avatar' do
         let_it_be(:avatar_file) { fixture_file_upload('spec/fixtures/banana_sample.gif', 'image/gif') }
         let_it_be(:alternate_avatar_file) { fixture_file_upload('spec/fixtures/rails_sample.png', 'image/png') }
-        let_it_be(:project_with_avatar, reload: true) do
+        let_it_be_with_reload(:project_with_avatar) do
           create(
             :project,
             :private,
@@ -5108,21 +5161,6 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(response).to have_gitlab_http_status(:ok)
 
         expect(json_response['topics']).to eq(%w[topic2])
-      end
-
-      it 'updates the merge_request_title_regex and description' do
-        project3.update!(merge_request_title_regex: nil)
-
-        project_param = { merge_request_title_regex: '/aaa/', merge_request_title_regex_description: 'Description of regex' }
-
-        expect { put api("/projects/#{project3.id}", user), params: project_param }
-          .to change { [project3.reload.merge_request_title_regex, project3.merge_request_title_regex_description] }
-          .from([nil, nil])
-          .to([/aaa/, "Description of regex"])
-
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(json_response['merge_request_title_regex']).to eq("/aaa/")
-        expect(json_response['merge_request_title_regex_description']).to eq("Description of regex")
       end
 
       it 'updates enforce_auth_checks_on_uploads' do
@@ -5397,7 +5435,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             Sidekiq::Testing.fake! do
               put(api("/projects/#{new_project.id}", user), params: { repository_storage: unknown_storage, issues_enabled: false })
             end
-          end.not_to change(Projects::UpdateRepositoryStorageWorker.jobs, :size)
+          end.not_to change { Projects::UpdateRepositoryStorageWorker.jobs.size }
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(json_response['issues_enabled']).to eq(false)
@@ -5424,7 +5462,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             Sidekiq::Testing.fake! do
               put(api("/projects/#{new_project.id}", admin, admin_mode: true), params: { repository_storage: 'test_second_storage' })
             end
-          end.to change(Projects::UpdateRepositoryStorageWorker.jobs, :size).by(1)
+          end.to change { Projects::UpdateRepositoryStorageWorker.jobs.size }.by(1)
 
           expect(response).to have_gitlab_http_status(:ok)
         end
@@ -5471,6 +5509,22 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
     end
 
+    context 'attribute mr_default_title_template' do
+      it 'is exposed in the project response' do
+        get api("/projects/#{project.id}", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to include('mr_default_title_template')
+      end
+
+      it 'updates the template' do
+        put api("/projects/#{project.id}", user), params: { mr_default_title_template: '%{source_branch}' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['mr_default_title_template']).to eq('%{source_branch}')
+      end
+    end
+
     context 'attribute mr_default_target_self' do
       let_it_be(:source_project) { create(:project, :public) }
 
@@ -5507,6 +5561,52 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(json_response['mr_default_target_self']).to eq(true)
+        end
+      end
+    end
+
+    context 'when project has container registry tags' do
+      before do
+        stub_container_registry_config(enabled: true)
+        stub_container_registry_tags(repository: /image/, tags: %w[rc1])
+        create(:container_repository, project: project, name: :image)
+      end
+
+      context 'when GitLab container registry API is not supported' do
+        before do
+          allow(ContainerRegistry::GitlabApiClient).to receive(:supports_gitlab_api?).and_return(false)
+        end
+
+        it 'returns 422 with an error message when trying to change path' do
+          put api("/projects/#{project.id}", user), params: { path: 'new-path' }
+
+          expect(response).to have_gitlab_http_status(:unprocessable_entity)
+          expect(json_response['message']).to match(/contains container registry tags/)
+        end
+
+        it 'does not silently apply other params when path change fails' do
+          original_description = project.description
+
+          put api("/projects/#{project.id}", user), params: { path: 'new-path', description: 'updated' }
+
+          expect(response).to have_gitlab_http_status(:unprocessable_entity)
+          expect(project.reload.description).to eq(original_description)
+        end
+      end
+
+      context 'when GitLab container registry API is supported' do
+        before do
+          allow(ContainerRegistry::GitlabApiClient).to receive(:supports_gitlab_api?).and_return(true)
+          allow(ContainerRegistry::GitlabApiClient)
+            .to receive(:rename_base_repository_path).and_return(:accepted, :ok)
+        end
+
+        it 'successfully changes the project path' do
+          put api("/projects/#{project.id}", user), params: { path: 'new-path' }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['path']).to eq('new-path')
+          expect(project.reload.path).to eq('new-path')
         end
       end
     end
@@ -5597,17 +5697,30 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     let(:path) { "/projects/#{project.id}/unarchive" }
 
     context 'on an unarchived project' do
-      it 'remains unarchived' do
+      it 'returns error message' do
         post api(path, user)
 
-        expect(response).to have_gitlab_http_status(:created)
-        expect(json_response['archived']).to be_falsey
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq('Failed to unarchive project.')
+      end
+
+      context 'when remove_project_ancestor_inherited_transitions flag is disabled' do
+        before do
+          stub_feature_flags(remove_project_ancestor_inherited_transitions: false)
+        end
+
+        it 'remains unarchived' do
+          post api(path, user)
+
+          expect(response).to have_gitlab_http_status(:created)
+          expect(json_response['archived']).to be_falsey
+        end
       end
     end
 
     context 'on an archived project' do
       before do
-        project.update!(archived: true)
+        project.project_namespace.archive!
       end
 
       it_behaves_like 'authorizing granular token permissions', :unarchive_project do
@@ -5957,7 +6070,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           delete api(path, user), params: params
 
           expect(response).to have_gitlab_http_status(:accepted)
-          expect(project.marked_for_deletion_on).to be_nil
+          expect(project.self_deletion_scheduled_deletion_created_on).to be_nil
           expect(project.deleting_user).to be_nil
         end
       end
@@ -5977,39 +6090,6 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           params.merge!(permanently_remove: true)
         end
 
-        describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
-          before do
-            stub_application_setting(allow_immediate_namespaces_deletion: false)
-          end
-
-          it_behaves_like 'immediately delete project error' do
-            let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
-          end
-
-          context 'when current user is an admin' do
-            let_it_be(:user) { admin }
-            let(:admin_mode) { true }
-
-            context 'when project is already marked for deletion' do
-              before do
-                project.update!(marked_for_deletion_at: 1.day.ago, deleting_user: admin)
-                params[:full_path] = project.full_path
-                project.add_owner(admin)
-              end
-
-              it_behaves_like 'deletes project immediately'
-
-              context 'when admin_mode is false' do
-                let(:admin_mode) { false }
-
-                it_behaves_like 'immediately delete project error' do
-                  let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
-                end
-              end
-            end
-          end
-        end
-
         context 'when project is not marked for deletion' do
           let(:error_message) { 'Project must be marked for deletion first.' }
 
@@ -6027,14 +6107,6 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             end
 
             it_behaves_like 'deletes project immediately'
-
-            context 'when the allow_immediate_namespaces_deletion FF is disabled' do
-              before do
-                stub_feature_flags(allow_immediate_namespaces_deletion: false)
-              end
-
-              it_behaves_like 'deletes project immediately'
-            end
           end
 
           context 'with incorrect project full path' do
@@ -6540,12 +6612,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     context 'when authenticated as owner' do
       let(:group) { create :group }
 
-      it 'transfers the project to the new namespace' do
+      it 'schedules async transfer and returns ok status' do
         group.add_owner(user)
 
         put api(path, user), params: { namespace: group.id }
 
         expect(response).to have_gitlab_http_status(:ok)
+        expect(project.project_namespace.reload.state).to eq('transfer_scheduled')
       end
 
       it 'fails when transferring to a non owned namespace' do
@@ -6578,6 +6651,24 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           expect(response).to have_gitlab_http_status(:forbidden)
         end
       end
+
+      context 'when transfer cannot be scheduled' do
+        before do
+          group.add_owner(user)
+          project.project_namespace.schedule_transfer!(transition_user: user)
+          Gitlab::ExclusiveLease.new(
+            Projects::TransferWorker.lease_key(project.id), timeout: 30.minutes
+          ).try_obtain
+        end
+
+        it 'returns error when already scheduled', :aggregate_failures do
+          put api(path, user), params: { namespace: group.id }
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['message'])
+            .to eq('Unable to initiate transfer. The project may already have a transfer in progress.')
+        end
+      end
     end
 
     it_behaves_like 'authorizing granular token permissions', :transfer_project do
@@ -6593,27 +6684,46 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
     end
 
-    context 'when authenticated as developer' do
+    context 'when groups_and_projects_async_transfer is disabled' do
       before do
-        group.add_developer(user)
+        stub_feature_flags(groups_and_projects_async_transfer: false)
       end
 
-      context 'target namespace allows developers to create projects' do
-        let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
+      context 'when authenticated as owner' do
+        let(:group) { create :group }
 
-        it 'fails transferring the project to the target namespace' do
+        it 'transfers the project to the new namespace synchronously' do
+          group.add_owner(user)
+
           put api(path, user), params: { namespace: group.id }
 
-          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(project.project_namespace.reload.state).to eq('ancestor_inherited')
+        end
+      end
+
+      context 'when authenticated as developer' do
+        before do
+          group.add_developer(user)
+        end
+
+        context 'target namespace allows developers to create projects' do
+          let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
+
+          it 'fails transferring the project to the target namespace' do
+            put api(path, user), params: { namespace: group.id }
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+          end
         end
       end
     end
   end
 
   describe 'GET /projects/:id/transfer_locations' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
     let_it_be(:source_group) { create(:group) }
-    let_it_be(:project) { create(:project, group: source_group) }
+    let_it_be(:project, freeze: false) { create(:project, group: source_group) }
 
     let(:params) { {} }
 
@@ -6633,7 +6743,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         owner_group.add_owner(user)
       end
 
-      it_behaves_like 'authorizing granular token permissions', :read_transfer_location do
+      it_behaves_like 'authorizing granular token permissions', :read_project_transfer_location do
         let(:boundary_object) { project }
         let(:request) do
           get api("/projects/#{project.id}/transfer_locations", personal_access_token: pat)

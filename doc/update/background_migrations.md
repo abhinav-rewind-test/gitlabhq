@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Check migrations before upgrade
 ---
 
@@ -18,6 +18,7 @@ title: Check migrations before upgrade
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/191722) in GitLab 18.5.
 - [Enhanced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/211674) in GitLab 18.7.
+- [Enhanced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/222806) in GitLab 18.9.
 
 {{< /history >}}
 
@@ -29,13 +30,15 @@ All Rake tasks work across all databases (main and ci) and use a unified migrati
 For example, `main_85` refers to migration ID 85 in the main database, and `ci_10` refers to migration ID 10
 in the ci database.
 
+For active migrations, the `progress` column includes an estimated time remaining when available (for example, `42.50% (estimated time remaining: 5 minutes)`).
+
 ### List all background migrations
 
 To view all batched background migrations across all databases:
 
 {{< tabs >}}
 
-{{< tab title="GitLab 18.5 and later" >}}
+{{< tab title="GitLab 18.9 and later" >}}
 
 ```shell
 sudo gitlab-rake gitlab:background_migrations:list
@@ -44,21 +47,21 @@ sudo gitlab-rake gitlab:background_migrations:list
 Example output:
 
 ```plaintext
-id      | table_name                                              | job_class_name                                              | status
---------|---------------------------------------------------------|-------------------------------------------------------------|----------
-main_1  | namespace_settings                                      | UpdateRequireDpopForManageApiEndpointsToFalse               | finished
-main_2  | resource_iteration_events                               | BackfillResourceIterationEventsNamespaceId                  | finalized
-main_3  | identities                                              | DeleteTwitterIdentities                                     | finalized
-main_4  | software_license_policies                               | BackfillLicensesOutsideSpdxCatalogue                        | finalized
-main_5  | security_policies                                       | BackfillPipelineExecutionPoliciesMetadata                   | finished
-ci_1    | ci_runners                                              | MarkAdminBotRunnersAsHosted                                 | finalized
-ci_2    | p_ci_build_trace_metadata                               | BackfillUpsertedCiBuildTraceMetadataProjectId               | finalized
-ci_3    | ci_runners                                              | BackfillOrganizationIdOnCiRunners                           | finalized
+id      | table_name                       | job_class_name                                | status    | progress
+--------|----------------------------------|-----------------------------------------------|-----------|----------------------------------------------------------
+main_1  | namespace_settings               | UpdateRequireDpopForManageApiEndpointsToFalse | finished  | 100.00%
+main_2  | resource_iteration_events        | BackfillResourceIterationEventsNamespaceId    | finalized | 100.00%
+main_3  | identities                       | DeleteTwitterIdentities                       | finalized | 100.00%
+main_4  | software_license_policies        | BackfillLicensesOutsideSpdxCatalogue          | finalized | 100.00%
+main_5  | security_policies                | BackfillPipelineExecutionPoliciesMetadata     | active    | 42.50% (estimated time remaining: 5 minutes)
+ci_1    | ci_runners                       | MarkAdminBotRunnersAsHosted                   | finalized | 100.00%
+ci_2    | p_ci_build_trace_metadata        | BackfillUpsertedCiBuildTraceMetadataProjectId | finalized | 100.00%
+ci_3    | ci_runners                       | BackfillOrganizationIdOnCiRunners             | active    | 78.30% (estimated time remaining: about 1 hour)
 ```
 
 {{< /tab >}}
 
-{{< tab title="GitLab 18.4 and earlier" >}}
+{{< tab title="GitLab 18.8 and earlier" >}}
 
 ```shell
 sudo gitlab-rake gitlab:background_migrations:status
@@ -155,6 +158,11 @@ sudo gitlab-rake gitlab:background_migrations:resume[main_85]
 
 {{< /history >}}
 
+> [!warning]
+> This task executes the migration synchronously in the foreground. The migration runs until completion
+> or failure. This can take a significant amount of time for large migrations and may impact database
+> performance. Use this task during maintenance windows when possible.
+
 To execute a specific background migration immediately:
 
 ```shell
@@ -175,11 +183,6 @@ Executing background migration `ci_10`...
 Done.
 ```
 
-> [!warning]
-> This task executes the migration synchronously in the foreground. The migration runs until completion
-> or failure. This can take a significant amount of time for large migrations and may impact database
-> performance. Use this task during maintenance windows when possible.
-
 The task prompts for confirmation before executing. If the migration fails to complete, check the
 migration status with `gitlab:background_migrations:show[<migration_id>]` for more details.
 
@@ -190,6 +193,11 @@ migration status with `gitlab:background_migrations:show[<migration_id>]` for mo
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/211674) in GitLab 18.7.
 
 {{< /history >}}
+
+> [!warning]
+> This task executes all unfinished migrations synchronously in the foreground. This can take a very
+> long time and significantly impact database performance. Only use this task during planned maintenance
+> windows. The task continues even if individual migrations fail, but reports failures in the output.
 
 To execute all unfinished background migrations across all databases:
 
@@ -227,11 +235,6 @@ Do not remove the two-space nesting.
   [ci_10]: Start.
   [ci_10]: Done.
   ```
-
-> [!warning]
-> This task executes all unfinished migrations synchronously in the foreground. This can take a very
-> long time and significantly impact database performance. Only use this task during planned maintenance
-> windows. The task continues even if individual migrations fail, but reports failures in the output.
 
 The task:
 
@@ -293,7 +296,7 @@ Prerequisites:
 To check the status of batched background migrations:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Background migrations**.
+1. In the left sidebar, select **Monitoring** > **Background migrations**.
 1. Select **Queued** or **Finalizing** to see incomplete migrations,
    and **Failed** for failed migrations.
 
@@ -385,7 +388,6 @@ Use the following database queries to see the state of the current batched backg
 
 1. Run the query multiple times within a few minutes to ensure no new row has been added.
    If no new row has been added, the migration has been paused.
-
 1. After confirming the migration has paused, restart the migration (using the `enable`
    command mentioned previously) to proceed with the batch when ready. On larger instances,
    background migrations can take as long as 48 hours to complete each batch.
@@ -454,7 +456,7 @@ Prerequisites:
 - You must have administrator access to the instance.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Background migrations**.
+1. In the left sidebar, select **Monitoring** > **Background migrations**.
 1. Select the **Failed** tab. This displays a list of failed batched background migrations.
 1. Select the failed **Migration** to see the migration parameters and the jobs that failed.
 1. Under **Failed jobs**, select each **ID** to see why the job failed.
@@ -469,7 +471,7 @@ Prerequisites:
 - You must have administrator access to the instance.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Background migrations**.
+1. In the left sidebar, select **Monitoring** > **Background migrations**.
 1. Select the **Failed** tab. This displays a list of failed batched background migrations.
 1. Select a failed batched background migration to retry by clicking on the retry button ({{< icon name="retry" >}}).
 
@@ -536,14 +538,14 @@ use the information in the failure error logs or the database:
    - `column_name`: `id`
    - `job_arguments`: `[["id"], ["id_convert_to_bigint"]]`
 
- When dealing with multiple arguments, such as `[["id"],["id_convert_to_bigint"]]`, escape the
- comma between each argument with a backslash ` \ ` to prevent an invalid character error.
- Every comma in the `job_arguments` parameter value must be escaped with a backslash.
+   When dealing with multiple arguments, such as `[["id"],["id_convert_to_bigint"]]`, escape the
+   comma between each argument with a backslash ` \ ` to prevent an invalid character error.
+   Every comma in the `job_arguments` parameter value must be escaped with a backslash.
 
- For example:
+   For example:
 
- ```shell
- sudo gitlab-rake gitlab:background_migrations:finalize[CopyColumnUsingBackgroundMigrationJob,ci_builds,id,'[["id"\, "stage_id"]\,["id_convert_to_bigint"\,"stage_id_convert_to_bigint"]]']
+   ```shell
+   sudo gitlab-rake gitlab:background_migrations:finalize[CopyColumnUsingBackgroundMigrationJob,ci_builds,id,'[["id"\, "stage_id"]\,["id_convert_to_bigint"\,"stage_id_convert_to_bigint"]]']
    ```
 
 {{< /tab >}}
@@ -553,7 +555,7 @@ use the information in the failure error logs or the database:
 #### Mark a failed migration finished
 
 > [!warning]
-> [Contact GitLab Support](https://about.gitlab.com/support/#contact-support) before using
+> [Contact GitLab Support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#contact-support) before using
 > these instructions. This action can cause data loss, and make your instance fail
 > in ways that are difficult to recover from.
 

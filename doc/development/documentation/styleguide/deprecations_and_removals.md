@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 description: Guidelines for deprecations and page removals
 title: Deprecations and removals
 ---
@@ -54,7 +54,6 @@ To deprecate a page or topic:
 
    If you're not sure when the feature will be removed or no
    replacement feature exists, you don't need to add this information.
-
 1. If the deprecation is a [breaking change](../../../update/terminology.md#breaking-change), add this text:
 
    ```markdown
@@ -62,7 +61,6 @@ To deprecate a page or topic:
    ```
 
    You can add any additional context-specific details that might help users.
-
 1. Add the following HTML comments above and below the content. For `remove_date`,
    set a date three months after the [release where it will be removed](https://about.gitlab.com/releases/).
 
@@ -100,14 +98,14 @@ To remove a page:
 1. Update the YAML metadata:
    - For `remove_date`, set the value to a date three months after
      the release when the feature was removed.
-   - For the `redirect_to`, set a path to a file that makes sense. If no obvious
-     page exists, use the docs home page.
+   - For the `redirect_to`, set a path to a file that has relevant context for users and for AI crawlers.
+     Avoid redirecting to the home page or a generic landing page. If there is no suitable replacement for the feature, redirect to the [deprecation notice](../../../update/deprecations.md) that explains the removal.
 
    ```markdown
    ---
    stage: AI-powered
    group: Global Search
-   info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+   info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
    remove_date: '2022-08-02'
    redirect_to: '../newpath/to/file/_index.md'
    title: Title (removed)
@@ -138,6 +136,8 @@ To remove a page:
      ```shell
      bin/rake gitlab:docs:compile_deprecations
      ```
+
+1. Search for and [update links in other repositories](../redirects.md#update-links-in-other-repositories).
 
 This content is removed from the documentation as part of the Technical Writing team's
 [regularly scheduled tasks](https://handbook.gitlab.com/handbook/product/ux/technical-writing/#regularly-scheduled-tasks).
@@ -183,6 +183,8 @@ To remove a topic:
      ```shell
      bin/rake gitlab:docs:compile_deprecations
      ```
+
+1. Search for and [update links in other repositories](../redirects.md#update-links-in-other-repositories).
 
 This content is removed from the documentation as part of the Technical Writing team's
 [regularly scheduled tasks](https://handbook.gitlab.com/handbook/product/ux/technical-writing/#regularly-scheduled-tasks).

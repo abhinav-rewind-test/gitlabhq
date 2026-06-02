@@ -10,6 +10,8 @@ module Types
     implements Types::CurrentUserTodos
     implements Types::TodoableInterface
 
+    authorize_granular_token permissions: :read_issue, boundary: :project, boundary_type: :project
+
     authorize :read_issue
 
     expose_permissions Types::PermissionTypes::Issue
@@ -46,6 +48,7 @@ module Types
     field :labels, Types::LabelType.connection_type,
       null: true,
       description: 'Labels of the issue.',
+      skip_type_authorization: [:read_label],
       resolver: Resolvers::BulkLabelsResolver
     field :milestone, Types::MilestoneType, null: true,
       description: 'Milestone of the issue.'
@@ -132,6 +135,9 @@ module Types
       method: :issue_type,
       description: 'Type of the issue.'
 
+    field :work_item_type, Types::WorkItems::TypeType, null: false,
+      description: 'Type assigned to the issue.'
+
     field :alert_management_alert,
       Types::AlertManagement::AlertType,
       null: true,
@@ -158,6 +164,8 @@ module Types
       description: 'Issue the issue was closed as a duplicate of.'
 
     field :create_note_email, GraphQL::Types::String, null: true,
+      scopes: [:api],
+      directives: granular_scope_directive(permissions: :create_issue_note, boundary: :project, boundary_type: :project),
       description: 'User specific email address for the issue.'
 
     field :timelogs, Types::TimelogType.connection_type, null: false,
@@ -179,7 +187,7 @@ module Types
       description: 'Work items linked to the issue.', extras: [:lookahead],
       experiment: { milestone: '17.8' }
 
-    markdown_field :title_html, null: true
+    markdown_field :title_html, null: true, description: "HTML rendering of `title`"
     markdown_field :description_html, null: true
 
     def author

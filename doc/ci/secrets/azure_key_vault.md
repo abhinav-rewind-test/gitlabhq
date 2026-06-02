@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to use Azure Key Vault secrets in GitLab CI/CD pipelines
 title: Use Azure Key Vault secrets in GitLab CI/CD
 ---
@@ -75,7 +75,7 @@ job:
 
 In these examples:
 
-- `aud` is the audience, which must match the audience used when [creating the federated identity credentials](../cloud_services/azure/_index.md#create-azure-ad-federated-identity-credentials)
+- `aud` is the audience, which must match the audience used when [creating the federated identity credentials](../cloud_services/azure/_index.md#create-entra-id-federated-identity-credentials)
 - `name` is the name of the secret in Azure Key Vault.
 - `version` is the version of the secret in Azure Key Vault. The version is a generated
   GUID without dashes, which can be found on the Azure Key Vault secrets page.

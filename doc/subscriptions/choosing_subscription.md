@@ -1,7 +1,7 @@
 ---
 stage: Fulfillment
 group: Subscription Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Choose the right GitLab subscription for your needs.
 title: GitLab plans
 ---
@@ -42,7 +42,8 @@ You can purchase the following add-ons:
 
 - [GitLab Duo](subscription-add-ons.md): Get access to AI-native features like Code Suggestions,
   GitLab Duo Chat, and more.
-- [Enterprise Agile Planning](manage_subscription.md#enterprise-agile-planning): Increase collaboration between
+- [GitLab Credits](gitlab_credits.md): Buy credits to get access to GitLab Duo Agent Platform.
+- [Enterprise Agile Planning](manage_seats.md#enterprise-agile-planning): Increase collaboration between
   technical and non-technical teams on a single platform. Non-engineering team members can participate in planning,
   measure impact with Value Stream Analytics, and gain visibility into software development velocity.
 - [Storage](../user/storage_usage_quotas.md#purchase-more-storage): Buy more storage when you exceed your
@@ -55,7 +56,7 @@ Some add-ons are only available to specific subscription tiers and offerings.
 
 ## Contact Support
 
-- See the tiers of [GitLab Support](https://about.gitlab.com/support/).
+- See the tiers of [GitLab Support](https://support.gitlab.com/).
 - [Submit a request](https://support.gitlab.com/hc/en-us/requests/new) through the Support Portal.
 
 We also encourage all users to search our project trackers for known issues and existing feature requests in the [GitLab project](https://gitlab.com/gitlab-org/gitlab/-/issues/).

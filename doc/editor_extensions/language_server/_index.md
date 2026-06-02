@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn about the GitLab Language Server.
 title: GitLab Language Server
 ---
@@ -69,7 +69,7 @@ To enable proxy authentication in the Language Server, follow the steps for your
 
 {{< tab title="Visual Studio Code" >}}
 
-1. Open your user or workspace [settings](https://code.visualstudio.com/docs/getstarted/settings).
+1. In Visual Studio Code, open your [user or workspace settings](https://code.visualstudio.com/docs/getstarted/settings).
 1. Configure [`http.proxy`](https://code.visualstudio.com/docs/setup/network#_legacy-proxy-server-support),
    including username and password, to authenticate with your HTTP proxy.
 1. Restart Visual Studio Code to ensure connections to GitLab use the latest proxy settings.
@@ -95,3 +95,7 @@ To enable proxy authentication in the Language Server, follow the steps for your
 
 > [!note]
 > Bearer authentication is proposed in [issue 548](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/issues/548).
+
+## Related topics
+
+- [GitLab Language Server releases](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/releases)

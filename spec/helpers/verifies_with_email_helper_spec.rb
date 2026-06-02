@@ -7,7 +7,7 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
 
   let(:user_unlock_token) { nil }
   let(:user) { build_stubbed(:user, unlock_token: user_unlock_token) }
-  let(:today) { Time.zone.parse('2025-09-10') }
+  let(:today) { Time.zone.parse('2025-09-10 12:00') }
 
   describe '#trusted_ip_address?' do
     let(:trusted) { false }
@@ -28,6 +28,32 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
       let(:trusted) { true }
 
       it { is_expected.to be true }
+    end
+  end
+
+  describe '#show_email_otp_resend_after', :freeze_time do
+    subject { helper.show_email_otp_resend_after(user) }
+
+    context 'when user is not locked and email_otp_last_sent_at is nil' do
+      it { is_expected.to be_nil }
+    end
+
+    context 'when user is not locked and email_otp_last_sent_at is set recently' do
+      let(:user) do
+        build_stubbed(:user, user_detail: build_stubbed(:user_detail, email_otp_last_sent_at: Time.current))
+      end
+
+      it { is_expected.to eq((Time.current + VerifiesWithEmailHelper::RESEND_COOLDOWN_PERIOD).to_i * 1000) }
+    end
+
+    context 'when user is not locked and email_otp_last_sent_at is well in the past' do
+      let(:user) do
+        build_stubbed(:user, user_detail: build_stubbed(:user_detail, email_otp_last_sent_at: 10.minutes.ago))
+      end
+
+      it 'returns a Unix ms timestamp in the past, allowing an immediate resend' do
+        is_expected.to be < Time.current.to_i * 1000
+      end
     end
   end
 
@@ -53,19 +79,19 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
     end
   end
 
-  describe '#permitted_to_skip_email_otp_in_grace_period?' do
+  describe '#permitted_to_skip_email_otp_in_warning_period?' do
     let(:trusted_ip) { true }
     let(:user_unlock_token) { nil }
-    let(:in_grace_period) { true }
+    let(:in_warning_period) { true }
 
     before do
       allow(AuthenticationEvent)
           .to receive(:initial_login_or_known_ip_address?)
           .and_return(trusted_ip)
-      allow(helper).to receive(:in_email_otp_grace_period?).and_return(in_grace_period)
+      allow(helper).to receive(:in_email_otp_warning_period?).and_return(in_warning_period)
     end
 
-    subject { helper.permitted_to_skip_email_otp_in_grace_period?(user) }
+    subject { helper.permitted_to_skip_email_otp_in_warning_period?(user) }
 
     context 'when all conditions are met' do
       before do
@@ -81,6 +107,14 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
       end
 
       it { is_expected.to be false }
+
+      context 'and email_otp_enabled application setting is enabled' do
+        before do
+          stub_application_setting(email_otp_enabled: true)
+        end
+
+        it { is_expected.to be true }
+      end
     end
 
     context 'when user has two factor authentication enabled' do
@@ -111,14 +145,14 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
       it { is_expected.to be false }
     end
 
-    context 'when user is not in email OTP grace period' do
-      let(:in_grace_period) { false }
+    context 'when user is not in email OTP warning period' do
+      let(:in_warning_period) { false }
 
       it { is_expected.to be false }
     end
   end
 
-  describe '#in_email_otp_grace_period?' do
+  describe '#in_email_otp_warning_period?' do
     let(:email_otp_required_after) { today + 15.days }
     let(:user) { build_stubbed(:user, email_otp_required_after: email_otp_required_after) }
 
@@ -130,7 +164,7 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
       travel_back
     end
 
-    subject { helper.send(:in_email_otp_grace_period?, user) }
+    subject { helper.send(:in_email_otp_warning_period?, user) }
 
     context 'when email_otp_required_after is nil' do
       let(:email_otp_required_after) { nil }
@@ -144,20 +178,26 @@ RSpec.describe VerifiesWithEmailHelper, feature_category: :system_access do
       it { is_expected.to be false }
     end
 
-    context 'when email_otp_required_after equals current date' do
+    context 'when email_otp_required_after equals current time' do
       let(:email_otp_required_after) { today }
 
       it { is_expected.to be false }
     end
 
-    context 'when at the start of grace period (7 days before required_after)' do
+    context 'when email_otp_required_after is almost at the end of the warning period' do
+      let(:email_otp_required_after) { today + 1.minute }
+
+      it { is_expected.to be true }
+    end
+
+    context 'when at the start of warning period' do
       let(:email_otp_required_after) { today + 7.days }
 
       it { is_expected.to be true }
     end
 
-    context 'when before grace period starts (8 days before required_after)' do
-      let(:email_otp_required_after) { today + 8.days }
+    context 'when before warning period starts' do
+      let(:email_otp_required_after) { today + 7.days + 1.hour }
 
       it { is_expected.to be false }
     end

@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Passkeys
 description: Passwordless authentication and 2FA using passkeys
 ---
@@ -19,6 +19,7 @@ description: Passwordless authentication and 2FA using passkeys
   [with a flag](../administration/feature_flags/_index.md) named `passkeys`.
   Disabled by default on GitLab Self-Managed.
 - Generally available in GitLab 18.9. Feature flag enabled by default.
+- [Removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230536) feature flag `passkeys` in GitLab 19.0.
 
 {{< /history >}}
 
@@ -54,8 +55,7 @@ and usage details:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Manage authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. In the **Passkey sign-in** section, view your passkeys.
 
 ## Add a passkey
@@ -70,12 +70,15 @@ Prerequisites:
 - Passkey sign-in must not be disabled for your [group](../user/group/saml_sso/_index.md#disable-password-and-passkey-authentication-for-enterprise-users)
   or [instance](../administration/settings/sign_in_restrictions.md#password-and-passkey-authentication).
 
+> [!note]
+> User accounts created through an external identity provider might need to create a new GitLab password.
+> For more information, see [passwords for externally authenticated accounts](../user/profile/user_passwords.md#passwords-for-externally-authenticated-accounts).
+
 To add a passkey:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Manage authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. In the **Passkey sign-in** section, select **Add passkey**.
 1. Follow the prompts on your device or browser.
 1. Enter your current password to confirm your identity.
@@ -122,8 +125,7 @@ To delete a passkey:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Manage authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. In the **Passkey sign-in** section, find the passkey you want to delete.
 1. Next to the passkey, select **Delete** ({{< icon name="remove" >}}).
 1. On the confirmation dialog, confirm the deletion.

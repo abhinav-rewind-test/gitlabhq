@@ -1,10 +1,18 @@
 import { GlForm, GlFormInput } from '@gitlab/ui';
+import { nextTick } from 'vue';
 import MockAdapter from 'axios-mock-adapter';
 import axios from '~/lib/utils/axios_utils';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert, VARIANT_SUCCESS } from '~/alert';
-import { HTTP_STATUS_NOT_FOUND, HTTP_STATUS_OK } from '~/lib/utils/http_status';
+import GlCountdown from '~/vue_shared/components/gl_countdown.vue';
+import {
+  HTTP_STATUS_NOT_FOUND,
+  HTTP_STATUS_OK,
+  HTTP_STATUS_UNAUTHORIZED,
+  HTTP_STATUS_TOO_MANY_REQUESTS,
+  HTTP_STATUS_FORBIDDEN,
+} from '~/lib/utils/http_status';
 import EmailVerification from '~/sessions/new/components/email_verification.vue';
 import EmailForm from '~/sessions/new/components/email_form.vue';
 import { visitUrl } from '~/lib/utils/url_utility';
@@ -124,7 +132,7 @@ describe('EmailVerification', () => {
         if (submit && codeValid) {
           axiosMock
             .onPost(defaultPropsData.verifyPath)
-            .replyOnce(HTTP_STATUS_OK, { status: 'failure', message });
+            .replyOnce(HTTP_STATUS_UNAUTHORIZED, { status: 'failure', message });
         }
 
         if (submit) {
@@ -144,7 +152,7 @@ describe('EmailVerification', () => {
 
         axiosMock
           .onPost(defaultPropsData.verifyPath)
-          .replyOnce(HTTP_STATUS_OK, { status: 'failure', message: serverErrorMessage });
+          .replyOnce(HTTP_STATUS_UNAUTHORIZED, { status: 'failure', message: serverErrorMessage });
 
         await submitForm();
         await axios.waitForAll();
@@ -158,10 +166,42 @@ describe('EmailVerification', () => {
         expect(wrapper.text()).toContain(I18N_EMAIL_INVALID_CODE);
       });
 
-      it('captures the error and shows an alert message when the request failed', async () => {
+      it('shows inline error from server message on 401', async () => {
+        const serverMessage = 'The code is incorrect. Enter it again, or send a new code.';
+
         enterCode('123456');
 
-        axiosMock.onPost(defaultPropsData.verifyPath).replyOnce(HTTP_STATUS_OK, null);
+        axiosMock
+          .onPost(defaultPropsData.verifyPath)
+          .replyOnce(HTTP_STATUS_UNAUTHORIZED, { status: 'failure', message: serverMessage });
+
+        await submitForm();
+        await axios.waitForAll();
+
+        expect(wrapper.text()).toContain(serverMessage);
+        expect(createAlert).not.toHaveBeenCalled();
+      });
+
+      it('shows inline error from server message on 429', async () => {
+        const serverMessage = "You've reached the maximum amount of tries.";
+
+        enterCode('123456');
+
+        axiosMock
+          .onPost(defaultPropsData.verifyPath)
+          .replyOnce(HTTP_STATUS_TOO_MANY_REQUESTS, { status: 'failure', message: serverMessage });
+
+        await submitForm();
+        await axios.waitForAll();
+
+        expect(wrapper.text()).toContain(serverMessage);
+        expect(createAlert).not.toHaveBeenCalled();
+      });
+
+      it('captures the error and shows an alert message when the request failed with no body', async () => {
+        enterCode('123456');
+
+        axiosMock.onPost(defaultPropsData.verifyPath).replyOnce(HTTP_STATUS_NOT_FOUND, null);
 
         await submitForm();
         await axios.waitForAll();
@@ -173,7 +213,7 @@ describe('EmailVerification', () => {
         });
       });
 
-      it('captures the error and shows an alert message when the request undefined', async () => {
+      it('captures the error and shows an alert message when the 200 response has no status', async () => {
         enterCode('123456');
 
         axiosMock.onPost(defaultPropsData.verifyPath).reply(HTTP_STATUS_OK, { status: undefined });
@@ -211,11 +251,11 @@ describe('EmailVerification', () => {
     };
 
     describe.each`
-      scenario                                    | statusCode               | response                                         | alertObject
-      ${'resend was successful'}                  | ${HTTP_STATUS_OK}        | ${{ status: 'success' }}                         | ${successAlertObject}
-      ${'there was a problem resending the code'} | ${HTTP_STATUS_OK}        | ${{ status: 'failure', message: failedMessage }} | ${failedAlertObject}
-      ${'the response status is undefined'}       | ${HTTP_STATUS_OK}        | ${{ status: undefined }}                         | ${undefinedAlertObject}
-      ${'the request failed'}                     | ${HTTP_STATUS_NOT_FOUND} | ${null}                                          | ${genericAlertObject}
+      scenario                                 | statusCode                       | response                                         | alertObject
+      ${'resend was successful'}               | ${HTTP_STATUS_OK}                | ${{ status: 'success' }}                         | ${successAlertObject}
+      ${'the response status is undefined'}    | ${HTTP_STATUS_OK}                | ${{ status: undefined }}                         | ${undefinedAlertObject}
+      ${'there was a problem resending (429)'} | ${HTTP_STATUS_TOO_MANY_REQUESTS} | ${{ status: 'failure', message: failedMessage }} | ${failedAlertObject}
+      ${'the request failed'}                  | ${HTTP_STATUS_NOT_FOUND}         | ${null}                                          | ${genericAlertObject}
     `(`displayed alert message when $scenario`, ({ statusCode, response, alertObject }) => {
       beforeEach(() => {
         createComponent();
@@ -306,6 +346,83 @@ describe('EmailVerification', () => {
     });
   });
 
+  describe('resend cooldown', () => {
+    const futureTimestamp = Date.now() + 60_000;
+    const pastTimestamp = Date.now() - 1_000;
+    const findCountdown = () => wrapper.findComponent(GlCountdown);
+
+    describe('when no initialShowResendAfter prop is given', () => {
+      it('shows the resend link immediately', () => {
+        createComponent();
+
+        expect(findResendLink().exists()).toBe(true);
+        expect(findCountdown().exists()).toBe(false);
+      });
+    });
+
+    describe('when initialShowResendAfter is in the past', () => {
+      it('shows the resend link immediately', () => {
+        createComponent({ props: { initialShowResendAfter: pastTimestamp } });
+
+        expect(findResendLink().exists()).toBe(true);
+        expect(findCountdown().exists()).toBe(false);
+      });
+    });
+
+    describe('when initialShowResendAfter is in the future', () => {
+      beforeEach(() => {
+        createComponent({ props: { initialShowResendAfter: futureTimestamp } });
+      });
+
+      it('hides the resend link and shows a countdown', () => {
+        expect(findResendLink().exists()).toBe(false);
+        expect(findCountdown().exists()).toBe(true);
+        expect(findCountdown().props('endDateString')).toBe(new Date(futureTimestamp).toString());
+      });
+
+      it('shows the resend link when the countdown expires', async () => {
+        findCountdown().vm.$emit('timer-expired');
+
+        await nextTick();
+
+        expect(findResendLink().exists()).toBe(true);
+        expect(findCountdown().exists()).toBe(false);
+      });
+    });
+
+    describe('when resend is clicked and succeeds', () => {
+      const showResendAfter = futureTimestamp;
+
+      beforeEach(async () => {
+        createComponent();
+
+        axiosMock.onPost(defaultPropsData.resendPath).replyOnce(HTTP_STATUS_OK, {
+          status: 'success',
+          show_resend_after: showResendAfter,
+        });
+
+        findResendLink().trigger('click');
+
+        await axios.waitForAll();
+      });
+
+      it('hides the resend link and shows a countdown', () => {
+        expect(findResendLink().exists()).toBe(false);
+        expect(findCountdown().exists()).toBe(true);
+        expect(findCountdown().props('endDateString')).toBe(new Date(showResendAfter).toString());
+      });
+
+      it('shows the resend link again after the countdown expires', async () => {
+        findCountdown().vm.$emit('timer-expired');
+
+        await nextTick();
+
+        expect(findResendLink().exists()).toBe(true);
+        expect(findCountdown().exists()).toBe(false);
+      });
+    });
+  });
+
   describe('skipping verification', () => {
     const { skipPath, redirectPath } = defaultPropsData;
 
@@ -343,12 +460,12 @@ describe('EmailVerification', () => {
       });
 
       describe('error handling', () => {
-        it('shows error message when skip request fails', async () => {
+        it('shows error message from server body when skip returns 403', async () => {
           const errorMessage = 'User is not permitted to skip email OTP.';
 
           axiosMock
             .onPost(skipPath)
-            .reply(HTTP_STATUS_OK, { status: 'failure', message: errorMessage });
+            .reply(HTTP_STATUS_FORBIDDEN, { status: 'failure', message: errorMessage });
 
           findSkipButton().trigger('click');
 
@@ -357,7 +474,21 @@ describe('EmailVerification', () => {
           expect(createAlert).toHaveBeenCalledWith({ message: errorMessage });
         });
 
-        it('shows generic error when response status is undefined', async () => {
+        it('shows generic error when 403 response has no message', async () => {
+          axiosMock.onPost(skipPath).reply(HTTP_STATUS_FORBIDDEN, { status: 'failure' });
+
+          findSkipButton().trigger('click');
+
+          await axios.waitForAll();
+
+          expect(createAlert).toHaveBeenCalledWith({
+            message: I18N_GENERIC_ERROR,
+            captureError: true,
+            error: expect.any(Error),
+          });
+        });
+
+        it('shows generic error when 200 response status is undefined', async () => {
           axiosMock.onPost(skipPath).reply(HTTP_STATUS_OK, { status: undefined });
 
           findSkipButton().trigger('click');
@@ -371,7 +502,7 @@ describe('EmailVerification', () => {
           });
         });
 
-        it('shows generic error when request fails', async () => {
+        it('shows generic error when request fails with no body', async () => {
           axiosMock.onPost(skipPath).reply(HTTP_STATUS_NOT_FOUND, null);
 
           findSkipButton().trigger('click');

@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Database table partitioning
 ---
 
@@ -20,11 +20,9 @@ there can be multiple benefits, such as:
 - Query performance can be improved greatly, because the database can
   cheaply eliminate much of the data from the search space, while still
   providing full SQL capabilities.
-
 - Bulk deletes can be achieved with minimal impact on the database by
   dropping entire partitions. This is a natural fit for features that need
   to periodically delete data that falls outside the retention window.
-
 - Administrative tasks like `VACUUM` and index rebuilds can operate on
   individual partitions, rather than across a single massive table.
 
@@ -60,9 +58,77 @@ is a good fit for your particular problem:
   writing data, to decide which partitions must be accessed. The
   partition key should be a column that would be included in a `WHERE`
   clause on almost all queries accessing that table.
-
 - **How the data is split**. What strategy does the database use
   to split the data across the partitions?
+
+## Rails models backed by partitioned tables with composite primary keys
+
+PostgreSQL requires the partition key to be part of every unique constraint,
+including the primary key, on a partitioned table.
+When a table is partitioned by a column such as `partition_id` or `created_at`,
+the database-level primary key becomes a composite key, for example `(id, partition_id)`.
+
+Rails supports composite primary keys.
+However, when the composite key exists only because of PostgreSQL partitioning
+requirements, and `id` is still the intended application-level row identifier,
+ActiveRecord does not infer the correct behavior automatically.
+Without an explicit declaration, ActiveRecord treats the primary key as
+`["id", "partition_id"]` and several operations produce wrong results:
+
+| Operation | Behavior without `self.primary_key = :id` |
+|---|---|
+| `Model.find(integer)` | Raises `ActiveRecord::RecordNotFound` |
+| `record.id` | Returns `[id, partition_id]` array instead of integer |
+| `record.id == integer` | Always `false` |
+| `to_param` / URL helpers | Generates wrong path segment, for example `"42_100"` |
+| `as_json["id"]` / API responses | Serializes `id` as array instead of integer |
+
+To avoid this, explicitly set the primary key on the model:
+
+```ruby
+class MyModel < ApplicationRecord
+  self.primary_key = :id
+end
+```
+
+This tells ActiveRecord to use only `id` for record lookups, while the
+database still enforces the composite primary key for partitioning purposes.
+
+> [!warning]
+> Setting `self.primary_key = :id` fixes ActiveRecord behavior but does not
+> guarantee partition pruning on queries.
+> PostgreSQL can only prune partitions when the query `WHERE` clause includes
+> the partition key.
+> Make sure all performance-sensitive queries on the model filter by the
+> partition key column, otherwise PostgreSQL scans every partition.
+
+### When `id` is unique only inside a partition
+
+The pattern above is sufficient when `id` is globally unique across all
+partitions, for example when it comes from a single sequence.
+In that case, `UPDATE` and `DELETE` by `id` alone still reach the correct row.
+
+When `id` is unique only inside a partition (not globally), an `UPDATE` or
+`DELETE` filtered only by `id` must scan every partition to find the row.
+In that case, also declare `query_constraints` with both columns so that
+ActiveRecord includes the partition key in `WHERE` clauses for writes:
+
+```ruby
+class MyModel < ApplicationRecord
+  self.primary_key = :id
+  query_constraints :id, :partition_id
+end
+```
+
+`query_constraints` does not affect `SELECT` lookups driven by `primary_key`.
+It only adds the listed columns to the `WHERE` clause of `UPDATE` and `DELETE`
+statements, enabling PostgreSQL to prune partitions on writes.
+
+> [!note]
+> This guidance applies specifically to tables where a composite primary key
+> exists because of PostgreSQL partitioning requirements and `id` is still the
+> logical application-level identifier.
+> It is not general advice for every composite primary key scenario.
 
 ## Determine the appropriate partitioning strategy
 

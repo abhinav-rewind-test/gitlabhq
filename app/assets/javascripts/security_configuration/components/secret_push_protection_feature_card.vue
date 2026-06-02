@@ -28,10 +28,9 @@ export default {
   },
   inject: [
     'secretPushProtectionAvailable',
+    'secretPushProtectionEnforced',
     'secretPushProtectionEnabled',
-    'canEnableSpp',
-    'secretPushProtectionLicensed',
-    'isGitlabCom',
+    'userIsProjectAdmin',
     'projectFullPath',
     'secretDetectionConfigurationPath',
   ],
@@ -43,7 +42,7 @@ export default {
   },
   data() {
     return {
-      toggleValue: this.secretPushProtectionEnabled,
+      projectToggleValue: this.secretPushProtectionEnabled,
       errorMessage: '',
       isAlertDismissed: false,
     };
@@ -55,8 +54,19 @@ export default {
     available() {
       return this.feature.available;
     },
+    isEnforced() {
+      return this.secretPushProtectionAvailable && this.secretPushProtectionEnforced;
+    },
     enabled() {
-      return this.available && this.toggleValue;
+      if (this.isEnforced) {
+        return true;
+      }
+
+      if (!this.secretPushProtectionAvailable) {
+        return false;
+      }
+
+      return this.available && this.projectToggleValue;
     },
     cardClasses() {
       return { 'gl-bg-strong': !this.available };
@@ -75,16 +85,20 @@ export default {
       };
     },
     isToggleDisabled() {
-      return !this.secretPushProtectionAvailable || !this.canEnableSpp;
+      const toggleable = this.userIsProjectAdmin || this.feature.canUserConfigure;
+      return this.isEnforced || !this.secretPushProtectionAvailable || !toggleable;
     },
     showLock() {
       return this.isToggleDisabled && this.available;
     },
     featureLockDescription() {
+      if (this.isEnforced) {
+        return this.$options.i18n.enforcedTooltipDescription;
+      }
       if (!this.secretPushProtectionAvailable) {
         return this.$options.i18n.tooltipDescription;
       }
-      if (!this.canEnableSpp) {
+      if (!this.userIsProjectAdmin && !this.feature.canUserConfigure) {
         return this.$options.i18n.accessLevelTooltipDescription;
       }
       return '';
@@ -95,6 +109,36 @@ export default {
       }
       return this.$options.i18n.availableWith;
     },
+    statusText() {
+      if (this.isEnforced) {
+        return this.$options.i18n.enforcedStatus;
+      }
+      if (this.enabled) {
+        return this.$options.i18n.enabled;
+      }
+      if (!this.secretPushProtectionAvailable) {
+        return this.$options.i18n.disabledAtInstance;
+      }
+      if (this.available) {
+        return this.$options.i18n.notEnabled;
+      }
+      return this.availabilityText;
+    },
+    showLicenseUpgradeHint() {
+      return !this.available && this.secretPushProtectionAvailable;
+    },
+  },
+  watch: {
+    secretPushProtectionEnabled(value) {
+      if (!this.isEnforced) {
+        this.projectToggleValue = value;
+      }
+    },
+    secretPushProtectionEnforced(value) {
+      if (value) {
+        this.projectToggleValue = true;
+      }
+    },
   },
   methods: {
     reportError(error) {
@@ -102,6 +146,10 @@ export default {
       this.isAlertDismissed = false;
     },
     async toggleSecretPushProtection(checked) {
+      if (this.isToggleDisabled) {
+        return;
+      }
+
       try {
         const { data } = await this.$apollo.mutate({
           mutation: ProjectSetSecretPushProtection,
@@ -119,7 +167,7 @@ export default {
           this.reportError(errors[0].message);
         }
         if (secretPushProtectionEnabled !== null) {
-          this.toggleValue = secretPushProtectionEnabled;
+          this.projectToggleValue = secretPushProtectionEnabled;
           this.$toast.show(
             secretPushProtectionEnabled
               ? this.$options.i18n.toastMessageEnabled
@@ -133,6 +181,8 @@ export default {
   },
   i18n: {
     enabled: s__('SecurityConfiguration|Enabled'),
+    enforcedStatus: s__('SecurityConfiguration|Enforced by administrator'),
+    disabledAtInstance: s__('SecurityConfiguration|Restricted by administrator'),
     notEnabled: s__('SecurityConfiguration|Not enabled'),
     availableWith: s__('SecurityConfiguration|Available with Ultimate'),
     availableWithUltimateAndPublic: s__(
@@ -141,14 +191,18 @@ export default {
     learnMore: __('Learn more'),
     tooltipTitle: s__('SecretDetection|Action unavailable'),
     tooltipDescription: s__(
-      'SecretDetection|This feature has been disabled at the instance level. Please reach out to your instance administrator to request activation.',
+      'SecretDetection|This feature has been restricted for all projects in the instance. Contact an administrator to request activation.',
+    ),
+    enforcedTooltipDescription: s__(
+      'SecretDetection|This feature has been enforced for all projects in the instance by an administrator.',
     ),
     accessLevelTooltipDescription: s__(
-      'SecretDetection|Only a project maintainer or owner can toggle this feature.',
+      'SecretDetection|Only security managers, maintainers, and owners can toggle this feature.',
     ),
     toastMessageEnabled: s__('SecretDetection|Secret push protection is enabled'),
     toastMessageDisabled: s__('SecretDetection|Secret push protection is disabled'),
     settingsButtonTooltip: s__('SecretDetection|Configure Secret Detection'),
+    toggleLabel: s__('SecurityConfiguration|Toggle secret push protection'),
   },
 };
 </script>
@@ -176,16 +230,12 @@ export default {
           <template v-if="enabled">
             <span>
               <gl-icon name="check-circle-filled" />
-              <span class="gl-text-success">{{ $options.i18n.enabled }}</span>
+              <span class="gl-text-success">{{ statusText }}</span>
             </span>
           </template>
 
-          <template v-else-if="available">
-            <span>{{ $options.i18n.notEnabled }}</span>
-          </template>
-
           <template v-else>
-            {{ availabilityText }}
+            <span>{{ statusText }}</span>
           </template>
         </div>
       </div>
@@ -208,18 +258,24 @@ export default {
         <gl-toggle
           class="gl-mt-2"
           :disabled="isToggleDisabled"
-          :value="toggleValue"
-          :label="s__('SecurityConfiguration|Toggle secret push protection')"
+          :value="enabled"
+          :label="$options.i18n.toggleLabel"
           label-position="hidden"
           @change="toggleSecretPushProtection"
         />
         <gl-button
-          v-if="secretPushProtectionLicensed"
+          v-if="secretPushProtectionAvailable"
           v-gl-tooltip.left.viewport="$options.i18n.settingsButtonTooltip"
           icon="settings"
           category="secondary"
           :href="secretDetectionConfigurationPath"
         />
+      </div>
+    </template>
+
+    <template v-else-if="showLicenseUpgradeHint">
+      <div class="gl-mt-5">
+        <span :class="textClasses">{{ availabilityText }}</span>
       </div>
     </template>
   </gl-card>

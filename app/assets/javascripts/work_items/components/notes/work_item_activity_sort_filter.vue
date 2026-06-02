@@ -2,14 +2,18 @@
 import { GlCollapsibleListbox } from '@gitlab/ui';
 import Tracking from '~/tracking';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
-import { TRACKING_CATEGORY_SHOW } from '~/work_items/constants';
+import { TRACKING_CATEGORY_SHOW, VIEW_CONTEXT } from '~/work_items/constants';
 
 export default {
+  name: 'WorkItemActivitySortFilter',
   components: {
     GlCollapsibleListbox,
     LocalStorageSync,
   },
   mixins: [Tracking.mixin()],
+  inject: {
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
+  },
   props: {
     loading: {
       type: Boolean,
@@ -52,6 +56,7 @@ export default {
         category: TRACKING_CATEGORY_SHOW,
         label: this.trackingLabel,
         property: `type_${this.workItemType}`,
+        extra: { viewContext: this.viewContext },
       };
     },
     dropdownText() {

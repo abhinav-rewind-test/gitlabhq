@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting groups
 ---
 
@@ -13,7 +13,7 @@ Performs the following checks when creating or updating namespaces or groups:
 - Group parents must be groups and not namespaces.
 
 In the unlikely event that you see these errors in your GitLab installation,
-[contact Support](https://about.gitlab.com/support/) so that GitLab can improve this validation.
+[contact Support](https://support.gitlab.com/) so that GitLab can improve this validation.
 
 ## Find groups using an SQL query
 
@@ -112,3 +112,7 @@ This error typically occurs when a user attempts to remove the `container_regist
 Email invitations to non-GitLab users are listed under `Pending members` with the `Awaiting user signup` status.
 When the user registers for GitLab.com, the status updates to `Pending owner action` and the group Owner can
 complete the approval process.
+
+## Support knowledge base
+
+If you're still having issues, see the [GitLab Support knowledge base](https://support.gitlab.com/hc/en-us/).

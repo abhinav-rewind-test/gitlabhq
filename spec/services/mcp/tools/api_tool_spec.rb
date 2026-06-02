@@ -206,15 +206,122 @@ RSpec.describe Mcp::Tools::ApiTool, feature_category: :ai_agents do
       end
     end
 
-    context 'with invalid JSON response' do
+    shared_examples 'a 404 response with stubbed Not Found body' do
       before do
-        allow(route).to receive(:exec).with(request_env).and_return([500, {}, ['invalid json']])
+        allow(route).to receive(:exec).with(request_env).and_return(
+          [404, {}, ['{"message": "404 Not Found"}']]
+        )
       end
 
-      it 'returns JSON parsing error' do
+      it 'returns the expected error message with the parsed body preserved' do
         result = api_tool.execute(request: request, params: params)
 
-        expect(result[:content][0][:text]).to eq('Invalid JSON response')
+        expect(result).to eq(
+          Mcp::Tools::Response.error(expected_error_message, { 'message' => '404 Not Found' })
+        )
+      end
+    end
+
+    context 'with 404 response and resource_name in settings' do
+      let(:mcp_settings) { { params: [:param1, :param2], tool_name: 'test_tool', resource_name: "issue" } }
+      let(:expected_error_message) { '404 Issue Not Found' }
+
+      it_behaves_like 'a 404 response with stubbed Not Found body'
+    end
+
+    context 'with 404 response and multi-word resource_name' do
+      let(:mcp_settings) { { params: [:param1, :param2], tool_name: 'test_tool', resource_name: "merge request" } }
+      let(:expected_error_message) { '404 Merge request Not Found' }
+
+      it_behaves_like 'a 404 response with stubbed Not Found body'
+    end
+
+    context 'with 404 response without resource_name in settings' do
+      let(:expected_error_message) { '404 Not Found' }
+
+      it_behaves_like 'a 404 response with stubbed Not Found body'
+    end
+
+    context 'with 404 response carrying neither message nor error and resource_name set' do
+      let(:mcp_settings) { { params: [:param1, :param2], tool_name: 'test_tool', resource_name: "issue" } }
+
+      before do
+        allow(route).to receive(:exec).with(request_env).and_return(
+          [404, {}, ['{"details": "extra info"}']]
+        )
+      end
+
+      it 'falls back to the HTTP status message' do
+        result = api_tool.execute(request: request, params: params)
+
+        expect(result).to eq(
+          Mcp::Tools::Response.error('HTTP 404', { 'details' => 'extra info' })
+        )
+      end
+    end
+
+    context 'with 404 response carrying a specific upstream message and resource_name set' do
+      let(:mcp_settings) { { params: [:param1, :param2], tool_name: 'test_tool', resource_name: "issue" } }
+
+      before do
+        allow(route).to receive(:exec).with(request_env).and_return(
+          [404, {}, ['{"message": "404 Project Not Found"}']]
+        )
+      end
+
+      it 'passes the upstream message through instead of overriding' do
+        result = api_tool.execute(request: request, params: params)
+
+        expect(result).to eq(
+          Mcp::Tools::Response.error('404 Project Not Found', { 'message' => '404 Project Not Found' })
+        )
+      end
+    end
+
+    context 'with non-404 error response when resource_name is set' do
+      let(:mcp_settings) { { params: [:param1, :param2], tool_name: 'test_tool', resource_name: "issue" } }
+
+      before do
+        allow(route).to receive(:exec).with(request_env).and_return(
+          [422, {}, ['{"message": "Validation failed"}']]
+        )
+      end
+
+      it 'uses the parsed error message and ignores resource_name' do
+        result = api_tool.execute(request: request, params: params)
+
+        expect(result).to eq(
+          Mcp::Tools::Response.error('Validation failed', { 'message' => 'Validation failed' })
+        )
+      end
+    end
+
+    context 'with plain text success response' do
+      before do
+        allow(route).to receive(:exec).with(request_env)
+          .and_return([200, {}, ["Running job...\nStep 1 complete\nDone."]])
+      end
+
+      it 'returns the plain text body as text content' do
+        result = api_tool.execute(request: request, params: params)
+
+        expect(result[:isError]).to be(false)
+        expect(result[:content]).to match_array([{ type: 'text', text: "Running job...\nStep 1 complete\nDone." }])
+        expect(result[:structuredContent]).to eq({})
+      end
+    end
+
+    context 'with plain text error response' do
+      before do
+        allow(route).to receive(:exec).with(request_env).and_return([500, {}, ['Internal Server Error']])
+      end
+
+      it 'returns an error with the plain text body' do
+        result = api_tool.execute(request: request, params: params)
+
+        expect(result[:isError]).to be(true)
+        expect(result[:content][0][:text]).to eq('HTTP 500')
+        expect(result[:structuredContent]).to eq({ error: { body: 'Internal Server Error' } })
       end
     end
 

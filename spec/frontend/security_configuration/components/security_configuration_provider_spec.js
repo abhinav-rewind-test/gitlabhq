@@ -7,8 +7,14 @@ import waitForPromises from 'helpers/wait_for_promises';
 import SecurityConfigurationProvider from '~/security_configuration/components/security_configuration_provider.vue';
 import SecurityConfigurationApp from '~/security_configuration/components/app.vue';
 import securityConfigurationQuery from '~/security_configuration/graphql/security_configuration.query.graphql';
+import projectMergeRequestsEnabledQuery from '~/security_configuration/graphql/project_merge_requests_enabled.query.graphql';
+import * as logger from '~/lib/logger';
+import * as sentryBrowserWrapper from '~/sentry/sentry_browser_wrapper';
 
 Vue.use(VueApollo);
+
+jest.mock('~/lib/logger');
+jest.mock('~/sentry/sentry_browser_wrapper');
 
 describe('SecurityConfigurationProvider', () => {
   let wrapper;
@@ -22,19 +28,18 @@ describe('SecurityConfigurationProvider', () => {
     autoDevopsHelpPagePath: '/help/autodevops',
     autoDevopsPath: '/autodevops',
     canEnableAutoDevops: true,
-    canEnableSpp: false,
     containerScanningForRegistryEnabled: false,
+    licenseScanningForCyclonedxEnabled: true,
     features: [],
     gitlabCiHistoryPath: '/ci/history',
     gitlabCiPresent: true,
     helpPagePath: '/help',
-    isGitlabCom: false,
     latestPipelinePath: '/pipelines/latest',
     licenseConfigurationSource: 'gitlab',
     secretDetectionConfigurationPath: '/secret_detection',
     secretPushProtectionAvailable: false,
+    secretPushProtectionEnforced: false,
     secretPushProtectionEnabled: false,
-    secretPushProtectionLicensed: false,
     securityTrainingEnabled: false,
     userIsProjectAdmin: true,
     validityChecksAvailable: false,
@@ -50,18 +55,29 @@ describe('SecurityConfigurationProvider', () => {
     groupManageAttributesPath: '/attributes',
   };
 
-  const createMockApolloProvider = (queryHandler) => {
-    mockApollo = createMockApollo([[securityConfigurationQuery, queryHandler]]);
+  const mockMergeRequestsEnabled = {
+    project: {
+      id: `gid://gitlab/Project/1`,
+      mergeRequestsEnabled: true,
+    },
+  };
+
+  const createMockApolloProvider = (securityConfigHandler, mergeRequestsHandler) => {
+    mockApollo = createMockApollo([
+      [securityConfigurationQuery, securityConfigHandler],
+      [projectMergeRequestsEnabledQuery, mergeRequestsHandler],
+    ]);
     return mockApollo;
   };
 
   const createComponent = ({
-    queryHandler = jest
+    securityConfigHandler = jest
       .fn()
       .mockResolvedValue({ data: { securityConfiguration: mockSecurityConfiguration } }),
+    mergeRequestsHandler = jest.fn().mockResolvedValue({ data: mockMergeRequestsEnabled }),
   } = {}) => {
     wrapper = mountExtended(SecurityConfigurationProvider, {
-      apolloProvider: createMockApolloProvider(queryHandler),
+      apolloProvider: createMockApolloProvider(securityConfigHandler, mergeRequestsHandler),
       provide: {
         projectId,
         projectFullPath,
@@ -105,6 +121,7 @@ describe('SecurityConfigurationProvider', () => {
         gitlabCiHistoryPath: '/ci/history',
         latestPipelinePath: '/pipelines/latest',
         securityTrainingEnabled: false,
+        mergeRequestsEnabled: true,
       });
     });
 
@@ -116,7 +133,7 @@ describe('SecurityConfigurationProvider', () => {
   describe('when query fails', () => {
     beforeEach(async () => {
       createComponent({
-        queryHandler: jest.fn().mockRejectedValue(new Error('GraphQL error')),
+        securityConfigHandler: jest.fn().mockRejectedValue(new Error('GraphQL error')),
       });
       await waitForPromises();
     });
@@ -135,7 +152,9 @@ describe('SecurityConfigurationProvider', () => {
   describe('when query returns no data', () => {
     beforeEach(async () => {
       createComponent({
-        queryHandler: jest.fn().mockResolvedValue({ data: { securityConfiguration: null } }),
+        securityConfigHandler: jest
+          .fn()
+          .mockResolvedValue({ data: { securityConfiguration: null } }),
       });
       await waitForPromises();
     });
@@ -144,6 +163,30 @@ describe('SecurityConfigurationProvider', () => {
       expect(findLoadingIcon().exists()).toBe(false);
       expect(findApp().exists()).toBe(false);
       expect(findAlert().exists()).toBe(false);
+    });
+  });
+
+  describe('when mockMergeRequestsEnabled query fails', () => {
+    beforeEach(async () => {
+      createComponent({
+        mergeRequestsHandler: jest.fn().mockRejectedValue(new Error('GraphQL error')),
+      });
+      await waitForPromises();
+    });
+
+    it('calls logError with error message', () => {
+      expect(logger.logError).toHaveBeenCalledWith(
+        'Failed to fetch merge requests enabled status',
+        expect.any(Error),
+      );
+    });
+
+    it('calls captureException with error', () => {
+      expect(sentryBrowserWrapper.captureException).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('still renders SecurityConfigurationApp with default value', () => {
+      expect(findApp().exists()).toBe(true);
     });
   });
 });

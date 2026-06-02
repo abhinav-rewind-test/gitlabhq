@@ -88,12 +88,13 @@ export const initSecurityConfiguration = (el) => {
       ...parseBooleanDataAttributes(el, [
         'secretPushProtectionAvailable',
         'secretPushProtectionEnabled',
+        'secretPushProtectionEnforced',
         'validityChecksAvailable',
         'validityChecksEnabled',
         'userIsProjectAdmin',
-        'secretPushProtectionLicensed',
-        'canEnableSpp',
-        'isGitlabCom',
+        'cvsForContainerScanningEnabled',
+        'cvsForDependencyScanningEnabled',
+        'licenseScanningForCyclonedxEnabled',
       ]),
     },
     render(createElement) {
@@ -107,6 +108,7 @@ export const initSecurityConfiguration = (el) => {
             'autoDevopsEnabled',
             'canEnableAutoDevops',
             'securityTrainingEnabled',
+            'mergeRequestsEnabled',
           ]),
         },
       });

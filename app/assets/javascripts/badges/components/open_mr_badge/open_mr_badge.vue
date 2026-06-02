@@ -17,8 +17,11 @@ import { InternalEvents } from '~/tracking';
 import MergeRequestListItem from './merge_request_list_item.vue';
 
 const OPEN_MR_AGE_LIMIT_DAYS = 30;
+const STALE_TAB_ERROR_MESSAGE = 'createdAfter must be within the last 30 days';
+const SENTRY_OPTIONS = { tags: { feature_category: 'source_code_management' } };
 
 export default {
+  name: 'OpenMrBadge',
   components: {
     GlBadge,
     GlDisclosureDropdown,
@@ -98,7 +101,9 @@ export default {
           `Failed to fetch merge request count. See exception details for more information.`,
           error,
         );
-        Sentry.captureException(error);
+        if (!error.message?.includes(STALE_TAB_ERROR_MESSAGE)) {
+          Sentry.captureException(error, SENTRY_OPTIONS);
+        }
       },
     },
     openMrs: {
@@ -113,14 +118,16 @@ export default {
         data?.project?.mergeRequests?.nodes?.map((node) => ({
           ...node,
           text: node.title,
-          href: node.webUrl,
+          href: node.webPath,
         })) || [],
       error(error) {
         logError(
           `Failed to fetch merge requests. See exception details for more information.`,
           error,
         );
-        Sentry.captureException(error);
+        if (!error.message?.includes(STALE_TAB_ERROR_MESSAGE)) {
+          Sentry.captureException(error, SENTRY_OPTIONS);
+        }
       },
     },
   },

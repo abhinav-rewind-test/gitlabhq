@@ -52,8 +52,30 @@ module API
 
       helpers do
         def feature_available?
-          # This method will be redefined in EE.
-          true
+          return true unless ::Feature.enabled?(:mcp_server_availability_setting, :instance)
+
+          ::Gitlab::CurrentSettings.mcp_server_enabled?
+        end
+
+        # Returns the allowed MCP tool names for this request, as set by the Duo Workflow
+        # executor via the `x-gitlab-enabled-mcp-server-tools` header.
+        # Returns nil when the header is absent or blank (no restriction -- all tools allowed).
+        def enabled_mcp_server_tools
+          header_value = headers['X-Gitlab-Enabled-Mcp-Server-Tools']
+          return if header_value.blank?
+
+          header_value.split(',').map(&:strip).reject(&:blank?)
+        end
+
+        # Returns the prefix for all MCP tool names for this request.
+        # This header can be used by users to prevent tool conflicts when
+        # configuring MCP servers of multiple GitLab instances.
+        # Return nil when the header is absent or blank (no prefix)
+        def mcp_server_tool_name_prefix
+          header_value = headers['X-Gitlab-Mcp-Server-Tool-Name-Prefix']
+          return if header_value.blank?
+
+          header_value[0, 32]
         end
 
         def invoke_basic_handler
@@ -130,15 +152,21 @@ module API
         end
 
         # See: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#sending-messages-to-the-server
+        desc 'Create MCP request handler' do
+          detail 'Handles Model Context Protocol requests'
+          tags ['mcp']
+        end
         post do
           status :ok
 
           result =
             case params[:method]
             when 'tools/call'
-              Handlers::CallTool.new(namespace_setting(:mcp_manager)).invoke(request, params[:params], current_user)
+              Handlers::CallTool.new(namespace_setting(:mcp_manager)).invoke(request, params[:params], current_user,
+                tool_name_prefix: mcp_server_tool_name_prefix)
             when 'tools/list'
-              Handlers::ListTools.new(namespace_setting(:mcp_manager)).invoke(current_user)
+              Handlers::ListTools.new(namespace_setting(:mcp_manager)).invoke(current_user,
+                allowed_tools: enabled_mcp_server_tools, tool_name_prefix: mcp_server_tool_name_prefix)
             else
               invoke_basic_handler
             end
@@ -147,6 +175,10 @@ module API
         end
 
         # See: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#listening-for-messages-from-the-server
+        desc 'Get MCP response listener' do
+          detail 'Listens for Model Context Protocol responses'
+          tags ['mcp']
+        end
         get do
           status :method_not_allowed
         end

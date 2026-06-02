@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'search/_results', feature_category: :global_search do
+RSpec.describe 'search/_results', :with_current_organization, feature_category: :global_search do
   let_it_be(:user) { create(:user) }
 
   let(:search_objects) { Issue.page(1).per(2) }
@@ -51,8 +51,8 @@ RSpec.describe 'search/_results', feature_category: :global_search do
   end
 
   context 'when searching notes which contain quotes in markdown' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:issue) { create(:issue, project: project, title: '*') }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:issue, freeze: false) { create(:issue, project: project, title: '*') }
     let_it_be(:note) do
       create(:discussion_note_on_issue, noteable: issue, project: issue.project, note: '```"helloworld"```')
     end
@@ -69,9 +69,9 @@ RSpec.describe 'search/_results', feature_category: :global_search do
   end
 
   context 'for rendering all types of search results' do
-    let_it_be(:project) { create(:project, :repository, :wiki_repo) }
-    let_it_be(:label) { create(:label, project: project, title: 'test label') }
-    let_it_be(:issue) { create(:issue, project: project, title: 'testing', labels: [label]) }
+    let_it_be(:project, freeze: false) { create(:project, :repository, :wiki_repo) }
+    let_it_be(:label, freeze: false) { create(:label, project: project, title: 'test label') }
+    let_it_be(:issue, freeze: false) { create(:issue, project: project, title: 'testing', labels: [label]) }
     let_it_be(:merge_request) do
       create(:merge_request, title: 'testing', source_project: project, target_project: project)
     end

@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Diagnostics tools
 ---
 
@@ -15,7 +15,7 @@ title: Diagnostics tools
 The GitLab Support team uses these diagnostics tools during troubleshooting. They are listed here for transparency, and
 for users with GitLab troubleshooting experience.
 
-If you have an issue with GitLab, you might want to check your [support options](https://about.gitlab.com/support/)
+If you have an issue with GitLab, you might want to check your [support options](https://support.gitlab.com/)
 before attempting to use these tools.
 
 ## SOS scripts

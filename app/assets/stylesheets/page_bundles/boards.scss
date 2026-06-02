@@ -7,10 +7,22 @@ $focus-mode-z-index: 9000;
   pointer-events: none;
 }
 
+.issue-boards-page .panel-content {
+  @apply gl-pb-0;
+}
+
+.issue-boards-page .panel-content-inner {
+  // Override scrollbar-gutter to `auto` (from `stable`):
+  // boards only scroll horizontally
+  // vertical scrolling is handled per list
+  scrollbar-gutter: auto;
+}
+
 .boards-app {
-  height: calc(#{$calc-application-viewport-height} - var(--header-height, 48px) - var(--broadcast-message-height, 0px));
+  height: var(--panel-content-inner-height);
   display: flex;
   flex-direction: column;
+  overflow-y: hidden;
 
   @include gl-container-width-up(sm, panel) {
     @apply gl-transition-width;
@@ -31,10 +43,6 @@ $focus-mode-z-index: 9000;
   @include gl-container-width-up(sm, panel) {
     min-height: 0;
   }
-}
-
-.boards-list {
-  border-left: 8px solid var(--gl-background-color-default);
 }
 
 .board {
@@ -65,6 +73,14 @@ $focus-mode-z-index: 9000;
       transform-origin: center;
     }
   }
+}
+
+.board-content {
+  @apply gl-pt-3;
+  @apply xl:gl-pt-4;
+  @apply gl-px-3;
+  min-height: 0;
+  overflow-y: hidden;
 }
 
 // to highlight columns we have animated pulse of box-shadow
@@ -193,12 +209,18 @@ $focus-mode-z-index: 9000;
   }
 }
 
+// stylelint-disable-next-line gitlab/no-js-class
 .board-item-path.js-show-tooltip {
   cursor: help;
 }
 
 .issue-boards-content {
   isolation: isolate;
+}
+
+.issue-boards-content,
+.issue-boards-content > .content {
+  @apply gl-h-full;
 }
 
 .issue-boards-content,
@@ -213,29 +235,8 @@ $focus-mode-z-index: 9000;
   }
 }
 
-// Legacy View Focus Mode
-.issue-boards-content.is-focused {
-  background: var(--white, $white);
-
-  @include gl-container-width-down(md, panel) {
-    padding-top: 10px;
-  }
-
-  // Use !important for these as top and z-index are set on style attribute
-  // in gitlab-ui; https://gitlab.com/gitlab-org/gitlab-services/design.gitlab.com/-/issues/2737
-  ~#js-right-sidebar-portal .boards-sidebar {
-    top: 0 !important;
-    z-index: calc(#{$focus-mode-z-index} + 1) !important;
-  }
-
-  .boards-app {
-    height: 100vh;
-  }
-}
-
-// Paneled View (i.e. Project Studio) Focus Mode
 .content-panels.is-focused {
-  background: var(--super-sidebar-bg);
+  background: var(--body-background-color);
 
   .panel-content .panel-content-inner {
     @apply gl-mx-0;

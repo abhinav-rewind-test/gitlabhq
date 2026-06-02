@@ -45,8 +45,8 @@ RSpec.shared_examples 'Rapid Diffs application' do
     describe 'line expansion' do
       let(:file) { button.find(:xpath, './ancestor::*[@data-testid="rd-diff-file"][1]') }
       let(:row) { button.find(:xpath, './ancestor::tr[1]') }
-      let(:next_row) { row.find(:xpath, './following-sibling::*[1]') }
-      let(:prev_row) { row.find(:xpath, './preceding-sibling::*[1]') }
+      let(:next_row) { row.find(:xpath, './following::*[@data-hunk-lines][1]') }
+      let(:prev_row) { row.find(:xpath, './preceding::*[@data-hunk-lines][1]') }
       let(:next_line_number) { next_row.find('[data-position="new"] [data-line-number]')['data-line-number'].to_i }
       let(:prev_line_number) { prev_row.find('[data-position="new"] [data-line-number]')['data-line-number'].to_i }
 
@@ -115,11 +115,9 @@ RSpec.shared_examples 'Rapid Diffs application' do
     end
 
     it 'collapses all files' do
+      expect(page).to have_css('diff-file details[open]', visible: :all)
       find('button[aria-label="Collapse all files"]').click
-      all('diff-file').each do |diff_file|
-        details = diff_file.find('details', visible: :all)
-        expect(details[:open]).to eq('false')
-      end
+      expect(page).to have_no_css('diff-file details[open]', visible: :all)
     end
   end
 

@@ -1,9 +1,9 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: OmniAuth
-description: サードパーティのIdentity Providerで外部認証を設定します。
+description: サードパーティのIdentity Providerを使用して外部認証を設定します。
 
 ---
 
@@ -53,8 +53,8 @@ OmniAuthプロバイダーを設定する前に、すべてのプロバイダー
 | `auto_link_saml_user`        | SAMLプロバイダーを介して認証するユーザーと、既存のGitLabユーザーのメールアドレスが一致する場合に、それらを自動的にリンクできるようにします。この設定を有効にするには、SAMLインテグレーションが有効になっている必要があります。 |
 | `auto_link_user`             | OmniAuthプロバイダーを介して認証するユーザーと、既存のGitLabユーザーのメールアドレスが一致する場合に、それらを自動的にリンクできるようにします。`true`、`false`、またはプロバイダーの配列を指定できます。プロバイダー名については、[サポートされているプロバイダーの表](#supported-providers)を参照してください。 |
 | `auto_sign_in_with_provider` | 単一のプロバイダー名を使用してユーザーが自動的にサインインできるようにします。ここで指定する名前は、`saml`や`google_oauth2`など、プロバイダー名と一致している必要があります。サインインの無限ループを防ぐために、ユーザーはGitLabからサインアウトする前に、Identity Providerのアカウントからサインアウトしておく必要があります。サポートされているOmniAuthプロバイダー向けのフェデレーションサインアウトを実装するために、[SAML](https://gitlab.com/gitlab-org/gitlab/-/issues/14414)などを対象とした機能拡張が現在進行中です。 |
-| `block_auto_created_users`   | 自動的に作成されたユーザーを、管理者が承認するまで[承認保留中](../administration/moderate_users.md#users-pending-approval)状態にします。`false`に設定した場合は、SAMLやGoogleなど、制御可能なプロバイダーを必ず指定してください。そうしないと、インターネット上の誰でも、管理者の承認なしにGitLabにサインインできるようになる可能性があります。`true`に設定した場合は、自動作成されたユーザーはデフォルトでブロックされ、サインインできるようにするには管理者がブロックを解除する必要があります。 |
-| `enabled`                    | GitLabにおけるOmniAuthの使用を有効または無効にします。`false`の場合、UIにOmniAuthプロバイダーボタンは表示されません。 |
+| `block_auto_created_users`   | 自動的に作成されたユーザーを、管理者が承認するまで[承認保留中](../administration/moderate_users.md#users-pending-approval)状態（サインイン不可）にします。`false`に設定した場合は、SAMLやGoogleなど、制御可能なプロバイダーを必ず指定してください。そうしないと、インターネット上の誰でも、管理者の承認なしにGitLabにサインインできるようになる可能性があります。`true`に設定した場合は、自動作成されたユーザーはデフォルトでブロックされ、サインインできるようにするには管理者がブロックを解除する必要があります。 |
+| `enabled`                    | GitLabにおけるOmniAuthの使用を有効または無効にします。`false`の場合、ユーザーインターフェースにOmniAuthプロバイダーボタンは表示されません。 |
 | `external_providers`         | `external`（外部）プロバイダーとして扱うOmniAuthプロバイダーを定義できます。この設定により、これらのプロバイダーを介してアカウントの作成やサインインを行うユーザーは、内部プロジェクトにアクセスできなくなります。プロバイダーのフルネームを指定する必要があります。たとえば、Googleの場合は`google_oauth2`です。詳細については、[外部プロバイダーリストを作成する](#create-an-external-providers-list)を参照してください。 |
 | `providers`                  | プロバイダー名は、[サポートされているプロバイダーの表](#supported-providers)に記載されています。 |
 | `sync_profile_attributes`    | サインイン時にプロバイダーから同期するプロファイル属性のリスト。詳細については、[OmniAuthユーザープロファイルを最新の状態に保つ](#keep-omniauth-user-profiles-up-to-date)を参照してください。 |
@@ -62,13 +62,13 @@ OmniAuthプロバイダーを設定する前に、すべてのプロバイダー
 
 ### 初期設定を行う {#configure-initial-settings}
 
-OmniAuth設定を変更するには、次の手順に従います:
+OmniAuth設定を変更するには、次の手順に従います。
 
   {{< tabs >}}
 
   {{< tab title="Linuxパッケージ（Omnibus）" >}}
 
-  1. `/etc/gitlab/gitlab.rb`を編集します:
+  1. `/etc/gitlab/gitlab.rb`を編集します: 
 
      ```ruby
      # CAUTION!
@@ -90,13 +90,13 @@ OmniAuth設定を変更するには、次の手順に従います:
 
   {{< tab title="Helmチャート（Kubernetes）" >}}
 
-  1. Helm値をエクスポートします:
+  1. Helm値をエクスポートします。
 
      ```shell
      helm get values gitlab > gitlab_values.yaml
      ```
 
-  1. `gitlab_values.yaml`を編集し、`globals.appConfig`の`omniauth`セクションを更新します:
+  1. `gitlab_values.yaml`を編集し、`globals.appConfig`の`omniauth`セクションを更新します。
 
      ```yaml
      global:
@@ -108,9 +108,9 @@ OmniAuth設定を変更するには、次の手順に従います:
            blockAutoCreatedUsers: true
      ```
 
-     詳細については、[グローバル設定に関するドキュメント](https://docs.gitlab.com/charts/charts/globals.html#omniauth)を参照してください。
+     詳細については、[グローバル設定に関するドキュメント](https://docs.gitlab.com/charts/charts/globals/#omniauth)を参照してください。
 
-  1. ファイルを保存して、新しい値を適用します:
+  1. ファイルを保存して、新しい値を適用します。
 
      ```shell
      helm upgrade -f gitlab_values.yaml gitlab gitlab/gitlab
@@ -120,7 +120,7 @@ OmniAuth設定を変更するには、次の手順に従います:
 
   {{< tab title="Docker" >}}
 
-  1. `docker-compose.yml`を編集します:
+  1. `docker-compose.yml`を編集します: 
 
      ```yaml
      version: "3.6"
@@ -133,7 +133,7 @@ OmniAuth設定を変更するには、次の手順に従います:
              gitlab_rails['omniauth_block_auto_created_users'] = true
      ```
 
-  1. ファイルを保存して、GitLabを再起動します:
+  1. ファイルを保存して、GitLabを再起動します: 
 
      ```shell
      docker compose up -d
@@ -143,7 +143,7 @@ OmniAuth設定を変更するには、次の手順に従います:
 
   {{< tab title="自己コンパイル（ソース）" >}}
 
-  1. `/home/git/gitlab/config/gitlab.yml`を編集します:
+  1. `/home/git/gitlab/config/gitlab.yml`を編集します: 
 
      ```yaml
      ## OmniAuth settings
@@ -164,7 +164,7 @@ OmniAuth設定を変更するには、次の手順に従います:
        block_auto_created_users: true
      ```
 
-  1. ファイルを保存して、GitLabを再起動します:
+  1. ファイルを保存して、GitLabを再起動します: 
 
      ```shell
      # For systems running systemd
@@ -188,7 +188,7 @@ OmniAuth設定を変更するには、次の手順に従います:
 
 {{< /history >}}
 
-`allow_single_sign_on`が設定されている場合、GitLabはサインインしているユーザーのユーザー名を決定するために、OmniAuthの`auth_hash`で返された次のフィールドのいずれかを使用し、存在するフィールドの中で最初に見つかったものを選択します:
+`allow_single_sign_on`が設定されている場合、GitLabはサインインしているユーザーのユーザー名を決定するために、OmniAuthの`auth_hash`で返された次のフィールドのいずれかを使用し、存在するフィールドの中で最初に見つかったものを選択します。
 
 - `username`
 - `nickname`
@@ -258,8 +258,8 @@ gitlab_rails['omniauth_providers'] = [
 既存のユーザーの場合は、GitLabアカウントが作成された後、OmniAuthプロバイダーを有効にできます。たとえば、最初にLDAPでサインインした場合、GoogleなどのOmniAuthプロバイダーを有効にできます。
 
 1. GitLabの認証情報、LDAP、または別のOmniAuthプロバイダーでGitLabにサインインします。
-1. 左側のサイドバーで、自分のアバターを選択します。
-1. **プロファイルの編集**を選択します。
+1. 右上隅で、アバターを選択します。
+1. **プロファイルを編集**を選択します。
 1. 左側のサイドバーで、**アカウント**を選択します。
 1. **接続したアカウント**セクションで、GoogleなどのOmniAuthプロバイダーを選択します。
 1. プロバイダーにリダイレクトされます。GitLabを承認すると、GitLabにリダイレクトされます。
@@ -270,15 +270,13 @@ gitlab_rails['omniauth_providers'] = [
 
 管理者は、一部のOmniAuthプロバイダーのサインインを有効または無効にできます。
 
-{{< alert type="note" >}}
+> [!note] 
+> 
+> `config/gitlab.yml`で設定されているすべてのOAuthプロバイダーで、デフォルトでサインインが有効になっています。
 
-デフォルトでは、`config/gitlab.yml`で設定されたすべてのOAuthプロバイダーに対してサインインは有効になっています。
+OmniAuthプロバイダーを有効または無効にするには、次の手順に従います。
 
-{{< /alert >}}
-
-OmniAuthプロバイダーを有効または無効にするには、次の手順に従います:
-
-1. 左側のサイドバーの下部で、**管理者**を選択します。
+1. 右上隅で、**管理者**を選択します。
 1. **設定** > **一般**を選択します。
 1. **サインインの制限**を展開します。
 1. **有効なOAuth認証ソース**セクションで、有効または無効にする各プロバイダーのチェックボックスをオンまたはオフにします。
@@ -343,13 +341,10 @@ omniauth:
 
 外部OmniAuthプロバイダーのリストを定義できます。リストに含まれているプロバイダーを介してアカウントを作成またはGitLabにサインインしたユーザーは、[内部プロジェクト](../user/public_access.md#internal-projects-and-groups)へのアクセス権を付与されず、[外部ユーザー](../administration/external_users.md)としてマークされます。
 
-外部プロバイダーリストを定義するには、プロバイダーのフルネームを使用します。たとえば、Googleの場合は`google_oauth2`です。プロバイダー名については、[サポートされているプロバイダーの表](#supported-providers)の**OmniAuth provider name**（OmniAuthプロバイダー名）の列を参照してください。
+外部プロバイダーリストを定義するには、プロバイダーのフルネームを使用します。たとえば、Googleの場合は`google_oauth2`です。プロバイダー名については、[サポートされているプロバイダーの表](#supported-providers)の**OmniAuthプロバイダー名**の列を参照してください。
 
-{{< alert type="note" >}}
-
-OmniAuthプロバイダーを外部プロバイダーリストから削除する場合、このサインイン方法を使用するユーザーを手動で更新して、アカウントを完全な内部アカウントにアップグレードする必要があります。
-
-{{< /alert >}}
+> [!note]
+> 外部プロバイダーリストからOmniAuthプロバイダーを削除した場合、そのサインイン方法を使用するユーザーを手動で更新して、アカウントを完全な内部アカウントにアップグレードする必要があります。
 
 {{< tabs >}}
 
@@ -380,13 +375,11 @@ omniauth:
 
 {{< /history >}}
 
-{{< alert type="note" >}}
+> [!note]
+> 
+> 一部のプロバイダーでは、これらの属性を同期するために追加の設定が必要です。たとえば、SAMLプロバイダーでは[プロファイル属性のマッピング](saml.md#map-profile-attributes)が必要です。
 
-一部のプロバイダーでは、これらの属性を同期するために追加の設定が必要です。たとえば、SAMLプロバイダーでは[プロファイル属性のマッピング](saml.md#map-profile-attributes)が必要です。
-
-{{< /alert >}}
-
-選択したOmniAuthプロバイダーからのプロファイル同期を有効にできます。次のユーザー属性を任意の組み合わせで同期できます:
+選択したOmniAuthプロバイダーからのプロファイル同期を有効にできます。次のユーザー属性を任意の組み合わせで同期できます。
 
 - `name`
 - `email`
@@ -400,7 +393,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
 
 {{< tab title="Linuxパッケージ（Omnibus）" >}}
 
-1. `/etc/gitlab/gitlab.rb`を編集します:
+1. `/etc/gitlab/gitlab.rb`を編集します: 
 
    ```ruby
    gitlab_rails['omniauth_sync_profile_from_provider'] = ['saml', 'google_oauth2']
@@ -417,13 +410,13 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
 
 {{< tab title="Helmチャート（Kubernetes）" >}}
 
-1. Helm値をエクスポートします:
+1. Helm値をエクスポートします。
 
    ```shell
    helm get values gitlab > values.yaml
    ```
 
-1. `values.yaml`を編集します:
+1. `values.yaml`を編集します: 
 
    ```yaml
    global:
@@ -433,7 +426,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
          syncProfileAttributes: ['name', 'email', 'job_title', 'location', 'organization']
    ```
 
-1. ファイルを保存して、新しい値を適用します:
+1. ファイルを保存して、新しい値を適用します。
 
    ```shell
    helm upgrade -f values.yaml gitlab gitlab/gitlab
@@ -443,7 +436,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
 
 {{< tab title="Docker" >}}
 
-1. `docker-compose.yml`を編集します:
+1. `docker-compose.yml`を編集します: 
 
    ```yaml
    version: "3.6"
@@ -455,7 +448,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
            gitlab_rails['omniauth_sync_profile_attributes'] = ['name', 'email', 'job_title', 'location', 'organization']
    ```
 
-1. ファイルを保存して、GitLabを再起動します:
+1. ファイルを保存して、GitLabを再起動します: 
 
    ```shell
    docker compose up -d
@@ -465,7 +458,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
 
 {{< tab title="自己コンパイル（ソース）" >}}
 
-1. `/home/git/gitlab/config/gitlab.yml`を編集します:
+1. `/home/git/gitlab/config/gitlab.yml`を編集します: 
 
    ```yaml
    production: &base
@@ -474,7 +467,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
        sync_profile_attributes: ['name', 'email', 'job_title', 'location', 'organization']
    ```
 
-1. ファイルを保存して、GitLabを再起動します:
+1. ファイルを保存して、GitLabを再起動します: 
 
    ```shell
    # For systems running systemd
@@ -492,7 +485,7 @@ LDAPを使用して認証する場合は、ユーザーの名前とメールア�
 
 特定のOmniAuthプロバイダーを使用すると、ユーザーは2要素認証（2FA）を使用せずにサインインできます。
 
-2FAを回避するには、次のいずれかを実行します:
+2FAを回避するには、次のいずれかを実行します。
 
 - 配列を使用して、許可されるプロバイダーを定義する（例: `['saml', 'google_oauth2']`）。
 - すべてのプロバイダーを許可する場合は`true`、許可しない場合は`false`を指定する。
@@ -526,7 +519,7 @@ omniauth:
 
 `auto_sign_in_with_provider`設定をGitLabの設定に追加することで、認証のためにログインリクエストをOmniAuthプロバイダーにリダイレクトできます。これにより、サインインする前にプロバイダーを選択する必要がなくなります。
 
-たとえば、[Azure v2インテグレーション](azure.md)の自動サインインを有効にするには、次の手順に従います:
+たとえば、[Azure v2インテグレーション](azure.md)の自動サインインを有効にするには、次の手順に従います。
 
 {{< tabs >}}
 
@@ -557,17 +550,17 @@ omniauth:
 
 ほとんどのサポートされているプロバイダーには、表示されるサインインボタン用の組み込みのアイコンが用意されています。
 
-独自のアイコンを使用するには、画像が64 x 64ピクセルで表示されるように最適化されていることを確認したうえで、次の2つの方法のいずれかでアイコンをオーバーライドします:
+独自のアイコンを使用するには、画像が64 x 64ピクセルで表示されるように最適化されていることを確認したうえで、次の2つの方法のいずれかでアイコンをオーバーライドします。
 
-- **Provide a custom image path**（カスタム画像パスを指定する）:
+- **カスタム画像パスを指定する**:
 
-  1. GitLabサーバーのドメインの外部で画像をホストしている場合は、画像ファイルへのアクセスを許可するように[コンテンツセキュリティポリシー](https://docs.gitlab.com/omnibus/settings/configuration.html#content-security-policy)を設定します。
+  1. GitLabサーバーのドメインの外部で画像をホストしている場合は、画像ファイルへのアクセスを許可するように[コンテンツセキュリティポリシー](https://docs.gitlab.com/omnibus/settings/configuration/#content-security-policy)を設定します。
   1. GitLabのインストール方法に応じて、GitLab設定ファイルにカスタム`icon`パラメータを追加します。OpenID Connectプロバイダーの例については、[OpenID Connect OmniAuthプロバイダー](../administration/auth/oidc.md)を参照してください。
 
-- **Embed an image directly in a configuration file**（設定ファイルに画像を直接埋め込む）: この例では、画像のBase64エンコードバージョンを作成します。この形式の画像は、[Data URL](https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data)を介して提供できます:
+- **設定ファイルに画像を直接埋め込む**: この例では、画像のBase64エンコードバージョンを作成します。この形式の画像は、[Data URL](https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data)を介して提供できます。
 
   1. GNU `base64`コマンド（例: `base64 -w 0 <logo.png>`）を使用して画像ファイルをエンコードします。このコマンドは、1行の`<base64-data>`文字列を返します。
-  1. Base64エンコードされたデータを、GitLab設定ファイルのカスタム`icon`パラメータに追加します:
+  1. Base64エンコードされたデータを、GitLab設定ファイルのカスタム`icon`パラメータに追加します。
 
      ```yaml
      omniauth:
@@ -586,17 +579,17 @@ GitLabのOAuthは、同じ外部認証および認可プロバイダーを複数
 
 プロバイダー内でアプリを変更する場合、ユーザーの`extern_uid`が変更されないのであれば、更新する必要があるのはGitLabの設定のみです。
 
-設定を切り替えるには、次の手順に従います:
+設定を切り替えるには、次の手順に従います。
 
 1. `gitlab.rb`ファイルでプロバイダーの設定を変更します。
 1. 以前のプロバイダーに対応するGitLabのアイデンティティを持つすべてのユーザーの`extern_uid`を更新します。
 
 `extern_uid`を確認するには、既存ユーザーの現在の`extern_uid`を調べ、同じユーザーについて、現在のプロバイダーの適切なフィールドと一致するIDを特定します。
 
-`extern_uid`を更新するには、次の2つの方法があります:
+`extern_uid`を更新するには、次の2つの方法があります。
 
 - [ユーザーAPI](../api/users.md#modify-a-user)を使用する（プロバイダー名と新しい`extern_uid`を渡す）。
-- [Railsコンソール](../administration/operations/rails_console.md)を使用する:
+- [Railsコンソール](../administration/operations/rails_console.md)を使用する。
 
   ```ruby
   Identity.where(extern_uid: 'old-id').update!(extern_uid: 'new-id')

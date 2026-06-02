@@ -3,7 +3,7 @@
  */
 
 import $ from 'jquery';
-import { isFunction, escape, partial, toLower } from 'lodash';
+import { escape, isFunction, partial, toLower } from 'lodash-es';
 import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import Cookies from '~/lib/utils/cookies';
 import { SCOPED_LABEL_DELIMITER } from '~/sidebar/components/labels/labels_select_widget/constants';
@@ -40,8 +40,6 @@ export const isInMRPage = () =>
   checkPageAndAction('merge_requests', 'rapid_diffs') ||
   checkPageAndAction('merge_requests', 'reports');
 export const isInEpicPage = () => checkPageAndAction('epics', 'show');
-
-export const getDashPath = (path = window.location.pathname) => path.split('/-/')[1] || null;
 
 export const rstrip = (val) => {
   if (val) {
@@ -139,7 +137,7 @@ export const contentTop = () => {
 
   const heightCalculators = [
     () => getOuterHeight('#js-peek'),
-    () => getOuterHeight('.top-bar-fixed'),
+    () => getOuterHeight('.js-panel-header-inner'),
     ({ desktop }) => {
       const mrStickyHeader = document.querySelector('.js-merge-request-sticky-header-wrapper');
       if (mrStickyHeader) {
@@ -339,6 +337,23 @@ export const parseIntPagination = (paginationInformation) => ({
   totalPages: parseInt(paginationInformation['X-TOTAL-PAGES'], 10),
   nextPage: parseInt(paginationInformation['X-NEXT-PAGE'], 10),
   previousPage: parseInt(paginationInformation['X-PREV-PAGE'], 10),
+});
+
+/**
+ * Parses pagination headers from keyset-based API requests
+ *
+ * https://docs.gitlab.com/api/rest/#keyset-based-pagination
+ * https://docs.gitlab.com/api/rest/#other-pagination-headers
+ *
+ * @param paginationInformation
+ * @returns {{perPage: number, hasNextPage: boolean, hasPreviousPage: boolean, endCursor: string | null, startCursor: string | null}}
+ */
+export const parseCursorPagination = (paginationInformation) => ({
+  perPage: parseInt(paginationInformation['X-PER-PAGE'], 10),
+  startCursor: paginationInformation['X-PREV-PAGE'] || null,
+  endCursor: paginationInformation['X-NEXT-PAGE'] || null,
+  hasNextPage: Boolean(paginationInformation['X-NEXT-PAGE']),
+  hasPreviousPage: Boolean(paginationInformation['X-PREV-PAGE']),
 });
 
 export const buildUrlWithCurrentLocation = (param) => {

@@ -1,5 +1,4 @@
-import $ from 'jquery';
-import { throttle } from 'lodash';
+import { throttle } from 'lodash-es';
 import { Terminal } from 'xterm';
 import * as fit from 'xterm/lib/addons/fit/fit';
 import * as webLinks from 'xterm/lib/addons/webLinks/webLinks';
@@ -26,12 +25,9 @@ export default class GLTerminal {
     this.setSocketUrl();
     this.createTerminal();
 
-    // eslint-disable-next-line @gitlab/no-global-event-off
-    $(window)
-      .off('resize.terminal')
-      .on('resize.terminal', () => {
-        this.terminal.fit();
-      });
+    const resizeObserver = new ResizeObserver(() => this.terminal.fit());
+    resizeObserver.observe(this.container);
+    this.onDispose.push(() => resizeObserver.disconnect());
   }
 
   setSocketUrl() {

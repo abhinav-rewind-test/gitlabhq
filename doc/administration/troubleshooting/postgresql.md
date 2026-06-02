@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Operations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: PostgreSQL
 ---
 
@@ -21,7 +21,7 @@ make use of the Support team's collected knowledge.
 > own risk.
 
 If you're on a [paid tier](https://about.gitlab.com/pricing/) and aren't sure
-how to use these commands, [contact Support](https://about.gitlab.com/support/)
+how to use these commands, [contact Support](https://support.gitlab.com/)
 for assistance with any issues you're having.
 
 ## Start a database console
@@ -102,22 +102,15 @@ This section is for links to information elsewhere in the GitLab documentation.
   - Destructively reseeding the GitLab database.
   - Guidance around updating packaged PostgreSQL, including how to stop it
     from happening automatically.
-
 - [Information about external PostgreSQL](../postgresql/external.md).
-
 - [Running Geo with external PostgreSQL](../geo/setup/external_database.md).
-
 - [Upgrades when running PostgreSQL configured for HA](https://docs.gitlab.com/omnibus/settings/database/#upgrading-a-gitlab-ha-cluster).
-
 - Consuming PostgreSQL from [within CI runners](../../ci/services/postgres.md).
-
 - Managing PostgreSQL versions on Linux package installations from the Linux package development
   documentation.
-
 - [PostgreSQL scaling](../postgresql/replication_and_failover.md)
   - Including [troubleshooting](../postgresql/replication_and_failover_troubleshooting.md)
     `gitlab-ctl patroni check-leader` and PgBouncer errors.
-
 - Developer database documentation,
   some of which is absolutely not for production use. Including:
   - Understanding EXPLAIN plans.
@@ -326,7 +319,7 @@ To resolve the error, run `VACUUM` manually:
 ### GitLab database requirements
 
 See [database requirements](../../install/requirements.md#postgresql) and review and install the
-[required extension list](../../install/postgresql_extensions.md).
+[required extension list](../../install/requirements.md#extensions).
 
 ### Serialization errors in the `production/sidekiq` log
 

@@ -51,11 +51,7 @@ module SidebarsHelper
   end
 
   def super_sidebar_logged_out_context(panel:, panel_type:)
-    sidebar_context = super_sidebar_shared_context(panel: panel, panel_type: panel_type)
-
-    return sidebar_context unless project_studio_enabled?
-
-    sidebar_context.merge({
+    super_sidebar_shared_context(panel: panel, panel_type: panel_type).merge({
       sign_in_visible: header_link?(:sign_in).to_s,
       allow_signup: allow_signup?.to_s,
       new_user_registration_path: new_user_registration_path,
@@ -96,8 +92,11 @@ module SidebarsHelper
       },
       can_sign_out: current_user_menu?(:sign_out),
       sign_out_link: destroy_user_session_path,
-      issues_dashboard_path: issues_dashboard_path(assignee_username: user.username),
+
+      issues_dashboard_path: work_items_dashboard_path(assignee_username: user.username),
+
       merge_request_dashboard_path: merge_requests_dashboard_path,
+      explore_analytics_dashboards_path: explore_analytics_dashboards_path,
       todos_dashboard_path: dashboard_todos_path,
       compare_plans_url: compare_plans_url(user: user, project: project, group: group),
       create_new_menu_groups: create_new_menu_groups(group: group, project: project),
@@ -127,6 +126,7 @@ module SidebarsHelper
     }
   end
 
+  # Overridden in EE
   def super_sidebar_whats_new_data
     return {} unless display_whats_new?
 
@@ -147,8 +147,7 @@ module SidebarsHelper
         labels_manage_path: project_labels_path(project),
         can_admin_label: can?(current_user, :admin_label, project).to_s,
         has_issue_weights_feature: project.licensed_feature_available?(:issue_weights).to_s,
-        has_iterations_feature: project.licensed_feature_available?(:iterations).to_s,
-        work_item_planning_view_enabled: project.work_items_consolidated_list_enabled?(current_user).to_s
+        has_iterations_feature: project.licensed_feature_available?(:iterations).to_s
       }
     end
 
@@ -160,8 +159,7 @@ module SidebarsHelper
       issues_list_path: issues_group_path(group),
       labels_manage_path: group_labels_path(group),
       can_admin_label: can?(current_user, :admin_label, group).to_s,
-      has_issue_weights_feature: group.licensed_feature_available?(:issue_weights).to_s,
-      work_item_planning_view_enabled: group.work_items_consolidated_list_enabled?(current_user).to_s
+      has_issue_weights_feature: group.licensed_feature_available?(:issue_weights).to_s
     }
   end
 
@@ -276,21 +274,33 @@ module SidebarsHelper
       {
         name: show_headers ? section[:title] : '',
         items: section[:menu_items].map do |item|
+                 extra_attrs = base_tracking_attrs(item)
+
+                 if item[:id] == 'new_wiki_page'
+                   label = project&.persisted? ? 'project' : 'group'
+                   extra_attrs[:'data-event-tracking'] = 'click_new_wiki_page_in_create_menu'
+                   extra_attrs[:'data-event-label'] = label
+                 end
+
                  {
                    text: item[:title],
                    href: item[:href].presence,
                    component: item[:component].presence,
-                   extraAttrs: {
-                     'data-track-label': item[:id],
-                     'data-track-action': 'click_link',
-                     'data-track-property': 'nav_create_menu',
-                     'data-testid': 'create_menu_item',
-                     'data-qa-create-menu-item': item[:id]
-                   }
+                   extraAttrs: extra_attrs
                  }
                end
       }
     end
+  end
+
+  def base_tracking_attrs(item)
+    {
+      'data-track-label': item[:id],
+      'data-track-action': 'click_link',
+      'data-track-property': 'nav_create_menu',
+      'data-testid': 'create_menu_item',
+      'data-qa-create-menu-item': item[:id]
+    }
   end
 
   def project_sidebar_context_data(project, user, current_ref, ref_type: nil)

@@ -1,14 +1,18 @@
 # frozen_string_literal: true
 
-I18n.load_path += Dir[Rails.root.join('config/locales/doorkeeper.en.yml')]
-I18n.reload!
-
 Gitlab::GrapeOpenapi.configure do |config|
   config.info = Gitlab::GrapeOpenapi::Models::Info.new(
     title: 'GitLab REST API',
     description: 'GitLab REST API used to interact with a GitLab installation.',
     version: 'v4',
-    terms_of_service: 'https://about.gitlab.com/terms/'
+    terms_of_service: 'https://handbook.gitlab.com/handbook/legal/api-terms/',
+    license: {
+      name: 'CC BY-SA 4.0',
+      url: 'https://gitlab.com/gitlab-org/gitlab/-/blob/master/LICENSE',
+      'x-gitlab-description':
+        'The license applies to the OpenAPI specification document itself. ' \
+        'For terms governing use of the GitLab API, see the termsOfService field.'
+    }
   )
 
   config.api_prefix = "api"
@@ -17,8 +21,14 @@ Gitlab::GrapeOpenapi.configure do |config|
 
   config.servers = [
     Gitlab::GrapeOpenapi::Models::Server.new(
-      url: 'https://gitlab.com/api',
-      description: "GitLab REST API"
+      url: 'https://{hostname}',
+      description: "GitLab REST API",
+      variables: {
+        hostname: Gitlab::GrapeOpenapi::Models::ServerVariable.new(
+          default: 'gitlab.com',
+          description: 'Your GitLab instance hostname'
+        )
+      }
     )
   ]
 
@@ -36,23 +46,43 @@ Gitlab::GrapeOpenapi.configure do |config|
           authorizationUrl: Gitlab::Utils.append_path('https://gitlab.com/api', "/oauth/authorize"),
           tokenUrl: Gitlab::Utils.append_path('https://gitlab.com/api', "/oauth/token"),
           refreshUrl: Gitlab::Utils.append_path('https://gitlab.com/api', "/oauth/refresh"),
-          scopes: Gitlab::Auth::API_SCOPES.reject { |k, _| k == :granular }
-                                          .index_with { |s| I18n.t(s, scope: [:doorkeeper, :scope_desc]) }
+          scopes: -> {
+            Gitlab::Auth::API_SCOPES.reject { |k, _| k == :granular }
+                                  .index_with { |s| I18n.t(s, scope: [:doorkeeper, :scope_desc]) }
+          }
         }
       }
     )
   ]
 
+  # key: `route_setting` value
+  # value: rendered annotation key
+  # e.g. route_setting :lifecycle, "experimental" => YAML: `x-gitlab-lifecycle: experimental`
+  config.annotations = {
+    lifecycle: 'x-gitlab-lifecycle'
+  }
+
   config.tag_overrides = {
+    'Ai catalog' => 'AI Catalog',
     'Api' => 'API',
     'bitbucket' => 'Bitbucket',
     'Ci' => 'CI',
     'Dora' => 'DORA',
+    'Duo workflows' => 'Duo Workflows',
+    'geo' => 'Geo',
     'Github' => 'GitHub',
+    'Gitlab duo' => 'GitLab Duo',
+    'Gitlab pages' => 'GitLab Pages',
+    'Gitlab' => 'GitLab',
     'Gpg' => 'GPG',
     'Glql' => 'GLQL',
     'google cloud' => 'Google Cloud',
+    'Jira connect' => 'Jira Connect',
     'Ldap' => 'LDAP',
+    'markdown' => 'Markdown',
+    'Ml model registry' => 'ML Model Registry',
+    'Mlops' => 'MLOps',
+    'Mcp' => 'MCP',
     'Npm' => 'NPM',
     'Oauth' => 'OAuth',
     'Pypi' => 'PyPi',
@@ -60,9 +90,44 @@ Gitlab::GrapeOpenapi.configure do |config|
     'Rubygem' => 'RubyGem',
     'Saml' => 'SAML',
     'Scim' => 'SCIM',
+    'sidekiq' => 'Sidekiq',
     'Ssh' => 'SSH',
+    'Terraform' => 'Terraform',
     'Todos' => 'To-Dos',
+    'unleash' => 'Unleash',
     'Vscode' => 'VSCode'
+  }.freeze
+
+  # CONFIGURE COERCER MAPPINGS
+  # Maps coerce_with classes to OpenAPI schema properties.
+  # When a parameter uses coerce_with and the coercer matches a pattern below,
+  # the OpenAPI schema will be generated according to the mapping.
+  # For query parameters, style and explode control URL serialization format.
+  config.coercer_mappings = {
+    # Comma-separated string -> Array of strings (e.g., "bug,feature" -> ["bug", "feature"])
+    "CommaSeparatedToArray" => {
+      type: "array",
+      items_type: "string",
+      style: "form",
+      explode: false
+    },
+    # Comma-separated string -> Array of integers (e.g., "1,2,3" -> [1, 2, 3])
+    "CommaSeparatedToIntegerArray" => {
+      type: "array",
+      items_type: "integer",
+      style: "form",
+      explode: false
+    },
+    # Hash with string keys -> Hash with integer values
+    "HashOfIntegerValues" => {
+      type: "object",
+      additional_properties: { type: "integer" }
+    },
+    # Base64-encoded string -> Decoded bytes
+    "urlsafe_decode64" => {
+      type: "string",
+      format: "byte"
+    }
   }.freeze
 
   # CONFIGURE EXCLUDED APIs
@@ -83,7 +148,6 @@ Gitlab::GrapeOpenapi.configure do |config|
     'GitlabSubscriptions::API::Internal::API',
     'API::Internal::SecretsManager',
     'API::Internal::Observability',
-    'API::Internal::Ai::XRay::Scan',
     'API::Internal::Search::Zoekt',
     'API::Internal::Ci::JobRouter',
     'API::Internal::AppSec::Dast::SiteValidations',
@@ -98,6 +162,9 @@ Gitlab::GrapeOpenapi.configure do |config|
     'API::Internal::Pages',
     'API::Internal::Lfs',
     'API::Internal::Base',
-    'API::Internal::AutoFlow'
+    'API::Internal::AutoFlow',
+    'API::Internal::Coverage',
+    'API::Scim::InstanceScim',
+    'API::Scim::GroupScim'
   ]
 end

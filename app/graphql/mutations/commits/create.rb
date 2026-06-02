@@ -6,6 +6,7 @@ module Mutations
       graphql_name 'CommitCreate'
 
       include FindsProject
+      include Gitlab::InternalEventsTracking
 
       class UrlHelpers
         include GitlabRoutingHelper
@@ -59,6 +60,8 @@ module Mutations
         description: 'Contents of the commit.'
 
       authorize :push_code
+      authorize_granular_token permissions: :push_code, boundary_argument: :project_path,
+        boundary_type: :project
 
       def resolve(project_path:, branch:, message:, **args)
         actions = args[:actions]
@@ -80,12 +83,31 @@ module Mutations
 
         result = ::Files::MultiService.new(project, current_user, attributes).execute
 
+        track_ci_config_creation(project, actions) if result[:status] == :success
+
         {
           content: actions.pluck(:content), # rubocop:disable CodeReuse/ActiveRecord -- Array#pluck
           commit: (project.repository.commit(result[:result]) if result[:status] == :success),
           commit_pipeline_path: UrlHelpers.new.graphql_etag_pipeline_sha_path(result[:result]),
           errors: Array.wrap(result[:message])
         }
+      end
+
+      private
+
+      def track_ci_config_creation(project, actions)
+        creates_ci_config = actions.any? do |action|
+          action[:action].to_s == 'create' && action[:file_path] == project.ci_config_path_or_default
+        end
+
+        return unless creates_ci_config
+
+        track_internal_event(
+          'create_ci_config_file_from_pipeline_editor',
+          user: current_user,
+          project: project,
+          namespace: project.namespace
+        )
       end
     end
   end

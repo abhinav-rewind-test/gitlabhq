@@ -27,21 +27,59 @@ RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :markdown d
     end
   end
 
-  context 'when lang is specified on `pre`' do
-    it 'adds data-canonical-lang and removes lang attribute' do
-      result = filter('<pre lang="ruby"><code>def fun end</code></pre>')
+  context 'when lang is empty string' do
+    it 'removes empty lang attribute' do
+      result = filter('<pre lang=""><code>def fun end</code></pre>')
+      expect(result.to_html.delete("\n")).to eq('<pre><code>def fun end</code></pre>')
+    end
+  end
+
+  context 'when lang is whitespace only' do
+    it 'removes lang attribute' do
+      result = filter('<pre lang=" "><code>def fun end</code></pre>')
+      expect(result.to_html.delete("\n")).to eq('<pre><code>def fun end</code></pre>')
+    end
+  end
+
+  context 'when lang is specified' do
+    where(:html) do
+      [
+        '<pre lang="ruby"><code>def fun end</code></pre>',
+        '<pre><code lang="ruby">def fun end</code></pre>',
+        '<pre lang="ruby">def fun end</pre>'
+      ]
+    end
+
+    with_them do
+      it 'adds data-canonical-lang to pre and removes lang attribute' do
+        result = filter(html)
+
+        expect(result.to_html.delete("\n"))
+          .to eq('<pre data-canonical-lang="ruby"><code>def fun end</code></pre>')
+      end
+    end
+  end
+
+  context 'when lang is specified as a CSS class on `code`' do
+    it 'extracts language from language- class, sets data-canonical-lang, and removes the class' do
+      result = filter('<pre><code class="language-ruby">def fun end</code></pre>')
 
       expect(result.to_html.delete("\n"))
         .to eq('<pre data-canonical-lang="ruby"><code>def fun end</code></pre>')
     end
-  end
 
-  context 'when lang is specified on `code`' do
-    it 'adds data-canonical-lang to `pre` and removes lang attribute' do
-      result = filter('<pre><code lang="ruby">def fun end</code></pre>')
+    it 'handles multiple classes and extracts only the language- one' do
+      result = filter('<pre><code class="foo language-ruby bar">def fun end</code></pre>')
 
       expect(result.to_html.delete("\n"))
-        .to eq('<pre data-canonical-lang="ruby"><code>def fun end</code></pre>')
+        .to eq('<pre data-canonical-lang="ruby"><code class="foo bar">def fun end</code></pre>')
+    end
+
+    it 'does nothing when no language- class is present' do
+      result = filter('<pre><code class="foo bar">def fun end</code></pre>')
+
+      expect(result.to_html.delete("\n"))
+        .to eq('<pre><code class="foo bar">def fun end</code></pre>')
     end
   end
 
@@ -71,6 +109,15 @@ RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :markdown d
       end
     end
 
+    context 'when both lang and data-meta specified on `pre`' do
+      it 'prefers lang attributes over data-meta' do
+        result = filter('<pre lang="ruby:test" data-meta="foo-bar"><code>def fun end</code></pre>')
+
+        expect(result.to_html.delete("\n"))
+          .to eq('<pre data-canonical-lang="ruby" data-lang-params="test"><code>def fun end</code></pre>')
+      end
+    end
+
     include_examples 'XSS prevention', 'ruby'
 
     include_examples 'XSS prevention',
@@ -97,6 +144,22 @@ RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :markdown d
 
         expect(result.to_html.delete("\n")).to eq(expected_result.delete("\n"))
       end
+    end
+  end
+
+  context 'when lang has delimiter but no params' do
+    it 'treats trailing colon as no params' do
+      result = filter('<pre lang="ruby:"><code>This is a test</code></pre>')
+
+      expect(result.to_html.delete("\n"))
+        .to eq('<pre data-canonical-lang="ruby"><code>This is a test</code></pre>')
+    end
+
+    it 'treats colon with whitespace as no params' do
+      result = filter('<pre lang="ruby:   "><code>This is a test</code></pre>')
+
+      expect(result.to_html.delete("\n"))
+        .to eq('<pre data-canonical-lang="ruby"><code>This is a test</code></pre>')
     end
   end
 

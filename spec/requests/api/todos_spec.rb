@@ -7,7 +7,7 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
 
   let_it_be(:group) { create(:group) }
   let_it_be(:group_2) { create(:group) }
-  let_it_be(:project_1) { create(:project, :repository, group: group) }
+  let_it_be(:project_1, freeze: false) { create(:project, :repository, group: group) }
   let_it_be(:project_2) { create(:project) }
   let_it_be(:author_1) { create(:user) }
   let_it_be(:author_2) { create(:user) }
@@ -20,7 +20,7 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
   let_it_be(:group_request_todo) { create(:todo, author: author_1, user: john_doe, project: nil, group: group_2, target: group_2, action: Todo::MEMBER_ACCESS_REQUESTED) }
   let_it_be(:alert_todo) { create(:todo, project: project_1, author: john_doe, user: john_doe, target: alert) }
   let_it_be(:merge_request_todo) { create(:todo, project: project_1, author: author_2, user: john_doe, target: merge_request) }
-  let_it_be(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project_1) }
+  let_it_be(:wiki_page_meta, freeze: false) { create(:wiki_page_meta, :for_wiki_page, container: project_1) }
   let_it_be(:wiki_page_todo) { create(:todo, project: project_1, author: author_2, user: john_doe, target: wiki_page_meta, action: Todo::MENTIONED) }
   let_it_be(:pending_1) { create(:todo, :mentioned, project: project_1, author: author_1, user: john_doe, target: issue) }
   let_it_be(:pending_2) { create(:todo, project: project_2, author: author_2, user: john_doe, target: create(:issue, project: project_2)) }
@@ -162,6 +162,14 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
         )
       end
 
+      it_behaves_like 'authorizing granular token permissions', :read_todo do
+        let(:boundary_object) { :user }
+        let(:user) { john_doe }
+        let(:request) do
+          get api('/todos', personal_access_token: pat)
+        end
+      end
+
       context "when current user does not have access to one of the TODO's target" do
         it 'filters out unauthorized todos' do
           no_access_project = create(:project, :repository, group: group)
@@ -286,7 +294,7 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
       create(:todo, author: author_2, user: john_doe, target: project_2, action: Todo::MEMBER_ACCESS_REQUESTED)
       create(:todo, author: author_2, user: john_doe, target: group_2, action: Todo::MEMBER_ACCESS_REQUESTED)
 
-      expect { get api('/todos', john_doe) }.not_to exceed_query_limit(control1).with_threshold(7)
+      expect { get api('/todos', john_doe) }.not_to exceed_query_limit(control1).with_threshold(11)
 
       control2 = ActiveRecord::QueryRecorder.new { get api('/todos', john_doe) }
 
@@ -295,7 +303,7 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
       create_issue_todo_for(john_doe, project_1)
 
       # Additional query only when target belongs to project from different group
-      expect { get api('/todos', john_doe) }.not_to exceed_query_limit(control2).with_threshold(1)
+      expect { get api('/todos', john_doe) }.not_to exceed_query_limit(control2).with_threshold(3)
 
       expect(response).to have_gitlab_http_status(:ok)
     end
@@ -379,6 +387,14 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
         expect(pending_1.reload).to be_done
       end
 
+      it_behaves_like 'authorizing granular token permissions', :update_todo do
+        let(:boundary_object) { :user }
+        let(:user) { john_doe }
+        let(:request) do
+          post api("/todos/#{pending_1.id}/mark_as_done", personal_access_token: pat)
+        end
+      end
+
       it 'updates todos cache' do
         expect_any_instance_of(User).to receive(:update_todos_count_cache).and_call_original
 
@@ -412,6 +428,14 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
         expect(pending_3.reload).to be_done
       end
 
+      it_behaves_like 'authorizing granular token permissions', :update_todo do
+        let(:boundary_object) { :user }
+        let(:user) { john_doe }
+        let(:request) do
+          post api("/todos/mark_as_done", personal_access_token: pat)
+        end
+      end
+
       it 'updates todos cache' do
         expect_any_instance_of(User).to receive(:update_todos_count_cache).and_call_original
 
@@ -424,6 +448,14 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
     let(:issuable_type) { param }
     def create_todo_for_issuable(user, iid = issuable.iid)
       post api("/projects/#{project_1.id}/#{issuable_type}/#{iid}/todo", user)
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_todo do
+      let(:boundary_object) { project_1 }
+      let(:user) { john_doe }
+      let(:request) do
+        post api("/projects/#{project_1.id}/#{issuable_type}/#{issuable.iid}/todo", personal_access_token: pat)
+      end
     end
 
     it 'creates a todo on an issuable' do
@@ -501,6 +533,35 @@ RSpec.describe API::Todos, feature_category: :source_code_management do
 
         expect(response).to have_gitlab_http_status(:forbidden)
       end
+    end
+  end
+
+  context 'when authenticated with a token that has the ai_workflows scope' do
+    let(:oauth_token) { create(:oauth_access_token, user: john_doe, scopes: [:ai_workflows]) }
+
+    it 'returns the list of todos' do
+      get api('/todos', oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response).to be_an(Array)
+    end
+
+    it 'allows HEAD requests' do
+      head api('/todos', oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:ok)
+    end
+
+    it 'does not allow marking a todo as done' do
+      post api("/todos/#{pending_1.id}/mark_as_done", oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:forbidden)
+    end
+
+    it 'does not allow marking all todos as done' do
+      post api('/todos/mark_as_done', oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:forbidden)
     end
   end
 end

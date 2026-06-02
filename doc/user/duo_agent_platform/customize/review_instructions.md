@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Coding
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Customize instructions for AI to use in merge request reviews.
 title: Customize review instructions for the Agent Platform
 ---
@@ -18,6 +18,7 @@ title: Customize review instructions for the Agent Platform
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/545136) in GitLab 18.2 as a [beta](../../../policy/development_stages_support.md#beta) [with a flag](../../../administration/feature_flags/_index.md) named `duo_code_review_custom_instructions`. Disabled by default.
 - Feature flag `duo_code_review_custom_instructions` [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/199802) in GitLab 18.3.
 - Feature flag `duo_code_review_custom_instructions` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/202262) in GitLab 18.4.
+- Union patterns (for example, `{rb,ts}`) in `fileFilters` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/237952) in GitLab 19.1.
 
 {{< /history >}}
 
@@ -30,15 +31,15 @@ conventions on Go files.
 GitLab Duo appends your custom review instructions to its standard review criteria,
 instead of replacing them.
 
-Code Review Flow supports custom review instructions.
+Code Review Flow supports custom review instructions set for a specific project or for all projects within a group.
 
-## Configure custom review instructions
+## Configure custom review instructions for a project
 
 To configure custom merge request review instructions:
 
 1. In the root of your repository, create a `.gitlab/duo` directory if one doesn't already exist.
 1. In the `.gitlab/duo` directory, create a file named `mr-review-instructions.yaml`.
-1. Optional. Ask [GitLab Duo Chat (Agentic)](../../gitlab_duo_chat/agentic_chat.md)
+1. Optional. Ask [GitLab Duo Agentic Chat](../../gitlab_duo_chat/agentic_chat.md)
    to analyze the codebase and documentation, and generate custom review instructions.
 
    Example prompt:
@@ -108,12 +109,24 @@ To configure custom merge request review instructions:
          2. Include error scenarios
          3. Use shared examples to reduce duplication
 
+     - name: Database Migrations
+       fileFilters:
+         - "db/migrate/**/*.rb"
+         - "db/post_migrate/**/*.rb"
+       instructions: |
+         1. Follow the migration safety guidelines in
+            https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/development/database/avoiding_downtime_in_migrations.md
+         2. Apply the team checklist in docs/migrations-checklist.md
+
      - name: All Files
        fileFilters:
          - "**/*"   # All files in the repository
        instructions: |
          1. Explain the "why" behind each suggestion
    ```
+
+   For details about referencing files in instructions, see
+   [reference files in instructions](#reference-files-in-instructions).
 
    For glob syntax examples, see the
    [file pattern reference](#file-pattern-reference).
@@ -131,7 +144,9 @@ To configure custom merge request review instructions:
 
    - GitLab Duo automatically applies your custom instructions when the file
      patterns match.
-   - Multiple instruction groups can apply to a single file.
+   - Multiple instruction groups can apply to a single file. When a file
+     matches the `fileFilters` of more than one group, Code Review Flow applies
+     the instructions from every matching group.
    - For review comments triggered by your custom instructions, GitLab Duo uses this format:
 
      ```plaintext
@@ -148,15 +163,118 @@ To configure custom merge request review instructions:
    - Review the feedback and refine your instructions as needed.
    - Test the patterns to ensure they match the intended files.
 
+## Configure custom review instructions for a group
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230090) in GitLab 19.0.
+
+{{< /history >}}
+
+You can define custom review instructions for a group by specifying a project to use as a template.
+The template project must contain a `.gitlab/duo/mr-review-instructions.yaml` file with review
+instructions that apply to all projects in the group and its subgroups.
+
+When GitLab Duo performs a code review, it combines instructions from the top-level group with instructions defined in the individual project.
+
+Prerequisites:
+
+- The Owner role for the top-level group.
+- A project in the group contains the custom review instructions that you want to use as a template.
+
+To configure custom review instructions for a group:
+
+1. In the top bar, select **Search or go to** and find your top-level group.
+1. In the left sidebar, select **Settings** > **GitLab Duo**.
+1. Under **Custom review instructions for groups**, select the project that contains the
+   `.gitlab/duo/mr-review-instructions.yaml` file with your group's review instructions.
+1. Select **Save changes**.
+
+## Reference files in instructions
+
+You can reference other files in custom instructions instead of duplicating content.
+Code Review Flow reads the referenced files during the pre-scan step
+and extracts relevant guidance.
+
+Custom instructions support two file reference patterns:
+
+- Files in the same project as the merge request: Use a repository-relative path,
+  such as `docs/security-checklist.md`.
+- Files in other projects on the same GitLab instance: Use a full
+  GitLab blob URL, such as
+  `https://gitlab.example.com/group/project/-/blob/main/docs/style-guide.md`.
+  The URL must point to the same GitLab instance as the merge request and
+  must use the `/-/blob/<ref>/<path>` format.
+
+For example:
+
+```yaml
+instructions:
+  - name: Database Migrations
+    fileFilters:
+      - "db/migrate/**/*.rb"
+    instructions: |
+      1. Follow the migration guidelines in
+         https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/development/database/avoiding_downtime_in_migrations.md
+      2. Reference the team checklist in docs/db-checklist.md
+```
+
+### Limitations of file references
+
+File reference resolution has the following constraints:
+
+- Same GitLab instance only. URLs that point to a different GitLab
+  instance, to public GitLab from a GitLab Self-Managed instance, or to any
+  non-GitLab site, such as Confluence or a public documentation site, are not
+  fetched.
+- Blob URLs only, formatted as `/-/blob/<ref>/<path>`. Wiki pages, issues,
+  raw URLs, and snippets are not fetched.
+- Same project for bare paths. A bare path such as `docs/security.md`
+  resolves against the same project as the merge request. Use a full GitLab
+  blob URL to reference a file in a different project.
+- Best effort, not guaranteed. Code Review Flow decides which references
+  to fetch based on the instruction text. A reference that fails to resolve,
+  such as a path that does not exist or a URL the parser rejects, is skipped
+  silently.
+- Code Review Flow uses a summary, not the original file. It summarizes the
+  fetched content during the pre-scan step and uses the summary during the
+  review. Two reviews of the same merge request can produce different
+  summaries.
+
+If you want Code Review Flow to use the exact file contents and not a summary,
+include it as a rule in the `instructions:` field instead of referencing the
+file. Inline instructions are used as written.
+
 ## Best practices
 
 When writing custom review instructions:
 
-- Be specific and actionable.
+- Be specific and actionable. Code Review Flow checks each rule against the
+  diff. For example, a concrete rule like "verify that public methods have YARD
+  documentation" produces useful comments, but abstract guidance like
+  "document your code well" does not.
 - Number your instructions for clarity.
-- Focus on the most important standards.
+- Focus on the most important standards. Every rule's text becomes part of
+  the review prompt, so long lists of low-value rules inflate the prompt
+  without adding signal.
 - Explain the "why" when helpful.
 - Start with straightforward instructions, and add complexity as needed.
+- Focus on project-specific standards that Code Review Flow wouldn't apply
+  by default. Custom instructions add to the standard review criteria instead
+  of replacing them. General advice like "add error handling" or "use
+  meaningful names" is usually already covered. Use custom instructions for
+  what only your project knows: internal APIs, architectural conventions,
+  domain-specific patterns.
+- Make file patterns reflect the actual scope of the rule. Code Review Flow
+  reads each instruction alongside each `fileFilters` reference and applies
+  the rule only to files that match those patterns. For example, a rule for "Rails
+  controllers" scoped to `**/*.rb` will apply to gems, scripts, and
+  tests, not just controllers. Use `app/controllers/**/*.rb` instead.
+- Only use external file references for instructions where exact wording
+  does not matter, otherwise include the details as a rule in the
+  `instructions:` field directly. Code Review Flow generates and uses
+  summaries for referenced files, but uses the exact wording defined in
+  `instructions`.
 
 For example:
 
@@ -185,7 +303,7 @@ For example, for a project that contains Ruby files:
 | `!**/*.test.rb` | Exclude all Ruby test files |
 | `!spec/**/*.rb` | Exclude all Ruby files in the `spec` directory and its subdirectories |
 | `!tests/**/*`   | Exclude all files in the `tests` directory and its subdirectories |
-| `**/*.{js,jsx}` | JavaScript and JSX files in all directories |
+| `**/*.{js,jsx}` | JavaScript and JSX files in all directories (GitLab 19.1 and later) |
 
 The following example shows the difference between `**/*.rb` and `*.rb`:
 
@@ -208,7 +326,7 @@ apply to Ruby files anywhere in the project structure, not just the root directo
 ## Use case examples
 
 <!-- 2025-11-12 Use case examples are maintained by DevRel, @dnsmichi
-Inspired by the reference in https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads
+Inspired by the reference in <https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads>
 -->
 
 {{< tabs >}}
@@ -705,11 +823,11 @@ instructions:
 For more custom review instructions use cases, see the following production examples:
 
 - [GitLab development in `gitlab-org/gitlab`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/duo/mr-review-instructions.yaml)
-- [GitLab handbook](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yml)
+- [GitLab handbook](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [GitLab website](https://gitlab.com/gitlab-com/marketing/digital-experience/about-gitlab-com/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [Developer Advocacy: Tanuki IoT Platform](https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 
 ## Related topics
 
 - [GitLab Duo in merge requests](../../project/merge_requests/duo_in_merge_requests.md)
-- [Code Review Flow](../../duo_agent_platform/flows/foundational_flows/code_review.md)
+- [Code Review Flow](../flows/foundational_flows/code_review.md)

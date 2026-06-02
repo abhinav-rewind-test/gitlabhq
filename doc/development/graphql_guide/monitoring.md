@@ -1,7 +1,7 @@
 ---
 stage: Developer Experience
-group: API
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+group: API Platform
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Reading GraphQL logs
 ---
 

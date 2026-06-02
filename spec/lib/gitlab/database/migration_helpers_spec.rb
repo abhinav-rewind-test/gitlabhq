@@ -122,320 +122,6 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
     end
   end
 
-  describe '#add_concurrent_index' do
-    context 'outside a transaction' do
-      before do
-        allow(model).to receive(:transaction_open?).and_return(false)
-        allow(model).to receive(:disable_statement_timeout).and_call_original
-      end
-
-      it 'creates the index concurrently' do
-        expect(model).to receive(:add_index)
-          .with(:users, :foo, algorithm: :concurrently)
-
-        model.add_concurrent_index(:users, :foo)
-      end
-
-      it 'creates unique index concurrently' do
-        expect(model).to receive(:add_index)
-          .with(:users, :foo, { algorithm: :concurrently, unique: true })
-
-        model.add_concurrent_index(:users, :foo, unique: true)
-      end
-
-      context 'when the index exists and is valid' do
-        before do
-          model.add_index :users, :id, unique: true
-        end
-
-        it 'does leaves the existing index' do
-          expect(model).to receive(:index_exists?)
-            .with(:users, :id, { algorithm: :concurrently, unique: true }).and_call_original
-
-          expect(model).not_to receive(:remove_index)
-          expect(model).not_to receive(:add_index)
-
-          model.add_concurrent_index(:users, :id, unique: true)
-        end
-      end
-
-      context 'when an invalid copy of the index exists' do
-        before do
-          model.add_index :users, :id, unique: true, name: index_name
-
-          model.connection.execute(<<~SQL)
-            UPDATE pg_index
-            SET indisvalid = false
-            WHERE indexrelid = '#{index_name}'::regclass
-          SQL
-        end
-
-        context 'when the default name is used' do
-          let(:index_name) { model.index_name(:users, :id) }
-
-          it 'drops and recreates the index' do
-            expect(model).to receive(:index_exists?)
-              .with(:users, :id, { algorithm: :concurrently, unique: true }).and_call_original
-            expect(model).to receive(:index_invalid?).with(index_name, schema: nil).and_call_original
-
-            expect(model).to receive(:remove_concurrent_index_by_name).with(:users, index_name)
-
-            expect(model).to receive(:add_index)
-              .with(:users, :id, { algorithm: :concurrently, unique: true })
-
-            model.add_concurrent_index(:users, :id, unique: true)
-          end
-        end
-
-        context 'when a custom name is used' do
-          let(:index_name) { 'my_test_index' }
-
-          it 'drops and recreates the index' do
-            expect(model).to receive(:index_exists?)
-              .with(:users, :id, { algorithm: :concurrently, unique: true, name: index_name }).and_call_original
-            expect(model).to receive(:index_invalid?).with(index_name, schema: nil).and_call_original
-
-            expect(model).to receive(:remove_concurrent_index_by_name).with(:users, index_name)
-
-            expect(model).to receive(:add_index)
-              .with(:users, :id, { algorithm: :concurrently, unique: true, name: index_name })
-
-            model.add_concurrent_index(:users, :id, unique: true, name: index_name)
-          end
-        end
-
-        context 'when a qualified table name is used' do
-          let(:other_schema) { 'foo_schema' }
-          let(:index_name) { 'my_test_index' }
-          let(:table_name) { "#{other_schema}.users" }
-
-          before do
-            model.connection.execute(<<~SQL)
-              CREATE SCHEMA #{other_schema};
-              ALTER TABLE users SET SCHEMA #{other_schema};
-            SQL
-          end
-
-          it 'drops and recreates the index' do
-            expect(model).to receive(:index_exists?)
-              .with(table_name, :id, { algorithm: :concurrently, unique: true, name: index_name }).and_call_original
-            expect(model).to receive(:index_invalid?).with(index_name, schema: other_schema).and_call_original
-
-            expect(model).to receive(:remove_concurrent_index_by_name).with(table_name, index_name)
-
-            expect(model).to receive(:add_index)
-              .with(table_name, :id, { algorithm: :concurrently, unique: true, name: index_name })
-
-            model.add_concurrent_index(table_name, :id, unique: true, name: index_name)
-          end
-        end
-      end
-
-      it 'unprepares the async index creation' do
-        expect(model).to receive(:add_index)
-          .with(:users, :foo, algorithm: :concurrently)
-
-        expect(model).to receive(:unprepare_async_index)
-          .with(:users, :foo, algorithm: :concurrently)
-
-        model.add_concurrent_index(:users, :foo)
-      end
-
-      context 'when targeting a partition table' do
-        let(:schema) { 'public' }
-        let(:name) { :_test_partition_01 }
-        let(:identifier) { "#{schema}.#{name}" }
-
-        before do
-          model.execute(<<~SQL)
-            CREATE TABLE public._test_partitioned_table (
-              id serial NOT NULL,
-              partition_id serial NOT NULL,
-              PRIMARY KEY (id, partition_id)
-            ) PARTITION BY LIST(partition_id);
-
-            CREATE TABLE #{identifier} PARTITION OF public._test_partitioned_table
-            FOR VALUES IN (1);
-          SQL
-        end
-
-        context 'when allow_partition is true' do
-          it 'creates the index concurrently' do
-            expect(model).to receive(:add_index).with(:_test_partition_01, :foo, algorithm: :concurrently)
-
-            model.add_concurrent_index(:_test_partition_01, :foo, allow_partition: true)
-          end
-        end
-
-        context 'when allow_partition is not provided' do
-          it 'raises ArgumentError' do
-            expect { model.add_concurrent_index(:_test_partition_01, :foo) }
-              .to raise_error(ArgumentError, /use add_concurrent_partitioned_index/)
-          end
-        end
-      end
-    end
-
-    context 'inside a transaction' do
-      it 'raises RuntimeError' do
-        expect(model).to receive(:transaction_open?).and_return(true)
-
-        expect { model.add_concurrent_index(:users, :foo) }
-          .to raise_error(RuntimeError)
-      end
-    end
-  end
-
-  describe '#remove_concurrent_index' do
-    context 'outside a transaction' do
-      before do
-        allow(model).to receive(:transaction_open?).and_return(false)
-        allow(model).to receive(:index_exists?).and_return(true)
-        allow(model).to receive(:disable_statement_timeout).and_call_original
-      end
-
-      describe 'by column name' do
-        it 'removes the index concurrently' do
-          expect(model).to receive(:remove_index)
-            .with(:users, { algorithm: :concurrently, column: :foo })
-
-          model.remove_concurrent_index(:users, :foo)
-        end
-
-        it 'does nothing if the index does not exist' do
-          expect(model).to receive(:index_exists?)
-            .with(:users, :foo, { algorithm: :concurrently, unique: true }).and_return(false)
-          expect(model).not_to receive(:remove_index)
-
-          model.remove_concurrent_index(:users, :foo, unique: true)
-        end
-
-        it 'unprepares the async index creation' do
-          expect(model).to receive(:remove_index)
-            .with(:users, { algorithm: :concurrently, column: :foo })
-
-          expect(model).to receive(:unprepare_async_index)
-            .with(:users, :foo, { algorithm: :concurrently })
-
-          model.remove_concurrent_index(:users, :foo)
-        end
-
-        context 'when targeting a partition table' do
-          let(:schema) { 'public' }
-          let(:partition_table_name) { :_test_partition_01 }
-          let(:identifier) { "#{schema}.#{partition_table_name}" }
-          let(:index_name) { :_test_partitioned_index }
-          let(:partition_index_name) { :_test_partition_01_partition_id_idx }
-          let(:column_name) { 'partition_id' }
-
-          before do
-            model.execute(<<~SQL)
-              CREATE TABLE public._test_partitioned_table (
-                id serial NOT NULL,
-                partition_id serial NOT NULL,
-                PRIMARY KEY (id, partition_id)
-              ) PARTITION BY LIST(partition_id);
-
-              CREATE INDEX #{index_name} ON public._test_partitioned_table(#{column_name});
-
-              CREATE TABLE #{identifier} PARTITION OF public._test_partitioned_table
-              FOR VALUES IN (1);
-            SQL
-          end
-
-          context 'when dropping an index on the partition table' do
-            it 'raises ArgumentError' do
-              expect { model.remove_concurrent_index(partition_table_name, column_name) }
-                .to raise_error(ArgumentError, /use remove_concurrent_partitioned_index_by_name/)
-            end
-          end
-        end
-
-        describe 'by index name' do
-          before do
-            allow(model).to receive(:index_exists_by_name?).with(:users, "index_x_by_y").and_return(true)
-          end
-
-          it 'removes the index concurrently by index name' do
-            expect(model).to receive(:remove_index)
-              .with(:users, { algorithm: :concurrently, name: "index_x_by_y" })
-
-            model.remove_concurrent_index_by_name(:users, "index_x_by_y")
-          end
-
-          it 'does nothing if the index does not exist' do
-            expect(model).to receive(:index_exists_by_name?).with(:users, "index_x_by_y").and_return(false)
-            expect(model).not_to receive(:remove_index)
-
-            model.remove_concurrent_index_by_name(:users, "index_x_by_y")
-          end
-
-          it 'removes the index with keyword arguments' do
-            expect(model).to receive(:remove_index)
-              .with(:users, { algorithm: :concurrently, name: "index_x_by_y" })
-
-            model.remove_concurrent_index_by_name(:users, name: "index_x_by_y")
-          end
-
-          it 'raises an error if the index is blank' do
-            expect do
-              model.remove_concurrent_index_by_name(:users, wrong_key: "index_x_by_y")
-            end.to raise_error 'remove_concurrent_index_by_name must get an index name as the second argument'
-          end
-
-          it 'unprepares the async index creation' do
-            expect(model).to receive(:remove_index)
-              .with(:users, { algorithm: :concurrently, name: "index_x_by_y" })
-
-            expect(model).to receive(:unprepare_async_index_by_name)
-              .with(:users, "index_x_by_y", { algorithm: :concurrently })
-
-            model.remove_concurrent_index_by_name(:users, "index_x_by_y")
-          end
-
-          context 'when targeting a partition table' do
-            let(:schema) { 'public' }
-            let(:partition_table_name) { :_test_partition_01 }
-            let(:identifier) { "#{schema}.#{partition_table_name}" }
-            let(:index_name) { :_test_partitioned_index }
-            let(:partition_index_name) { :_test_partition_01_partition_id_idx }
-
-            before do
-              model.execute(<<~SQL)
-                CREATE TABLE public._test_partitioned_table (
-                  id serial NOT NULL,
-                  partition_id serial NOT NULL,
-                  PRIMARY KEY (id, partition_id)
-                ) PARTITION BY LIST(partition_id);
-
-                CREATE INDEX #{index_name} ON public._test_partitioned_table(partition_id);
-
-                CREATE TABLE #{identifier} PARTITION OF public._test_partitioned_table
-                FOR VALUES IN (1);
-              SQL
-            end
-
-            context 'when dropping an index on the partition table' do
-              it 'raises ArgumentError' do
-                expect { model.remove_concurrent_index_by_name(partition_table_name, partition_index_name) }
-                  .to raise_error(ArgumentError, /use remove_concurrent_partitioned_index_by_name/)
-              end
-            end
-          end
-        end
-      end
-    end
-
-    context 'inside a transaction' do
-      it 'raises RuntimeError' do
-        expect(model).to receive(:transaction_open?).and_return(true)
-
-        expect { model.remove_concurrent_index(:users, :foo) }
-          .to raise_error(RuntimeError)
-      end
-    end
-  end
-
   describe '#true_value' do
     it 'returns the appropriate value' do
       expect(model.true_value).to eq("'t'")
@@ -668,6 +354,30 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
             model.rename_column_concurrently(:users, :old, :new)
           end
         end
+
+        context 'when the type is bigint' do
+          it 'passes limit: nil to add_column even when the original column has a limit' do
+            expect(Gitlab::Database::QueryAnalyzers::GitlabSchemasValidateConnection).to receive(:with_suppressed).and_yield
+
+            expect(model).to receive(:check_trigger_permissions!).with(:users)
+            expect(model).to receive(:install_rename_triggers).with(:users, :old, :new)
+
+            expect(model).to receive(:add_column)
+              .with(:users, :new, :bigint,
+                limit: nil,
+                precision: old_column.precision,
+                scale: old_column.scale)
+
+            expect(model).to receive(:change_column_default).with(:users, :new, old_column.default)
+            expect(model).to receive(:update_column_in_batches)
+            expect(model).to receive(:add_not_null_constraint).with(:users, :new)
+            expect(model).to receive(:copy_indexes).with(:users, :old, :new)
+            expect(model).to receive(:copy_foreign_keys).with(:users, :old, :new)
+            expect(model).to receive(:copy_check_constraints).with(:users, :old, :new)
+
+            model.rename_column_concurrently(:users, :old, :new, type: :bigint)
+          end
+        end
       end
 
       context 'when the table in the other database is write-locked' do
@@ -881,6 +591,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
 
   describe '#cleanup_concurrent_column_type_change' do
     it 'cleans up the type changing procedure' do
+      expect(model).to receive(:with_lock_retries).ordered.and_yield
+
       expect(model).to receive(:cleanup_concurrent_column_rename)
         .with('users', 'username', 'username_for_type_change')
 
@@ -931,6 +643,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
           limit: nil
         ).and_return(true)
 
+        expect(model).to receive(:with_lock_retries).ordered.and_yield
+
         expect(model).to receive(:rename_column)
           .with(:users, :old, temp_column)
 
@@ -959,6 +673,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
           limit: 8
         ).and_return(true)
 
+        expect(model).to receive(:with_lock_retries).ordered.and_yield
+
         expect(model).to receive(:rename_column)
           .with(:users, :old, temp_column)
 
@@ -983,79 +699,6 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
           model.undo_cleanup_concurrent_column_type_change(:users, :old, :new, batch_column_name: :invalid)
         end.to raise_error(RuntimeError, /Column invalid does not exist on users/)
       end
-    end
-  end
-
-  describe '#install_rename_triggers' do
-    let(:connection) { ActiveRecord::Migration.connection }
-
-    it 'installs the triggers' do
-      copy_trigger = double('copy trigger')
-
-      expect(Gitlab::Database::UnidirectionalCopyTrigger).to receive(:on_table)
-        .with(:users, connection: connection).and_return(copy_trigger)
-
-      expect(copy_trigger).to receive(:create).with(:old, :new, trigger_name: 'foo')
-
-      model.install_rename_triggers(:users, :old, :new, trigger_name: 'foo')
-    end
-  end
-
-  describe '#remove_rename_triggers' do
-    let(:connection) { ActiveRecord::Migration.connection }
-
-    it 'removes the function and trigger' do
-      copy_trigger = double('copy trigger')
-
-      expect(Gitlab::Database::UnidirectionalCopyTrigger).to receive(:on_table)
-        .with('bar', connection: connection).and_return(copy_trigger)
-
-      expect(copy_trigger).to receive(:drop).with('foo')
-
-      model.remove_rename_triggers('bar', 'foo')
-    end
-  end
-
-  describe '#rename_trigger_name' do
-    it 'returns a String' do
-      expect(model.rename_trigger_name(:users, :foo, :bar))
-        .to match(/trigger_.{12}/)
-    end
-  end
-
-  describe '#install_sharding_key_assignment_trigger' do
-    let(:trigger) { double }
-    let(:connection) { ActiveRecord::Base.connection }
-
-    it do
-      expect(Gitlab::Database::Triggers::AssignDesiredShardingKey).to receive(:new)
-        .with(table: :test_table, sharding_key: :project_id, parent_table: :parent_table, parent_table_primary_key: :project_id,
-          parent_sharding_key: :parent_project_id, foreign_key: :foreign_key, connection: connection,
-          trigger_name: 'trigger_name').and_return(trigger)
-
-      expect(trigger).to receive(:create)
-
-      model.install_sharding_key_assignment_trigger(table: :test_table, sharding_key: :project_id, parent_table: :parent_table,
-        parent_table_primary_key: :project_id, parent_sharding_key: :parent_project_id, foreign_key: :foreign_key,
-        trigger_name: 'trigger_name')
-    end
-  end
-
-  describe '#remove_sharding_key_assignment_trigger' do
-    let(:trigger) { double }
-    let(:connection) { ActiveRecord::Base.connection }
-
-    it do
-      expect(Gitlab::Database::Triggers::AssignDesiredShardingKey).to receive(:new)
-        .with(table: :test_table, sharding_key: :project_id, parent_table: :parent_table, parent_table_primary_key: :project_id,
-          parent_sharding_key: :parent_project_id, foreign_key: :foreign_key, connection: connection,
-          trigger_name: 'trigger_name').and_return(trigger)
-
-      expect(trigger).to receive(:drop)
-
-      model.remove_sharding_key_assignment_trigger(table: :test_table, sharding_key: :project_id, parent_table: :parent_table,
-        parent_table_primary_key: :project_id, parent_sharding_key: :parent_project_id, foreign_key: :foreign_key,
-        trigger_name: 'trigger_name')
     end
   end
 
@@ -1396,22 +1039,6 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
     end
   end
 
-  describe '#check_trigger_permissions!' do
-    it 'does nothing when the user has the correct permissions' do
-      expect { model.check_trigger_permissions!('users') }
-        .not_to raise_error
-    end
-
-    it 'raises RuntimeError when the user does not have the correct permissions' do
-      allow(Gitlab::Database::Grant).to receive(:create_and_execute_trigger?)
-        .with('kittens')
-        .and_return(false)
-
-      expect { model.check_trigger_permissions!('kittens') }
-        .to raise_error(RuntimeError, /Your database user is not allowed/)
-    end
-  end
-
   describe '#convert_to_bigint_column' do
     it 'returns the name of the temporary column used to convert to bigint' do
       expect(model.convert_to_bigint_column(:id)).to eq('id_convert_to_bigint')
@@ -1528,7 +1155,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
     include MigrationsHelpers
 
     let_it_be(:issue_base_type_enum) { 0 }
-    let_it_be(:issue_type) { table(:work_item_types).find_by(base_type: issue_base_type_enum) }
+    let_it_be(:issue_type_id) { 1 }
 
     let(:issue_class) do
       type_id = build(:work_item_system_defined_type, :issue).id
@@ -1597,7 +1224,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
 
     it 'generates iids properly for models created after the migration when iids are backfilled' do
       project = setup
-      issue_a = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type.id)
+      issue_a = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type_id)
 
       model.backfill_iids('issues')
 
@@ -1610,14 +1237,14 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
     it 'generates iids properly for models created after the migration across multiple projects' do
       project_a = setup
       project_b = setup
-      issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type.id)
-      issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type.id)
-      issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type.id)
+      issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type_id)
+      issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type_id)
+      issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type_id)
 
       model.backfill_iids('issues')
 
-      issue_a = issue_class.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type.id)
-      issue_b = issue_class.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type.id)
+      issue_a = issue_class.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type_id)
+      issue_b = issue_class.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type_id)
 
       expect(issue_a.iid).to eq(2)
       expect(issue_b.iid).to eq(3)
@@ -1627,7 +1254,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
       it 'generates an iid' do
         project_a = setup
         project_b = setup
-        issue_a = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type.id)
+        issue_a = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type_id)
 
         model.backfill_iids('issues')
 
@@ -1641,8 +1268,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
     context 'when a row already has an iid set in the database' do
       it 'backfills iids' do
         project = setup
-        issue_a = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type.id, iid: 1)
-        issue_b = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type.id, iid: 2)
+        issue_a = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type_id, iid: 1)
+        issue_b = issues.create!(project_id: project.id, namespace_id: project.project_namespace_id, work_item_type_id: issue_type_id, iid: 2)
 
         model.backfill_iids('issues')
 
@@ -1653,9 +1280,9 @@ RSpec.describe Gitlab::Database::MigrationHelpers, feature_category: :database d
       it 'backfills for multiple projects' do
         project_a = setup
         project_b = setup
-        issue_a = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type.id, iid: 1)
-        issue_b = issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type.id, iid: 1)
-        issue_c = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type.id, iid: 2)
+        issue_a = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type_id, iid: 1)
+        issue_b = issues.create!(project_id: project_b.id, namespace_id: project_b.project_namespace_id, work_item_type_id: issue_type_id, iid: 1)
+        issue_c = issues.create!(project_id: project_a.id, namespace_id: project_a.project_namespace_id, work_item_type_id: issue_type_id, iid: 2)
 
         model.backfill_iids('issues')
 

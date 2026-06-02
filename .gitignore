@@ -3,11 +3,10 @@
 *.mo
 *.edit.po
 *.rej
-/AGENTS.local.md
 /opencode.json
+/.claude
 .dir-locals.el
 .DS_Store
-/OpenCode.md
 .bundle
 .chef
 .directory
@@ -40,6 +39,7 @@ eslint-report.html
 /config/cable.yml
 /config/database*.yml
 /config/gitlab.yml
+/config/gitlab-sidekiq.yml
 /config/gitlab_ci.yml
 /config/Gitlab.gitlab-license
 /config/initializers/smtp_settings.rb
@@ -81,6 +81,7 @@ node_modules
 /.gitlab_workhorse_secret
 /.gitlab_pages_secret
 /.gitlab_kas_secret
+/.gitlab_knowledge_graph_secret
 /.gitlab_openbao_authentication_token_secret
 /.gitlab_suggested_reviewers_secret
 /.gitlab_zoekt_username
@@ -139,3 +140,14 @@ config/helpers/tailwind/css_in_js.js
 # yalc for temporary testing
 .yalc
 yalc.lock
+
+# Ignore automatically generated js-routes files.
+/app/assets/javascripts/lib/utils/path_helpers
+/ee/app/assets/javascripts/lib/utils/path_helpers
+
+# AI agent instruction files (https://gitlab.com/gitlab-org/gitlab/-/work_items/594821)
+# Non-rooted patterns apply at all directory levels. Committed .ai/ modules use git add --force.
+AGENTS.local.md
+CLAUDE.local.md
+/OpenCode.md
+.ai/*

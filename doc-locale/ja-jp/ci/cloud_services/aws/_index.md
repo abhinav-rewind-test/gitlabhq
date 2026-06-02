@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: AWSでOpenID Connectを設定して一時的な認証情報を取得する
 ---
 
@@ -12,15 +12,12 @@ title: AWSでOpenID Connectを設定して一時的な認証情報を取得す�
 
 {{< /details >}}
 
-{{< alert type="warning" >}}
+> [!warning]
+> `CI_JOB_JWT_V2`は[GitLab 15.9で非推奨](../../../update/deprecations.md#old-versions-of-json-web-tokens-are-deprecated)になり、GitLab 17.0で削除される予定です。代わりに[IDトークン](../../secrets/id_token_authentication.md)を使用してください。
 
-`CI_JOB_JWT_V2`は[GitLab 15.9で非推奨](../../../update/deprecations.md#old-versions-of-json-web-tokens-are-deprecated)となり、GitLab 17.0で削除される予定です。代わりに[IDトークン](../../secrets/id_token_authentication.md)を使用してください。
+このチュートリアルでは、シークレットを保存せずに、GitLab CI/CDジョブとJSON Webトークン（JWT）を使用してAWSから一時認証情報を取得する方法を説明します。そのためには、GitLabとAWS間のID連携用にOpenID Connect（OIDC）を設定する必要があります。OIDCを使用したGitLabの統合の背景と要件については、[クラウドサービスに接続する](../_index.md)を参照してください。
 
-{{< /alert >}}
-
-このチュートリアルでは、JSON Webトークン（JWT）を使用してGitLab CI/CDジョブからAWSの一時的な認証情報を取得する方法について説明します。 シークレットを保存する必要はありません。そのためには、GitLabとAWS間のID連携用にOpenID Connect（OIDC）を設定する必要があります。OIDCを使用したGitLabの統合の背景と要件については、[クラウドサービスに接続する](../_index.md)を参照してください。
-
-このチュートリアルを完了するには、以下を行います:
+このチュートリアルを完了するには、以下を行います。
 
 1. [Identity Providerを追加する](#add-the-identity-provider)
 1. [ロールと信頼を設定する](#configure-a-role-and-trust)
@@ -30,22 +27,19 @@ title: AWSでOpenID Connectを設定して一時的な認証情報を取得す�
 
 これらの[手順](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html)に従って、AWSでGitLabをIAM OIDCプロバイダーとして作成します。
 
-次の情報を含めます:
+次の情報を含めます。
 
-- **プロバイダーURL**（プロバイダーのURL): `https://gitlab.com`や`http://gitlab.example.com`など、GitLabインスタンスのアドレス。このアドレスは、パブリックアクセスが可能である必要があります。パブリックアクセスできない場合は、[非公開のGitLabインスタンスを設定する](#configure-a-non-public-gitlab-instance)方法をご確認ください。
-- **オーディエンス**: リクエストされたセキュリティートークンで使用するターゲットサービスの論理名。
-  - AWS OIDCインテグレーションでは、これは通常、IAM OIDCアイデンティティプロバイダーで設定されたオーディエンス値（多くの場合、`sts.amazonaws.com`またはGitLabインスタンスURL）と一致します。
-  - この値は、トークンが特定のアイデンティティプロバイダーを対象としていることを確認するために、AWSによって検証されます。
+- **Provider URL**（プロバイダーのURL): `https://gitlab.com`や`http://gitlab.example.com`など、GitLabインスタンスのアドレス。このアドレスは、パブリックアクセスが可能である必要があります。パブリックアクセスできない場合は、[非公開のGitLabインスタンスを設定する](#configure-a-non-public-gitlab-instance)方法をご確認ください。
+- **Audience**（オーディエンス）: リクエストされたセキュリティトークンを使用する対象サービスの論理名。
+  - AWS OIDCインテグレーションでは、これは通常、IAM OIDC Identity Providerで設定されたオーディエンス値（多くの場合`sts.amazonaws.com`またはGitLabインスタンスのURL）と一致します。
+  - この値は、トークンが特定のIdentity Providerを対象としていることを保証するためにAWSによって検証されます。
 
-  {{< alert type="note" >}}
-
-  `https://gitlab.com`またはGitLabインスタンスURLを使用すると、AWSアイデンティティプロバイダーの参照が一致する場合に機能する可能性がありますが、これは意味的に誤解を招く可能性があります。オーディエンスは、トークンを検証して受け入れるサービスを表す必要があります。
-
-  {{< /alert >}}
+  > [!note]
+  > `https://gitlab.com`またはGitLabインスタンスのURLを使用しても、AWS Identity Providerの参照と一致する場合は機能する可能性がありますが、これは意味的に誤解を招く可能性があります。オーディエンスは、トークンを検証し、受け入れるサービスを表す必要があります。
 
 ## ロールと信頼を設定する {#configure-a-role-and-trust}
 
-Identity Providerを作成したら、GitLabリソースへのアクセスを制限するための条件を使用して、[Web IDロール](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-idp_oidc.html)を設定します。一時的な認証情報は[AWS Security Token Service（STS）](https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html)を使用して取得されるため、`Action`アクションを[`sts:AssumeRoleWithWebIdentity`](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html)に設定します。
+Identity Providerを作成したら、GitLabリソースへのアクセスを制限するための条件を使用して、[Web IDロール](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-idp_oidc.html)を設定します。一時認証情報は[AWS Security Token Service（STS）](https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html)を使用して取得されます。そのため、`Action`を[`sts:AssumeRoleWithWebIdentity`](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html)に設定してください。
 
 特定のグループ、プロジェクト、ブランチ、またはタグへの認証を制限するために、ロール用の[カスタム信頼ポリシー](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-custom.html)を作成できます。サポートされているフィルタリングタイプの完全なリストについては、[クラウドサービスに接続する](../_index.md#configure-a-conditional-role-with-oidc-claims)を参照してください。
 
@@ -102,7 +96,7 @@ assume role:
 - Terraformとサンプルスクリプトを使用してAWSでOIDCをプロビジョニングし、一時的な認証情報を取得する方法については、この[参照プロジェクト](https://gitlab.com/guided-explorations/aws/configure-openid-connect-in-aws)を参照してください。
 - [GitLabとECSを使用したOIDCとマルチアカウントデプロイ](https://gitlab.com/guided-explorations/aws/oidc-and-multi-account-deployment-with-ecs)。
 - AWSパートナー（APN）ブログ: [Setting up OpenID Connect with GitLab CI/CD](https://aws.amazon.com/blogs/apn/setting-up-openid-connect-with-gitlab-ci-cd-to-provide-secure-access-to-environments-in-aws-accounts/)（GitLab CI/CDでOpenID Connectを設定する）。
-- [GitLab at AWS re:Inforce 2023: Secure GitLab CD pipelines to AWS w/ OpenID and JWT](https://www.youtube.com/watch?v=xWQGADDVn8g)（GitLab at AWS re:Inforce 2023: OpenID連携、OIDC、JWTを使用したAWSへの安全なGitLab CDパイプライン）
+- [GitLab at AWS re:Inforce 2023: Secure GitLab CD pipelines to AWS w/ OpenID and JWT](https://www.youtube.com/watch?v=xWQGADDVn8g)（GitLab at AWS re:Inforce 2023: OpenIDとJWTを使用したAWSへの安全なGitLab CDパイプライン）
 
 ## 非公開のGitLabインスタンスを設定する {#configure-a-non-public-gitlab-instance}
 
@@ -119,20 +113,18 @@ assume role:
 
 {{< /history >}}
 
-{{< alert type="warning" >}}
+> [!warning]
+>
+> この回避策は、理解しておくべきセキュリティ上の考慮事項を伴う高度な設定オプションです。プライベートなGitLab Self-Managedインスタンスから公開されている場所（S3バケットなど）に、OpenID設定と公開キーを正しく同期するように注意する必要があります。S3バケットとその中のファイルが適切に保護されていることを確認することも必要です。S3バケットを適切に保護できない場合、このOpenID Connect IDに関連付けられているクラウドアカウントが乗っ取られる可能性があります。
 
-この回避策は高度な設定オプションであり、セキュリティ上の考慮事項を理解する必要があります。プライベートなGitLab Self-Managedインスタンスから公開されている場所（S3バケットなど）に、OpenID設定と公開キーを正しく同期するように注意する必要があります。S3バケットとその中のファイルが適切に保護されていることを確認することも必要です。S3バケットを適切に保護できない場合、このOpenID Connect IDに関連付けられているクラウドアカウントが乗っ取られる可能性があります。
+GitLabインスタンスにパブリックアクセスできない場合、デフォルトではAWSでOpenID Connectを設定することはできません。回避策を使用して、特定の設定にパブリックアクセスできるようにし、インスタンスのOpenID Connect設定を有効にすることができます。
 
-{{< /alert >}}
-
-GitLabインスタンスにパブリックアクセスできない場合、デフォルトではAWSでOpenID Connectを設定することはできません。回避策を使用して、特定の設定にパブリックアクセスできるようにし、インスタンスのOpenID Connect設定を有効にすることができます:
-
-1. GitLabインスタンスの認証情報を、公開されている場所（S3ファイルなど）に保存します:
+1. GitLabインスタンスの認証情報を、公開されている場所（S3ファイルなど）に保存します。
 
    - S3ファイルでインスタンスのOpenID設定をホスティングします。この設定は`/.well-known/openid-configuration`で利用できます（`http://gitlab.example.com/.well-known/openid-configuration`など）。公開されている場所を指すように設定ファイル内の`issuer:`と`jwks_uri:`の値を更新します。
    - S3ファイルでインスタンスURLの公開キーをホスティングします。キーは`/oauth/discovery/keys`で利用できます（`http://gitlab.example.com/oauth/discovery/keys`など）。
 
-   次に例を示します:
+   例: 
 
    - OpenID設定ファイル: `https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com/.well-known/openid-configuration`。
    - JWKS（JSON Web Key Sets）: `https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com/oauth/discovery/keys`。
@@ -141,7 +133,7 @@ GitLabインスタンスにパブリックアクセスできない場合、デ�
 1. オプション。[OpenID Configuration Endpoint Validator](https://www.oauth2.dev/tools/openid-configuration-validator)などのOpenID設定バリデーターを使用して、公開されているOpenID設定を検証します。
 1. IDトークンのカスタム発行者クレームを設定します。デフォルトでは、GitLab IDトークンの発行者クレーム`iss:`は、GitLabインスタンスのアドレスに設定されています（`http://gitlab.example.com`など）。
 
-1. 発行者URLを更新します:
+1. 発行者URLを更新します。
 
    {{< tabs >}}
 
@@ -150,8 +142,10 @@ GitLabインスタンスにパブリックアクセスできない場合、デ�
    1. `/etc/gitlab/gitlab.rb`を編集します:
 
       ```ruby
-      gitlab_rails['ci_id_tokens_issuer_url'] = 'public_url_with_openid_configuration_and_keys'
+      gitlab_rails['ci_id_tokens_issuer_url'] = '<public_url_with_openid_configuration_and_keys>'
       ```
+
+      `<public_url_with_openid_configuration_and_keys>`を`https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com`のようなURLに置き換えてください。
 
    1. ファイルを保存して、[GitLabを再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)し、変更を有効にします。
 
@@ -171,8 +165,10 @@ GitLabインスタンスにパブリックアクセスできない場合、デ�
       global:
         appConfig:
           ciIdTokens:
-            issuerUrl: 'public_url_with_openid_configuration_and_keys'
+            issuerUrl: '<public_url_with_openid_configuration_and_keys>'
       ```
+
+      `<public_url_with_openid_configuration_and_keys>`を`https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com`のようなURLに置き換えてください。
 
    1. ファイルを保存して、新しい値を適用します: 
 
@@ -192,8 +188,10 @@ GitLabインスタンスにパブリックアクセスできない場合、デ�
         gitlab:
           environment:
             GITLAB_OMNIBUS_CONFIG: |
-              gitlab_rails['ci_id_tokens_issuer_url'] = 'public_url_with_openid_configuration_and_keys'
+              gitlab_rails['ci_id_tokens_issuer_url'] = '<public_url_with_openid_configuration_and_keys>'
       ```
+
+      `<public_url_with_openid_configuration_and_keys>`を`https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com`のようなURLに置き換えてください。
 
    1. ファイルを保存して、GitLabを再起動します: 
 
@@ -210,8 +208,10 @@ GitLabインスタンスにパブリックアクセスできない場合、デ�
       ```yaml
        production: &base
          ci_id_tokens:
-           issuer_url: 'public_url_with_openid_configuration_and_keys'
+           issuer_url: '<public_url_with_openid_configuration_and_keys>'
       ```
+
+      `<public_url_with_openid_configuration_and_keys>`を`https://example-oidc-configuration-s3-bucket.s3.eu-north-1.amazonaws.com`のようなURLに置き換えてください。
 
    1. ファイルを保存して、[GitLabを再設定](../../../administration/restart_gitlab.md#self-compiled-installations)し、変更を有効にします。
 
@@ -232,7 +232,7 @@ An error occurred (AccessDenied) when calling the AssumeRoleWithWebIdentity oper
 Not authorized to perform sts:AssumeRoleWithWebIdentity
 ```
 
-このエラーは、次のような複数の理由で発生する可能性があります:
+このエラーは、次のような複数の理由で発生する可能性があります。
 
 - クラウド管理者が、GitLabでOIDCを使用するようにプロジェクトを設定していない。
 - ロールが、ブランチまたはタグでの実行を制限されている。[条件付きロールを設定する](../_index.md)を参照してください。
@@ -240,7 +240,7 @@ Not authorized to perform sts:AssumeRoleWithWebIdentity
 
 ### エラー: `Could not connect to openid configuration of provider` {#could-not-connect-to-openid-configuration-of-provider-error}
 
-AWS IAMにIdentity Providerを追加した後、次のエラーが表示されることがあります:
+AWS IAMにIdentity Providerを追加した後、次のエラーが表示されることがあります。
 
 ```plaintext
 Your request has a problem. Please see the following details.
@@ -249,7 +249,7 @@ Your request has a problem. Please see the following details.
 
 このエラーは、OIDC Identity Providerの発行者が順序の間違った証明書チェーンを提示するか、重複や追加の証明書が含まれている場合に発生します。
 
-GitLabインスタンスの証明書チェーンを検証します。チェーンは、ドメインまたは発行者のURLで始まり、中間証明書が続き、最後にルート証明書で終わる必要があります。このコマンドを使用して証明書チェーンを確認し、`gitlab.example.com`をGitLabホスト名に置き換えます:
+GitLabインスタンスの証明書チェーンを検証します。チェーンは、ドメインまたは発行者のURLで始まり、中間証明書が続き、最後にルート証明書で終わる必要があります。このコマンドを使用して証明書チェーンを確認し、`gitlab.example.com`をGitLabホスト名に置き換えます。
 
 ```shell
 echo | /opt/gitlab/embedded/bin/openssl s_client -connect gitlab.example.com:443
@@ -257,11 +257,11 @@ echo | /opt/gitlab/embedded/bin/openssl s_client -connect gitlab.example.com:443
 
 ### エラー: `Couldn't retrieve verification key from your identity provider` {#couldnt-retrieve-verification-key-from-your-identity-provider-error}
 
-次のようなエラーが表示される場合があります:
+次のようなエラーが表示される場合があります。
 
 - `An error occurred (InvalidIdentityToken) when calling the AssumeRoleWithWebIdentity operation: Couldn't retrieve verification key from your identity provider, please reference AssumeRoleWithWebIdentity documentation for requirements`
 
-このエラーについては次のような原因が考えられます:
+このエラーについては次のような原因が考えられます。
 
 - パブリックインターネットからIdentity Provider（IdP）の`.well_known` URLと`jwks_uri`にアクセスできない。
 - カスタムファイアウォールがリクエストをブロックしている。

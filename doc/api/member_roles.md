@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Member roles API
 description: Use the Member Roles API to manage custom roles for GitLab.com groups or GitLab Self-Managed instances. List, create, and delete custom member roles programmatically.
 ---
@@ -30,7 +30,6 @@ description: Use the Member Roles API to manage custom roles for GitLab.com grou
 - [Manage group access tokens introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/140115) in GitLab 16.8.
 - [Admin terraform state introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/140759) in GitLab 16.8.
 - Allow to create and remove an instance-wide custom role on GitLab Self-Managed [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/141562) in GitLab 16.9.
-- [Admin security testing introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/176628) in GitLab 17.9 [with a flag](../administration/feature_flags/_index.md) named `custom_ability_admin_security_testing`. Disabled by default.
 
 {{< /history >}}
 
@@ -99,7 +98,7 @@ Example response:
 ]
 ```
 
-### Create a instance member role
+### Create an instance member role
 
 Create an instance-wide member role.
 
@@ -113,7 +112,7 @@ Supported attributes:
 |:----------|:--------|:---------|:-------------------------------------|
 | `name`         | string         | yes      | The name of the member role. |
 | `description`  | string         | no       | The description of the member role. |
-| `base_access_level` | integer   | yes      | Base access level for configured role. Valid values are `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner).|
+| `base_access_level` | integer   | yes      | Base access level for configured role. Valid values are `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner).|
 | `admin_cicd_variables` | boolean | no       | Permission to create, read, update, and delete CI/CD variables. |
 | `admin_compliance_framework` | boolean | no       | Permission to administer compliance frameworks. |
 | `admin_group_member` | boolean | no       | Permission to add, remove and assign members in a group. |
@@ -227,7 +226,7 @@ Supported attributes:
 
 | Attribute | Type | Required | Description |
 |:----------|:--------|:---------|:-------------------------------------|
-| `id`      | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group of the group |
+| `id`      | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 
 Example request:
 
@@ -271,7 +270,7 @@ Example response:
   {
     "id": 3,
     "name": "Guest + security",
-    "description": "Custom guest that read and admin security entities",
+    "description": "Custom guest that can read and administer security entities",
     "group_id": 84,
     "base_access_level": 10,
     "admin_cicd_variables": false,

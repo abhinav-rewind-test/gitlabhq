@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integration do
   include AfterNextHelpers
 
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
 
   before do
     stub_ci_pipeline_to_return_yaml_file
@@ -107,7 +107,7 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
           end
 
           it 'stores the payload as a variable' do
-            expect { result }.to change { Ci::PipelineVariable.count }.by(1)
+            expect { result }.to change { Ci::PipelineArtifact.where(file_type: :pipeline_variables).count }.by(1)
 
             var = result[:pipeline].variables.first
 
@@ -133,7 +133,7 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
             let(:variables) { { 'AAA' => 'AAA123' } }
 
             it 'has variables' do
-              expect { result }.to change { Ci::PipelineVariable.count }.by(2)
+              expect { result }.to change { Ci::PipelineArtifact.where(file_type: :pipeline_variables).count }.by(1)
               expect(result[:pipeline].variables.map { |v| { v.key => v.value } }.first).to eq(variables)
             end
           end
@@ -152,7 +152,7 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
           it_behaves_like 'detecting an unprocessable pipeline trigger'
         end
 
-        context 'when params have a non-existant ref' do
+        context 'when params have a non-existent ref' do
           let(:params) { { token: trigger.token, ref: 'invalid-ref', variables: nil } }
 
           it 'does not trigger a pipeline' do
@@ -163,7 +163,7 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
         end
       end
 
-      context 'when params have a non-existant trigger token' do
+      context 'when params have a non-existent trigger token' do
         let(:params) { { token: 'invalid-token', ref: nil, variables: nil } }
 
         it 'does not trigger a pipeline' do
@@ -240,8 +240,8 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
             let(:variables) { { 'AAA' => 'AAA123' } }
 
             it 'has variables' do
-              expect { result }.to change { Ci::PipelineVariable.count }.by(2)
-                               .and change { Ci::Sources::Pipeline.count }.by(1)
+              expect { result }.to change { Ci::PipelineArtifact.where(file_type: :pipeline_variables).count }.by(1)
+                .and change { Ci::Sources::Pipeline.count }.by(1)
               expect(result[:pipeline].variables.map { |v| { v.key => v.value } }.first).to eq(variables)
               expect(job.sourced_pipelines.last.pipeline_id).to eq(result[:pipeline].id)
             end
@@ -261,7 +261,7 @@ RSpec.describe Ci::PipelineTriggerService, feature_category: :continuous_integra
           it_behaves_like 'detecting an unprocessable pipeline trigger'
         end
 
-        context 'when params have a non-existant ref' do
+        context 'when params have a non-existent ref' do
           let(:params) { { token: job.token, ref: 'invalid-ref', variables: nil } }
 
           it 'does not trigger a job in the pipeline' do

@@ -322,10 +322,6 @@ module QA
           end
         end
 
-        def has_reports_tab?
-          has_css?('.reports-tab')
-        end
-
         def click_pipeline_link
           click_element('pipeline-id')
         end
@@ -431,6 +427,16 @@ module QA
           has_element?('merge-button', text: 'Set to auto-merge', wait: 10)
         end
 
+        def mergeable?
+          has_element?('merge-button', disabled: false)
+        end
+
+        def merge_blocked?
+          has_css?('.mr-widget-section', text: 'Merge blocked') ||
+            has_no_element?('merge-button') ||
+            find_element('merge-button').disabled? == true
+        end
+
         def merged?
           # Reloads the page at this point to avoid the problem of the merge status failing to update
           # That's the transient UX issue this test is checking for, so if the MR is merged but the UI still shows the
@@ -444,9 +450,7 @@ module QA
         end
 
         RSpec::Matchers.define :be_mergeable do
-          match do |page|
-            page.has_element?('merge-button', disabled: false)
-          end
+          match(&:mergeable?)
 
           match_when_negated do |page|
             has_css?('.mr-widget-section', text: 'Merge blocked') || # Merge widget indicates merge is blocked
@@ -648,6 +652,9 @@ module QA
         def has_exposed_artifact_with_name?(name)
           has_link?(name)
         end
+
+        # No-op in CE; overridden by EE::Page::Component::DapEmptyState when prepended
+        def close_dap_panel_if_exists; end
 
         private
 

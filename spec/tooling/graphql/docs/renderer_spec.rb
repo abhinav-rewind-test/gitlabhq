@@ -4,7 +4,7 @@ require 'spec_helper'
 require 'tmpdir'
 require_relative '../../../../tooling/graphql/docs/renderer'
 
-RSpec.describe Tooling::Graphql::Docs::Renderer do
+RSpec.describe Tooling::Graphql::Docs::Renderer, feature_category: :api do
   let(:template) { Rails.root.join('tooling/graphql/docs/templates/default.md.haml') }
   let(:field_description) { 'List of objects.' }
   let(:type) { ::GraphQL::Types::Int }
@@ -85,11 +85,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
         expectation = <<~DOC
           ### `ArrayTest`
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="arraytestfoo"></a>`foo` | [`#{type_name}`](##{inner_type}) | A description. |
+          | <a id="arraytest-foo"></a>`foo` | [`#{type_name}`](##{inner_type}) | A description. |
         DOC
 
         is_expected.to include(expectation)
@@ -104,11 +104,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
             Returns [`ArrayTest`](#arraytest).
 
-            #### Arguments
+            Arguments:
 
             | Name | Type | Description |
             | ---- | ---- | ----------- |
-            | <a id="queryfooid"></a>`id` | [`ID`](#id) | ID of the object. |
+            | <a id="query-foo-id"></a>`id` | [`ID`](#id) | ID of the object. |
           DOC
         end
 
@@ -140,12 +140,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
         expectation = <<~DOC
           ### `OrderingTest`
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="orderingtestbar"></a>`bar` | [`String!`](#string) | A description of bar field. |
-          | <a id="orderingtestfoo"></a>`foo` | [`String!`](#string) | A description of foo field. |
+          | <a id="orderingtest-bar"></a>`bar` | [`String!`](#string) | A description of bar field. |
+          | <a id="orderingtest-foo"></a>`foo` | [`String!`](#string) | A description of foo field. |
         DOC
 
         is_expected.to include(expectation)
@@ -189,12 +189,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           Testing doc refs.
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="docrefspecfoo"></a>`foo` | [`String!`](#string) | The foo. See [A list of foos](https://example.com/foos). |
-          | <a id="docrefspecwibbles"></a>`wibbles` | [`WibbleConnection`](#wibbleconnection) | The wibbles. See [wibblance](https://example.com/wibbles). (see [Connections](#connections)) |
+          | <a id="docrefspec-foo"></a>`foo` | [`String!`](#string) | The foo. See [A list of foos](https://example.com/foos). |
+          | <a id="docrefspec-wibbles"></a>`wibbles` | [`WibbleConnection`](#wibbleconnection) | The wibbles. See [wibblance](https://example.com/wibbles). (see [Connections](#connections)) |
 
           #### Fields with arguments
 
@@ -204,11 +204,64 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           Returns [`String!`](#string).
 
-          ###### Arguments
+          Arguments:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="docrefspecbarbarity"></a>`barity` | [`Int`](#int) | ?. |
+          | <a id="docrefspec-bar-barity"></a>`barity` | [`Int`](#int) | ?. |
+        DOC
+      end
+
+      it_behaves_like 'renders correctly as GraphQL documentation'
+    end
+
+    context 'when an interface has a field with arguments' do
+      let(:type) do
+        interface = Module.new
+        interface.include(::Types::BaseInterface)
+        interface.graphql_name 'Searchable'
+        interface.description 'Something that can be searched.'
+        interface.field :search_results, GraphQL::Types::String, null: true, description: 'The results.' do
+          argument :query, GraphQL::Types::String, required: true, description: 'The search query.'
+        end
+
+        implementor = Class.new(::Types::BaseObject)
+        implementor.graphql_name 'SearchableItem'
+        implementor.description 'An item that is searchable.'
+        implementor.implements interface
+        interface.orphan_types implementor
+
+        Class.new(::Types::BaseObject) do
+          graphql_name 'InterfaceArgTest'
+          description 'A test for interface fields with arguments.'
+
+          field :searchable, interface, null: true, description: 'A searchable thing.'
+        end
+      end
+
+      let(:section) do
+        <<~DOC
+          #### `Searchable`
+
+          Something that can be searched.
+
+          Implementations:
+
+          - [`SearchableItem`](#searchableitem)
+
+          ##### Fields with arguments
+
+          ###### `Searchable.searchResults`
+
+          The results.
+
+          Returns [`String`](#string).
+
+          Arguments:
+
+          | Name | Type | Description |
+          | ---- | ---- | ----------- |
+          | <a id="searchable-searchresults-query"></a>`query` | [`String!`](#string) | The search query. |
         DOC
       end
 
@@ -241,11 +294,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
          Returns [`String!`](#string).
 
-         ###### Arguments
+         Arguments:
 
          | Name | Type | Description |
          | ---- | ---- | ----------- |
-         | <a id="deprecatedtestfoofooarg"></a>`fooArg` {{< icon name="warning-solid" >}} | [`String`](#string) | **Deprecated** in GitLab 101.2. Bad argument. |
+         | <a id="deprecatedtest-foo-fooarg"></a>`fooArg` {{< icon name="warning-solid" >}} | [`String`](#string) | **Deprecated** in GitLab 101.2. Bad argument. |
         DOC
       end
 
@@ -288,12 +341,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           A thing we used to use, but no longer support.
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="deprecatedtestbar"></a>`bar` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Deprecated** in GitLab 1.10. This was renamed. Use: [`Query.boom`](#queryboom). |
-          | <a id="deprecatedtestfoo"></a>`foo` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Deprecated** in GitLab 1.10. This is deprecated. |
+          | <a id="deprecatedtest-bar"></a>`bar` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Deprecated** in GitLab 1.10. This was renamed. Use: [`Query.boom`](#query-boom). |
+          | <a id="deprecatedtest-foo"></a>`foo` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Deprecated** in GitLab 1.10. This is deprecated. |
 
           #### Fields with arguments
 
@@ -302,18 +355,18 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
           {{< details >}}
           **Deprecated** in GitLab 1.10.
           Do not use.
-          Use: [`X.y`](#xy).
+          Use: [`X.y`](#x-y).
           {{< /details >}}
 
           A description.
 
           Returns [`String!`](#string).
 
-          ###### Arguments
+          Arguments:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="deprecatedtestfoowithargsarg"></a>`arg` | [`Int`](#int) | Argity. |
+          | <a id="deprecatedtest-foowithargs-arg"></a>`arg` | [`Int`](#int) | Argity. |
         DOC
       end
 
@@ -339,7 +392,7 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
           {{< details >}}
           **Deprecated** in GitLab 10.11.
           This was renamed.
-          Use: [`Query.foo`](#queryfoo).
+          Use: [`Query.foo`](#query-foo).
           {{< /details >}}
 
           A bar.
@@ -377,11 +430,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
          Returns [`String!`](#string).
 
-         ###### Arguments
+         Arguments:
 
          | Name | Type | Description |
          | ---- | ---- | ----------- |
-         | <a id="alphatestfoofooarg"></a>`fooArg` {{< icon name="warning-solid" >}} | [`String`](#string) | **Introduced** in GitLab 101.2. **Status**: Experiment. Argument description. |
+         | <a id="alphatest-foo-fooarg"></a>`fooArg` {{< icon name="warning-solid" >}} | [`String`](#string) | **Introduced** in GitLab 101.2. **Status**: Experiment. Argument description. |
         DOC
       end
 
@@ -415,11 +468,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           A thing with fields in alpha.
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="alphatestfoo"></a>`foo` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Introduced** in GitLab 1.10. **Status**: Experiment. A description. |
+          | <a id="alphatest-foo"></a>`foo` {{< icon name="warning-solid" >}} | [`String!`](#string) | **Introduced** in GitLab 1.10. **Status**: Experiment. A description. |
 
           #### Fields with arguments
 
@@ -434,11 +487,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           Returns [`String!`](#string).
 
-          ###### Arguments
+          Arguments:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="alphatestfoowithargsarg"></a>`arg` | [`Int`](#int) | Argity. |
+          | <a id="alphatest-foowithargs-arg"></a>`arg` | [`Int`](#int) | Argity. |
         DOC
       end
 
@@ -506,9 +559,9 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           | Value | Description |
           | ----- | ----------- |
-          | <a id="myenumbar"></a>`BAR` {{< icon name="warning-solid" >}} | **Deprecated** in GitLab 1.10. This is deprecated. |
-          | <a id="myenumbaz"></a>`BAZ` | A description of BAZ. |
-          | <a id="myenumboop"></a>`BOOP` {{< icon name="warning-solid" >}} | **Deprecated** in GitLab 1.10. This was renamed. Use: [`MyEnum.BAR`](#myenumbar). |
+          | <a id="myenum-bar"></a>`BAR` {{< icon name="warning-solid" >}} | **Deprecated** in GitLab 1.10. This is deprecated. |
+          | <a id="myenum-baz"></a>`BAZ` | A description of BAZ. |
+          | <a id="myenum-boop"></a>`BOOP` {{< icon name="warning-solid" >}} | **Deprecated** in GitLab 1.10. This was renamed. Use: [`MyEnum.BAR`](#myenum-bar). |
         DOC
       end
 
@@ -532,11 +585,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
             A test for rendering IDs.
 
-            #### Fields
+            Fields:
 
             | Name | Type | Description |
             | ---- | ---- | ----------- |
-            | <a id="idtestfoo"></a>`foo` | [`UserID`](#userid) | A user foo. |
+            | <a id="idtest-foo"></a>`foo` | [`UserID`](#userid) | A user foo. |
           DOC
         end
 
@@ -580,6 +633,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
             milestone: '72.34'
           }
 
+        mutation.argument :experimental_arg,
+          type: GraphQL::Types::Float,
+          required: false,
+          description: 'An argument',
+          experiment: { milestone: '12.34' }
+
         mutation.field :everything,
           type: GraphQL::Types::String,
           null: true,
@@ -594,6 +653,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
             replacement: 'everything',
             milestone: '72.34'
           }
+
+        mutation.field :experimental_field,
+          type: GraphQL::Types::String,
+          null: true,
+          description: 'A field',
+          experiment: { milestone: '72.34' }
 
         mutation
       end
@@ -611,22 +676,24 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
             Input type: `MakeItPrettyInput`
 
-            #### Arguments
+            Arguments:
 
             | Name | Type | Description |
             | ---- | ---- | ----------- |
-            | <a id="mutationmakeitprettyclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
-            | <a id="mutationmakeitprettyprettinessfactor"></a>`prettinessFactor` | [`Float!`](#float) | How much prettier?. |
-            | <a id="mutationmakeitprettypulchritude"></a>`pulchritude` {{< icon name="warning-solid" >}} | [`Float`](#float) | **Deprecated**: This was renamed. Please use `prettinessFactor`. Deprecated in GitLab 72.34. |
+            | <a id="mutation-makeitpretty-clientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+            | <a id="mutation-makeitpretty-experimentalarg"></a>`experimentalArg` {{< icon name="warning-solid" >}} | [`Float`](#float) | **Introduced** in GitLab 12.34. **Status**: Experiment. An argument. |
+            | <a id="mutation-makeitpretty-prettinessfactor"></a>`prettinessFactor` | [`Float!`](#float) | How much prettier?. |
+            | <a id="mutation-makeitpretty-pulchritude"></a>`pulchritude` {{< icon name="warning-solid" >}} | [`Float`](#float) | **Deprecated** in GitLab 72.34. This was renamed. Use: `prettinessFactor`. |
 
-            #### Fields
+            Fields:
 
             | Name | Type | Description |
             | ---- | ---- | ----------- |
-            | <a id="mutationmakeitprettyclientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
-            | <a id="mutationmakeitprettyerrors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
-            | <a id="mutationmakeitprettyeverything"></a>`everything` | [`String`](#string) | What we made prettier. |
-            | <a id="mutationmakeitprettyomnis"></a>`omnis` {{< icon name="warning-solid" >}} | [`String`](#string) | **Deprecated**: This was renamed. Please use `everything`. Deprecated in GitLab 72.34. |
+            | <a id="mutation-makeitpretty-clientmutationid"></a>`clientMutationId` | [`String`](#string) | A unique identifier for the client performing the mutation. |
+            | <a id="mutation-makeitpretty-errors"></a>`errors` | [`[String!]!`](#string) | Errors encountered during the mutation. |
+            | <a id="mutation-makeitpretty-everything"></a>`everything` | [`String`](#string) | What we made prettier. |
+            | <a id="mutation-makeitpretty-experimentalfield"></a>`experimentalField` {{< icon name="warning-solid" >}} | [`String`](#string) | **Introduced** in GitLab 72.34. **Status**: Experiment. A field. |
+            | <a id="mutation-makeitpretty-omnis"></a>`omnis` {{< icon name="warning-solid" >}} | [`String`](#string) | **Deprecated** in GitLab 72.34. This was renamed. Use: `everything`. |
           DOC
         end
       end
@@ -659,12 +726,60 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           A time-frame defined as a closed inclusive range of two dates.
 
-          #### Arguments
+          Arguments:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="timeframeend"></a>`end` | [`Date!`](#date) | End of the range. |
-          | <a id="timeframestart"></a>`start` | [`Date!`](#date) | Start of the range. |
+          | <a id="timeframe-end"></a>`end` | [`Date!`](#date) | End of the range. |
+          | <a id="timeframe-start"></a>`start` | [`Date!`](#date) | Start of the range. |
+        DOC
+      end
+
+      it_behaves_like 'renders correctly as GraphQL documentation'
+    end
+
+    context 'when an input type has deprecated and experiment fields' do
+      let(:type) do
+        input_type = Class.new(::Types::BaseInputObject) do
+          graphql_name 'FilterInput'
+          description 'A filter input.'
+
+          argument :name, GraphQL::Types::String,
+            required: false,
+            description: 'Name to filter by.'
+          argument :legacy_field, GraphQL::Types::String,
+            required: false,
+            description: 'A legacy filter.',
+            deprecated: { reason: :renamed, replacement: 'name', milestone: '15.0' }
+          argument :experimental_field, GraphQL::Types::String,
+            required: false,
+            description: 'An experimental filter.',
+            experiment: { milestone: '16.0' }
+        end
+
+        Class.new(::Types::BaseObject) do
+          graphql_name 'InputObjectTest'
+          description 'A test for input object types.'
+
+          field :wibble, type: ::GraphQL::Types::Int, null: true do
+            argument :filter, type: input_type, required: false, description: 'Filter applied.'
+          end
+        end
+      end
+
+      let(:section) do
+        <<~DOC
+          ### `FilterInput`
+
+          A filter input.
+
+          Arguments:
+
+          | Name | Type | Description |
+          | ---- | ---- | ----------- |
+          | <a id="filterinput-experimentalfield"></a>`experimentalField` {{< icon name="warning-solid" >}} | [`String`](#string) | **Introduced** in GitLab 16.0. **Status**: Experiment. An experimental filter. |
+          | <a id="filterinput-legacyfield"></a>`legacyField` {{< icon name="warning-solid" >}} | [`String`](#string) | **Deprecated** in GitLab 15.0. This was renamed. Use: `name`. |
+          | <a id="filterinput-name"></a>`name` | [`String`](#string) | Name to filter by. |
         DOC
       end
 
@@ -712,12 +827,12 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           A test for abstract types.
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="abstracttypetestflying"></a>`flying` | [`Flying`](#flying) | A flying thing. |
-          | <a id="abstracttypetestfoo"></a>`foo` | [`UserOrGroup`](#userorgroup) | The foo. |
+          | <a id="abstracttypetest-flying"></a>`flying` | [`Flying`](#flying) | A flying thing. |
+          | <a id="abstracttypetest-foo"></a>`foo` | [`UserOrGroup`](#userorgroup) | The foo. |
         DOC
 
         union_section = <<~DOC
@@ -740,11 +855,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           - [`AfricanSwallow`](#africanswallow)
 
-          ##### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="flyingflightspeed"></a>`flightSpeed` | [`Int`](#int) | Speed in mph. |
+          | <a id="flying-flightspeed"></a>`flightSpeed` | [`Int`](#int) | Speed in mph. |
         DOC
 
         implementation_section = <<~DOC
@@ -752,11 +867,11 @@ RSpec.describe Tooling::Graphql::Docs::Renderer do
 
           A swallow from Africa.
 
-          #### Fields
+          Fields:
 
           | Name | Type | Description |
           | ---- | ---- | ----------- |
-          | <a id="africanswallowflightspeed"></a>`flightSpeed` | [`Int`](#int) | Speed in mph. |
+          | <a id="africanswallow-flightspeed"></a>`flightSpeed` | [`Int`](#int) | Speed in mph. |
         DOC
 
         is_expected.to include(

@@ -1,7 +1,6 @@
 - breadcrumb_title _("General settings")
 - page_title _("General settings")
 - expanded = expanded_by_default?
-- @force_desktop_expanded_sidebar = true
 
 = render 'shared/namespaces/cascading_settings/lock_tooltips'
 
@@ -44,6 +43,7 @@
       = render 'shared/badges/badge_settings'
 
 - if can?(current_user, :admin_group, @group)
+  = render_if_exists 'groups/settings/built_in_project_templates'
   = render_if_exists 'groups/custom_project_templates_setting'
   = render_if_exists 'groups/templates_setting', expanded: expanded
   = render_if_exists 'shared/groups/max_pages_size_setting'
@@ -58,5 +58,5 @@
       = render 'groups/settings/advanced'
 
 - elsif can?(current_user, :remove_group, @group)
-  = render 'shared/groups_projects/settings/restore', context: @group
+  = render 'shared/groups_projects/settings/restore', context: @group, tracking_event: 'trigger_restore_on_group'
   = render 'groups/settings/delete'

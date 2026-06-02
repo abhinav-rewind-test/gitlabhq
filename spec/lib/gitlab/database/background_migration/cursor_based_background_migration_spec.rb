@@ -60,23 +60,39 @@ RSpec.describe 'Cursor based batched background migrations', feature_category: :
         sub_batch_size: 5,
         pause_ms: 100,
         min_cursor: [0, 0],
-        max_cursor: [100, 9]
+        max_cursor: [100, 0]
       )
     end
 
     let(:runner) { Gitlab::Database::BackgroundMigration::BatchedMigrationRunner.new(connection: connection) }
 
-    it 'migrates correctly', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9459' do
-      runner.run_entire_migration(migration)
-      expect(model.where(backfilled: 1).count).to eq(model.count)
-
-      unless migration.batched_jobs.count == 100
-        migration.batched_jobs.find_each do |job|
-          puts job.inspect
-        end
+    it 'uses the correct batching query' do
+      queries = []
+      subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*args|
+        event = ActiveSupport::Notifications::Event.new(*args)
+        queries << event.payload[:sql]
       end
 
-      expect(migration.batched_jobs.count).to eq(100)
+      strategy_instance.next_batch(
+        table_name,
+        :id_a,
+        batch_min_value: [0, 0],
+        batch_size: 10,
+        job_arguments: [],
+        job_class: background_migration_job_class
+      )
+
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+
+      # Verify that the query selects only the cursor columns so batching can be an index only scan
+      expect(queries).to include(
+        a_string_matching(/SELECT "_test_cursor_batching"."id_a", "_test_cursor_batching"."id_b" FROM/i)
+      )
+    end
+
+    it 'migrates correctly' do
+      runner.run_entire_migration(migration)
+      expect(model.where('backfilled >= 1').count).to eq(model.count)
     end
 
     context 'when the last batch only has one row' do
@@ -88,14 +104,14 @@ RSpec.describe 'Cursor based batched background migrations', feature_category: :
           batch_size: 10,
           sub_batch_size: 1,
           pause_ms: 100,
-          min_cursor: [98, 9],
-          max_cursor: [100, 1]
+          min_cursor: [99, 0],
+          max_cursor: [100, 0]
         )
       end
 
-      it 'migrates correctly' do
+      it 'migrates correctly', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9459' do
         runner.run_entire_migration(migration)
-        expect(model.where(backfilled: 1).count).to eq(11)
+        expect(model.where('backfilled >= 1').count).to eq(11)
         expect(migration.batched_jobs.count).to eq(2)
       end
     end

@@ -1,21 +1,27 @@
 import Vue from 'vue';
+import { pinia } from '~/pinia/instance';
 import WhatsNewApp from './components/app.vue';
-import store from './store';
+import { useWhatsNew } from './store';
 
 let whatsNewApp;
 
-export default (dataset = {}, withClose, updateHelpMenuUnreadBadge) => {
+export default (dataset = {}, updateHelpMenuUnreadBadge) => {
   if (whatsNewApp) {
-    store.dispatch('openDrawer');
+    useWhatsNew().openDrawer();
   } else {
-    const { versionDigest, initialReadArticles, markAsReadPath, mostRecentReleaseItemsCount } =
-      dataset;
+    const {
+      versionDigest,
+      initialReadArticles,
+      markAsReadPath,
+      mostRecentReleaseItemsCount,
+      showTranscendPromo,
+    } = dataset;
     const el = document.createElement('div');
     document.body.append(el);
     whatsNewApp = new Vue({
       el,
       name: 'WhatsNewAppRoot',
-      store,
+      pinia,
       render(createElement) {
         return createElement(WhatsNewApp, {
           props: {
@@ -23,8 +29,8 @@ export default (dataset = {}, withClose, updateHelpMenuUnreadBadge) => {
             initialReadArticles,
             markAsReadPath,
             mostRecentReleaseItemsCount,
-            withClose,
             updateHelpMenuUnreadBadge,
+            showTranscendPromo,
           },
         });
       },

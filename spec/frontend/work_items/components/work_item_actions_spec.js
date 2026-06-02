@@ -18,7 +18,6 @@ import WorkItemChangeTypeModal from 'ee_else_ce/work_items/components/work_item_
 import MoveWorkItemModal from '~/work_items/components/move_work_item_modal.vue';
 import {
   CREATION_CONTEXT_RELATED_ITEM,
-  NAME_TO_TEXT_LOWERCASE_MAP,
   STATE_OPEN,
   WORK_ITEM_TYPE_NAME_EPIC,
   WORK_ITEM_TYPE_NAME_ISSUE,
@@ -240,7 +239,14 @@ describe('WorkItemActions component', () => {
   });
 
   it('renders dropdown actions', async () => {
-    createComponent({ workItemType: WORK_ITEM_TYPE_NAME_ISSUE });
+    createComponent({
+      workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+      provide: {
+        getWorkItemTypeConfiguration: jest
+          .fn()
+          .mockReturnValue({ supportsMoveAction: true, showProjectSelector: true }),
+      },
+    });
 
     await waitForPromises();
 
@@ -283,7 +289,7 @@ describe('WorkItemActions component', () => {
       },
       {
         testId: 'copy-create-note-email-action',
-        text: 'Copy issue email address',
+        text: 'Copy Issue email address',
       },
       {
         group: true,
@@ -298,7 +304,7 @@ describe('WorkItemActions component', () => {
       },
       {
         testId: 'delete-action',
-        text: 'Delete issue',
+        text: 'Delete Issue',
       },
       {
         group: true,
@@ -367,7 +373,21 @@ describe('WorkItemActions component', () => {
             discussionLocked: true,
           },
         },
+        useWorkItemFeatures: false,
       });
+    });
+
+    it('passes useWorkItemFeatures as true to the mutation when workItemFeaturesField FF is enabled', async () => {
+      createComponent({ provide: { glFeatures: { workItemFeaturesField: true } } });
+
+      expect(lockDiscussionMutationResolver).not.toHaveBeenCalled();
+
+      findLockDiscussionButton().vm.$emit('action');
+      await waitForPromises();
+
+      expect(lockDiscussionMutationResolver).toHaveBeenCalledWith(
+        expect.objectContaining({ useWorkItemFeatures: true }),
+      );
     });
 
     it('emits error when update mutation fails', async () => {
@@ -431,7 +451,7 @@ describe('WorkItemActions component', () => {
 
       expect(modalShowSpy).toHaveBeenCalled();
       expect(findModal().text()).toBe(
-        'Are you sure you want to delete the task? This action cannot be reversed.',
+        'Are you sure you want to delete the Task? This action cannot be reversed.',
       );
     });
 
@@ -441,7 +461,7 @@ describe('WorkItemActions component', () => {
       findDeleteButton().vm.$emit('action');
 
       expect(findModal().text()).toBe(
-        'Delete this task and release all child items? This action cannot be reversed.',
+        'Delete this Task and release all child items? This action cannot be reversed.',
       );
     });
 
@@ -502,6 +522,7 @@ describe('WorkItemActions component', () => {
             id: 'gid://gitlab/WorkItem/1',
             subscribed,
           },
+          useWorkItemFeatures: false,
         });
         expect(toast).toHaveBeenCalledWith(toastMessage);
       },
@@ -515,6 +536,44 @@ describe('WorkItemActions component', () => {
       await waitForPromises();
 
       expect(wrapper.emitted('error')).toEqual([['Failed to subscribe']]);
+    });
+
+    describe('when workItemFeaturesField feature flag is enabled', () => {
+      it('passes useWorkItemFeatures as true to the notifications query', () => {
+        const handler = jest.fn().mockResolvedValue(workItemNotificationsResponse(true));
+        createComponent({
+          notificationsQueryHandler: handler,
+          provide: { glFeatures: { workItemFeaturesField: true } },
+        });
+
+        expect(handler).toHaveBeenCalledWith({
+          id: 'gid://gitlab/WorkItem/1',
+          useWorkItemFeatures: true,
+        });
+      });
+
+      it('passes useWorkItemFeatures as true to the mutation', async () => {
+        const mutationHandler = jest
+          .fn()
+          .mockResolvedValue(updateWorkItemNotificationsMutationResponse(true));
+        createComponent({
+          notificationsMutationHandler: mutationHandler,
+          notificationsQueryHandler: notificationOffQueryHandler,
+          provide: { glFeatures: { workItemFeaturesField: true } },
+        });
+        await waitForPromises();
+
+        findNotificationsToggleForm().vm.$emit('action');
+        await waitForPromises();
+
+        expect(mutationHandler).toHaveBeenCalledWith({
+          input: {
+            id: 'gid://gitlab/WorkItem/1',
+            subscribed: true,
+          },
+          useWorkItemFeatures: true,
+        });
+      });
     });
   });
 
@@ -539,11 +598,11 @@ describe('WorkItemActions component', () => {
       });
 
       describe.each`
-        description                                             | workItemType                      | mockConfig                          | shouldShowButton
-        ${'when config is `null` and type is OKR'}              | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${undefined}                        | ${true}
-        ${'when config is `null` and type is not OKR'}          | ${WORK_ITEM_TYPE_NAME_TASK}       | ${undefined}                        | ${false}
-        ${'when config has canPromote `false` and type is OKR'} | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${{ canPromoteToObjective: false }} | ${true}
-        ${'when config has canPromote `true` and type is OKR'}  | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${{ canPromoteToObjective: true }}  | ${true}
+        description                                           | workItemType                      | mockConfig                          | shouldShowButton
+        ${'when config is undefined'}                         | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${undefined}                        | ${false}
+        ${'when config has canPromote false'}                 | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${{ canPromoteToObjective: false }} | ${false}
+        ${'when config has canPromote true'}                  | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${{ canPromoteToObjective: true }}  | ${true}
+        ${'when config has canPromote true for non-OKR type'} | ${WORK_ITEM_TYPE_NAME_TASK}       | ${{ canPromoteToObjective: true }}  | ${true}
       `('$description', ({ workItemType, mockConfig, shouldShowButton }) => {
         it('shows promote button correctly', async () => {
           createComponent({
@@ -605,7 +664,7 @@ describe('WorkItemActions component', () => {
 
         expect(convertWorkItemMutationErrorHandler).toHaveBeenCalled();
         expect(wrapper.emitted('error')).toEqual([
-          ['Something went wrong while promoting the key result. Please try again.'],
+          ['Something went wrong while promoting the Key Result. Please try again.'],
         ]);
       });
     });
@@ -630,7 +689,7 @@ describe('WorkItemActions component', () => {
         createComponent({ workItemType });
 
         expect(findCopyCreateNoteEmailButton().text()).toEqual(
-          `Copy ${NAME_TO_TEXT_LOWERCASE_MAP[workItemType]} email address`,
+          `Copy ${workItemType} email address`,
         );
       },
     );
@@ -727,14 +786,18 @@ describe('WorkItemActions component', () => {
     });
 
     it.each`
-      isProjectSelectorVisible | workItemType
-      ${false}                 | ${WORK_ITEM_TYPE_NAME_EPIC}
-      ${true}                  | ${WORK_ITEM_TYPE_NAME_ISSUE}
-      ${true}                  | ${WORK_ITEM_TYPE_NAME_TASK}
+      isProjectSelectorVisible | showProjectSelector
+      ${true}                  | ${true}
+      ${false}                 | ${false}
+      ${false}                 | ${undefined}
     `(
-      'when workItemType is $workItemType, sets `CreateWorkItemModal` `showProjectSelector` prop to $isProjectSelectorVisible',
-      ({ isProjectSelectorVisible, workItemType }) => {
-        createComponent({ workItemType });
+      'when showProjectSelector config is $showProjectSelector, sets `CreateWorkItemModal` `showProjectSelector` prop to $isProjectSelectorVisible',
+      ({ isProjectSelectorVisible, showProjectSelector }) => {
+        createComponent({
+          provide: {
+            getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ showProjectSelector }),
+          },
+        });
 
         expect(findCreateWorkItemModal().props('showProjectSelector')).toBe(
           isProjectSelectorVisible,
@@ -742,27 +805,12 @@ describe('WorkItemActions component', () => {
       },
     );
 
-    describe('with showProjectSelector=true', () => {
-      beforeEach(async () => {
-        createComponent({
-          provide: {
-            getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ showProjectSelector: true }),
-          },
-        });
-        await waitForPromises();
-      });
-
-      it('renders create modal with project selector', () => {
-        expect(findCreateWorkItemModal().props('showProjectSelector')).toBe(true);
-      });
-    });
-
     it('emits `workItemCreated` when `CreateWorkItemModal` emits `workItemCreated`', () => {
       createComponent();
 
-      findCreateWorkItemModal().vm.$emit('workItemCreated');
+      findCreateWorkItemModal().vm.$emit('work-item-created');
 
-      expect(wrapper.emitted('workItemCreated')).toHaveLength(1);
+      expect(wrapper.emitted('work-item-created')).toHaveLength(1);
     });
   });
 
@@ -807,9 +855,11 @@ describe('WorkItemActions component', () => {
   });
 
   describe('move issue button', () => {
-    it('shows move button when workItemType is issue and `canMove` is true', async () => {
+    it('shows move button when supportsMoveAction config is true and `canMove` is true', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ supportsMoveAction: true }),
+        },
       });
       await waitForPromises();
 
@@ -818,7 +868,9 @@ describe('WorkItemActions component', () => {
 
     it('renders with text "Move"', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ supportsMoveAction: true }),
+        },
       });
 
       await waitForPromises();
@@ -826,35 +878,32 @@ describe('WorkItemActions component', () => {
       expect(findMoveButton().text()).toBe('Move');
     });
 
-    describe('with supportsMoveAction=true', () => {
-      beforeEach(async () => {
-        createComponent({
-          provide: {
-            getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ supportsMoveAction: true }),
-          },
-        });
-        await waitForPromises();
-      });
-
-      it('renders the move button', () => {
-        expect(findMoveButton().exists()).toBe(true);
-      });
-    });
-
     it('hides move button when `canMove` is false', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
         canMove: false,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ supportsMoveAction: true }),
+        },
       });
       await waitForPromises();
 
       expect(findMoveButton().exists()).toBe(false);
     });
 
-    it('hides move button when workItemType is not issue', async () => {
+    it('hides move button when supportsMoveAction config is false', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_TASK,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ supportsMoveAction: false }),
+        },
       });
+
+      await waitForPromises();
+
+      expect(findMoveButton().exists()).toBe(false);
+    });
+
+    it('hides move button when config is not available', async () => {
+      createComponent();
 
       await waitForPromises();
 
@@ -863,10 +912,14 @@ describe('WorkItemActions component', () => {
   });
 
   describe('move modal', () => {
+    const moveActionConfig = { supportsMoveAction: true };
+
     it('does not render move modal when there is no projectId', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
         projectId: null,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue(moveActionConfig),
+        },
       });
 
       await waitForPromises();
@@ -876,7 +929,9 @@ describe('WorkItemActions component', () => {
 
     it('renders move modal when move button is clicked', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue(moveActionConfig),
+        },
       });
 
       await waitForPromises();
@@ -890,7 +945,9 @@ describe('WorkItemActions component', () => {
 
     it('passes correct props to move modal', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue(moveActionConfig),
+        },
       });
 
       await waitForPromises();
@@ -908,7 +965,9 @@ describe('WorkItemActions component', () => {
 
     it('closes modal when hideModal event is emitted', async () => {
       createComponent({
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
+        provide: {
+          getWorkItemTypeConfiguration: jest.fn().mockReturnValue(moveActionConfig),
+        },
       });
 
       await waitForPromises();

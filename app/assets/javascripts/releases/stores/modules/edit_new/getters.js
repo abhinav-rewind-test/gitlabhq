@@ -1,4 +1,4 @@
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import { s__ } from '~/locale';
 import { hasContent } from '~/lib/utils/text_utility';
 import { getDuplicateItemsFromArray } from '~/lib/utils/array_utility';
@@ -189,6 +189,8 @@ export const isCreating = ({ step }) => step === CREATE;
 export const isExistingTag = ({ tagStep }) => tagStep === EXISTING_TAG;
 export const isNewTag = ({ tagStep }) => tagStep === NEW_TAG;
 
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- localStorage key identifier, not a URL
 export const localStorageKey = ({ projectPath }) => `${projectPath}/release/new`;
 export const localStorageCreateFromKey = ({ projectPath }) =>
+  // eslint-disable-next-line @gitlab/no-hardcoded-urls -- localStorage key identifier, not a URL
   `${projectPath}/release/new/createFrom`;

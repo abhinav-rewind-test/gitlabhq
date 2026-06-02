@@ -39,6 +39,7 @@ module Users
 
       migrate_authored_todos
       migrate_issues
+      migrate_saved_views
       migrate_merge_requests
       migrate_notes
       migrate_abuse_reports
@@ -60,11 +61,7 @@ module Users
       user.destroy_dependent_associations_in_batches(exclude: [:snippets])
       user.nullify_dependent_associations_in_batches
 
-      # Destroy the namespace after destroying the user since certain methods may depend on the namespace existing
-      user_data = user.destroy
-      user.namespace.destroy
-
-      user_data
+      user.destroy
     end
 
     def delete_snippets
@@ -79,6 +76,11 @@ module Users
     def migrate_issues
       batched_migrate(Issue, :author_id)
       batched_migrate(Issue, :last_edited_by_id)
+    end
+
+    def migrate_saved_views
+      batched_migrate(WorkItems::SavedViews::SavedView, :created_by_id)
+      batched_migrate(WorkItems::SavedViews::SavedView, :updated_by_id)
     end
 
     def migrate_merge_requests

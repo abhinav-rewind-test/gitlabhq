@@ -7,6 +7,7 @@ module Git
 
     JIRA_SYNC_BATCH_SIZE = 20
     JIRA_SYNC_BATCH_DELAY = 10.seconds
+    DUO_WORKFLOW_TRAILER = 'Duo-Workflow-Definition'
 
     def execute
       execute_branch_hooks
@@ -99,6 +100,7 @@ module Git
       enqueue_process_commit_messages
       enqueue_jira_connect_sync_messages
       track_ci_config_change_event
+      track_ci_config_creation_event
     end
 
     def branch_remove_hooks
@@ -110,8 +112,34 @@ module Git
       return unless default_branch?
 
       commits_changing_ci_config.each do |commit|
-        track_internal_event('commit_change_to_ciconfigfile', user: commit.author, project: commit.project)
+        track_internal_event(
+          'commit_change_to_ciconfigfile',
+          user: commit.author,
+          project: commit.project,
+          additional_properties: { author_source: ci_config_author_source(commit) }
+        )
       end
+    end
+
+    def track_ci_config_creation_event
+      commits_creating_ci_config.each do |commit|
+        author = commit.author
+        next unless author
+
+        track_internal_event(
+          'create_ci_config_file',
+          user: author,
+          project: commit.project,
+          namespace: commit.project.namespace,
+          additional_properties: { author_source: ci_config_author_source(commit) }
+        )
+      end
+    end
+
+    def ci_config_author_source(commit)
+      # Re-fetching the commit via FindCommitsRequest to access trailers.
+      full_commit = project.repository.commits(commit.id, limit: 1, trailers: true).first
+      full_commit&.trailers&.dig(DUO_WORKFLOW_TRAILER).presence || 'human'
     end
 
     def track_process_commit_limit_overflow
@@ -261,6 +289,16 @@ module Git
 
         paths.include?(project.ci_config_path_or_default)
       end.keys
+    end
+
+    def commits_creating_ci_config
+      ci_config_path = project.ci_config_path_or_default
+
+      limited_commits.select do |commit|
+        next if commit.merge_commit?
+
+        commit.raw_deltas.any? { |delta| delta.new_path == ci_config_path && delta.new_file? }
+      end
     end
 
     def commit_paths

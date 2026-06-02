@@ -4,7 +4,7 @@ require "spec_helper"
 
 RSpec.describe Users::CalloutsHelper, feature_category: :navigation do
   include StubVersion
-  let_it_be(:user, refind: true) { create(:user) }
+  let_it_be_with_refind(:user) { create(:user) }
 
   before do
     allow(helper).to receive(:current_user).and_return(user)
@@ -252,10 +252,16 @@ RSpec.describe Users::CalloutsHelper, feature_category: :navigation do
   describe '#show_email_otp_enrollment_callout?' do
     subject { helper.show_email_otp_enrollment_callout? }
 
-    let(:email_otp_required_after) { 8.days.from_now }
+    let(:now) { Time.zone.parse('2025-09-10 12:00') }
+    let(:email_otp_required_after) { now + 8.days }
 
     before do
+      travel_to(now)
       user.update!(email_otp_required_after: email_otp_required_after)
+    end
+
+    after do
+      travel_back
     end
 
     it { is_expected.to be true }
@@ -274,6 +280,14 @@ RSpec.describe Users::CalloutsHelper, feature_category: :navigation do
       end
 
       it { is_expected.to be false }
+
+      context 'and email_otp_enabled application setting is enabled' do
+        before do
+          stub_application_setting(email_otp_enabled: true)
+        end
+
+        it { is_expected.to be true }
+      end
     end
 
     context 'when user has dismissed the banner' do
@@ -306,16 +320,66 @@ RSpec.describe Users::CalloutsHelper, feature_category: :navigation do
       it { is_expected.to be false }
     end
 
-    context 'when email_otp_required_after is more than 60 days away' do
-      let(:email_otp_required_after) { 61.days.from_now }
+    context 'when user is not allowed to use password for authentication' do
+      before do
+        allow(user).to receive(:allow_password_authentication?).and_return(false)
+      end
 
       it { is_expected.to be false }
     end
 
-    context 'when email_otp_required_after is less than 31 days away' do
-      let(:email_otp_required_after) { 30.days.from_now }
+    context 'when at the start of the callout period' do
+      let(:email_otp_required_after) { now + 14.days }
+
+      it { is_expected.to be true }
+    end
+
+    context 'when almost at the end of the callout period' do
+      let(:email_otp_required_after) { now + 7.days + 1.minute }
+
+      it { is_expected.to be true }
+    end
+
+    context 'when before the callout period starts' do
+      let(:email_otp_required_after) { now + 14.days + 1.hour }
 
       it { is_expected.to be false }
+    end
+
+    context 'when after the callout period ends' do
+      let(:email_otp_required_after) { now + 7.days }
+
+      it { is_expected.to be false }
+    end
+  end
+
+  describe 'show_single_origin_fallback_callout?', :do_not_mock_admin_mode_setting do
+    let_it_be(:admin) { create(:user, :admin) }
+    let_it_be(:user) { create(:user) }
+
+    subject { helper.show_single_origin_fallback_callout? }
+
+    using RSpec::Parameterized::TableSyntax
+
+    where(:current_user, :single_origin_fallback_enabled, :dismissed, :controller_path, :expected_result) do
+      ref(:admin) | true  | false | 'admin/users'     | true
+      ref(:admin) | false | false | 'admin/users'     | false
+      ref(:admin) | true  | false | 'projects'        | false
+      ref(:user)  | true  | false | 'admin/users'     | false
+      ref(:admin) | true  | true  | 'admin/users'     | false
+    end
+
+    with_them do
+      before do
+        allow(helper).to receive_messages(
+          current_user: current_user,
+          user_dismissed?: dismissed
+        )
+        stub_application_setting(vscode_extension_marketplace_single_origin_fallback_enabled: single_origin_fallback_enabled)
+        allow(helper.controller).to receive(:controller_path).and_return(controller_path)
+      end
+
+      it { is_expected.to be expected_result }
     end
   end
 end

@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Milestoneable do
-  let_it_be(:group, reload: true) { create(:group) }
+  let_it_be_with_reload(:group) { create(:group) }
   let_it_be(:project) { create(:project, :repository, group: group) }
   let_it_be(:user) { create(:user) }
   let_it_be(:milestone) { create(:milestone, project: project) }
@@ -113,7 +113,7 @@ RSpec.describe Milestoneable do
   describe 'release scopes' do
     let_it_be(:project) { create(:project, :repository) }
 
-    let_it_be(:release_1) { create(:release, tag: 'v1.0', project: project) }
+    let_it_be(:release_1, freeze: false) { create(:release, tag: 'v1.0', project: project) }
     let_it_be(:release_2) { create(:release, tag: 'v2.0', project: project) }
     let_it_be(:release_3) { create(:release, tag: 'v3.0', project: project) }
     let_it_be(:release_4) { create(:release, tag: 'v4.0', project: project) }

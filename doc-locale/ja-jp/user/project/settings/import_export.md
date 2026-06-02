@@ -1,9 +1,9 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-title: ファイルエクスポートを使用してプロジェクトとグループを移行する
-description: "ファイルエクスポートを使用して、プロジェクトとグループをGitLabインスタンス間で移行します。"
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: ファイルエクスポートを使用してGitLabデータを移行する
+description: "ファイルエクスポートを使用してGitLabデータを移行する。"
 ---
 
 {{< details >}}
@@ -12,6 +12,12 @@ description: "ファイルエクスポートを使用して、プロジェクト
 - 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
 
 {{< /details >}}
+
+{{< history >}}
+
+- 宛先インスタンスでの競合を避けるためにマイルストーンタイトルを改名する[機能が](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221447)GitLab 18.6.7以降、18.7.5以降、および18.8.5以降で導入されました。
+
+{{< /history >}}
 
 ファイルエクスポートを使用すると、オフライン環境で動作するGitLabのデータをポータブルパッケージとして入手できます。この移行方法では、リポジトリ、イシュー、マージリクエスト、コメントなど、ほとんどのプロジェクトデータが保持されます。
 
@@ -22,17 +28,16 @@ description: "ファイルエクスポートを使用して、プロジェクト
 
 ほとんどの場合、[直接転送](../../group/import/_index.md)が推奨される移行方法です。
 
-{{< alert type="note" >}}
-
-プロジェクトのエクスポートファイルは、データのバックアップに使用しないでください。バックアップにプロジェクトのエクスポートファイルを使用しても、必ずしも機能するとは限らず、すべての項目がエクスポートされるわけではありません。
-
-{{< /alert >}}
+> [!note]
+> プロジェクトエクスポートファイルをデータのバックアップに使用しないでください。バックアップにプロジェクトのエクスポートファイルを使用しても、必ずしも機能するとは限らず、すべての項目がエクスポートされるわけではありません。
 
 ## 既知の問題 {#known-issues}
 
 - 既知のイシューにより、`PG::QueryCanceled: ERROR: canceling statement due to statement timeout`エラーが発生する可能性があります。詳細については、[トラブルシューティングドキュメント](import_export_troubleshooting.md#error-pgquerycanceled-error-canceling-statement-due-to-statement-timeout)を参照してください。
 - GitLab 17.0、17.1、および17.2では、インポートされたエピックと作業アイテムは、元の作成者ではなく、インポートするユーザーにマッピングされます。
 - マージリクエストでは、インポートまたはエクスポート時に最新の差分のみが保持されます。プロジェクトをインポートまたはエクスポートした後、マージリクエストでは最新の差分バージョンと最新のパイプラインのみが表示されます。
+- インポートされたマイルストーンは、宛先ネームスペース内で[既存のマイルストーンと一致する](../milestones/_index.md#milestone-title-rules)タイトルがある場合、インポート時にタイトルが更新されます。新しいタイトルには一意のサフィックスが追加されます（例: `18.0`は`18.0
+  (imported-3d-1770206299)`になります）。これを回避するには、直接転送を開始する前に、ソースグループまたはプロジェクトのマイルストーンの名前を変更します。
 
 ## エクスポートファイルをアップロードしてプロジェクトを移行する {#migrate-projects-by-uploading-an-export-file}
 
@@ -49,7 +54,7 @@ description: "ファイルエクスポートを使用して、プロジェクト
 したがって、GitLab Self-ManagedインスタンスからGitLab.comにファイルエクスポートをインポートする場合、ユーザーのコントリビュートが正しくマッピングされることはありません。代わりに、すべてのGitLabユーザーの関連付け(コメントの作成者など)は、プロジェクトをインポートするユーザーに変更されます。コントリビュート履歴を保持するには、次のいずれかを実行します:
 
 - [直接転送を使用して移行](../../group/import/_index.md)します。
-- プロフェッショナルサービスのご利用をご検討ください。詳しくは、[プロフェッショナルサービスフルカタログ](https://about.gitlab.com/services/catalog/)をご覧ください。
+- プロフェッショナルサービスのご利用をご検討ください。詳細については、[Professional Services catalog](https://about.gitlab.com/services/catalog/)を参照してください。
 
 #### GitLab Self-Managedに移行する場合 {#when-migrating-to-gitlab-self-managed}
 
@@ -59,7 +64,7 @@ GitLabがユーザーとコントリビュートを正しくマッピングす�
 - 管理者がインポートを実行する必要があります。
 - 必要なユーザーが、移行先のGitLabインスタンスに存在する必要があります。管理者は、Railsコンソールで一括して、またはUIで1つずつ、確認済みのユーザーを作成できます。
 - ユーザーは、送信元のGitLabインスタンスのプロファイルで送信先のGitLabインスタンスのプライマリーメールアドレスと一致する[公開メールアドレスをプロファイルに設定](../../profile/_index.md#set-your-public-email)する必要があります。[プロジェクトのエクスポートファイルを編集](#edit-project-export-files)して、ユーザーの公開メールアドレスを手動で追加することもできます。
-- [GitLab 18.4以降](https://gitlab.com/gitlab-org/gitlab/-/issues/559224) 、プロジェクトを既存のグループに直接インポートする際に直接メンバーシップを作成すると、[**このグループのプロジェクトにユーザーを追加することはできません**設定](../../group/access_and_permissions.md#prevent-members-from-being-added-to-projects-in-a-group)が適用されます。
+- [GitLab 18.4以降](https://gitlab.com/gitlab-org/gitlab/-/issues/559224)では、既存のグループにプロジェクトを直接インポートする際に直接メンバーシップを作成すると、[**このグループのプロジェクトにユーザーを追加することはできません**設定](../../group/access_and_permissions.md#prevent-members-from-being-added-to-projects-in-a-group)が尊重されます。
 
 既存のユーザーのメールアドレスが、インポートされたユーザーのメールアドレスと一致する場合、そのユーザーはインポートされたプロジェクトに[直接メンバー](../members/_index.md)として追加されます。
 
@@ -78,7 +83,7 @@ GitLabがユーザーとコントリビュートを正しくマッピングす�
 プロジェクトのエクスポートファイルを編集するには:
 
 1. エクスポートされた`.tar.gz`ファイルを抽出します。
-1. 適切なファイルを編集します。例: `tree/project/project_members.ndjson`。
+1. 適切なファイルを編集します。たとえば、`tree/project/project_members.ndjson`などです。
 1. ファイルを圧縮して`.tar.gz`ファイルに戻します。
 
 `project_members.ndjson`ファイルを確認して、すべてのメンバーがエクスポートされたことを確認することもできます。
@@ -95,7 +100,7 @@ GitLabがユーザーとコントリビュートを正しくマッピングす�
 
 最大2つ[マイナー](../../../policy/maintenance.md#versioning)バージョン前のGitLabのバージョンからエクスポートされたプロジェクトファイルエクスポートをインポートできます。
 
-次に例を示します:
+例: 
 
 | 移行先のバージョン | 互換性のあるソースバージョン |
 |:--------------------|:---------------------------|
@@ -117,9 +122,9 @@ GitLabがユーザーとコントリビュートを正しくマッピングす�
 
 移行先インスタンスのインポートソースとしてファイルエクスポートを有効にするには:
 
-1. 左側のサイドバーの下部で、**管理者**を選択します。
-1. **設定** > **一般**を選択します。
-1. **設定のインポートとエクスポート**を展開します。
+1. 右上隅で、**管理者**を選択します。
+1. 左側のサイドバーで、**設定** > **一般**を選択します。
+1. **インポートとエクスポートの設定**を展開します。
 1. **ソースをインポート**までスクロールします。
 1. **GitLabエクスポート**チェックボックスを選択します。
 
@@ -127,29 +132,36 @@ GitLabがユーザーとコントリビュートを正しくマッピングす�
 
 [Community EditionからEnterprise Edition](https://about.gitlab.com/install/ce-or-ee/)へ、またはその逆にプロジェクトをエクスポートできます（[互換性](#compatibility)が満たされていると仮定）。
 
-Enterprise EditionからCommunity Editionにプロジェクトをエクスポートすると、Enterprise Editionでのみ保持されているデータを失う可能性があります。詳細については、[GitLab Enterprise EditionからCEへのダウングレード](../../../downgrade_ee_to_ce/_index.md)を参照してください。
+Enterprise EditionからCommunity Editionにプロジェクトをエクスポートすると、Enterprise Editionでのみ保持されているデータを失う可能性があります。詳細については、[EEからCEへの復元](../../../update/convert_to_ee/revert.md)を参照してください。
 
 ### プロジェクトとそのデータをエクスポートする {#export-a-project-and-its-data}
 
 プロジェクトをインポートする前に、エクスポートする必要があります。
 
-前提要件:
+前提条件: 
 
 - [エクスポートされる項目](#project-items-that-are-exported)のリストを確認してください。すべての項目がエクスポートされるわけではありません。
-- プロジェクトのメンテナー以上のロールを持っている必要があります。
-- 多数のGit参照を持つリポジトリのパフォーマンスを大幅に向上させるには、GitLab 18.0以降を使用してください。技術的な詳細については、[GitLabリポジトリのバックアップ時間を短縮することに関するブログ記事](https://about.gitlab.com/blog/2025/06/05/how-we-decreased-gitlab-repo-backup-times-from-48-hours-to-41-minutes/)を参照してください。
+- プロジェクトのメンテナーまたはオーナーロールが必要です。
+- 多数のGitリポジトリ参照を持つリポジトリでパフォーマンスを大幅に向上させるには、GitLab 18.0以降を使用してください。詳細については、[GitLabリポジトリのバックアップ時間の短縮に関するブログ記事](https://about.gitlab.com/blog/how-we-decreased-gitlab-repo-backup-times-from-48-hours-to-41-minutes/)を参照してください。
 
 プロジェクトとそのデータをエクスポートするには、次の手順に従います:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **設定** > **一般**を選択します。
 1. **高度な設定**を展開します。
-1. **プロジェクトのエクスポート**を選択します:
+1. **プロジェクトをエクスポート**を選択します:
 1. エクスポートが生成されたら、次のことができます:
    - 受信するメールに含まれているリンクをたどります。
    - プロジェクト設定ページを更新し、**プロジェクトのエクスポート**エリアで**エクスポートをダウンロード**を選択します。
 
-エクスポートは、設定済みの`shared_path`（一時的な共有ディレクトリ）で生成され、設定済みの`uploads_directory`に移動されます。ワーカーは24時間ごとに、これらのエクスポートファイルを削除します。
+エクスポートは、設定された`shared_path`（一時的な共有ディレクトリ（デフォルトでは`<shared_path>/tmp/gitlab_exports`））に生成され、その後次のいずれかになります:
+
+- 設定された`uploads_directory`に移動されます。
+- オブジェクトストレージにアップロードされます。
+
+ワーカーは24時間ごとに、これらのエクスポートファイルを削除します。
+
+Sidekiq、Gitaly、およびGitLabアプリケーション (Rails) ノードが分離されているGitLabインスタンスでは、[`shared_path`](https://gitlab.com/gitlab-org/omnibus-gitlab/-/blob/b350e3cd5b06a94adb463ece4d41b9f3df6ab282/files/gitlab-config-template/gitlab.rb.template#L731)設定で指定されたディレクトリがすべてのノードからアクセスできる必要があります。
 
 #### エクスポートされるプロジェクトの項目 {#project-items-that-are-exported}
 
@@ -190,7 +202,7 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 - 保護ブランチとタグ
 - プッシュルール
 - 絵文字リアクション
-- プロジェクトの直接メンバー（エクスポートされたプロジェクトのグループのメンテナーロール以上を持っている場合）
+- 直接プロジェクトメンバー（エクスポートされたプロジェクトのグループに対するメンテナーまたはオーナーロールがある場合）
 - 継承されたプロジェクトメンバーを直接プロジェクトメンバーとして（エクスポートされたプロジェクトのグループのオーナーロールを持っているか、インスタンスへの管理者アクセス権を持っている場合）
 - 一部のマージリクエスト承認ルール:
   - [保護ブランチの承認](../merge_requests/approvals/rules.md#approvals-for-protected-branches)
@@ -203,7 +215,7 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 
 - [子パイプライン履歴](https://gitlab.com/gitlab-org/gitlab/-/issues/221088)
 - パイプラインのトリガー
-- CI/CDジョブのトレースとアーティファクト
+- CI/CDジョブトレースとアーティファクト
 - パッケージとコンテナレジストリイメージ
 - CI/CD変数
 - CI/CDジョブトークン許可リスト
@@ -213,7 +225,7 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 - リポジトリのサイズ制限
 - 保護ブランチへのプッシュを許可されているデプロイキー
 - 安全なファイル
-- [Git関連イベントのアクティビティーログ](https://gitlab.com/gitlab-org/gitlab/-/issues/214700)
+- [Git関連イベントのアクティビティログ](https://gitlab.com/gitlab-org/gitlab/-/issues/214700)（たとえば、プッシュやタグの作成）
 - プロジェクトに関連付けられているセキュリティポリシー
 - イシューとリンクされたアイテム間のリンク
 - 関連するマージリクエストへのリンク
@@ -226,13 +238,10 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 - GitLab Self-Managedでは、管理者は[インポートファイルの最大サイズを設定](#set-maximum-import-file-size)できます。
 - GitLab.comでは、値は[5 GBに設定](../../gitlab_com/_index.md#account-and-limit-settings)されています。
 
-{{< alert type="warning" >}}
+> [!warning]
+> 信頼できるソースからのプロジェクトのみをインポートしてください。信頼できないソースからプロジェクトをインポートすると、攻撃者が機密データを盗む可能性があります。
 
-信頼できるソースからのみプロジェクトをインポートしてください。信頼できないソースからプロジェクトをインポートすると、攻撃者が機密データを盗む可能性があります。
-
-{{< /alert >}}
-
-#### 前提要件: {#prerequisites}
+#### 前提条件 {#prerequisites}
 
 {{< history >}}
 
@@ -243,19 +252,20 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 - [プロジェクトとそのデータをエクスポート](#export-a-project-and-its-data)する必要があります。
 - GitLabのバージョンを比較し、エクスポート元よりも同じかそれ以降のGitLabバージョンにインポートしていることを確認します。
 - イシューがないか[互換性](#compatibility)をレビューします。
-- 移行先のグループに対するメンテナーロール以上。
+- 移行先の宛先グループに対するメンテナーまたはオーナーロール。
+- `tar`コマンドが、ソースと宛先のGitLabインスタンスの両方にインストールされている必要があります。
 
 #### プロジェクトをインポートする {#import-a-project}
 
-プロジェクトをインポートするには:
+プロジェクトをインポートするには、以下の手順に従います: 
 
-1. 左側のサイドバーの上部で、**新規作成**（{{< icon name="plus" >}}）と**新規プロジェクト/リポジトリ**を選択します。
-1. **プロジェクトのインポート**を選択します。
+1. 右上隅で、**新規作成**（{{< icon name="plus" >}}）と**新規プロジェクト/リポジトリ**を選択します。
+1. **プロジェクトをインポート**を選択します。
 1. **プロジェクトのインポート元**で、**GitLabエクスポート**を選択します。
 1. プロジェクト名とURLを入力します。次に、以前にエクスポートしたファイルを選択します。
-1. **プロジェクトのインポート**を選択します。
+1. **プロジェクトをインポート**を選択します。
 
-[API](../../../api/project_import_export.md#import-status)を使用してインポートの状態をクエリできます。クエリは、インポートエラーまたは例外を返す場合があります。
+[API](../../../api/project_import_export.md#retrieve-the-status-of-a-project-import)を使用してインポートの状態をクエリできます。クエリは、インポートエラーまたは例外を返す場合があります。
 
 #### インポートされたアイテムへの変更 {#changes-to-imported-items}
 
@@ -310,17 +320,14 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 
 {{< /history >}}
 
-{{< alert type="warning" >}}
+> [!warning]
+> この機能はGitLab 14.6で[非推奨](https://gitlab.com/groups/gitlab-org/-/epics/4619)になり、[直接転送によるグループの移行](../../group/import/_index.md)に置き換えられました。ただし、この機能は[オフライン環境](../../application_security/offline_deployments/_index.md)での移行には依然として推奨されます。オフラインインスタンス間の移行のサポートは、[エピック8985](https://gitlab.com/groups/gitlab-org/-/epics/8985)で提案されています。
 
-この機能はGitLab 14.6で[非推奨](https://gitlab.com/groups/gitlab-org/-/epics/4619)となり、[直接転送によるグループの移行](../../group/import/_index.md)に置き換えられました。ただし、この機能は、オフラインシステム間でグループを移行する場合にも推奨されます。[オフライン環境](../../application_security/offline_deployments/_index.md)の代替ソリューションの進捗状況を把握するには、[関連エピック](https://gitlab.com/groups/gitlab-org/-/epics/8985)を参照してください。
-
-{{< /alert >}}
-
-前提要件:
+前提条件: 
 
 - 移行するグループのオーナーロール。
 
-ファイルのエクスポートを使用すると、次のことができます:
+ファイルのエクスポートを使用すると、次のことができます。
 
 - 任意のグループをファイルにエクスポートし、そのファイルを別のGitLabインスタンス、または同じインスタンス上の別の場所にアップロードできます。
 - GitLab UIまたは[API](../../../api/group_import_export.md)のいずれかを使用します。
@@ -334,11 +341,11 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 - インポートされたプロジェクトからグループレベルの関係を保持するには、プロジェクトを目的のグループ構造にインポートできるように、最初にグループをエクスポートおよびインポートします。
 - 親グループにインポートしない限り、インポートされたグループには`private`の表示レベルが与えられます。
 - 親グループにインポートする場合、サブグループは、別途制限されない限り、同じレベルの表示レベルを継承します。
-- [Community EditionからEnterprise Edition](https://about.gitlab.com/install/ce-or-ee/)、またはその逆に、グループをエクスポートできます。Enterprise Editionは、Community Editionには含まれない一部のグループデータを保持します。Enterprise Edition（EE）からCommunity Editionにグループをエクスポートすると、このデータが失われる可能性があります。詳細については、[GitLab Enterprise EditionからCEへのダウングレード](../../../downgrade_ee_to_ce/_index.md)を参照してください。
+- [Community EditionからEnterprise Edition](https://about.gitlab.com/install/ce-or-ee/)、またはその逆に、グループをエクスポートできます。Enterprise Editionは、Community Editionには含まれない一部のグループデータを保持します。Enterprise Edition（EE）からCommunity Editionにグループをエクスポートすると、このデータが失われる可能性があります。詳細については、[EEからCEへの復元](../../../update/convert_to_ee/revert.md)を参照してください。
 
-インポートファイルの最大サイズは、GitLab Self-Managedにインポートするか、GitLab.comにインポートするかによって異なります:
+インポートファイルの最大サイズは、GitLab Self-Managedにインポートするか、GitLab.comにインポートするかによって異なります。
 
-- GitLab Self-Managedインスタンスにインポートする場合、任意のサイズのインポートファイルをインポートできます。管理者は、次のいずれかを使用してこの動作を変更できます:
+- GitLab Self-Managedインスタンスにインポートする場合、任意のサイズのインポートファイルをインポートできます。管理者は、次のいずれかを使用してこの動作を変更できます。
   - [アプリケーション設定API](../../../api/settings.md#update-application-settings)の`max_import_size`オプション。
   - [**管理者**エリア](../../../administration/settings/account_and_limit_settings.md)。
 - [GitLab.com](../../gitlab_com/_index.md#account-and-limit-settings)では、サイズが5&nbsp;GB以下のインポートファイルを使用してグループをインポートできます。
@@ -355,7 +362,7 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 
 最大2つ[マイナー](../../../policy/maintenance.md#versioning)バージョン前のGitLabのバージョンからエクスポートされたグループファイルのエクスポートをインポートできます。
 
-次に例を示します:
+例: 
 
 | 移行先のバージョン | 互換性のあるソースバージョン |
 |:--------------------|:---------------------------|
@@ -395,15 +402,15 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 
 ### グループのエクスポート {#export-a-group}
 
-前提要件:
+前提条件: 
 
-- グループのオーナーロールが必要です。
+- グループのオーナーのロールを持っている必要があります。
 
 グループのコンテンツをエクスポートするには:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、グループを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、グループを見つけます。
 1. **設定** > **一般**を選択します。
-1. **高度な設定**セクションで、**グループのエクスポート**を選択します。
+1. **詳細設定**セクションで、**グループのエクスポート**を選択します。
 1. エクスポートが生成されたら、次のことができます:
    - 受信するメールに含まれているリンクをたどります。
    - グループ設定ページを更新し、**プロジェクトのエクスポート**エリアで、**エクスポートをダウンロード**を選択します。
@@ -412,7 +419,7 @@ Enterprise EditionからCommunity Editionにプロジェクトをエクスポー
 
 グループをインポートするには:
 
-1. 左側のサイドバーの上部で、**新規作成**（{{< icon name="plus" >}}）を選択し、**新規グループ**を選択します。
+1. 右上隅で、**新規作成** ({{< icon name="plus" >}}) と**新しいグループ**を選択します。
 1. **グループをインポート**を選択します。
 1. **ファイルからグループをインポート**セクションで、グループ名を入力し、関連するグループURLを承認または変更します。
 1. **ファイルを選択**を選択します。

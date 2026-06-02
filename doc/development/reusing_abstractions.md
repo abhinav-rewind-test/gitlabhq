@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Guidelines for reusing abstractions
 ---
 
@@ -106,16 +106,16 @@ Now let's take a look at the various abstraction levels available, and what they
 can (or cannot) reuse. For this we can use the following table, which defines
 the various abstractions and what they can (not) reuse:
 
-| Abstraction            | Service classes  | Finders  | Presenters  | Serializers   | Model instance method   | Model class methods   | Active Record   | Worker
-|:-----------------------|:-----------------|:---------|:------------|:--------------|:------------------------|:----------------------|:----------------|:--------
-| Controller/API endpoint| Yes              | Yes      | Yes         | Yes           | Yes                     | No                    | No              | No
-| Service class          | Yes              | Yes      | No          | No            | Yes                     | No                    | No              | Yes
-| Finder                 | No               | No       | No          | No            | Yes                     | Yes                   | No              | No
-| Presenter              | No               | Yes      | No          | No            | Yes                     | Yes                   | No              | No
-| Serializer             | No               | Yes      | No          | No            | Yes                     | Yes                   | No              | No
-| Model class method     | No               | No       | No          | No            | Yes                     | Yes                   | Yes             | No
-| Model instance method  | No               | Yes      | No          | No            | Yes                     | Yes                   | Yes             | Yes
-| Worker                 | Yes              | Yes      | No          | No            | Yes                     | No                    | No              | Yes
+| Abstraction             | Service classes | Finders | Presenters | Serializers | Model instance method | Model class methods | Active Record | Worker |
+|:------------------------|:----------------|:--------|:-----------|:------------|:----------------------|:--------------------|:--------------|:-------|
+| Controller/API endpoint | Yes             | Yes     | Yes        | Yes         | Yes                   | No                  | No            | No     |
+| Service class           | Yes             | Yes     | No         | No          | Yes                   | No                  | No            | Yes    |
+| Finder                  | No              | No      | No         | No          | Yes                   | Yes                 | No            | No     |
+| Presenter               | No              | Yes     | No         | No          | Yes                   | Yes                 | No            | No     |
+| Serializer              | No              | Yes     | No         | No          | Yes                   | Yes                 | No            | No     |
+| Model class method      | No              | No      | No         | No          | Yes                   | Yes                 | Yes           | No     |
+| Model instance method   | No              | Yes     | No         | No          | Yes                   | Yes                 | Yes           | Yes    |
+| Worker                  | Yes             | Yes     | No         | No          | Yes                   | No                  | No            | Yes    |
 
 ### Controllers
 
@@ -123,6 +123,27 @@ Everything in `app/controllers`.
 
 Controllers should not do much work on their own, instead they pass input
 to other classes and present the results.
+
+### Views
+
+Everything in `app/views` and `ee/app/views`.
+
+Views are responsible for presentation only.
+They receive data through instance variables assigned by the controller and render it as HTML, XML, Markdown, or text.
+
+Views must not:
+
+- Execute database queries.
+  Move all data retrieval into the controller or a [presenter](#presenters), and pass the result
+  as an instance variable.
+  Queries in views bypass caching layers, are invisible to query-analysis tools,
+  and make N+1 problems hard to detect.
+- Contain business logic.
+  Avoid conditionals that evaluate model state beyond `nil?`, `present?`, or boolean
+  attribute checks.
+  Avoid service object instantiation and multi-step computations.
+  Extract this logic into a [helper](https://gitlab.com/gitlab-org/gitlab/-/tree/master/app/helpers),
+  [presenter](#presenters), or [ViewComponent](fe_guide/view_component.md).
 
 ### API endpoints
 
@@ -369,7 +390,7 @@ If you have a base class with methods that must be implemented by subclasses, us
 - **Default error message**: No need to write boilerplate error messages
 - **Avoids `NoMethodError` issues**: No conflict with `respond_to?` behavior
 - **Avoids `NotImplementedError` misuse**: That's for platform-specific features, not abstract methods
-- **Inherits from `StandardError`**: Catchable in standard rescue blocks
+- **Inherits from `Exception`**: Only catchable with explicit rescue blocks
 - **Enforceable**: Can be validated with RuboCop rules (future work)
 
 ### Why not use `NotImplementedError` or `NoMethodError`?

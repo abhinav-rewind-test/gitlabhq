@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Sidebars::Projects::Menus::WikiMenu, feature_category: :navigation do
-  let(:project) { build(:project) }
+  let(:project) { build_stubbed(:project) }
   let(:user) { project.first_owner }
   let(:context) { Sidebars::Projects::Context.new(current_user: user, container: project) }
 
@@ -11,6 +11,12 @@ RSpec.describe Sidebars::Projects::Menus::WikiMenu, feature_category: :navigatio
 
   it 'does not contain any sub menu' do
     expect(subject.has_items?).to be false
+  end
+
+  describe '#link' do
+    subject { super().link }
+
+    it { is_expected.to eq "/#{project.full_path}/-/wikis" }
   end
 
   describe '#render?' do

@@ -20,13 +20,14 @@ describe('WorkItemPrefetch component', () => {
 
   Vue.use(VueApollo);
 
-  const createComponent = (workItemFullPath = undefined) => {
+  const createComponent = (workItemFullPath = undefined, glFeatures = {}) => {
     const mockApollo = createMockApollo([[workItemByIidQuery, getWorkItemQueryHandler]]);
 
     wrapper = shallowMountExtended(WorkItemPrefetch, {
       apolloProvider: mockApollo,
       provide: {
         fullPath: 'group/project',
+        glFeatures,
       },
       propsData: {
         workItemIid: '1',
@@ -76,7 +77,9 @@ describe('WorkItemPrefetch component', () => {
 
       await triggerQuery();
 
-      expect(getWorkItemQueryHandler).toHaveBeenCalledWith({ fullPath: 'group/project', iid: '1' });
+      expect(getWorkItemQueryHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ fullPath: 'group/project', iid: '1' }),
+      );
     });
 
     it('uses the workItemFullPath prop when provided', async () => {
@@ -84,10 +87,36 @@ describe('WorkItemPrefetch component', () => {
 
       await triggerQuery();
 
-      expect(getWorkItemQueryHandler).toHaveBeenCalledWith({
-        fullPath: 'other-full-path',
-        iid: '1',
-      });
+      expect(getWorkItemQueryHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fullPath: 'other-full-path',
+          iid: '1',
+        }),
+      );
     });
+  });
+
+  it('does not include workItemFeaturesField in the query variables when the feature flag is disabled', async () => {
+    createComponent(undefined, { workItemFeaturesField: false });
+
+    await triggerQuery();
+
+    expect(getWorkItemQueryHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        useWorkItemFeatures: false,
+      }),
+    );
+  });
+
+  it('includes workItemFeaturesField in the query variables when the feature flag is enabled', async () => {
+    createComponent(undefined, { workItemFeaturesField: true });
+
+    await triggerQuery();
+
+    expect(getWorkItemQueryHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        useWorkItemFeatures: true,
+      }),
+    );
   });
 });

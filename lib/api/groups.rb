@@ -33,7 +33,7 @@ module API
         optional :owned, type: Boolean, default: false, desc: 'Limit by owned by authenticated user'
         optional :order_by, type: String, values: %w[name path id similarity], default: 'name', desc: 'Order by name, path, id or similarity if searching'
         optional :sort, type: String, values: %w[asc desc], default: 'asc', desc: 'Sort by asc (ascending) or desc (descending)'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :top_level_only, type: Boolean, desc: 'Only include top-level groups'
         optional :marked_for_deletion_on, type: Date, desc: 'Return groups that are marked for deletion on this date'
         optional :active, type: Boolean, desc: 'Limit by groups that are not archived and not marked for deletion'
@@ -173,9 +173,7 @@ module API
       end
 
       def immediately_delete_subgroup_error(group)
-        if !Gitlab::CurrentSettings.allow_immediate_namespaces_deletion_for_user?(current_user)
-          '`permanently_remove` option is not permitted on this instance.'
-        elsif !group.subgroup?
+        if !group.subgroup?
           '`permanently_remove` option is only available for subgroups.'
         elsif !group.self_deletion_scheduled?
           'Group must be marked for deletion first.'
@@ -192,7 +190,7 @@ module API
           render_api_error!(error, 400) if error
 
           destroy_conditionally!(group) do
-            ::Groups::DestroyService.new(group, current_user).async_execute
+            ::Groups::DestroyService.new(group, current_user).async_execute # rubocop:disable Gitlab/HardDeleteCalls -- permanently_remove is checked
           end
 
           return accepted!
@@ -262,14 +260,39 @@ module API
       end
 
       def check_query_limit
-        ::Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/586401', new_threshold: 101)
+        ::Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/586401', new_threshold: 110)
+      end
+
+      def enqueue_async_transfer(group, new_parent_group)
+        service = ::Groups::TransferService.new(group, current_user)
+        result = service.schedule_async_transfer(new_parent_group)
+
+        if result.success?
+          group.preload_shared_group_links
+          present group, with: Entities::GroupDetail, current_user: current_user
+        else
+          render_api_error!(result.message, 400)
+        end
+      end
+
+      def execute_sync_transfer(group, new_parent_group)
+        service = ::Groups::TransferService.new(group, current_user)
+
+        if service.execute(new_parent_group)
+          group.preload_shared_group_links
+          present group, with: Entities::GroupDetail, current_user: current_user
+        else
+          render_api_error!(service.error, 400)
+        end
       end
     end
 
     resource :groups do
       include CustomAttributesEndpoints
 
-      desc 'Get a groups list' do
+      desc 'List all groups' do
+        detail 'Lists all visible groups for the authenticated user. Unauthenticated requests return only public ' \
+          'groups.'
         success Entities::Group
         is_array true
         tags %w[groups]
@@ -286,7 +309,8 @@ module API
         present_groups_with_pagination_strategies params, groups
       end
 
-      desc 'Create a group. Available only for users who can create groups.' do
+      desc 'Create a group' do
+        detail 'Creates a project group. Available only for users who can create groups.'
         success Entities::Group
         tags %w[groups]
       end
@@ -358,6 +382,7 @@ module API
       end
 
       desc 'Archive a group' do
+        detail 'Archives a specified group. You must be an administrator or have the Owner role for the group.'
         success code: 200, model: Entities::Group
         failure [
           { code: 403, message: 'Unauthenticated' }
@@ -425,6 +450,7 @@ module API
       end
 
       desc 'Remove a group.' do
+        success code: 202, message: 'Accepted'
         tags %w[groups]
       end
       route_setting :authorization, permissions: :delete_group, boundary_type: :group
@@ -436,7 +462,9 @@ module API
         delete_group(group)
       end
 
-      desc 'Restore a group.'
+      desc 'Restore a group.' do
+        tags %w[groups]
+      end
       route_setting :authorization, permissions: :restore_group, boundary_type: :group
       post ':id/restore', feature_category: :groups_and_projects do
         authorize! :remove_group, user_group
@@ -460,7 +488,7 @@ module API
         optional :skip_groups, type: Array[Integer], coerce_with: ::API::Validations::Types::CommaSeparatedToIntegerArray.coerce, desc: 'Array of group ids to exclude from list'
         optional :visibility, type: String, values: Gitlab::VisibilityLevel.string_values, desc: 'Limit by visibility'
         optional :search, type: String, desc: 'Search for a specific group'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :order_by, type: String, values: %w[name path id similarity], default: 'name', desc: 'Order by name, path, id or similarity if searching'
         optional :sort, type: String, values: %w[asc desc], default: 'asc', desc: 'Sort by asc (ascending) or desc (descending)'
 
@@ -485,12 +513,12 @@ module API
       params do
         optional :relation, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce, values: %w[direct inherited], desc: 'Include group relations'
         optional :search, type: String, desc: 'Search for a specific group'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Minimum access level of authenticated user' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
 
         use :pagination
         use :with_custom_attributes
       end
-      route_setting :authorization, permissions: :read_invited_group, boundary_type: :group
+      route_setting :authorization, permissions: :read_group_invited_group, boundary_type: :group
       get ":id/invited_groups", feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:group_invited_groups_api)
 
@@ -523,7 +551,7 @@ module API
         optional :with_shared, type: Boolean, default: true, desc: 'Include projects shared to this group'
         optional :include_subgroups, type: Boolean, default: false, desc: 'Includes projects in subgroups of this group'
         optional :include_ancestor_groups, type: Boolean, default: false, desc: 'Includes projects in ancestors of this group'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user on projects'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user on projects' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
 
         use :pagination
         use :with_custom_attributes
@@ -564,7 +592,7 @@ module API
         optional :starred, type: Boolean, default: false, desc: 'Limit by starred status'
         optional :with_issues_enabled, type: Boolean, default: false, desc: 'Limit by enabled issues feature'
         optional :with_merge_requests_enabled, type: Boolean, default: false, desc: 'Limit by enabled merge requests feature'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user on projects'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user on projects' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
 
         use :pagination
         use :with_custom_attributes
@@ -585,7 +613,7 @@ module API
         use :group_list_params
         use :with_custom_attributes
       end
-      route_setting :authorization, permissions: :read_sub_group, boundary_type: :group
+      route_setting :authorization, permissions: :read_subgroup, boundary_type: :group
       get ":id/subgroups", feature_category: :groups_and_projects, urgency: :low do
         groups = find_groups(declared_params(include_missing: false), params[:id])
         present_groups params, groups
@@ -638,7 +666,7 @@ module API
         optional :search, type: String, desc: 'Return list of namespaces matching the search criteria'
         use :pagination
       end
-      route_setting :authorization, permissions: :read_transfer_location, boundary_type: :group
+      route_setting :authorization, permissions: :read_group_transfer_location, boundary_type: :group
       get ':id/transfer_locations', feature_category: :groups_and_projects do
         authorize! :admin_group, user_group
         args = declared_params(include_missing: false)
@@ -665,13 +693,10 @@ module API
 
         new_parent_group = find_group!(params[:group_id]) if params[:group_id].present?
 
-        service = ::Groups::TransferService.new(group, current_user)
-
-        if service.execute(new_parent_group)
-          group.preload_shared_group_links
-          present group, with: Entities::GroupDetail, current_user: current_user
+        if Feature.enabled?(:groups_and_projects_async_transfer, group.root_ancestor)
+          enqueue_async_transfer(group, new_parent_group)
         else
-          render_api_error!(service.error, 400)
+          execute_sync_transfer(group, new_parent_group)
         end
       end
 
@@ -690,6 +715,7 @@ module API
         requires :organization_id, type: Integer, desc: 'The ID of the organization to transfer the group to'
       end
       route_setting :authorization, permissions: :transfer_group, boundary_type: :group
+      route_setting :lifecycle, :experiment
       post ':id/transfer_to_organization', feature_category: :groups_and_projects do
         group = find_group!(params[:id])
 
@@ -699,7 +725,7 @@ module API
 
         authorize! :admin_group, group
 
-        service = ::Organizations::Groups::TransferService.new(
+        service = ::Organizations::Transfer::GroupsService.new(
           group: group,
           new_organization: organization,
           current_user: current_user
@@ -745,6 +771,10 @@ module API
         end
       end
 
+      desc 'Unshare a group with a group' do
+        success code: 204, message: 'Resource deleted'
+        tags ['groups']
+      end
       params do
         requires :group_id, type: Integer, desc: 'The ID of the shared group'
       end

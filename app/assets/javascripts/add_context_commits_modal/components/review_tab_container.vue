@@ -4,6 +4,7 @@ import CommitItem from '~/diffs/components/commit_item.vue';
 import { __ } from '~/locale';
 
 export default {
+  name: 'ReviewTabContainer',
   components: {
     GlLoadingIcon,
     GlAlert,
@@ -32,6 +33,7 @@ export default {
       default: __('No commits present here'),
     },
   },
+  emits: ['handle-commit-select'],
 };
 </script>
 <template>

@@ -2,10 +2,11 @@
 
 RSpec.describe Gitlab::GrapeOpenapi::Converters::PathConverter do
   let(:schema_registry) { Gitlab::GrapeOpenapi::SchemaRegistry.new }
+  let(:request_body_registry) { Gitlab::GrapeOpenapi::RequestBodyRegistry.new }
   let(:routes) { TestApis::UsersApi.routes }
 
   describe '.convert' do
-    subject(:paths) { described_class.convert(routes, schema_registry) }
+    subject(:paths) { described_class.convert(routes, schema_registry, request_body_registry) }
 
     it 'groups routes by normalized path' do
       expect(paths.keys).to include('/api/v1/users')
@@ -34,6 +35,68 @@ RSpec.describe Gitlab::GrapeOpenapi::Converters::PathConverter do
 
       it 'returns empty hash' do
         expect(paths).to eq({})
+      end
+    end
+
+    context 'when all operations for a path are hidden' do
+      let(:routes) { TestApis::HiddenApi.routes }
+
+      it 'excludes the path entirely' do
+        expect(paths).to be_empty
+      end
+
+      it 'does not register a request body schema for hidden POST routes' do
+        paths
+
+        expect(request_body_registry.schemas).to be_empty
+      end
+
+      it 'does not register response entity schemas for hidden routes' do
+        paths
+
+        expect(schema_registry.schemas).to be_empty
+      end
+    end
+
+    context 'with identical paths differing only by parameter name' do
+      let(:routes) { TestApis::IdenticalPathsApi.routes }
+
+      it 'groups them under a single path entry' do
+        path_keys = paths.keys.select { |k| k.include?('items') }
+
+        expect(path_keys.size).to eq(1)
+      end
+
+      it 'includes both operations under the same path' do
+        path_key = paths.keys.find { |k| k.include?('items') }
+
+        expect(paths[path_key].keys).to contain_exactly('get', 'post')
+      end
+
+      it 'uses the first route parameter name as the path key' do
+        expect(paths.keys).to include('/api/v1/resources/{id}/items/{item_id}')
+      end
+    end
+
+    context 'with wildcard routes' do
+      # Grape registers catch-all routes with method '*' and '*path' segments.
+      # This builds a duck-typed route using Grape::Router::Route's public API
+      # (pattern.origin and options[:method]).
+      def build_fake_route(origin:, method:)
+        pattern = Struct.new(:origin).new(origin)
+        Struct.new(:pattern, :options).new(pattern, { method: method, params: {} })
+      end
+
+      let(:wildcard_route) { build_fake_route(origin: '/api/:version/*path(.:format)', method: '*') }
+
+      let(:routes) { TestApis::UsersApi.routes + [wildcard_route] }
+
+      it 'excludes wildcard routes from output' do
+        expect(paths.keys).not_to include(a_string_matching(/\*/))
+      end
+
+      it 'still includes normal routes' do
+        expect(paths.keys).to include('/api/v1/users')
       end
     end
   end

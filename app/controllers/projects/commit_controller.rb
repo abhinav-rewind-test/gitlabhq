@@ -11,13 +11,15 @@ class Projects::CommitController < Projects::ApplicationController
   include SourcegraphDecorator
   include RapidDiffs::Resource
   include RapidDiffs::DiscussionActions
+  include HandlesGitalyErrors
 
   # Authorize
   before_action :require_non_empty_project
   before_action :authorize_read_code!
   before_action :authorize_read_pipeline!, only: [:pipelines]
   before_action :commit
-  before_action :verify_commit, only: [:show, :diff_for_path, :diff_files, :pipelines, :merge_requests]
+  before_action :verify_commit,
+    only: [:show, :diff_for_path, :diff_files, :pipelines, :merge_requests, :discussions, :create_discussions]
   before_action :define_commit_vars, only: [:diff_for_path, :diff_files, :pipelines, :merge_requests]
   before_action :define_environment,
     only: [:show, :diff_for_path, :diff_files, :pipelines, :merge_requests]
@@ -128,7 +130,8 @@ class Projects::CommitController < Projects::ApplicationController
     @merge_requests = MergeRequestsFinder.new(
       current_user,
       project_id: @project.id,
-      commit_sha: @commit.sha
+      commit_sha: @commit.sha,
+      sort: 'id_asc'
     ).execute.map do |mr|
       { iid: mr.iid, path: merge_request_path(mr), title: mr.title }
     end

@@ -1,14 +1,15 @@
 <script>
-import { GlResizeObserverDirective, GlLoadingIcon, GlIcon, GlAlert } from '@gitlab/ui';
-import { throttle, isEmpty } from 'lodash';
+import { GlResizeObserverDirective, GlLoadingIcon, GlAlert, GlLink, GlSprintf } from '@gitlab/ui';
+import { throttle, isEmpty } from 'lodash-es';
 // eslint-disable-next-line no-restricted-imports
 import { mapGetters, mapState, mapActions } from 'vuex';
 import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
+import { DOCS_URL } from '~/constants';
 import JobLogTopBar from '~/ci/job_details/components/job_log_top_bar.vue';
 import RootCauseAnalysisButton from 'ee_else_ce/ci/job_details/components/root_cause_analysis_button.vue';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
-import { __, sprintf } from '~/locale';
+import { __, s__, sprintf } from '~/locale';
 import delayedJobMixin from '~/ci/mixins/delayed_job_mixin';
 import Log from '~/ci/job_details/components/log/log.vue';
 import { MANUAL_STATUS } from '~/ci/constants';
@@ -25,13 +26,19 @@ const STATIC_PANEL_WRAPPER_SELECTOR = '.js-static-panel-inner';
 
 export default {
   name: 'JobPageApp',
+  i18n: {
+    archivedTitle: s__('Job|This job is archived'),
+    archivedBody: s__(
+      'Job|You can still view the log and download artifacts, but retry, cancel, and manual job actions are disabled. %{linkStart}Learn more about archived pipelines%{linkEnd}.',
+    ),
+  },
+  archivedDocsPath: `${DOCS_URL}/administration/settings/continuous_integration/#archive-pipelines`,
   components: {
     JobHeader,
     EmptyState,
     JobRunForm,
     EnvironmentsBlock,
     ErasedBlock,
-    GlIcon,
     Log,
     JobLogTopBar,
     RootCauseAnalysisButton,
@@ -40,6 +47,8 @@ export default {
     Sidebar,
     GlLoadingIcon,
     GlAlert,
+    GlLink,
+    GlSprintf,
   },
   directives: {
     SafeHtml,
@@ -118,6 +127,10 @@ export default {
 
     shouldRenderHeaderCallout() {
       return this.shouldRenderCalloutMessage && !this.hasUnmetPrerequisitesFailure;
+    },
+
+    shouldRenderAttestationWarning() {
+      return this.job.supply_chain_attestation_status === 'error';
     },
 
     isJobRetryable() {
@@ -222,17 +235,19 @@ export default {
 };
 </script>
 <template>
-  <div
-    v-gl-resize-observer="updateScroll"
-    :class="{ 'with-job-sidebar-expanded': isSidebarOpen && !showJobForm }"
-  >
+  <div v-gl-resize-observer="updateScroll" :class="{ 'with-job-sidebar-expanded': isSidebarOpen }">
     <gl-loading-icon v-if="isLoading" size="lg" class="gl-mt-6" />
 
     <template v-else-if="shouldRenderContent">
       <div class="build-page" data-testid="job-content">
         <!-- Header Section -->
         <header>
-          <job-header :job-id="job.id" :user="job.user" @clicked-sidebar-button="toggleSidebar" />
+          <job-header
+            v-if="job.id"
+            :job-id="job.id"
+            :user="job.user"
+            @clicked-sidebar-button="toggleSidebar"
+          />
           <gl-alert
             v-if="shouldRenderHeaderCallout"
             variant="danger"
@@ -240,6 +255,21 @@ export default {
             :dismissible="false"
           >
             <div v-safe-html="job.callout_message"></div>
+          </gl-alert>
+          <gl-alert
+            v-if="shouldRenderAttestationWarning"
+            :title="s__('Job|Attestation Generation Error')"
+            variant="warning"
+            class="mb-2 gl-mt-3"
+            :dismissible="false"
+          >
+            <div>
+              {{
+                s__(
+                  'Job|An error occurred while generating an attestation for build artifacts in this job. Please check the configuration, and try again.',
+                )
+              }}
+            </div>
           </gl-alert>
         </header>
         <!-- EO Header Section -->
@@ -271,21 +301,24 @@ export default {
           :erased-at="job.erased_at"
         />
 
-        <div
+        <gl-alert
           v-if="job.archived"
-          class="archived-job gl-z-1 gl-m-auto gl-mt-3 gl-items-center gl-px-3 gl-py-2"
-          :class="{ 'sticky-top gl-border-b-0': hasJobLog }"
+          :title="$options.i18n.archivedTitle"
+          variant="info"
+          :dismissible="false"
           data-testid="archived-job"
+          class="gl-mb-3 gl-mt-3"
         >
-          <gl-icon name="lock" class="gl-align-bottom" />
-          {{ __('This job is archived.') }}
-        </div>
+          <gl-sprintf :message="$options.i18n.archivedBody">
+            <template #link="{ content }">
+              <gl-link :href="$options.archivedDocsPath" target="_blank">{{ content }}</gl-link>
+            </template>
+          </gl-sprintf>
+        </gl-alert>
+
         <!-- job log -->
         <div v-if="hasJobLog && !showUpdateVariablesState" class="build-log-container gl-relative">
           <job-log-top-bar
-            :class="{
-              'has-archived-block': job.archived,
-            }"
             :size="jobLogSize"
             :raw-path="job.raw_path"
             :log-viewer-path="logViewerPath"
@@ -327,11 +360,13 @@ export default {
         <!-- job form for variables and inputs -->
 
         <template v-if="showJobForm">
-          <h2>{{ emptyStateTitle }}</h2>
+          <template v-if="emptyStateIllustration.content">
+            <h2>{{ emptyStateTitle }}</h2>
 
-          <p v-if="emptyStateIllustration.content" data-testid="job-empty-state-content">
-            {{ emptyStateIllustration.content }}
-          </p>
+            <p data-testid="job-empty-state-content">
+              {{ emptyStateIllustration.content }}
+            </p>
+          </template>
           <job-run-form
             :is-retryable="isJobRetryable"
             :job-id="job.id"
@@ -357,7 +392,6 @@ export default {
         <!-- EO Body Section -->
 
         <sidebar
-          v-if="!showJobForm"
           :class="{
             'right-sidebar-expanded': isSidebarOpen,
             'right-sidebar-collapsed': !isSidebarOpen,

@@ -2,6 +2,7 @@
 import { GlDropdownItem } from '@gitlab/ui';
 
 export default {
+  name: 'SidebarAssignee',
   components: {
     GlDropdownItem,
   },
@@ -15,6 +16,7 @@ export default {
       required: true,
     },
   },
+  emits: ['update-alert-assignees'],
 };
 </script>
 

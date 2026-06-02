@@ -4,9 +4,9 @@ require 'spec_helper'
 
 RSpec.describe MembersFinder, feature_category: :groups_and_projects do
   let_it_be(:group) { create(:group) }
-  let_it_be(:nested_group) { create(:group, parent: group) }
-  let_it_be(:project, reload: true) { create(:project, namespace: nested_group) }
-  let_it_be(:user1) { create(:user) }
+  let_it_be(:nested_group, freeze: false) { create(:group, parent: group) }
+  let_it_be_with_reload(:project) { create(:project, namespace: nested_group) }
+  let_it_be(:user1, freeze: false) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
   let_it_be(:user4) { create(:user) }
@@ -182,14 +182,17 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
   end
 
   context 'with :shared_into_ancestors' do
-    let_it_be(:invited_group) do
+    let_it_be(:invited_group, freeze: false) do
       create(:group).tap do |invited_group|
         create(:group_group_link, shared_group: nested_group, shared_with_group: invited_group)
       end
     end
 
-    let_it_be(:invited_group_member) { create(:group_member, :developer, group: invited_group, user: user1) }
-    let_it_be(:namespace_parent_member) { create(:group_member, :owner, group: group, user: user2) }
+    let_it_be(:invited_group_member, freeze: false) do
+      create(:group_member, :developer, group: invited_group, user: user1)
+    end
+
+    let_it_be(:namespace_parent_member, freeze: false) { create(:group_member, :owner, group: group, user: user2) }
     let_it_be(:namespace_member) { create(:group_member, :developer, group: nested_group, user: user3) }
     let_it_be(:project_member) { create(:project_member, :developer, project: project, user: user4) }
 
@@ -217,7 +220,7 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
       described_class.new(project, user2).execute(include_relations: [:inherited, :direct, :invited_groups])
     end
 
-    let_it_be(:linked_group) { create(:group, parent: group) }
+    let_it_be(:linked_group, freeze: false) { create(:group, parent: group) }
     let_it_be(:nested_linked_group) { create(:group, parent: linked_group) }
     let_it_be(:linked_group_member) { linked_group.add_guest(user1) }
     let_it_be(:nested_linked_group_member) { nested_linked_group.add_guest(user2) }
@@ -298,6 +301,23 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
 
         expect(members.map(&:user)).to contain_exactly(user1, user2)
         expect(members.max_by(&:access_level).access_level).to eq(Gitlab::Access::REPORTER)
+      end
+    end
+
+    context 'when user has access request in ancestor of invited group' do
+      it 'excludes access request records and returns valid membership' do
+        create(:project_group_link, project: project, group: nested_linked_group)
+        linked_group.request_access(user3)
+
+        expect(members).to contain_exactly(linked_group_member, nested_linked_group_member)
+      end
+
+      it 'returns valid membership when user has both membership in invited group and access request in ancestor' do
+        create(:project_group_link, project: project, group: nested_linked_group)
+        nested_linked_group.add_developer(user3)
+        linked_group.request_access(user3)
+
+        expect(members.map(&:user)).to include(user3)
       end
     end
   end

@@ -1,3 +1,4 @@
+import { defaultAreaOpacity } from '@gitlab/ui/src/utils/charts/config';
 import dateFormat, { masks } from '~/lib/dateformat';
 import {
   nDaysBefore,
@@ -197,16 +198,17 @@ export const CONTRIBUTOR_METRICS = {
 };
 
 export const AI_METRICS = {
-  CODE_SUGGESTIONS_USAGE_RATE: 'code_suggestions_usage_rate',
+  CODE_SUGGESTIONS_USERS_COUNT: 'code_suggestions_users_count',
   CODE_SUGGESTIONS_ACCEPTANCE_RATE: 'code_suggestions_acceptance_rate',
-  DUO_CHAT_USAGE_RATE: 'duo_chat_usage_rate',
-  DUO_USAGE_RATE: 'duo_usage_rate',
-  DUO_RCA_USAGE_RATE: 'duo_rca_usage_rate',
+  DUO_CHAT_USERS_COUNT: 'duo_chat_users_count',
+  DUO_RCA_USERS_COUNT: 'duo_rca_users_count',
   DUO_USED_COUNT: 'duo_used_count',
   DUO_REVIEW_REQUESTS_COUNT: 'duo_review_requests_count',
   DUO_REVIEW_COMMENT_COUNT: 'duo_review_comment_count',
   DUO_AGENT_PLATFORM_FLOWS: 'duo_agent_platform_flows',
   DUO_AGENT_PLATFORM_CHATS: 'duo_agent_platform_chats',
+  DUO_AGENT_PLATFORM_AGENTS_FLOWS_USERS_COUNT: 'duo_agent_platform_agent_flows_users_count',
+  DUO_POWER_USERS_COUNT: 'duo_power_users_count',
 };
 
 export const VALUE_STREAM_METRIC_DISPLAY_UNITS = {
@@ -386,10 +388,8 @@ export const VALUE_STREAM_METRIC_METADATA = {
     projectLink: mrProjectLink,
     docsLink: helpPagePath('user/analytics/merge_request_analytics'),
   },
-  [AI_METRICS.CODE_SUGGESTIONS_USAGE_RATE]: {
-    description: s__(
-      'AiImpactAnalytics|Code contributors with assigned Duo seats who used Code Suggestions.',
-    ),
+  [AI_METRICS.CODE_SUGGESTIONS_USERS_COUNT]: {
+    description: s__('AiImpactAnalytics|Number of users who used Code Suggestions.'),
     groupLink: '',
     projectLink: '',
     docsLink: helpPagePath('user/project/repository/code_suggestions/_index', {
@@ -406,16 +406,14 @@ export const VALUE_STREAM_METRIC_METADATA = {
       anchor: 'use-code-suggestions',
     }),
   },
-  [AI_METRICS.DUO_CHAT_USAGE_RATE]: {
-    description: s__('AiImpactAnalytics|Users with assigned Duo seats who used Duo Chat.'),
+  [AI_METRICS.DUO_CHAT_USERS_COUNT]: {
+    description: s__('AiImpactAnalytics|Number of users who used Duo Chat (non-agentic).'),
     groupLink: '',
     projectLink: '',
     docsLink: helpPagePath('user/gitlab_duo_chat/_index'),
   },
-  [AI_METRICS.DUO_RCA_USAGE_RATE]: {
-    description: s__(
-      'AiImpactAnalytics|Users with assigned Duo seats who used Root Cause Analysis.',
-    ),
+  [AI_METRICS.DUO_RCA_USERS_COUNT]: {
+    description: s__('AiImpactAnalytics|Number of users who used Root Cause Analysis.'),
     groupLink: '',
     projectLink: '',
     docsLink: helpPagePath('user/gitlab_duo/use_cases', {
@@ -423,7 +421,9 @@ export const VALUE_STREAM_METRIC_METADATA = {
     }),
   },
   [AI_METRICS.DUO_USED_COUNT]: {
-    description: s__('AiImpactAnalytics|Number of contributors who used any GitLab Duo feature.'),
+    description: s__(
+      'AiImpactAnalytics|Number of users who used at least one GitLab Duo or GitLab Duo Agent Platform feature.',
+    ),
     groupLink: '',
     projectLink: '',
     docsLink: helpPagePath('user/gitlab_duo/feature_summary'),
@@ -522,3 +522,36 @@ export const SUPPORTED_CODE_SUGGESTIONS_DIMENSION_KEYS = [
   IDE_DIMENSION_KEY,
   LANGUAGE_DIMENSION_KEY,
 ];
+
+export const MIN_SEARCH_CHARS = 3;
+
+export const PANEL_TROUBLESHOOTING_URL = helpPagePath('/user/analytics/analytics_dashboards.md');
+
+export const VISUALIZATION_SLUG_DORA_PERFORMERS_SCORE = 'dora_performers_score';
+export const VISUALIZATION_SLUG_DORA_PROJECTS_COMPARISON = 'dora_projects_comparison';
+export const VISUALIZATION_SLUG_VSD_DORA_METRICS_TABLE = 'vsd_dora_metrics_table';
+export const VISUALIZATION_SLUG_VSD_SECURITY_METRICS_TABLE = 'vsd_security_metrics_table';
+
+export const VISUALIZATION_DOCUMENTATION_LINKS = {
+  [VISUALIZATION_SLUG_DORA_PERFORMERS_SCORE]: helpPagePath(
+    'user/analytics/value_streams_dashboard.md#dora-performers-score',
+  ),
+  [VISUALIZATION_SLUG_DORA_PROJECTS_COMPARISON]: helpPagePath(
+    'user/analytics/value_streams_dashboard.md#projects-by-dora-metric',
+  ),
+  [VISUALIZATION_SLUG_VSD_DORA_METRICS_TABLE]: helpPagePath(
+    'user/analytics/value_streams_dashboard.md#devsecops-metrics-comparison',
+  ),
+  [VISUALIZATION_SLUG_VSD_SECURITY_METRICS_TABLE]: helpPagePath(
+    'user/analytics/value_streams_dashboard.md#devsecops-metrics-comparison',
+  ),
+};
+
+export const NULL_SERIES_ID = 'nullSeries';
+
+export const EVENT_LABEL_CLICK_METRIC_IN_DASHBOARD_TABLE = 'click_metric_in_dashboard_table';
+
+export const AREA_CHART_SERIES_OPTIONS = {
+  areaStyle: { opacity: defaultAreaOpacity },
+  type: 'line',
+};

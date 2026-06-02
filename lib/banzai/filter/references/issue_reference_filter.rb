@@ -27,7 +27,7 @@ module Banzai
           return Issue.none if parent.is_a?(Group)
 
           parent.issues.iid_in(ids.to_a)
-                .includes(:project, :namespace, :work_item_type, :author)
+                .includes(:project, :namespace, :author)
         end
 
         def object_link_content_html_extras(issue, matches)
@@ -38,7 +38,7 @@ module Banzai
           super
         end
 
-        def data_attributes_for(original, parent, object, **data)
+        def data_attributes_for(original, parent, object, **_attrs)
           additional_attributes = { iid: object.iid, namespace_path: parent.full_path }
           if parent.is_a?(Namespaces::ProjectNamespace) || parent.is_a?(Project)
             additional_attributes[:project_path] = parent.full_path

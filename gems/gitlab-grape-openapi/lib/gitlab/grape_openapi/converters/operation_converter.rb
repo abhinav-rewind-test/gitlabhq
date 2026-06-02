@@ -8,13 +8,14 @@ module Gitlab
 
         DASH_SEGMENT = 'Dash'
 
-        def self.convert(route, schema_registry)
-          new(route, schema_registry).convert
+        def self.convert(route, schema_registry, request_body_registry)
+          new(route, schema_registry, request_body_registry).convert
         end
 
-        def initialize(route, schema_registry)
+        def initialize(route, schema_registry, request_body_registry)
           @route = route
           @schema_registry = schema_registry
+          @request_body_registry = request_body_registry
           @config = Gitlab::GrapeOpenapi.configuration
           @options = route.instance_variable_get(:@options)
           @pattern = route.instance_variable_get(:@pattern)
@@ -28,30 +29,71 @@ module Gitlab
             operation.description = extract_detail
             operation.tags = extract_tags
             operation.deprecated = extract_deprecated
+            operation.hidden = extract_hidden
             operation.parameters = extract_parameters
             operation.responses = ResponseConverter.new(@route, @schema_registry).convert
             operation.request_body = extract_request_body || {}
+            operation.annotations = extract_annotations
           end
         end
 
         private
 
-        attr_reader :config, :route, :options, :pattern, :endpoint, :schema_registry
+        attr_reader :config, :route, :options, :pattern, :endpoint, :schema_registry, :request_body_registry
 
         def route_method
           options = @route.instance_variable_get(:@options)
           options[:method]
         end
 
-        def extract_parameters
-          return [] if options[:params].empty?
+        def extract_annotations
+          return {} unless options[:settings]
 
-          # For non-GET requests, only path parameters are included here
-          # Body parameters are handled separately in extract_request_body
-          options[:params].filter_map do |key, options|
-            Converters::ParameterConverter.convert(key, options: options, validations: validations_for(key.to_sym),
-              route: route)
+          selected_keys = options[:settings].keys.select do |k|
+            config.annotations.key?(k)
           end
+
+          selected_keys.to_h do |key|
+            [config.annotations[key], options[:settings][key].to_s]
+          end
+        end
+
+        def extract_parameters
+          params = if options[:params].empty?
+                     []
+                   else
+                     options[:params].filter_map do |key, options|
+                       Converters::ParameterConverter.convert(
+                         key,
+                         options: options,
+                         validations: validations_for(key.to_sym),
+                         route: route
+                       )
+                     end
+                   end
+
+          inject_missing_path_parameters(params)
+        end
+
+        def inject_missing_path_parameters(params)
+          declared_names = params.map(&:name).to_set
+
+          path_placeholders = normalized_path.scan(/\{(\w+)\}/).flatten
+          path_placeholders.each do |placeholder|
+            next if declared_names.include?(placeholder)
+
+            # Empty schema because the Grape endpoint did not declare this param,
+            # so we have no type information. An empty schema is valid OpenAPI 3.0
+            # and means "any type", which is more accurate than guessing.
+            params << Models::Parameter.new(
+              placeholder,
+              options: { required: true },
+              schema: {},
+              in_value: 'path'
+            )
+          end
+
+          params
         end
 
         def operation_id
@@ -62,9 +104,8 @@ module Gitlab
           parts = segments.filter_map do |seg|
             next DASH_SEGMENT if seg == '-'
 
-            if seg.start_with?('{')
-              param_name = seg[1..-2]
-              camelize(param_name)
+            if seg.include?('{')
+              camelize(seg.gsub(/\{[^}]+\}/) { |m| m[1..-2] })
             else
               camelize(seg)
             end
@@ -98,6 +139,10 @@ module Gitlab
           !!options.dig(:settings, :description, :deprecated)
         end
 
+        def extract_hidden
+          !!options.dig(:settings, :description, :hidden)
+        end
+
         def path_segments
           segments = normalized_path.split('/').reject do |segment|
             segment.empty? || segment.start_with?('{')
@@ -117,12 +162,13 @@ module Gitlab
           path = pattern.instance_variable_get(:@origin)
           path
             .gsub(/\(\.:format\)$/, '')
+            .gsub(/[()\\]/, '')
             .gsub(/:\w+/) { |match| "{#{match[1..]}}" }
             .gsub('{version}', config.api_version)
         end
 
         def camelize(string)
-          string.gsub(/[@.-]/, '_').split('_').reject(&:empty?).map(&:capitalize).join
+          string.gsub(/[^a-zA-Z0-9_]/, '_').split('_').reject(&:empty?).map(&:capitalize).join
         end
 
         def http_method
@@ -150,7 +196,8 @@ module Gitlab
           RequestBodyConverter.convert(
             route: route,
             options: options,
-            params: options[:params]
+            params: options[:params],
+            request_body_registry: request_body_registry
           )
         end
       end

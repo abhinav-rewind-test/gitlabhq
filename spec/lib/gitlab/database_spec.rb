@@ -281,6 +281,44 @@ RSpec.describe Gitlab::Database, feature_category: :database do
     end
   end
 
+  describe '.column_type' do
+    let(:model) { ActiveRecord::Base }
+
+    context "with integer array columns" do
+      let(:table_name) { "_test_gitlab_main_column_type" }
+
+      before do
+        model.connection.execute('CREATE TABLE _test_gitlab_main_column_type (small_numbers INT4[], large_numbers INT8[])')
+      end
+
+      it 'returns the correct type for small integers' do
+        expect(described_class.column_type(model.connection, table_name, 'small_numbers')).to eq('_int4')
+      end
+
+      it 'returns the correct type for large integers' do
+        expect(described_class.column_type(model.connection, table_name, 'large_numbers')).to eq('_int8')
+      end
+    end
+
+    context 'with an unknown table' do
+      it 'raises an undefined table error' do
+        expect { described_class.column_type(model.connection, 'nonexistent_database_table', 'username') }.to raise_error(ActiveRecord::StatementInvalid) { |e| expect(e.cause).to be_a(PG::UndefinedTable) }
+      end
+    end
+
+    context 'with an unknown column' do
+      it 'returns nil' do
+        expect(described_class.column_type(model.connection, 'users', 'nonexistent_database_column')).to be_nil
+      end
+    end
+
+    context 'with no connection' do
+      it 'returns nil' do
+        expect(described_class.column_type(nil, 'users', 'username')).to be_nil
+      end
+    end
+  end
+
   describe '.db_config_names' do
     using RSpec::Parameterized::TableSyntax
 
@@ -322,8 +360,6 @@ RSpec.describe Gitlab::Database, feature_category: :database do
       'main'             | { database_tasks: false } | nil
       'ci'               | { database_tasks: true }  | nil
       'ci'               | { database_tasks: false } | 'main'
-      'main_clusterwide' | { database_tasks: true }  | nil
-      'main_clusterwide' | { database_tasks: false } | 'main'
       '_test_unknown'    | { database_tasks: true }  | nil
       '_test_unknown'    | { database_tasks: false } | 'main'
     end
@@ -361,11 +397,11 @@ RSpec.describe Gitlab::Database, feature_category: :database do
 
     it 'does return a valid schema for a replica connection' do
       with_replica_pool_for(ActiveRecord::Base) do |main_replica_pool|
-        expect(described_class.gitlab_schemas_for_connection(main_replica_pool.connection)).to include(:gitlab_main, :gitlab_shared)
+        expect(described_class.gitlab_schemas_for_connection(main_replica_pool.lease_connection)).to include(:gitlab_main, :gitlab_shared)
       end
 
       with_replica_pool_for(Ci::ApplicationRecord) do |ci_replica_pool|
-        expect(described_class.gitlab_schemas_for_connection(ci_replica_pool.connection)).to include(:gitlab_ci, :gitlab_shared)
+        expect(described_class.gitlab_schemas_for_connection(ci_replica_pool.lease_connection)).to include(:gitlab_ci, :gitlab_shared)
       end
     end
 

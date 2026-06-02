@@ -9,7 +9,7 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
   let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
   let_it_be(:pending_job) { create(:ci_build, :pending) }
   let_it_be(:running_job) { create(:ci_build, :running) }
-  let_it_be(:successful_job) { create(:ci_build, :success, pipeline: pipeline, name: 'build') }
+  let_it_be(:successful_job, freeze: false) { create(:ci_build, :success, pipeline: pipeline, name: 'build') }
 
   let(:params) { {} }
 
@@ -174,7 +174,7 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
     subject { described_class.new(current_user: user, project: project, params: params).execute }
 
     context 'with user being project maintainer' do
-      before do
+      before_all do
         project.add_maintainer(user)
       end
 
@@ -222,7 +222,7 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
     end
 
     context 'with user being project guest' do
-      before do
+      before_all do
         project.add_guest(user)
       end
 
@@ -318,7 +318,7 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
 
       let(:user) { guest }
 
-      before do
+      before_all do
         project.add_guest(guest)
       end
 
@@ -477,7 +477,7 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
       described_class.new(current_user: user, project: project, params: params).execute
     end
 
-    before do
+    before_all do
       project.add_maintainer(user)
     end
 

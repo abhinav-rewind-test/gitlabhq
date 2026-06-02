@@ -5,11 +5,11 @@ require 'spec_helper'
 RSpec.describe 'Reorder work items', feature_category: :team_planning do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project) }
-  let_it_be(:current_user) { create(:user, developer_of: project) }
-  let_it_be(:item1, reload: true) { create(:work_item, :issue, project: project, relative_position: 10) }
-  let_it_be(:item2, reload: true) { create(:work_item, :issue, project: project, relative_position: 20) }
-  let_it_be(:item3, reload: true) { create(:work_item, :issue, project: project, relative_position: 20) }
+  let_it_be(:project, freeze: false) { create(:project) }
+  let_it_be(:current_user, freeze: false) { create(:user, developer_of: project) }
+  let_it_be_with_reload(:item1) { create(:work_item, :issue, project: project, relative_position: 10) }
+  let_it_be_with_reload(:item2) { create(:work_item, :issue, project: project, relative_position: 20) }
+  let_it_be_with_reload(:item3) { create(:work_item, :issue, project: project, relative_position: 20) }
 
   let(:input) do
     {

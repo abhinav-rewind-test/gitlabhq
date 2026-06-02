@@ -3,7 +3,7 @@
   extends:
     - .default-retry
 
-.rails-production-server-boot:
+rails-boot:
   extends:
     - .preflight-job-base
     - .default-before_script
@@ -14,11 +14,8 @@
   needs:
     - job: cache:ruby-gems
       optional: true
-  artifacts:
-    expire_in: 7d
-    when: always
-    paths:
-      - log/
+  script:
+    - bin/rails boot --environment=production
 
 ruby_syntax:
   extends:
@@ -46,6 +43,15 @@ no-jh-check:
     - .preflight:rules:no-jh-check
   script:
     - scripts/no-dir-check jh
+
+unique-by-index-check:
+  extends:
+    - .preflight-job-base
+    - .preflight:rules:unique-by-index-check
+  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}ruby:${RUBY_VERSION_DEFAULT}
+  allow_failure: true
+  script:
+    - scripts/lint/check_unique_by_indexes.rb
 
 .pipeline-tier-base:
   needs: []

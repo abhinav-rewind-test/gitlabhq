@@ -6,9 +6,10 @@ module Types
       graphql_name 'Kas'
 
       authorize :read_instance_metadata
+      authorize_granular_token permissions: :read_metadata, boundary: :instance, boundary_type: :instance
 
       field :enabled, GraphQL::Types::Boolean, null: false,
-        description: 'Indicates whether the Kubernetes agent server is enabled.'
+        description: 'Indicates whether GitLab Relay (KAS) is enabled.'
       field :external_k8s_proxy_url, GraphQL::Types::String, null: true,
         description: 'URL used by the Kubernetes tooling to communicate with the KAS Kubernetes API proxy.'
       # rubocop:disable GraphQL/ExtractType -- we want to keep this way for backwards compatibility

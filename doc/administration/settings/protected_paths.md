@@ -1,7 +1,7 @@
 ---
 stage: Production Engineering
 group: Networking and Incident Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Protected paths
 ---
@@ -22,7 +22,7 @@ code `429` to POST requests that exceed 10 requests per minute per IP address an
 For example, the following are limited to a maximum 10 requests per minute:
 
 - User sign-in
-- User sign-up (if enabled)
+- New user account creation (if enabled)
 - User password reset
 
 After 10 requests, the client must wait 60 seconds before it can try again.
@@ -43,7 +43,7 @@ Prerequisites:
 - Administrator access.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Protected paths**.
 
 Requests that exceed the rate limit are logged in `auth.log`.

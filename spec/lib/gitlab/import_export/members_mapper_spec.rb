@@ -311,6 +311,27 @@ RSpec.describe Gitlab::ImportExport::MembersMapper, feature_category: :importers
           end
         end
 
+        context 'when importer is a project/group access token' do
+          let(:user) { create(:user, :project_bot) }
+          let(:creator) { create(:user) }
+          let(:exported_members) { [] }
+          let(:importable) { create(:project, :public, creator: creator) }
+
+          before do
+            importable.add_developer(create(:user))
+          end
+
+          it 'does not modify existing members on initialization' do
+            expect { members_mapper }.not_to change { importable.reload.members.count }
+          end
+
+          it 'does not add the importer as a member' do
+            members_mapper
+
+            expect(importable.members.find_by(user: user)).to be_nil
+          end
+        end
+
         context 'when importer mapping fails' do
           let(:exception_message) { 'Something went wrong' }
 
@@ -319,6 +340,28 @@ RSpec.describe Gitlab::ImportExport::MembersMapper, feature_category: :importers
 
             expect { members_mapper.map }
               .to raise_error(StandardError, "Error adding importer user to Project members. #{exception_message}")
+          end
+        end
+
+        context 'when importer user already exists during retry' do
+          let(:logger) { instance_double(::Import::Framework::Logger) }
+
+          before do
+            importable.add_member(user, member_class::MAINTAINER)
+            allow(::Import::Framework::Logger).to receive(:build).and_return(logger)
+            allow(logger).to receive(:info)
+          end
+
+          it 'gracefully handles the duplicate importer user error' do
+            expect { members_mapper }
+              .not_to raise_error
+          end
+
+          it 'logs the duplicate user error' do
+            members_mapper
+
+            expect(logger).to have_received(:info)
+                                .with(hash_including(message: a_string_including('User already exists')))
           end
         end
       end

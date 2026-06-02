@@ -1,4 +1,4 @@
-import { isNil, omitBy } from 'lodash';
+import { isNil, omitBy } from 'lodash-es';
 import { objectToQuery, joinPaths, encodeSaferUrl } from '~/lib/utils/url_utility';
 import { TRACKING_UNKNOWN_ID } from '~/super_sidebar/constants';
 import {
@@ -57,7 +57,7 @@ export const fileMapper = (projectBlobPath, file) => {
   return {
     icon: 'doc-code',
     text: file,
-    href: encodeSaferUrl(joinPaths(projectBlobPath, file)),
+    href: joinPaths(projectBlobPath, encodeSaferUrl(file)),
     extraAttrs: {
       'data-track-action': TRACKING_CLICK_COMMAND_PALETTE_ITEM,
       'data-track-label': 'file',

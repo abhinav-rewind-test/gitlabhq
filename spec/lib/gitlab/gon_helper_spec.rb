@@ -88,7 +88,8 @@ RSpec.describe Gitlab::GonHelper, feature_category: :navigation do
 
       it 'exposes current_organization' do
         expect(gon).to receive(:current_organization=).with(
-          current_organization.slice(:id, :name, :full_path, :web_url, :avatar_url)
+          current_organization.slice(:id, :name, :path, :full_path, :web_url, :avatar_url)
+            .merge({ has_scoped_paths: true })
         )
 
         add_gon_variables
@@ -121,15 +122,69 @@ RSpec.describe Gitlab::GonHelper, feature_category: :navigation do
       end
     end
 
-    describe 'allow_immediate_namespaces_deletion' do
-      before do
-        allow(Gitlab::CurrentSettings).to receive(:allow_immediate_namespaces_deletion_for_user?).and_return(false)
+    describe 'fluid_layout' do
+      context 'when there is no current_user' do
+        it 'sets gon.fluid_layout to false' do
+          expect(gon).to receive(:fluid_layout=).with(false)
+
+          helper.add_gon_variables
+        end
       end
 
-      it 'exposes allow_immediate_namespaces_deletion property' do
-        expect(gon).to receive(:allow_immediate_namespaces_deletion=).with(false)
+      context 'when current_user prefers a fluid layout' do
+        before do
+          allow(helper).to receive(:current_user).and_return(build_stubbed(:user, layout: :fluid))
+        end
+
+        it 'sets gon.fluid_layout to true' do
+          expect(gon).to receive(:fluid_layout=).with(true).ordered
+
+          helper.add_gon_variables
+        end
+      end
+
+      context 'when current_user prefers a fixed layout' do
+        before do
+          allow(helper).to receive(:current_user).and_return(build_stubbed(:user, layout: :fixed))
+        end
+
+        it 'sets gon.fluid_layout to false' do
+          expect(gon).to receive(:fluid_layout=).with(false).twice
+
+          helper.add_gon_variables
+        end
+      end
+    end
+
+    describe 'instance_token_prefix' do
+      it 'exposes instance_token_prefix' do
+        stub_application_setting(instance_token_prefix: 'instanceprefix')
+
+        expect(gon).to receive(:instance_token_prefix=).with('instanceprefix')
 
         helper.add_gon_variables
+      end
+
+      it 'exposes empty instance_token_prefix when not set' do
+        stub_application_setting(instance_token_prefix: '')
+
+        expect(gon).to receive(:instance_token_prefix=).with('')
+
+        helper.add_gon_variables
+      end
+
+      context 'with feature flag custom_prefix_for_all_token_types disabled' do
+        before do
+          stub_feature_flags(custom_prefix_for_all_token_types: false)
+        end
+
+        it 'does not expose instance_token_prefix' do
+          stub_application_setting(instance_token_prefix: 'instanceprefix')
+
+          expect(gon).not_to receive(:instance_token_prefix=).with('instanceprefix')
+
+          helper.add_gon_variables
+        end
       end
     end
   end

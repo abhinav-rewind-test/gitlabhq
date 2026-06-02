@@ -71,12 +71,14 @@ module API
       end
       params do
         requires :name, type: String, desc: 'The name of the protected tag', documentation: { example: 'release-1-0' }
+        # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :create_access_level,
           type: Integer,
           values: ProtectedTag::CreateAccessLevel.allowed_access_levels,
           desc: 'Access levels allowed to create (defaults: `40`, maintainer access level)',
           documentation: { example: 30 }
-        use :optional_params_ee
+        # rubocop:enable API/AccessLevelStringType
+        use :optional_params
       end
       route_setting :authorization, permissions: :create_protected_tag, boundary_type: :project
       post ':id/protected_tags' do
@@ -113,7 +115,7 @@ module API
       # rubocop: disable CodeReuse/ActiveRecord
       route_setting :authorization, permissions: :delete_protected_tag, boundary_type: :project
       delete ':id/protected_tags/:name', requirements: TAG_ENDPOINT_REQUIREMENTS do
-        authorize!(:destroy_protected_tags, user_project)
+        authorize!(:delete_protected_tag, user_project)
 
         protected_tag = user_project.protected_tags.find_by!(name: params[:name])
 

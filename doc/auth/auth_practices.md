@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Authentication and authorization best practices
 description: Security recommendations and best practices for authentication, authorization, and access management.
 ---
@@ -59,7 +59,7 @@ your organization's security standards.
 
 - Configure [password complexity requirements](../administration/settings/sign_up_restrictions.md#modify-password-complexity-requirements)
   appropriate for your organization.
-- Enable [compromised password detection](../security/compromised_password_detection.md) to
+- Enable [compromised password detection](../user/profile/user_passwords.md) to
   prevent the use of known compromised passwords.
 
 ### Two-factor authentication

@@ -22,14 +22,27 @@ export const captureException = (...args) => {
   Sentry?.captureException(...args);
 };
 
-/** @type {import('@sentry/core').addBreadcrumb} */
-export const addBreadcrumb = (...args) => {
+/** @type {import('@sentry/core').captureMessage} */
+export const captureMessage = (...args) => {
   // eslint-disable-next-line no-underscore-dangle
   const Sentry = window._Sentry;
 
   // When Sentry is not configured during development, show console error
   if (process.env.NODE_ENV === 'development' && !Sentry) {
-    console.debug('[Sentry stub]', 'addBreadcrumb(...) called with:', { ...args });
+    console.error('[Sentry stub]', 'captureMessage(...) called with:', { ...args });
+    return;
+  }
+
+  Sentry?.captureMessage(...args);
+};
+
+/** @type {import('@sentry/core').addBreadcrumb} */
+export const addBreadcrumb = (...args) => {
+  // eslint-disable-next-line no-underscore-dangle
+  const Sentry = window._Sentry;
+
+  // When Sentry is not configured during development we can ignore the breadcrumb
+  if (process.env.NODE_ENV === 'development' && !Sentry) {
     return;
   }
 

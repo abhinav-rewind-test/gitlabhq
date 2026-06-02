@@ -159,15 +159,11 @@ module MergeRequestsHelper
     end
   end
 
-  def notifications_todos_buttons_enabled?
-    Feature.enabled?(:notifications_todos_buttons, current_user)
-  end
-
   def can_use_description_composer(_user, _merge_request)
     false
   end
 
-  # Overriden in EE
+  # Overridden in EE
   def summarize_new_merge_request_disabled_reason(_merge_request); end
 
   def diffs_tab_pane_data(project, merge_request, params)
@@ -354,18 +350,19 @@ module MergeRequestsHelper
                 end
 
     branch = if merge_request.for_fork?
-               format(ERB::Util.html_escape(
-                 _('%{fork_icon} %{source_project_path}:%{source_branch}')),
+               safe_format(
+                 _('%{fork_icon} %{source_project_path}:%{source_branch}'),
                  fork_icon: fork_icon.html_safe,
                  source_project_path: merge_request.source_project_path,
-                 source_branch: merge_request.source_branch)
+                 source_branch: merge_request.source_branch
+               )
              else
                merge_request.source_branch
              end
 
     branch_title = if merge_request.for_fork?
-                     format(
-                       ERB::Util.html_escape(_('%{source_project_path}:%{source_branch}')),
+                     safe_format(
+                       _('%{source_project_path}:%{source_branch}'),
                        source_project_path: merge_request.source_project_path,
                        source_branch: merge_request.source_branch)
                    else
@@ -418,6 +415,9 @@ module MergeRequestsHelper
       title: merge_request.target_branch,
       class: target_branch_class
 
+    default_branch = html_escape(merge_request.target_project.default_branch)
+    stack_dropdown = "<div class=\"js-stack-dropdown\" data-default-branch=\"#{default_branch}\"></div>".html_safe
+
     copy_button_data = {
       author: link_to_author.html_safe,
       source_branch: merge_request_source_branch(merge_request).html_safe,
@@ -426,7 +426,8 @@ module MergeRequestsHelper
       target_copy_button: " ",
       created_at: time_ago_with_tooltip(merge_request.created_at, html_class: 'gl-inline-block').html_safe,
       author_container_start: '<div class="merge-request-author-container">'.html_safe,
-      author_container_end: '</div>'.html_safe
+      author_container_end: '</div>'.html_safe,
+      stack_dropdown: stack_dropdown
     }
 
     if @project.default_branch != merge_request.target_branch
@@ -434,8 +435,8 @@ module MergeRequestsHelper
     end
 
     safe_format(_(
-      '%{author_container_start}%{author}requested to merge %{author_container_end}%{source_branch} %{copy_button} ' \
-        'into %{target_branch} %{target_copy_button} %{created_at}'
+      '%{author_container_start}%{author}requested to merge %{author_container_end}%{stack_dropdown}%{source_branch} ' \
+        '%{copy_button} into %{target_branch} %{target_copy_button} %{created_at}'
     ), copy_button_data)
   end
 
@@ -446,7 +447,9 @@ module MergeRequestsHelper
   end
 
   def tab_count_display(merge_request, count)
-    merge_request.preparing? ? "-" : count
+    return "-" if merge_request.preparing? || count.nil?
+
+    count
   end
 
   def review_bar_data(_merge_request, _user)
@@ -549,7 +552,7 @@ module MergeRequestsHelper
                 query: 'authorOrAssigneeMergeRequests',
                 variables: {
                   reviewStates: %w[REVIEWED REQUESTED_CHANGES],
-                  ignoredReviewerUsername: duo_code_review_bot.username
+                  ignoredReviewerUsername: duo_code_review_bot_username(current_user)
                 }
               },
               {
@@ -570,7 +573,7 @@ module MergeRequestsHelper
                   draft: merge_request_dashboard_show_drafts?,
                   or: {
                     reviewerWildcard: 'NONE',
-                    onlyReviewerUsername: duo_code_review_bot.username
+                    onlyReviewerUsername: duo_code_review_bot_username(current_user)
                   }
                 }
               }
@@ -596,7 +599,7 @@ module MergeRequestsHelper
                 helpContent: _('Your merge requests that are waiting for approvals.'),
                 query: 'authorOrAssigneeMergeRequests',
                 variables: {
-                  ignoredReviewerUsername: duo_code_review_bot.username,
+                  ignoredReviewerUsername: duo_code_review_bot_username(current_user),
                   reviewStates: %w[UNREVIEWED UNAPPROVED REVIEW_STARTED],
                   not: {
                     reviewStates: %w[REQUESTED_CHANGES REVIEWED]
@@ -620,7 +623,7 @@ module MergeRequestsHelper
                 helpContent: _('Your merge requests with approvals by all assigned reviewers.'),
                 query: 'authorOrAssigneeMergeRequests',
                 variables: {
-                  ignoredReviewerUsername: duo_code_review_bot.username,
+                  ignoredReviewerUsername: duo_code_review_bot_username(current_user),
                   reviewState: 'APPROVED',
                   not: {
                     reviewStates: %w[REQUESTED_CHANGES REVIEWED UNREVIEWED REVIEW_STARTED UNAPPROVED]
@@ -672,10 +675,11 @@ module MergeRequestsHelper
       &.dig(:title) || ''
   end
 
-  def duo_code_review_bot
-    ::Users::Internal.duo_code_review_bot
+  def duo_code_review_bot_username(user)
+    strong_memoize_with(:duo_code_review_bot_username, user) do
+      ::Users::Internal.in_organization(user.organization_id).duo_code_review_bot.username
+    end
   end
-  strong_memoize_attr :duo_code_review_bot
 end
 
 MergeRequestsHelper.prepend_mod_with('MergeRequestsHelper')

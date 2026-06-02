@@ -17,7 +17,7 @@ module WorkItems
       non_widget_attributes = @attributes.except(*all_widget_keys)
 
       updated_work_items = scoped_work_items
-        .includes(namespace: [:route]).find_each(batch_size: 100) # rubocop:disable CodeReuse/ActiveRecord -- Implementation would be identical in model
+        .includes(namespace: [:route, :namespace_settings_with_ancestors_inherited_settings]).find_each(batch_size: 100) # rubocop:disable CodeReuse/ActiveRecord -- Implementation would be identical in model
         .filter_map do |work_item|
           next unless @current_user.can?(:update_work_item, work_item)
 
@@ -48,7 +48,8 @@ module WorkItems
     end
 
     def all_widget_keys
-      @all_widget_keys ||= widget_definition_class.available_widgets.map(&:api_symbol)
+      @all_widget_keys ||=
+        ::WorkItems::TypesFramework::SystemDefined::WidgetDefinition.available_widgets.map(&:api_symbol)
     end
 
     def extract_supported_widget_params(work_item_type, attributes, resource_parent)
@@ -61,14 +62,6 @@ module WorkItems
 
       widget_params.transform_values do |input|
         input.is_a?(Array) ? input.map(&:to_h) : input.to_h
-      end
-    end
-
-    def widget_definition_class
-      if Feature.enabled?(:work_item_system_defined_type, :instance)
-        ::WorkItems::TypesFramework::SystemDefined::WidgetDefinition
-      else
-        ::WorkItems::WidgetDefinition
       end
     end
   end

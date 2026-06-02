@@ -77,7 +77,7 @@ module MergeRequests
       # We only want to use the service when we can not directly fast_forward
       # and when ff merge must be possible
       def use_create_ref_service?
-        Feature.enabled?(:rebase_on_merge_automatic, project) &&
+        project.project_setting.automatic_rebase_enabled? &&
           project.ff_merge_must_be_possible? &&
           merge_request.should_be_rebased?
       end
@@ -138,7 +138,8 @@ module MergeRequests
       def mergeable?
         merge_request.mergeable?(
           skip_discussions_check: options[:skip_discussions_check],
-          check_mergeability_retry_lease: options[:check_mergeability_retry_lease]
+          check_mergeability_retry_lease: options[:check_mergeability_retry_lease],
+          use_cache: false
         )
       end
 

@@ -9,6 +9,7 @@ module BulkImports
     FINISHED = 1
     FAILED = -1
     IN_PROGRESS_STATUSES = [PENDING, STARTED].freeze
+    MAX_CONCURRENT_RELATION_EXPORTS = 5
 
     self.table_name = 'bulk_import_exports'
 
@@ -30,6 +31,15 @@ module BulkImports
     scope :for_user, ->(user) { where(user: user) }
     scope :for_user_and_relation, ->(user, relation) { where(user: user, relation: relation) }
     scope :for_offline_export, ->(offline_export) { where(offline_export: offline_export) }
+    scope :for_offline_export_and_relation, ->(offline_export, relation) do
+      where(offline_export: offline_export, relation: relation)
+    end
+    scope :for_offline_export_in_progress, ->(offline_export) do
+      where(offline_export: offline_export, status: IN_PROGRESS_STATUSES)
+    end
+
+    scope :group_exports, -> { where.not(group_id: nil) }
+    scope :project_exports, -> { where.not(project_id: nil) }
 
     state_machine :status, initial: :started do
       state :pending, value: PENDING
@@ -51,8 +61,24 @@ module BulkImports
 
       after_transition any => :finished do |export|
         if export.config.user_contributions_relation?(export.relation)
-          UserContributionsExportMapper.new(export.portable).clear_cache
+          UserContributionsExportMapper.new(export.portable, offline_export_id: export.offline_export_id).clear_cache
         end
+      end
+
+      after_transition any => :failed do |export|
+        export.flag_failure_on_offline_export if export.offline?
+      end
+    end
+
+    def self.find_or_create_user_contributions_export!(portable, offline_export_id)
+      raise ArgumentError, 'portable must be a Group or Project' if !portable.is_a?(Project) && !portable.is_a?(Group)
+      raise ArgumentError, 'offline_export_id must be an Integer' unless offline_export_id.is_a?(Integer)
+
+      portable.bulk_import_exports.find_or_create_by!(
+        offline_export_id: offline_export_id,
+        relation: FileTransfer::BaseConfig::USER_CONTRIBUTIONS_RELATION
+      ) do |export|
+        export.status = Export::PENDING
       end
     end
 
@@ -89,8 +115,16 @@ module BulkImports
       config.relation_has_user_contributions?(relation)
     end
 
+    def completed?
+      finished? || failed?
+    end
+
     def offline?
       offline_export_id.present?
+    end
+
+    def flag_failure_on_offline_export
+      offline_export.update_has_failures!
     end
   end
 end

@@ -1,5 +1,5 @@
 <script>
-import { cloneDeep, isEmpty } from 'lodash';
+import { cloneDeep, isEmpty } from 'lodash-es';
 import { GlAlert, GlButton, GlFormGroup, GlFormInput } from '@gitlab/ui';
 import { __, s__ } from '~/locale';
 import { scrollToElement } from '~/lib/utils/scroll_utils';
@@ -26,6 +26,11 @@ export default {
       type: Array,
       required: false,
       default: null,
+    },
+    initialSecretToken: {
+      type: String,
+      required: false,
+      default: '',
     },
   },
   data() {
@@ -182,7 +187,7 @@ export default {
         data-testid="webhook-url"
       />
       <gl-alert
-        v-if="urlHasChanged"
+        v-if="urlHasChanged && initialSecretToken"
         variant="warning"
         :dismissible="false"
         class="gl-form-input-xl gl-my-4"

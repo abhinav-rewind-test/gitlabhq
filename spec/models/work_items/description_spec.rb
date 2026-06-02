@@ -23,9 +23,16 @@ RSpec.describe WorkItems::Description, feature_category: :team_planning do
     end
 
     context 'for description length' do
-      let(:description_record) { build(:work_item_description, description: description) }
+      let(:work_item) { create(:work_item) }
+      let(:description_record) do
+        described_class.new(work_item: work_item, namespace: work_item.namespace, description: description)
+      end
 
-      context 'when the description is under DESCRIPTION_LENGTH_MAX' do
+      before do
+        allow(Gitlab::CurrentSettings).to receive(:description_and_note_max_size).and_return(100)
+      end
+
+      context 'when the description is under the configured limit' do
         let(:description) { 'This is a sample work item description' }
 
         it 'is valid' do
@@ -35,8 +42,8 @@ RSpec.describe WorkItems::Description, feature_category: :team_planning do
         end
       end
 
-      context 'when the description is over DESCRIPTION_LENGTH_MAX' do
-        let(:description) { 'x' * (described_class::DESCRIPTION_LENGTH_MAX + 1) }
+      context 'when the description is over the configured limit' do
+        let(:description) { 'x' * (Gitlab::CurrentSettings.description_and_note_max_size + 1) }
 
         it 'is not valid' do
           description_record.validate(:create)
@@ -52,7 +59,10 @@ RSpec.describe WorkItems::Description, feature_category: :team_planning do
         it 'description length is validated' do
           description_record.save!(validate: false)
 
-          update_result = description_record.update(description: 'b' * (described_class::DESCRIPTION_LENGTH_MAX + 1))
+          update_result = description_record.update(
+            description: 'b' * (Gitlab::CurrentSettings.description_and_note_max_size + 1)
+          )
+
           expect(update_result).to be false
           expect(description_record).not_to be_valid
           expect(description_record.errors[:description].first).to include("is too long")
@@ -60,7 +70,7 @@ RSpec.describe WorkItems::Description, feature_category: :team_planning do
       end
 
       context 'when updating other attributes than description' do
-        let(:description) { 'a' * (described_class::DESCRIPTION_LENGTH_MAX + 1) }
+        let(:description) { 'a' * (Gitlab::CurrentSettings.description_and_note_max_size + 1) }
 
         it 'description length is not validated' do
           description_record.save!(validate: false)

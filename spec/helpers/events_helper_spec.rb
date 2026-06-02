@@ -201,7 +201,7 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
 
     context 'for wiki page' do
       # We need non-frozen project since wiki activity touches it
-      let_it_be(:project_2) { create(:project) }
+      let_it_be(:project_2, freeze: false) { create(:project) }
 
       let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project_2) }
       let(:note) { create(:note, noteable: wiki_page_meta, project: project_2, author: user) }
@@ -342,7 +342,7 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
   end
 
   describe '#event_wiki_page_target_url' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     context 'for project wiki' do
       let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
@@ -410,7 +410,7 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
   end
 
   describe '#event_note_target_url' do
-    let_it_be(:event) { create(:event) }
+    let_it_be(:event, freeze: false) { create(:event) }
     let(:project_base_url) { namespace_project_url(namespace_id: project.namespace, id: project) }
 
     subject { helper.event_note_target_url(event) }

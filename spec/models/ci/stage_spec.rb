@@ -128,6 +128,28 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
     end
   end
 
+  describe 'subscription callbacks' do
+    describe 'after status transition' do
+      let(:stage) { create(:ci_stage, pipeline: pipeline, project: pipeline.project, status: 'created') }
+
+      it 'triggers ci_stage_status_updated subscription' do
+        expect(GraphqlTriggers).to receive(:ci_stage_status_updated).with(stage)
+
+        stage.run
+      end
+
+      context 'with multiple status transitions' do
+        %w[running success failed canceled skipped].each do |target_status|
+          it "triggers subscription when transitioning to #{target_status}" do
+            expect(GraphqlTriggers).to receive(:ci_stage_status_updated).with(stage)
+
+            stage.set_status(target_status)
+          end
+        end
+      end
+    end
+  end
+
   describe 'ordered statuses in stage' do
     let_it_be(:stage) { create(:ci_stage, pipeline: pipeline, name: 'test') }
 
@@ -197,7 +219,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it 'updates stage status correctly' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('running') }
           .to change { stage.reload.status }
           .to eq 'running'
       end
@@ -221,7 +243,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it 'updates status to skipped' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('skipped') }
           .to change { stage.reload.status }
           .to eq 'skipped'
       end
@@ -233,7 +255,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it 'updates status to scheduled' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('scheduled') }
           .to change { stage.reload.status }
           .to 'scheduled'
       end
@@ -245,7 +267,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it 'updates status to waiting for resource' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('waiting_for_resource') }
           .to change { stage.reload.status }
           .to 'waiting_for_resource'
       end
@@ -257,7 +279,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it 'updates status to waiting for callback' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('waiting_for_callback') }
           .to change { stage.reload.status }
           .to 'waiting_for_callback'
       end
@@ -265,7 +287,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
 
     context 'when stage is skipped because is empty' do
       it 'updates status to skipped' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status(nil) }
           .to change { stage.reload.status }
           .to eq('skipped')
       end
@@ -279,21 +301,15 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       it 'retries a lock to update a stage status' do
         stage.lock_version = 100
 
-        stage.update_legacy_status
+        stage.set_status('failed')
 
         expect(stage.reload).to be_failed
       end
     end
 
     context 'when statuses status was not recognized' do
-      before do
-        allow(stage)
-          .to receive(:latest_stage_status)
-          .and_return(:unknown)
-      end
-
       it 'raises an exception' do
-        expect { stage.update_legacy_status }
+        expect { stage.set_status('unknown') }
           .to raise_error(Ci::HasStatus::UnknownStatusError)
       end
     end
@@ -314,7 +330,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       %w[skipped]         | :skipped
       %w[canceled]        | :canceled
       %w[success failed]  | :failed
-      %w[running pending] | :running
+      %w[running pending] | :pending
     end
 
     with_them do
@@ -328,7 +344,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
             status: status
           )
 
-          stage.update_legacy_status
+          stage.set_status(status)
         end
       end
 
@@ -348,7 +364,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
           allow_failure: true
         )
 
-        stage.update_legacy_status
+        stage.set_status('success')
       end
 
       it 'is passed with warnings' do
@@ -395,7 +411,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
         it 'recalculates index before updating status' do
           expect(stage.reload.position).to be_nil
 
-          stage.update_legacy_status
+          stage.set_status('running')
 
           expect(stage.reload.position).to eq 10
         end
@@ -409,7 +425,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
         end
 
         it 'sets index to a non-empty value' do
-          expect { stage.update_legacy_status }.to change { stage.reload.position }.from(nil).to(10)
+          expect { stage.set_status('running') }.to change { stage.reload.position }.from(nil).to(10)
         end
       end
 
@@ -417,7 +433,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
         it 'fallbacks to zero' do
           expect(stage.reload.position).to be_nil
 
-          stage.update_legacy_status
+          stage.set_status(nil)
 
           expect(stage.reload.position).to eq 0
         end
@@ -479,14 +495,14 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       let(:stage) { build(:ci_stage, pipeline: pipeline) }
 
       it 'copies the partition_id from pipeline' do
-        expect { stage.valid? }.to change(stage, :partition_id).to(123)
+        expect { stage.valid? }.to change { stage.partition_id }.to(123)
       end
 
       context 'when it is already set' do
         let(:stage) { build(:ci_stage, pipeline: pipeline, partition_id: 125) }
 
         it 'does not change the partition_id value' do
-          expect { stage.valid? }.not_to change(stage, :partition_id)
+          expect { stage.valid? }.not_to change { stage.partition_id }
         end
       end
     end
@@ -497,7 +513,7 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       it { is_expected.to validate_presence_of(:partition_id) }
 
       it 'does not change the partition_id value' do
-        expect { stage.valid? }.not_to change(stage, :partition_id)
+        expect { stage.valid? }.not_to change { stage.partition_id }
       end
     end
   end
@@ -519,6 +535,19 @@ RSpec.describe Ci::Stage, :models, feature_category: :continuous_integration do
       end
 
       it { expect(stage.confirm_manual_job?).to be_falsy }
+    end
+  end
+
+  describe 'play_manual' do
+    let(:current_user) { create(:user) }
+    let(:stage) { create(:ci_stage, pipeline: pipeline) }
+
+    subject { stage.play_manual(current_user) }
+
+    it 'queues a worker to play all manual jobs' do
+      expect(Ci::PlayManualStageWorker).to receive(:perform_async).with(stage.id, current_user.id).once
+
+      subject
     end
   end
 end

@@ -89,7 +89,7 @@ module Gitlab
             issues_with_associated_zoom_link: count(ZoomMeeting.added_to_issue),
             issues_using_zoom_quick_actions: distinct_count(ZoomMeeting, :issue_id),
             incident_issues: count(::Issue.with_issue_type(:incident), start: minimum_id(Issue), finish: maximum_id(Issue)),
-            alert_bot_incident_issues: count(::Issue.authored(::Users::Internal.alert_bot), start: minimum_id(Issue), finish: maximum_id(Issue)),
+            alert_bot_incident_issues: count(::Issue.authored(::User.with_user_types(:alert_bot)), start: minimum_id(Issue), finish: maximum_id(Issue)),
             keys: count(Key),
             label_lists: count(List.label),
             lfs_objects: count(LfsObject),
@@ -141,7 +141,9 @@ module Gitlab
         }
       end
 
-      def features_usage_data = {}
+      def features_usage_data
+        {}
+      end
 
       def components_usage_data
         {
@@ -252,10 +254,9 @@ module Gitlab
           group_clusters_enabled: clusters_user_distinct_count(::Clusters::Cluster.enabled.group_type, time_period),
           project_clusters_disabled: clusters_user_distinct_count(::Clusters::Cluster.disabled.project_type, time_period),
           project_clusters_enabled: clusters_user_distinct_count(::Clusters::Cluster.enabled.project_type, time_period),
-          # These two `projects_slack_x` metrics are owned by the Manage stage, but are in this method as their key paths can't change.
+          # This `projects_slack_notifications_active` metric is owned by the Manage stage, but is in this method as its key path can't change.
           # See https://gitlab.com/gitlab-org/gitlab/-/merge_requests/123442#note_1427961339.
-          projects_slack_notifications_active: distinct_count(::Project.with_slack_integration.where(time_period), :creator_id),
-          projects_slack_slash_active: distinct_count(::Project.with_slack_slash_commands_integration.where(time_period), :creator_id)
+          projects_slack_notifications_active: distinct_count(::Project.with_slack_integration.where(time_period), :creator_id)
         }
       end
       # rubocop: enable UsageData/LargeTable

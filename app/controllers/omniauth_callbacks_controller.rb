@@ -61,9 +61,9 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   # the number of failed sign in attempts
   def failure
     update_login_counter_metric(failed_strategy.name, 'failed')
-    log_saml_response if params['SAMLResponse']
+    log_saml_response if params.permit(:SAMLResponse)[:SAMLResponse]
 
-    username = params[:username].to_s
+    username = params.permit(:username)[:username].to_s
     if username.present? && AuthHelper.form_based_provider?(failed_strategy.name)
       user = User.find_by_login(username)
 
@@ -336,13 +336,33 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   end
 
   def oauth
-    @oauth ||= request.env['omniauth.auth']
+    @oauth ||= begin
+      auth = request.env['omniauth.auth']
+      normalize_iam_provider!(auth)
+      auth
+    end
+  end
+
+  def normalize_iam_provider!(auth)
+    return unless auth
+
+    iam_provider = auth['provider'].to_s
+    canonical = normalize_provider(iam_provider)
+    return if canonical == iam_provider
+
+    auth['provider'] = canonical
+
+    Gitlab::AuthLogger.info(
+      message: 'IAM provider normalized',
+      iam_provider: iam_provider,
+      canonical_provider: canonical
+    )
   end
 
   def fail_login(user)
     log_failed_login(user.username, oauth['provider'])
 
-    @provider = Gitlab::Auth::OAuth::Provider.label_for(params[:action])
+    @provider = Gitlab::Auth::OAuth::Provider.label_for(action_name)
     @error = user.errors.full_messages.to_sentence
 
     render 'errors/omniauth_error', layout: "oauth_error", status: :unprocessable_entity
@@ -410,7 +430,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     return unless remember_me?
 
     if user.two_factor_enabled? && !auth_user.bypass_two_factor?
-      params[:remember_me] = '1'
+      params[:remember_me] = '1' # rubocop:disable Rails/StrongParams -- internal state, not user input
     else
       remember_me(user)
     end
@@ -468,7 +488,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
       current_user_mode.enable_admin_mode!(skip_password_validation: true)
       track_event(current_user, oauth['provider'], 'succeeded')
 
-      redirect_to stored_location_for(:redirect) || admin_root_path, notice: _('Admin mode enabled')
+      redirect_to stored_location_for(:redirect) || admin_root_path, notice: _('Admin mode is active.')
     end
   end
 
@@ -488,8 +508,8 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     Users::RespondToTermsService.new(user, terms).execute(accepted: true)
   end
 
-  def perform_registration_tasks(user, _provider)
-    store_location_for(:user, after_sign_up_path(user))
+  def perform_registration_tasks(_user, _provider)
+    store_location_for(:user, after_sign_up_path)
   end
 
   def onboarding_status_presenter
@@ -518,7 +538,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   end
 
   def log_saml_response
-    ParameterFilters::SamlResponse.log(params['SAMLResponse'].dup)
+    ParameterFilters::SamlResponse.log(params.permit(:SAMLResponse)[:SAMLResponse].dup)
   end
 end
 

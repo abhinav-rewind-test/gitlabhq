@@ -16,7 +16,7 @@ import {
   GlTooltipDirective,
   GlKeysetPagination,
 } from '@gitlab/ui';
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 // eslint-disable-next-line no-restricted-imports
 import { mapActions, mapState } from 'vuex';
 import { helpPagePath } from '~/helpers/help_page_helper';
@@ -372,7 +372,7 @@ export default {
               <gl-icon
                 class="gl-dropdown-item-check-icon"
                 :class="{ invisible: !isCurrentStatusFilter(status) }"
-                name="mobile-issue-close"
+                name="check"
               />
               {{ label }}
             </span>
@@ -389,7 +389,7 @@ export default {
               <gl-icon
                 class="gl-dropdown-item-check-icon"
                 :class="{ invisible: !isCurrentSortField(field) }"
-                name="mobile-issue-close"
+                name="check"
               />
               {{ label }}
             </span>

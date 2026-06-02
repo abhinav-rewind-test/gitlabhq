@@ -1,3 +1,4 @@
+import waitForPromises from 'helpers/wait_for_promises';
 import {
   renderImageLightbox,
   destroyImageLightbox,
@@ -82,16 +83,20 @@ describe('render_image_lightbox', () => {
       });
 
       it('adds click event listeners and accessibility attributes to image links', () => {
+        const expectedAlts = mockImages.map((img) => img.alt);
+
         renderImageLightbox(mockImages, container);
 
         const links = container.querySelectorAll('a');
         expect(links).toHaveLength(mockImages.length);
 
-        links.forEach((link) => {
+        links.forEach((link, index) => {
           expect(link.style.cursor).toBe('zoom-in');
-          expect(link.getAttribute('role')).toBe('button');
-          expect(link.getAttribute('aria-label')).toBe('View image');
+          expect(link.hasAttribute('role')).toBe(false);
+          expect(link.hasAttribute('aria-label')).toBe(false);
+          expect(link.getAttribute('aria-description')).toBe('Click to view image in full screen');
           expect(link.getAttribute('aria-haspopup')).toBe('dialog');
+          expect(link.querySelector('img').alt).toBe(expectedAlts[index]);
         });
       });
     });
@@ -279,8 +284,9 @@ describe('render_image_lightbox', () => {
         expect(links).toHaveLength(2);
         links.forEach((link) => {
           expect(link.style.cursor).toBe('zoom-in');
-          expect(link.getAttribute('role')).toBe('button');
-          expect(link.getAttribute('aria-label')).toBe('View image');
+          expect(link.hasAttribute('role')).toBe(false);
+          expect(link.hasAttribute('aria-label')).toBe(false);
+          expect(link.getAttribute('aria-description')).toBe('Click to view image in full screen');
           expect(link.getAttribute('aria-haspopup')).toBe('dialog');
         });
       });
@@ -342,6 +348,183 @@ describe('render_image_lightbox', () => {
 
       destroyImageLightbox(container2);
       container2.remove();
+    });
+  });
+
+  describe('transparency toggle', () => {
+    const createTransparentImage = (src) => {
+      const img = document.createElement('img');
+      img.src = src;
+
+      const link = document.createElement('a');
+      link.href = src;
+      link.appendChild(img);
+      container.appendChild(link);
+
+      return img;
+    };
+
+    const mockImageLoadWithTransparency = (transparentPixelCount = 0) => {
+      jest.spyOn(window, 'Image').mockImplementation(() => {
+        const fakeImg = {
+          srcValue: '',
+          set src(val) {
+            fakeImg.srcValue = val;
+            fakeImg.naturalWidth = 10;
+            fakeImg.naturalHeight = 10;
+            Promise.resolve()
+              .then(() => {
+                if (fakeImg.onload) fakeImg.onload();
+              })
+              .catch(() => {});
+          },
+          get src() {
+            return fakeImg.srcValue;
+          },
+        };
+        return fakeImg;
+      });
+
+      const pixelData = new Uint8ClampedArray(10 * 10 * 4).fill(255);
+      for (let i = 0; i < transparentPixelCount; i += 1) {
+        pixelData[i * 4 + 3] = 0;
+      }
+
+      jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+        drawImage: jest.fn(),
+        getImageData: () => ({ data: pixelData }),
+      });
+    };
+
+    const renderWithTransparency = async (
+      src = 'http://example.com/image.png',
+      transparentPixelCount = 5,
+    ) => {
+      mockImageLoadWithTransparency(transparentPixelCount);
+      const img = createTransparentImage(src);
+      renderImageLightbox([img], container);
+      await waitForPromises();
+    };
+
+    describe('createTransparencyToggle', () => {
+      it('toggles md-img-checkerboard class on image when clicked', async () => {
+        const checkerboardClass = 'md-img-checkerboard';
+
+        await renderWithTransparency();
+
+        const button = container.querySelector('button');
+        const toggleImg = container.querySelector('img');
+
+        expect(toggleImg.classList.contains(checkerboardClass)).toBe(false);
+
+        button.click();
+        expect(toggleImg.classList.contains(checkerboardClass)).toBe(true);
+
+        button.click();
+        expect(toggleImg.classList.contains(checkerboardClass)).toBe(false);
+      });
+    });
+
+    describe('addToggleToImage', () => {
+      beforeEach(async () => {
+        await renderWithTransparency();
+      });
+
+      it('sets data-transparency-toggle attribute on the wrapping element', () => {
+        const wrapper = container.querySelector('[data-transparency-toggle]');
+        expect(wrapper.dataset.transparencyToggle).toBe('true');
+      });
+
+      it('does not double-wrap when called twice', async () => {
+        const wrappersBefore = container.querySelectorAll('[data-transparency-toggle]');
+        expect(wrappersBefore).toHaveLength(1);
+
+        const link = container.querySelector('a');
+        const currentImg = link.querySelector('img');
+        renderImageLightbox([currentImg], container);
+
+        await waitForPromises();
+
+        const wrappersAfter = container.querySelectorAll('[data-transparency-toggle]');
+        expect(wrappersAfter).toHaveLength(1);
+      });
+
+      it('places the button as a sibling of the link inside the wrapper', () => {
+        const wrapper = container.querySelector('[data-transparency-toggle]');
+        expect(wrapper.querySelector('a')).not.toBeNull();
+        expect(wrapper.querySelector('button')).not.toBeNull();
+      });
+    });
+
+    describe('supportsTransparency', () => {
+      it.each(['png', 'webp', 'gif'])(
+        'detects .%s as a transparency-capable format',
+        async (ext) => {
+          await renderWithTransparency(`http://example.com/image.${ext}`);
+
+          expect(container.querySelector('[data-transparency-toggle]')).not.toBeNull();
+        },
+      );
+
+      it.each(['jpg', 'jpeg', 'bmp'])('does not add toggle for .%s images', async (ext) => {
+        await renderWithTransparency(`http://example.com/image.${ext}`);
+
+        expect(container.querySelector('[data-transparency-toggle]')).toBeNull();
+      });
+
+      it('handles URLs with query parameters', async () => {
+        await renderWithTransparency('http://example.com/image.png?size=large');
+
+        expect(container.querySelector('[data-transparency-toggle]')).not.toBeNull();
+      });
+    });
+
+    describe('hasTransparency', () => {
+      it('does not add toggle when image has no transparent pixels', async () => {
+        await renderWithTransparency('http://example.com/opaque.png', 0);
+
+        expect(container.querySelector('[data-transparency-toggle]')).toBeNull();
+      });
+
+      it('does not add toggle when transparency is below 5% threshold', async () => {
+        await renderWithTransparency('http://example.com/negligible.png', 4);
+
+        expect(container.querySelector('[data-transparency-toggle]')).toBeNull();
+      });
+
+      it('adds toggle when transparency meets 5% threshold', async () => {
+        await renderWithTransparency('http://example.com/transparent.png', 5);
+
+        expect(container.querySelector('[data-transparency-toggle]')).not.toBeNull();
+      });
+
+      it('adds toggle when image has significant transparent pixels', async () => {
+        await renderWithTransparency('http://example.com/transparent.png', 10);
+
+        expect(container.querySelector('[data-transparency-toggle]')).not.toBeNull();
+      });
+
+      it('handles image load errors gracefully', async () => {
+        jest.spyOn(window, 'Image').mockImplementation(() => {
+          const fakeImg = {
+            set src(_) {
+              Promise.resolve()
+                .then(() => {
+                  if (fakeImg.onerror) fakeImg.onerror();
+                })
+                .catch(() => {});
+            },
+          };
+          return fakeImg;
+        });
+
+        const img = createTransparentImage('http://example.com/broken.png');
+        renderImageLightbox([img], container);
+
+        await waitForPromises();
+
+        expect(container.querySelector('[data-transparency-toggle]')).toBeNull();
+      });
     });
   });
 });

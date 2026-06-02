@@ -1,7 +1,7 @@
 ---
-stage: Data Access
+stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLabで管理されているリポジトリの移動
 ---
 
@@ -14,95 +14,96 @@ title: GitLabで管理されているリポジトリの移動
 
 GitLabで管理されているすべてのリポジトリを、別のファイルシステムまたは別のサーバーに移動します。
 
-## GitLabインスタンス内のデータを移動する {#move-data-in-a-gitlab-instance}
+## GitLabインスタンス内のデータを移動 {#move-data-in-a-gitlab-instance}
 
-Gitリポジトリを移動するには、GitLab APIを使用します:
+GitLab APIを使用してGitリポジトリを移動します:
 
 - サーバー間。
-- 異なるリポジトリストレージ間。
-- シングルノードGitalyからGitalyクラスタリング（Praefect）へ。
+- 異なるストレージ間。
+- 単一ノードGitalyからGitaly Cluster (Praefect)
 
-GitLabリポジトリは、プロジェクト、グループ、およびスニペットに関連付けることができます。これらのタイプごとに、リポジトリを移動するための個別のAPIがあります。GitLabインスタンス上のすべてのリポジトリを移動するには、リポジトリのタイプごとに、リポジトリストレージごとに移動する必要があります。
+GitLabのリポジトリは、プロジェクト、グループ、およびスニペットに関連付けることができます。これらの各タイプには、リポジトリを移動するための個別のAPIがあります。GitLabインスタンス上のすべてのリポジトリを移動するには、各リポジトリのタイプごとにストレージを移動する必要があります。
 
-各リポジトリは、移動中は読み取り専用になり、移動が完了するまで書き込みできません。
+各リポジトリは、リポジトリの移動中は読み取り専用になり、リポジトリの移動が完了するまで書き込みできません。
 
-リポジトリを移動するには、次の手順に従います:
+リポジトリを移動するには:
 
-1. すべての[ローカルおよびクラスタリングストレージ](../gitaly/configure_gitaly.md#mixed-configuration)がGitLabインスタンスにアクセスできることを確認してください。この例では、これらは`<original_storage_name>`と`<cluster_storage_name>`です。
-1. 新しいストレージがすべての新しいプロジェクトを受信するように、[リポジトリのストレージのウェイトを構成する](../repository_storage_paths.md#configure-where-new-repositories-are-stored)。これにより、移行の進行中に、既存のストレージに新しいプロジェクトが作成されなくなります。
+1. すべての[ローカルおよびクラスターストレージ](../gitaly/configure_gitaly.md#mixed-configuration)がGitLabインスタンスにアクセスできることを確認します。この例では、これらは`<original_storage_name>`と`<cluster_storage_name>`です。
+1. 新しいストレージがすべての新規プロジェクトを受信するように、[リポジトリストレージウェイトを構成](../repository_storage_paths.md#configure-where-new-repositories-are-stored)します。これにより、移行の進行中に、既存のストレージに新規プロジェクトが作成されるのを防ぎます。
 1. プロジェクト、スニペット、およびグループのリポジトリの移動をスケジュールします。
-1. [GitLab](../geo/_index.md)を使用している場合は、[すべてのリポジトリを再同期](../geo/replication/troubleshooting/synchronization_verification.md#resync-all-resources-of-one-component)します。
+1. [Geo](../geo/_index.md)を使用している場合は、すべての[リポジトリを再同期](../geo/replication/troubleshooting/synchronization_verification.md#resync-resources-for-the-selected-component)します。
+1. SidekiqポッドでHorizontal Pod Autoscalerを使用する場合は、移行中のスケーリングを防ぐために、[SidekiqポッドのHPAを無効](https://docs.gitlab.com/charts/gitlab/sidekiq/#disable-hpa-scaling)にします。
 
-### プロジェクトの移動 {#move-projects}
+### プロジェクトを移動する {#move-projects}
 
-すべてのプロジェクトまたは個々のプロジェクトを移動できます。
+すべてのプロジェクトまたは個別のプロジェクトを移動できます。
 
-APIを使用して、すべてのプロジェクトを移動するには、次の手順を実行します:
+APIを使用してすべてのプロジェクトを移動するには:
 
-1. APIを使用して、[ストレージシャード上のすべてのプロジェクトのリポジトリストレージの移動をスケジュール](../../api/project_repository_storage_moves.md#schedule-repository-storage-moves-for-all-projects-on-a-storage-shard)します。例: 
+1. APIを使用して、[ストレージシャード上のすべてのプロジェクトのリポジトリストレージの移動をスケジュール](../../api/project_repository_storage_moves.md#create-repository-storage-moves-for-all-projects-on-a-storage-shard)します。例: 例: 
 
    ```shell
-   curl --request POST --header "Private-Token: <your_access_token>" \
+   curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
         --header "Content-Type: application/json" \
         --data '{"source_storage_name":"<original_storage_name>","destination_storage_name":"<cluster_storage_name>"}' \
         "https://gitlab.example.com/api/v4/project_repository_storage_moves"
    ```
 
-1. APIを使用して、[最新のリポジトリの移動をクエリする](../../api/project_repository_storage_moves.md#retrieve-all-project-repository-storage-moves)します。応答は次のいずれかを示します:
-   - 移動が正常に完了しました。`state`フィールドは`finished`です。
-   - 移動が進行中です。正常に完了するまで、リポジトリの移動を再度クエリします。
-   - 移動に失敗しました。ほとんどの失敗は一時的なものであり、移動を再スケジュールすることで解決されます。
+1. APIを使用して、最も最近の[リポジトリの移動をクエリ](../../api/project_repository_storage_moves.md#list-all-project-repository-storage-moves)します。応答は次のいずれかを示します:
+   - リポジトリの移動は正常に完了しました。`state`フィールドは`finished`です。
+   - リポジトリの移動が進行中です。リポジトリの移動が正常に完了するまで再クエリします。
+   - リポジトリの移動は失敗しました。ほとんどの失敗は一時的なものであり、リポジトリの移動を再スケジュールすることで解決されます。
 
-1. 移動が完了したら、APIを使用して[プロジェクトをクエリする](../../api/projects.md#list-all-projects)し、すべてのプロジェクトが移動したことを確認します。`repository_storage`フィールドが古いストレージに設定された状態でプロジェクトが返されないようにする必要があります。例: 
+1. リポジトリの移動が完了したら、APIを使用してプロジェクトを[クエリ](../../api/projects.md#list-all-projects)することで、すべてのプロジェクトが移動されたことを確認します。`repository_storage`フィールドが古いストレージに設定されたプロジェクトは返されません。例: 
 
    ```shell
-   curl --header "Private-Token: <your_access_token>" --header "Content-Type: application/json" \
+   curl --header "PRIVATE-TOKEN: <your_access_token>" --header "Content-Type: application/json" \
    "https://gitlab.example.com/api/v4/projects?repository_storage=<original_storage_name>"
    ```
 
-   または、Railsコンソールを使用して、すべてのプロジェクトが移動したことを確認します:
+   または、Railsコンソールを使用して、すべてのプロジェクトが移動されたことを確認します:
 
    ```ruby
    ProjectRepository.for_repository_storage('<original_storage_name>')
    ```
 
-1. 必要に応じて、ストレージごとに繰り返します。
+1. 必要に応じて各ストレージで繰り返します。
 
-すべてのプロジェクトを移動しない場合は、[個々のプロジェクトの移動](../../api/project_repository_storage_moves.md#schedule-a-repository-storage-move-for-a-project)に関する指示に従ってください。
+すべてのプロジェクトを移動したくない場合は、[個別のプロジェクトを移動する](../../api/project_repository_storage_moves.md#create-a-repository-storage-move-for-a-project)手順に従ってください。
 
-### スニペットの移動 {#move-snippets}
+### スニペットを移動する {#move-snippets}
 
-すべてのスニペットまたは個々のスニペットを移動できます。
+すべてのスニペットまたは個別のスニペットを移動できます。
 
-APIを使用して、すべてのスニペットを移動するには、次の手順を実行します:
+APIを使用してすべてのスニペットを移動するには:
 
-1. [ストレージシャード上のすべてのスニペットのリポジトリストレージの移動をスケジュール](../../api/snippet_repository_storage_moves.md#schedule-repository-storage-moves-for-all-snippets-on-a-storage-shard)します。例: 
+1. [ストレージシャード上のすべてのスニペットのリポジトリストレージの移動をスケジュール](../../api/snippet_repository_storage_moves.md#schedule-repository-storage-moves-for-all-snippets-on-a-storage-shard)します。例: 例: 
 
    ```shell
-   curl --request POST --header "Private-Token: <your_access_token>" \
+   curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
         --header "Content-Type: application/json" \
         --data '{"source_storage_name":"<original_storage_name>","destination_storage_name":"<cluster_storage_name>"}' \
         "https://gitlab.example.com/api/v4/snippet_repository_storage_moves"
    ```
 
-1. [最新のリポジトリの移動をクエリする](../../api/snippet_repository_storage_moves.md#retrieve-all-snippet-repository-storage-moves)。応答は次のいずれかを示します:
-   - 移動が正常に完了しました。`state`フィールドは`finished`です。
-   - 移動が進行中です。正常に完了するまで、リポジトリの移動を再度クエリします。
-   - 移動に失敗しました。ほとんどの失敗は一時的なものであり、移動を再スケジュールすることで解決されます。
+1. [最も最近のリポジトリの移動をクエリ](../../api/snippet_repository_storage_moves.md#list-all-snippet-repository-storage-moves)します。応答は次のいずれかを示します:
+   - リポジトリの移動は正常に完了しました。`state`フィールドは`finished`です。
+   - リポジトリの移動が進行中です。リポジトリの移動が正常に完了するまで再クエリします。
+   - リポジトリの移動は失敗しました。ほとんどの失敗は一時的なものであり、リポジトリの移動を再スケジュールすることで解決されます。
 
-1. 移動が完了したら、Railsコンソールを使用して、すべてのスニペットが移動したことを確認します:
+1. リポジトリの移動が完了したら、Railsコンソールを使用して、すべてのスニペットが移動されたことを確認します:
 
    ```ruby
    SnippetRepository.for_repository_storage('<original_storage_name>')
    ```
 
-   コマンドは、元のストレージのスニペットを返さないようにする必要があります。
+   このコマンドは、元のストレージのスニペットを返すべきではありません。
 
-1. 必要に応じて、ストレージごとに繰り返します。
+1. 必要に応じて各ストレージで繰り返します。
 
-すべてのスニペットを移動しない場合は、[個々のスニペット](../../api/snippet_repository_storage_moves.md#schedule-a-repository-storage-move-for-a-snippet)に関する指示に従ってください。
+すべてのスニペットを移動したくない場合は、[個別のスニペット](../../api/snippet_repository_storage_moves.md#schedule-a-repository-storage-move-for-a-snippet)の手順に従ってください。
 
-### グループの移動 {#move-groups}
+### グループを移動する {#move-groups}
 
 {{< details >}}
 
@@ -111,72 +112,69 @@ APIを使用して、すべてのスニペットを移動するには、次の�
 
 {{< /details >}}
 
-すべてのグループまたは個々のグループを移動できます。
+すべてのグループまたは個別のグループを移動できます。
 
-APIを使用して、すべてのグループを移動するには、次の手順を実行します:
+APIを使用してすべてのグループを移動するには:
 
-1. [ストレージシャード上のすべてのグループのリポジトリストレージの移動をスケジュール](../../api/group_repository_storage_moves.md#schedule-repository-storage-moves-for-all-groups-on-a-storage-shard)します。例: 
+1. [ストレージシャード上のすべてのグループのリポジトリストレージの移動をスケジュール](../../api/group_repository_storage_moves.md#create-group-repository-storage-moves-for-a-storage-shard)します。例: 
 
    ```shell
-   curl --request POST --header "Private-Token: <your_access_token>" \
+   curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
         --header "Content-Type: application/json" \
         --data '{"source_storage_name":"<original_storage_name>","destination_storage_name":"<cluster_storage_name>"}' \
         "https://gitlab.example.com/api/v4/group_repository_storage_moves"
    ```
 
-1. [最新のリポジトリの移動をクエリする](../../api/group_repository_storage_moves.md#retrieve-all-group-repository-storage-moves)。応答は次のいずれかを示します:
-   - 移動が正常に完了しました。`state`フィールドは`finished`です。
-   - 移動が進行中です。正常に完了するまで、リポジトリの移動を再度クエリします。
-   - 移動に失敗しました。ほとんどの失敗は一時的なものであり、移動を再スケジュールすることで解決されます。
+1. [最も最近のリポジトリの移動をクエリ](../../api/group_repository_storage_moves.md#list-all-group-repository-storage-moves)します。応答は次のいずれかを示します:
+   - リポジトリの移動は正常に完了しました。`state`フィールドは`finished`です。
+   - リポジトリの移動が進行中です。リポジトリの移動が正常に完了するまで再クエリします。
+   - リポジトリの移動は失敗しました。ほとんどの失敗は一時的なものであり、リポジトリの移動を再スケジュールすることで解決されます。
 
-1. 移動が完了したら、Railsコンソールを使用して、すべてのグループが移動したことを確認します:
+1. リポジトリの移動が完了したら、Railsコンソールを使用して、すべてのグループが移動されたことを確認します:
 
    ```ruby
    GroupWikiRepository.for_repository_storage('<original_storage_name>')
    ```
 
-   コマンドは、元のストレージのグループを返さないようにする必要があります。
+   このコマンドは、元のストレージのグループを返すべきではありません。
 
-1. 必要に応じて、ストレージごとに繰り返します。
+1. 必要に応じて各ストレージで繰り返します。
 
-すべてのグループを移動しない場合は、[個々のグループ](../../api/group_repository_storage_moves.md#schedule-a-repository-storage-move-for-a-group)に関する指示に従ってください。
+すべてのグループを移動したくない場合は、[個別のグループ](../../api/group_repository_storage_moves.md#create-a-group-repository-storage-move)の手順に従ってください。
 
-## 別のGitLabインスタンスへの移行 {#migrate-to-another-gitlab-instance}
+## 別のGitLabインスタンスへ移行する {#migrate-to-another-gitlab-instance}
 
-新しいGitLab環境に移行する場合、[APIを使用してデータを移動](#move-data-in-a-gitlab-instance)することはできません。例: 
+新しいGitLab環境に移行する場合は、[APIを使用してデータを移動](#move-data-in-a-gitlab-instance)することはできません。例: 
 
-- シングルノードのGitLabからスケールアウトされたアーキテクチャへ。
+- 単一ノードのGitLabからスケールアウトアーキテクチャへ。
 - プライベートデータセンター内のGitLabインスタンスからクラウドプロバイダーへ。
 
-この場合、シナリオに応じて、`/var/opt/gitlab/git-data/repositories`から`/mnt/gitlab/repositories`にすべてのリポジトリをコピーする方法があります:
+この場合、シナリオに応じてすべてのリポジトリを`/var/opt/gitlab/git-data/repositories`から`/mnt/gitlab/repositories`にコピーする方法があります:
 
-- ターゲットディレクトリが空です。
-- ターゲットディレクトリには、リポジトリの古いコピーが含まれています。
-- 数千のリポジトリがある場合。
+- ターゲットディレクトリが空である。
+- ターゲットディレクトリにリポジトリの古いコピーが含まれている。
+- リポジトリが数千ある場合。
 
-{{< alert type="warning" >}}
+> [!warning]
+> いずれのアプローチも、ターゲットディレクトリ`/mnt/gitlab/repositories`のデータを上書きする可能性があります。ソースとターゲットを正しく指定する必要があります。
 
-どのアプローチも、ターゲットディレクトリ`/mnt/gitlab/repositories`内のデータを上書きする可能性があります。ソースとターゲットを正しく指定する必要があります。
+### バックアップと復元を使用する（推奨） {#use-backup-and-restore-recommended}
 
-{{< /alert >}}
+GitalyまたはGitaly Cluster (Praefect)のターゲットには、GitLabの[バックアップと復元機能](../backup_restore/_index.md)を使用する必要があります。Gitリポジトリは、GitalyによってデータベースとしてGitLabサーバー上でアクセス、管理、保存されます。`rsync`のようなツールを使用してGitalyファイルに直接アクセスしてコピーすると、データ損失が発生する可能性があります。次のことができます: 
 
-### バックアップとリストアを使用する（推奨） {#use-backup-and-restore-recommended}
+- [複数のリポジトリを同時に処理](../backup_restore/backup_gitlab.md#back-up-git-repositories-concurrently)することで、バックアップパフォーマンスを向上させます。
+- [スキップ機能](../backup_restore/backup_gitlab.md#excluding-specific-data-from-the-backup)を使用して、リポジトリのみのバックアップを作成します。
 
-GitalyまたはGitalyクラスタリング（Praefect）ターゲットのいずれかに対して、GitLabの[バックアップとリストアの機能](../backup_restore/_index.md)を使用する必要があります。Gitリポジトリは、データベースとしてGitalyによってGitLabサーバー上でアクセス、管理、およびストレージされます。`rsync`などのツールを使用してGitalyファイルに直接アクセスしてコピーすると、データが失われる可能性があります。次のことができます: 
-
-- [複数のリポジトリを同時に処理する](../backup_restore/backup_gitlab.md#back-up-git-repositories-concurrently)ことで、バックアップのパフォーマンスを向上させます。
-- [スキップ機能](../backup_restore/backup_gitlab.md#excluding-specific-data-from-the-backup)を使用して、リポジトリだけのバックアップを作成します。
-
-Gitalyクラスタリング（Praefect）ターゲットには、バックアップとリストアの方法を使用する必要があります。
+Gitaly Cluster (Praefect)ターゲットには、バックアップと復元の方法を使用する必要があります。
 
 ### `tar`を使用する {#use-tar}
 
 次の場合、`tar`パイプを使用してリポジトリを移動できます:
 
-- Gitalyターゲットを指定し、Gitalyクラスタリングターゲットを指定しない。
-- ターゲットディレクトリ`/mnt/gitlab/repositories`が空です。
+- Gitalyターゲットを指定し、Gitalyクラスターターゲットは指定しません。
+- ターゲットディレクトリ`/mnt/gitlab/repositories`が空である。
 
-この方法のオーバーヘッドは低く、通常、`tar`はシステムにプリインストールされています。ただし、中断された`tar`パイプを再開することはできません。`tar`が中断された場合は、ターゲットディレクトリを空にして、すべてのデータを再度コピーする必要があります。
+この方法はオーバーヘッドが低く、`tar`は通常システムにプリインストールされています。ただし、中断された`tar`パイプを再開することはできません。`tar`が中断された場合、ターゲットディレクトリを空にし、すべてのデータを再度コピーする必要があります。
 
 `tar`プロセスの進行状況を確認するには、`-xf`を`-xvf`に置き換えます。
 
@@ -185,11 +183,11 @@ sudo -u git sh -c 'tar -C /var/opt/gitlab/git-data/repositories -cf - -- . |\
   tar -C /mnt/gitlab/repositories -xf -'
 ```
 
-#### 別のサーバーへの`tar`パイプを使用する {#use-a-tar-pipe-to-another-server}
+#### 別のサーバーへの`tar`パイプの使用 {#use-a-tar-pipe-to-another-server}
 
-Gitalyターゲットの場合、`tar`パイプを使用して、別のサーバーにデータをコピーできます。`git`ユーザーが`git@<newserver>`として新しいサーバーへのSSHアクセス権を持っている場合は、SSHを介してデータをパイプできます。
+Gitalyターゲットの場合、`tar`パイプを使用してデータを別のサーバーにコピーできます。`git`ユーザーが`git@<newserver>`として新しいサーバーにSSHアクセスできる場合、SSH経由でデータをパイプできます。
 
-ネットワーク経由でデータを送信する前に（CPU使用率が向上します）、データを圧縮する場合は、`ssh`を`ssh -C`に置き換えることができます。
+ネットワークを介してデータを転送する前にデータを圧縮したい場合（これによりCPU使用率が増加します）は、`ssh`を`ssh -C`に置き換えることができます。
 
 ```shell
 sudo -u git sh -c 'tar -C /var/opt/gitlab/git-data/repositories -cf - -- . |\
@@ -200,25 +198,23 @@ sudo -u git sh -c 'tar -C /var/opt/gitlab/git-data/repositories -cf - -- . |\
 
 次の場合、`rsync`を使用してリポジトリを移動できます:
 
-- Gitalyターゲットを指定し、Gitalyクラスタリングターゲットを指定しない。
-- ターゲットディレクトリにリポジトリの部分的または古いコピーがすでに含まれている場合は、`tar`ですべてのデータを再度コピーするのは非効率的です。
+- Gitalyターゲットを指定し、Gitalyクラスターターゲットは指定しません。
+- ターゲットディレクトリにすでにリポジトリの部分的または古いコピーが含まれているため、`tar`でデータをすべて再度コピーするのは非効率です。
 
-{{< alert type="warning" >}}
+> [!warning] 
+> 
+> `rsync`を使用する場合は、`--delete`オプションを使用する必要があります。`rsync`を`--delete`なしで使用すると、データ損失やリポジトリの破損を引き起こす可能性があります。詳細については、[イシュー270422](https://gitlab.com/gitlab-org/gitlab/-/issues/270422)を参照してください。
 
-`rsync`を使用する場合は、`--delete`オプションを使用する必要があります。`--delete`なしで`rsync`を使用すると、データが失われたり、リポジトリが破損したりする可能性があります。詳細については、[issue 270422](https://gitlab.com/gitlab-org/gitlab/-/issues/270422)を参照してください。
-
-{{< /alert >}}
-
-次のコマンドの`/.`は非常に重要です。そうしないと、ターゲットディレクトリのディレクトリ構造が間違っている可能性があります。進行状況を確認する場合は、`-a`を`-av`に置き換えます。
+以下のコマンドの`/.`は非常に重要です。そうしないと、ターゲットディレクトリで誤ったディレクトリ構造になる可能性があります。進行状況を確認したい場合は、`-a`を`-av`に置き換えます。
 
 ```shell
 sudo -u git  sh -c 'rsync -a --delete /var/opt/gitlab/git-data/repositories/. \
   /mnt/gitlab/repositories'
 ```
 
-#### 別のサーバーへの`rsync`を使用する {#use-rsync-to-another-server}
+#### 別のサーバーへの`rsync`の使用 {#use-rsync-to-another-server}
 
-Gitalyターゲットの場合、ソースシステムの`git`ユーザーがターゲットサーバーへのSSHアクセス権を持っている場合は、`rsync`を使用してネットワーク経由でリポジトリを送信できます。
+Gitalyターゲットの場合、ソースシステム上の`git`ユーザーがターゲットサーバーにSSHアクセスできる場合、`rsync`でリポジトリをネットワーク経由で送信できます。
 
 ```shell
 sudo -u git sh -c 'rsync -a --delete /var/opt/gitlab/git-data/repositories/. \
@@ -231,4 +227,4 @@ sudo -u git sh -c 'rsync -a --delete /var/opt/gitlab/git-data/repositories/. \
 - [Gitaly Cluster (Praefect)](../gitaly/praefect/_index.md)
 - [プロジェクトリポジトリストレージの移動API](../../api/project_repository_storage_moves.md)
 - [グループリポジトリストレージ移動API](../../api/group_repository_storage_moves.md)
-- [スニペットリポジトリストレージ移動API](../../api/snippet_repository_storage_moves.md)
+- [スニペットリポジトリストレージの移動API](../../api/snippet_repository_storage_moves.md)

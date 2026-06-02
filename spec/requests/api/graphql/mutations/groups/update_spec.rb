@@ -48,6 +48,13 @@ RSpec.describe 'GroupUpdate', feature_category: :groups_and_projects do
 
     before do
       group.add_owner(user)
+      stub_licensed_features(security_attributes: true)
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :update_group do
+      let(:boundary_object) { group }
+      let(:mutation) { graphql_mutation(:group_update, variables, 'errors') }
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
     end
 
     it 'updates math rendering settings' do

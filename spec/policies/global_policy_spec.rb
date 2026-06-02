@@ -10,9 +10,9 @@ RSpec.describe GlobalPolicy, feature_category: :shared do
     let_it_be(type_sym) { create(:user, type_sym) }
   end
 
-  let_it_be(:admin_user) { create(:admin) }
+  let_it_be(:admin_user, freeze: false) { create(:admin) }
   let_it_be_with_reload(:current_user) { create(:user) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   subject { described_class.new(current_user, [user]) }
 
@@ -106,6 +106,20 @@ RSpec.describe GlobalPolicy, feature_category: :shared do
     end
   end
 
+  describe 'subgroup/project-provisioned service account restrictions' do
+    let_it_be(:service_account) { create(:user, :service_account, :can_create_group) }
+
+    subject { described_class.new(service_account, nil) }
+
+    it_behaves_like 'subgroup/project-provisioned service account restriction', :create_group
+
+    context 'when user is nil' do
+      subject { described_class.new(nil, nil) }
+
+      it { is_expected.to be_disallowed(:create_group) }
+    end
+  end
+
   describe 'custom attributes' do
     context 'regular user' do
       it { is_expected.to be_disallowed(:read_custom_attribute) }
@@ -178,6 +192,20 @@ RSpec.describe GlobalPolicy, feature_category: :shared do
       context 'when admin mode is disabled' do
         it { is_expected.to be_disallowed(:use_project_statistics_filters) }
       end
+    end
+  end
+
+  describe 'admin_service_accounts', feature_category: :system_access do
+    subject { described_class.new(admin_user, [user]) }
+
+    it { is_expected.to be_disallowed(:admin_service_accounts) }
+
+    context 'when admin mode enabled', :enable_admin_mode do
+      it { is_expected.to be_allowed(:admin_service_accounts) }
+    end
+
+    context 'when admin mode disabled' do
+      it { is_expected.to be_disallowed(:admin_service_accounts) }
     end
   end
 

@@ -408,7 +408,7 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
         end
 
         context 'when fragment has encoded content' do
-          let_it_be(:malicious_redirect_fragment, reload: true) { '#code%3Dtest_code&L90' }
+          let(:malicious_redirect_fragment) { '#code%3Dtest_code&L90' }
 
           it 'fails login and redirects to login path' do
             post provider, session: { user_return_to: '/fake/url#replaceme' }
@@ -835,17 +835,9 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
         using RSpec::Parameterized::TableSyntax
 
         let(:ommiauth_provider_config_with_step_up_auth) do
-          GitlabSettings::Options.new(
-            name: "openid_connect",
-            step_up_auth: {
-              admin_mode: {
-                id_token: {
-                  required: required_id_token_claims,
-                  included: included_id_token_claims
-                }
-              }
-            }
-          )
+          build(:omniauth_provider_config,
+            id_token_required: required_id_token_claims,
+            id_token_included: included_id_token_claims)
         end
 
         before do
@@ -921,7 +913,7 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
       end
 
       context 'without step-up authentication configuration' do
-        let(:ommiauth_provider_config_with_step_up_auth) { GitlabSettings::Options.new(name: "openid_connect") }
+        let(:ommiauth_provider_config_with_step_up_auth) { build(:omniauth_provider_config, :no_step_up_auth) }
 
         it 'does not add session key "step_up_auth"' do
           get provider
@@ -934,17 +926,9 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
         using RSpec::Parameterized::TableSyntax
 
         let(:ommiauth_provider_config_with_namespace_step_up_auth) do
-          GitlabSettings::Options.new(
-            name: "openid_connect",
-            step_up_auth: {
-              namespace: {
-                id_token: {
-                  required: required_id_token_claims,
-                  included: included_id_token_claims
-                }
-              }
-            }
-          )
+          build(:omniauth_provider_config, :with_namespace_scope,
+            id_token_required: required_id_token_claims,
+            id_token_included: included_id_token_claims)
         end
 
         before do
@@ -995,21 +979,7 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
 
       context 'with both admin_mode and namespace scopes configured' do
         let(:ommiauth_provider_config_with_both_scopes) do
-          GitlabSettings::Options.new(
-            name: "openid_connect",
-            step_up_auth: {
-              admin_mode: {
-                id_token: {
-                  required: { claim_1: 'gold' }
-                }
-              },
-              namespace: {
-                id_token: {
-                  required: { claim_1: 'silver' }
-                }
-              }
-            }
-          )
+          build(:omniauth_provider_config, :with_both_scopes)
         end
 
         before do
@@ -1384,6 +1354,86 @@ RSpec.describe OmniauthCallbacksController, type: :controller, feature_category:
 
             expect(response).to redirect_to(profile_account_path)
           end
+        end
+      end
+    end
+  end
+
+  describe 'IAM federated authentication', :aggregate_failures do
+    let(:extern_uid) { 'iam-uid-123' }
+    let(:iam_provider) { :iam_github }
+    let(:canonical_provider) { 'github' }
+
+    before do
+      stub_feature_flags(iam_svc_login: true)
+      stub_omniauth_setting(
+        allow_single_sign_on: [iam_provider.to_s, canonical_provider],
+        block_auto_created_users: false
+      )
+      mock_auth_hash(iam_provider, extern_uid, 'iam-user@example.com')
+      stub_omniauth_provider(iam_provider, context: request)
+      prepare_provider_route(iam_provider)
+    end
+
+    after do
+      Rails.application.env_config['omniauth.auth'] = @original_env_config_omniauth_auth
+    end
+
+    describe 'login via IAM provider' do
+      it 'authenticates the user and stores the identity under the canonical provider name' do
+        post iam_provider
+
+        expect(request.env['warden']).to be_authenticated
+
+        identity = Identity.find_by(extern_uid: extern_uid)
+        expect(identity).not_to be_nil
+        expect(identity.provider).to eq(canonical_provider)
+      end
+
+      it 'does not store the identity under the iam_ prefixed provider name' do
+        post iam_provider
+
+        expect(Identity.where(extern_uid: extern_uid, provider: iam_provider.to_s)).not_to exist
+      end
+
+      context 'when the iam_svc_login feature flag is disabled' do
+        before do
+          stub_feature_flags(iam_svc_login: false)
+        end
+
+        it 'does not normalize the provider and the flow proceeds with the iam_ name' do
+          post iam_provider
+
+          # Without normalization the provider name is kept as-is by omniauth
+          expect(Identity.where(extern_uid: extern_uid, provider: iam_provider.to_s)).to exist
+        end
+      end
+    end
+
+    describe 'account linking via IAM provider' do
+      let(:user) { create(:user) }
+
+      before do
+        sign_in(user)
+      end
+
+      it 'links the identity under the canonical provider name' do
+        expect { post iam_provider }.to change { user.reload.identities.count }.by(1)
+
+        identity = user.identities.find_by(extern_uid: extern_uid)
+        expect(identity).not_to be_nil
+        expect(identity.provider).to eq(canonical_provider)
+      end
+
+      context 'when the user already has a linked identity for the canonical provider' do
+        before do
+          user.identities.create!(provider: canonical_provider, extern_uid: extern_uid)
+        end
+
+        it 'does not create a duplicate identity' do
+          expect { post iam_provider }.not_to change { user.reload.identities.count }
+
+          expect(user.identities.where(provider: canonical_provider, extern_uid: extern_uid).count).to eq(1)
         end
       end
     end

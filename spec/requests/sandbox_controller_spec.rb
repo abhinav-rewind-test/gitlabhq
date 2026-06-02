@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe SandboxController, feature_category: :shared do
-  describe 'GET #mermaid' do
-    subject(:get_mermaid) { get sandbox_mermaid_path }
+  shared_examples 'mermaid sandbox endpoint' do |path_helper|
+    subject(:get_mermaid) { get send(path_helper) }
 
     it 'renders page without template' do
       get_mermaid
@@ -14,7 +14,7 @@ RSpec.describe SandboxController, feature_category: :shared do
     end
 
     context 'with a signed-in user' do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
 
       before do
         sign_in(user)
@@ -40,9 +40,27 @@ RSpec.describe SandboxController, feature_category: :shared do
     end
 
     describe 'Content-Security-Policy' do
+      let(:csp_header) { response['Content-Security-Policy'] }
       let(:directives) do
         # This won't work well if any directive has '; ' in it, but practically speaking, none do.
-        response['Content-Security-Policy'].split('; ').group_by { |d| d.split(' ', 2).first }
+        csp_header.split('; ').to_h { |d| d.split(' ', 2) }
+      end
+
+      it 'always includes a CSP header with script-src that blocks inline scripts' do
+        get_mermaid
+
+        expect(csp_header).to be_present
+        expect(directives['script-src']).to include("'self'")
+        expect(directives['script-src']).not_to include("'unsafe-inline'")
+      end
+
+      it 'sets restrictive defaults' do
+        get_mermaid
+
+        expect(directives['default-src']).to eq("'self'")
+        expect(directives['base-uri']).to eq("'self'")
+        expect(directives['frame-src']).to eq("'none'")
+        expect(directives['object-src']).to eq("'none'")
       end
 
       context 'with asset proxy disabled' do
@@ -50,47 +68,48 @@ RSpec.describe SandboxController, feature_category: :shared do
           stub_asset_proxy_setting(enabled: false)
         end
 
-        it 'does not modify the default CSPs for img-src and media-src' do
+        it 'does not include asset proxy hosts in img-src or media-src' do
           get_mermaid
 
-          # Different test environments produce different values for these by default;
-          # commonly "'self' data: blob: http: https:", sometimes "* data: blob:",
-          # sometimes unset (disabled).  Instead of asserting the exact expected
-          # value, assert instead that we haven't inserted the asset proxy host.
-          %w[img-src media-src].each do |directive|
-            if directives[directive]
-              expect(directives[directive].length).to eq(1)
-              expect(directives[directive].first).not_to include("assets.example.com")
-            end
-          end
+          expect(directives['img-src']).not_to include("assets.example.com")
+          expect(directives['media-src']).not_to include("assets.example.com")
         end
       end
 
       context 'with asset proxy enabled' do
         before do
-          # TODO: refactor this (and similar usages elsewhere) so we don't have to
-          # manually recapitulate the work of AssetProxy.initialize_settings.
-          # https://gitlab.com/gitlab-org/gitlab/-/issues/582610
-          allowlist = %W[gitlab.com *.mydomain.com #{Gitlab.config.gitlab.host}]
-          stub_asset_proxy_setting(
-            enabled: true,
-            secret_key: 'shared-secret',
+          stub_asset_proxy_enabled(
             url: 'https://assets.example.com',
-            allowlist: allowlist)
-          stub_asset_proxy_setting(
-            domain_regexp: Banzai::Filter::AssetProxyFilter.host_regexp_for_allowlist(allowlist),
-            csp_directives: Banzai::Filter::AssetProxyFilter.csp_for_allowlist(allowlist))
+            secret_key: 'shared-secret',
+            allowlist: %W[gitlab.com *.mydomain.com #{Gitlab.config.gitlab.host}]
+          )
         end
 
         it 'overrides the img-src and media-src CSPs to self, the allowlist, and the asset proxy' do
           get_mermaid
 
           expect(directives['img-src']).to eq(
-            ["img-src 'self' https://assets.example.com/ http://gitlab.com:* http://*.mydomain.com:* http://localhost:*"])
+            "'self' https://assets.example.com/ http://gitlab.com:* http://*.mydomain.com:* http://localhost:*")
           expect(directives['media-src']).to eq(
-            ["media-src 'self' https://assets.example.com/ http://gitlab.com:* http://*.mydomain.com:* http://localhost:*"])
+            "'self' https://assets.example.com/ http://gitlab.com:* http://*.mydomain.com:* http://localhost:*")
         end
       end
     end
+  end
+
+  describe 'GET #swagger' do
+    it 'does not set a sandbox-specific CSP' do
+      get sandbox_swagger_path
+
+      csp = response['Content-Security-Policy']
+      if csp.present?
+        directives = csp.split('; ').to_h { |d| d.split(' ', 2) }
+        expect(directives['frame-src']).not_to eq("'none'")
+      end
+    end
+  end
+
+  describe 'GET #mermaid_v11' do
+    it_behaves_like 'mermaid sandbox endpoint', :sandbox_mermaid_v11_path
   end
 end

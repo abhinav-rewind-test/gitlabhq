@@ -5,7 +5,6 @@
     = render 'shared/project_creation_levels', f: f, method: :default_project_creation, legend: s_('ProjectCreationLevel|Default minimum role required to create projects')
     = render_if_exists 'admin/application_settings/default_project_deletion_protection_setting', form: f
     = render 'admin/application_settings/deletion_retention'
-    = render 'admin/application_settings/immediate_deletion', form: f
     .form-group.visibility-level-setting
       = f.label :default_project_visibility, class: 'label-bold'
       = render('shared/visibility_radios', model_method: :default_project_visibility, form: f, selected_level: @application_setting.default_project_visibility, form_model: Project.new)
@@ -42,6 +41,13 @@
       = f.text_field :custom_http_clone_url_root, class: 'form-control gl-form-input', placeholder: 'https://git.example.com', :'aria-describedby' => 'custom_http_clone_url_root_help_block'
       %span.form-text.gl-text-subtle#custom_http_clone_url_root_help_block
         = _('Replaces the clone URL root.')
+
+    - if mcp_server_setting_available?
+      .form-group
+        %h5= s_('AdminSettings|MCP client access')
+        = f.gitlab_ui_checkbox_component :mcp_server_enabled,
+            s_('AdminSettings|Allow connection to GitLab'),
+            help_text: s_('AdminSettings|When you turn on this setting, the GitLab Duo Agent Platform and external applications can access your data through MCP clients.')
 
     - Gitlab::SSHPublicKey.supported_types.each do |type|
       - field_name = :"#{type}_key_restriction"

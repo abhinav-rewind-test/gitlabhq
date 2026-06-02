@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe Ci::Catalog::ComponentsProject, feature_category: :pipeline_composition do
   using RSpec::Parameterized::TableSyntax
 
-  let_it_be(:project) { create(:project, :catalog_resource_with_components) }
-  let_it_be(:catalog_resource) { create(:ci_catalog_resource, project: project) }
+  let_it_be(:project, freeze: false) { create(:project, :catalog_resource_with_components) }
+  let_it_be(:catalog_resource, freeze: false) { create(:ci_catalog_resource, project: project) }
 
   let(:components_project) { described_class.new(project, project.commit.sha) }
 
@@ -92,67 +92,8 @@ RSpec.describe Ci::Catalog::ComponentsProject, feature_category: :pipeline_compo
     end
   end
 
-  describe '#fetch_component' do
-    where(:component_name, :content, :path) do
-      'secret-detection' | "spec:\n inputs:\n  website:\n---\nimage: alpine_1" | 'templates/secret-detection.yml'
-      'dast'             | 'image: alpine_2'                                   | 'templates/dast/template.yml'
-      'template'         | 'image: alpine_3'                                   | 'templates/template.yml'
-      'blank-yaml'       | ''                                                  | 'templates/blank-yaml.yml'
-      'non/exist'        | nil                                                 | nil
-    end
-
-    with_them do
-      it 'fetches the content for a component' do
-        data = components_project.fetch_component(component_name)
-
-        expect(data.path).to eq(path)
-        expect(data.content).to eq(content)
-      end
-    end
-  end
-
-  describe '#find_catalog_component' do
-    let_it_be(:version) do
-      release = create(:release, project: project, tag: '2.0.0', sha: project.commit.sha)
-      create(:ci_catalog_resource_version, catalog_resource: catalog_resource, release: release, semver: release.tag)
-    end
-
-    let_it_be(:dast_component) { create(:ci_catalog_resource_component, version: version, name: 'dast') }
-    let(:component_name) { 'dast' }
-
-    subject(:catalog_component) { components_project.find_catalog_component(component_name) }
-
-    context 'when the component exists in the CI catalog' do
-      it 'returns the catalog resource component' do
-        expect(catalog_component).to eq(dast_component)
-      end
-
-      context 'when there is more than one catalog resource version with the given sha' do
-        before_all do
-          old_release = create(:release, project: project, tag: '1.0.0', sha: project.commit.sha)
-          old_version = create(:ci_catalog_resource_version, catalog_resource: catalog_resource,
-            release: old_release, semver: old_release.tag)
-
-          create(:ci_catalog_resource_component, version: old_version, name: 'dast')
-        end
-
-        it 'returns the catalog resource component of the latest version' do
-          expect(catalog_component).to eq(dast_component)
-        end
-      end
-    end
-
-    context 'when the component does not exist in the CI catalog' do
-      let(:component_name) { 'secret-detection' }
-
-      it 'returns nil' do
-        expect(catalog_component).to be_nil
-      end
-    end
-  end
-
   describe '#find_catalog_components' do
-    let_it_be(:version) do
+    let_it_be(:version, freeze: false) do
       release = create(:release, project: project, tag: '2.0.0', sha: project.commit.sha)
       create(:ci_catalog_resource_version, catalog_resource: catalog_resource, release: release, semver: release.tag)
     end

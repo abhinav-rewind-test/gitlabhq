@@ -51,6 +51,26 @@ module API
         @blob = @repo.blob_at(@commit.sha, params[:file_path], limit: Gitlab::Git::Blob::LFS_POINTER_MAX_SIZE)
 
         not_found!('File') unless @blob
+
+        audit_repository_file_api_access
+      end
+
+      def audit_repository_file_api_access
+        return unless current_user
+
+        ::Gitlab::Audit::Auditor.audit({
+          name: 'repository_file_accessed_api',
+          author: current_user,
+          scope: user_project,
+          target: user_project,
+          message: "User accessed repository file '#{params[:file_path]}' at ref '#{params[:ref]}' via API",
+          additional_details: {
+            file_path: params[:file_path],
+            ref: params[:ref],
+            project_path: user_project.full_path,
+            project_id: user_project.id
+          }
+        })
       end
 
       def ai_workflow_scope?
@@ -132,6 +152,13 @@ module API
       end
 
       def validate_file_params!(params)
+        validate_string_param!(params, :branch)
+        validate_string_param!(params, :commit_message)
+        validate_string_param!(params, :start_branch)
+        validate_string_param!(params, :author_email)
+        validate_string_param!(params, :author_name)
+        validate_string_param!(params, :last_commit_id)
+
         bad_request!('branch is required') if params[:branch].blank?
         bad_request!('commit_message is required') if params[:commit_message].blank?
         bad_request!('content is required') unless params.key?(:content)
@@ -174,7 +201,8 @@ module API
       requires :id, type: String, desc: 'The project ID', documentation: { example: 'gitlab-org/gitlab' }
     end
     resource :projects, requirements: FILE_ENDPOINT_REQUIREMENTS do
-      desc 'Get blame file metadata from repository' do
+      desc 'Retrieve file blame metadata' do
+        detail 'Retrieves blame metadata for lines in a specified file.'
         success code: 200
         tags %w[files]
       end
@@ -191,7 +219,9 @@ module API
         set_http_headers(blob_data)
       end
 
-      desc 'Get blame file from the repository' do
+      desc 'Retrieve file blame history from a repository' do
+        detail 'Retrieves blame history for a specified file in a repository. Each blame range contains lines and ' \
+          'their corresponding commit information.'
         success [Entities::BlameRange]
         tags %w[files]
       end
@@ -219,7 +249,8 @@ module API
         present blame_ranges, with: Entities::BlameRange
       end
 
-      desc 'Get raw file contents from the repository' do
+      desc 'Retrieve a raw file from a repository' do
+        detail 'Retrieves the raw file contents for a specified file in a repository.'
         success File
         tags %w[files]
       end
@@ -251,7 +282,8 @@ module API
         end
       end
 
-      desc 'Get file metadata from repository' do
+      desc 'Retrieve file metadata' do
+        detail 'Retrieves metadata for a specified file in a repository.'
         success code: 200
         tags %w[files]
       end
@@ -268,7 +300,9 @@ module API
         set_http_headers(blob_data)
       end
 
-      desc 'Get a file from the repository' do
+      desc 'Retrieve a file from a repository' do
+        detail 'Retrieves information about a specified file in a repository. This includes information like the ' \
+          'name, size, and the file contents. File content is Base64 encoded.'
         success code: 200
         tags %w[files]
       end
@@ -308,12 +342,14 @@ module API
         ]
         hidden true
       end
-      route_setting :authorization, skip_granular_token_authorization: true
+      route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
       post ':id/repository/files/:file_path/authorize' do
         workhorse_authorize_commits_body_upload!
       end
 
-      desc 'Create new file in repository' do
+      desc 'Create a file in a repository' do
+        detail 'Creates a file in a specified repository. Use the Commits API to create multiple files with a ' \
+          'single request.'
         success code: 201
         tags %w[files]
       end
@@ -351,12 +387,14 @@ module API
         tags %w[files]
         hidden true
       end
-      route_setting :authorization, skip_granular_token_authorization: true
+      route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
       put ':id/repository/files/:file_path/authorize' do
         workhorse_authorize_commits_body_upload!
       end
 
-      desc 'Update existing file in repository' do
+      desc 'Update a file in a repository' do
+        detail 'Updates a specified file in a repository. Use the Commits API to update multiple files with a ' \
+          'single request.'
         success code: 200
         tags %w[files]
       end
@@ -388,7 +426,9 @@ module API
         end
       end
 
-      desc 'Delete an existing file in repository' do
+      desc 'Delete a file in a repository' do
+        detail 'Deletes a specified file in a repository. Use the Commits API to delete multiple files with a ' \
+          'single request.'
         success code: 204
         tags %w[files]
       end

@@ -20,6 +20,7 @@ Gitlab::Application.config.to_prepare do
       BatchedGitRefUpdates::Deletion,
       Ci::BuildExecutionConfig,
       Ci::BuildName,
+      Ci::BuildNeed,
       Ci::BuildTag,
       Ci::BuildTraceMetadata,
       Ci::BuildSource,
@@ -41,6 +42,10 @@ Gitlab::Application.config.to_prepare do
       CommitStatus,
       Gitlab::Database::BackgroundMigration::BatchedJobTransitionLog,
       LooseForeignKeys::DeletedRecord,
+      LooseForeignKeys::OrganizationDeletedRecord,
+      LooseForeignKeys::NamespaceDeletedRecord,
+      LooseForeignKeys::ProjectDeletedRecord,
+      LooseForeignKeys::UserDeletedRecord,
       SentNotification,
       ProjectDailyStatistic,
       Users::GroupVisit,
@@ -87,7 +92,9 @@ Gitlab::Application.config.to_prepare do
         Vulnerabilities::Backups::VulnerabilityUserMention,
         Ai::ActiveContext::Code::EnabledNamespace,
         Ai::ActiveContext::Code::Repository,
-        Ai::DuoWorkflows::Checkpoint
+        Ai::DuoWorkflows::Checkpoint,
+        Analytics::KnowledgeGraph::CodeIndexingTask,
+        AuditEvents::AiAuditEvent
       ])
   else
     Gitlab::Database::Partitioning.register_tables(
@@ -128,9 +135,20 @@ Gitlab::Application.config.to_prepare do
         limit_connection_names: %i[main],
         table_name: 'merge_request_diff_files_99208b8fac',
         partitioned_column: :merge_request_diff_id, strategy: :int_range, partition_size: 200_000_000
+      },
+      {
+        limit_connection_names: %i[main],
+        table_name: 'merge_request_diff_commits_b5377a7a34',
+        partitioned_column: :project_id,
+        strategy: :int_range,
+        partition_size: 2_000_000,
+        sequence_name: 'projects_id_seq'
       }
     ]
   )
 end
 
-Gitlab::Database::Partitioning.sync_partitions_ignore_db_error
+# Sync partitions after models/tables are registered when `to_prepare` is executed
+Gitlab::Application.config.after_initialize do
+  Gitlab::Database::Partitioning.sync_partitions_ignore_db_error
+end

@@ -10,7 +10,9 @@ module WikiActions
   extend ActiveSupport::Concern
   include StrongPaginationParams
 
-  RESCUE_GIT_TIMEOUTS_IN = %w[show raw edit history diff pages templates].freeze
+  RESCUE_GIT_TIMEOUTS_IN = %w[index show raw edit history diff pages templates].freeze
+
+  RedirectsFileTooLargeError = Class.new(StandardError)
 
   included do
     content_security_policy do |p|
@@ -30,15 +32,10 @@ module WikiActions
 
     before_action :wiki
     before_action :page, only: [:show, :edit, :update, :history, :destroy, :diff]
-    before_action :load_sidebar, except: [:pages]
+    before_action :load_sidebar, except: [:pages, :index]
 
     before_action do
       push_frontend_feature_flag(:wiki_immersive_editor, container)
-      push_frontend_feature_flag(:wiki_floating_sidebar_toggle, container)
-
-      if Feature.enabled?(:glql_work_items, container) || Feature.enabled?(:glql_work_items, current_user)
-        push_force_frontend_feature_flag(:glql_work_items, true)
-      end
 
       push_force_frontend_feature_flag(:glql_load_on_click, !!container&.glql_load_on_click_feature_flag_enabled?)
     end
@@ -70,6 +67,10 @@ module WikiActions
 
       render 'shared/wikis/empty'
     end
+
+    rescue_from RedirectsFileTooLargeError do
+      render 'shared/wikis/404', status: :not_found
+    end
   end
 
   def new
@@ -81,6 +82,13 @@ module WikiActions
       view: 'create',
       selected_template_slug: selected_template_slug
     )
+  end
+
+  def index
+    return redirect_to wiki_page_path(wiki, Wiki::HOMEPAGE) if wiki.has_home_page?
+    return redirect_to wiki_path(wiki, action: :pages) if wiki.exists?
+
+    redirect_to wiki_page_path(wiki, Wiki::HOMEPAGE)
   end
 
   # rubocop:disable Gitlab/ModuleWithInstanceVariables
@@ -137,6 +145,8 @@ module WikiActions
       @ref = params[:version_id]
       @path = page.path
       @templates = templates_list
+
+      log_wiki_page_view
 
       render 'shared/wikis/show'
     elsif file_blob
@@ -406,7 +416,7 @@ module WikiActions
   end
 
   # Override CommitsHelper#view_file_button
-  def view_file_button(commit_sha, *args)
+  def view_file_button(commit_sha, *_args)
     path = wiki_page_path(wiki, page, version_id: page.version.id)
 
     helpers.link_button_to(path) do
@@ -424,6 +434,13 @@ module WikiActions
 
   def send_wiki_file_blob(wiki, file_blob)
     send_blob(wiki.repository, file_blob)
+  end
+
+  def log_wiki_page_view
+    return unless current_user
+
+    wiki_page_meta = page.find_or_create_meta
+    ::Gitlab::Search::RecentWikiPages.new(user: current_user).log_view(wiki_page_meta)
   end
 
   def load_content?
@@ -447,20 +464,21 @@ module WikiActions
     end
   end
 
-  def find_redirection(path, redirect_limit = 50)
-    seen = Set[]
-    current_path = path
+  def find_redirection(original_path, redirect_limit = 50)
+    seen_full_paths = Set[]
+    seen_subpaths = Set[]
+    current_path = original_path
 
     redirect_limit.times do
-      seen << current_path
-      next_path = find_single_redirection(current_path, redirect_limit)
+      next_path = resolve_next_subpath_redirect(current_path, seen_full_paths, seen_subpaths, redirect_limit)
+      seen_full_paths << current_path
 
       # if no single redirect is found, then use the current path
       # unless it is the same as the original path
-      return current_path == path ? nil : current_path if next_path.nil?
+      return (current_path == original_path ? nil : current_path) if next_path.nil?
 
-      # if the file was already seen, then we have a loop
-      return { error: true, reason: :loop } if seen.include?(next_path)
+      # if the full path has already been seen then we have a loop
+      return { error: true, reason: :loop } if seen_full_paths.include?(next_path)
 
       current_path = next_path
     end
@@ -468,15 +486,22 @@ module WikiActions
     { error: true, reason: :limit }
   end
 
-  def find_single_redirection(path, redirect_limit)
+  def resolve_next_subpath_redirect(path, seen_full_paths, seen_subpaths, redirect_limit)
+    return if seen_full_paths.include?(path)
+
     current = path
     rest = []
 
     redirect_limit.times do
       break if current == '.'
 
-      redirect = redirections[current]
-      return File.join(redirect, *rest) if redirect
+      redirected_subpath = redirections[current]
+
+      if redirected_subpath.present? && seen_subpaths.exclude?(current)
+        seen_subpaths << current
+
+        return full_path_with_redirect(redirected_subpath, rest)
+      end
 
       current, basename = File.split(current)
       rest.unshift(basename)
@@ -485,9 +510,19 @@ module WikiActions
     nil
   end
 
+  def full_path_with_redirect(redirected_subpath, rest)
+    File.join(redirected_subpath, *rest)
+  end
+
   def redirections
     strong_memoize(:redirections) do
-      redirects_file = wiki.repository.blob_at(wiki.default_branch, Wiki::REDIRECTS_YML, limit: 0.5.megabytes)
+      redirects_file = wiki.repository.blob_at(
+        wiki.default_branch,
+        Wiki::REDIRECTS_YML,
+        limit: Wiki::REDIRECTS_YML_SIZE_LIMIT
+      )
+
+      raise RedirectsFileTooLargeError, 'Redirects file is too large' if redirects_file&.truncated?
 
       if redirects_file
         YAML.safe_load(redirects_file.data)

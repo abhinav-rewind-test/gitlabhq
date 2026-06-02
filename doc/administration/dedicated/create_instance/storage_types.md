@@ -1,7 +1,7 @@
 ---
 stage: GitLab Dedicated
 group: Switchboard
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how storage is allocated and managed in GitLab Dedicated, including repository storage and object storage.
 title: GitLab Dedicated storage types
 ---
@@ -43,6 +43,8 @@ is distributed among the Gitaly nodes in your instance based on your reference a
 
 Each Gitaly node in your instance has a specific storage capacity. This capacity affects how large individual
 repositories can be, because no single repository can exceed the capacity of a single Gitaly node.
+Storage weights determine which Gitaly node receives each new repository. GitLab manages
+these weights on your behalf to distribute repositories evenly across nodes.
 
 For example, if each Gitaly node has 100 GiB of storage capacity and there are 3 Gitaly nodes, your instance
 can store a total of 300 GiB of repository data, but no single repository can exceed 100 GiB.
@@ -194,5 +196,4 @@ No, GitLab Dedicated uses AWS S3 buckets managed by GitLab in your tenant accoun
 
 - [Data residency and high availability](data_residency_high_availability.md)
 - [Reference architectures](../../reference_architectures/_index.md)
-- [Repository storage](../../repository_storage_paths.md)
 - [Object storage](../../object_storage.md)

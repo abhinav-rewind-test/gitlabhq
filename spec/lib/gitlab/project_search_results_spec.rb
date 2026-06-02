@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
+RSpec.describe Gitlab::ProjectSearchResults, :with_current_organization, feature_category: :global_search do
   include SearchHelpers
 
   let_it_be(:user) { create(:user) }
@@ -12,7 +12,9 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
   let(:repository_ref) { nil }
   let(:filters) { {} }
 
-  subject(:results) { described_class.new(user, query, project: project, repository_ref: repository_ref, filters: filters) }
+  subject(:results) do
+    described_class.new(user, query, project: project, repository_ref: repository_ref, filters: filters)
+  end
 
   context 'with a repository_ref' do
     context 'when empty' do
@@ -50,14 +52,14 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
       end
     end
 
-    context 'blobs' do
+    context 'with blobs' do
       it "limits the search to #{described_class::COUNT_LIMIT} items" do
         expect(results).to receive(:blobs).with(limit: described_class::COUNT_LIMIT).and_call_original
         expect(results.formatted_count('blobs')).to eq('0')
       end
     end
 
-    context 'wiki_blobs' do
+    context 'with wiki_blobs' do
       it "limits the search to #{described_class::COUNT_LIMIT} items" do
         expect(results).to receive(:wiki_blobs).with(limit: described_class::COUNT_LIMIT).and_call_original
         expect(results.formatted_count('wiki_blobs')).to eq('0')
@@ -161,41 +163,44 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
   shared_examples 'blob search pagination' do |blob_type|
     let(:per_page) { 20 }
     let(:count_limit) { described_class::COUNT_LIMIT }
-    let(:file_finder) { instance_double('Gitlab::FileFinder') }
+    let(:file_finder) { instance_double(Gitlab::FileFinder) }
     let(:repository_ref) { 'master' }
 
     before do
       allow(file_finder).to receive(:find).and_return([])
-      expect(Gitlab::FileFinder).to receive(:new).with(project, repository_ref).and_return(file_finder)
     end
 
     it 'limits search results based on the first page' do
+      expect(Gitlab::FileFinder).to receive(:new).with(project, repository_ref).and_return(file_finder)
       expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit)
       results.objects(blob_type, page: 1, per_page: per_page)
     end
 
     it 'limits search results based on the second page' do
+      expect(Gitlab::FileFinder).to receive(:new).with(project, repository_ref).and_return(file_finder)
       expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + per_page)
       results.objects(blob_type, page: 2, per_page: per_page)
     end
 
     it 'limits search results based on the third page' do
+      expect(Gitlab::FileFinder).to receive(:new).with(project, repository_ref).and_return(file_finder)
       expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + (per_page * 2))
       results.objects(blob_type, page: 3, per_page: per_page)
     end
 
     it 'uses the per_page value when passed' do
+      expect(Gitlab::FileFinder).to receive(:new).with(project, repository_ref).and_return(file_finder)
       expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + (10 * 2))
       results.objects(blob_type, page: 3, per_page: 10)
     end
   end
 
   describe 'blob search' do
-    let(:project) { create(:project, :public, :repository) }
+    let_it_be(:project) { create(:project, :public, :repository) }
 
     it_behaves_like 'general blob search', 'repository', 'blobs' do
-      let(:disabled_project) { create(:project, :public, :repository, :repository_disabled) }
-      let(:private_project) { create(:project, :public, :repository, :repository_private) }
+      let_it_be(:disabled_project) { create(:project, :public, :repository, :repository_disabled) }
+      let_it_be(:private_project) { create(:project, :public, :repository, :repository_private) }
       let(:expected_file_by_path) { 'files/images/wm.svg' }
       let(:expected_file_by_content) { 'CHANGELOG' }
     end
@@ -232,7 +237,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
 
     it_behaves_like 'blob search pagination', 'wiki_blobs'
 
-    context 'return type' do
+    context 'when checking return type' do
       let(:blobs) { [Gitlab::Search::FoundBlob.new(project: project)] }
       let(:query) { "Files" }
 
@@ -264,7 +269,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
       include_examples "access restricted confidential issues"
     end
 
-    context 'filtering' do
+    context 'when filtering' do
       let_it_be(:project) { create(:project, :public) }
       let_it_be(:closed_result) { create(:issue, :closed, project: project, title: 'foo closed') }
       let_it_be(:opened_result) { create(:issue, :opened, project: project, title: 'foo opened') }
@@ -272,7 +277,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
 
       let(:query) { 'foo' }
 
-      before do
+      before_all do
         project.add_developer(user)
       end
 
@@ -285,13 +290,31 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
     let(:scope) { 'merge_requests' }
     let(:project) { create(:project, :public) }
 
-    context 'filtering' do
-      let!(:project) { create(:project, :public) }
-      let!(:opened_result) { create(:merge_request, :opened, source_project: project, title: 'foo opened') }
-      let!(:closed_result) { create(:merge_request, :closed, source_project: project, title: 'foo closed') }
+    context 'when filtering' do
+      let_it_be(:project) { create(:project, :public) }
+      let_it_be(:opened_result) { create(:merge_request, :opened, source_project: project, title: 'foo opened') }
+      let_it_be(:closed_result) { create(:merge_request, :closed, source_project: project, title: 'foo closed') }
       let(:query) { 'foo' }
 
       include_examples 'search results filtered by state'
+    end
+  end
+
+  describe 'organization_id propagation to NotesFinder' do
+    let(:project) { create(:project, :public) }
+    let(:query) { 'test' }
+
+    subject(:results) do
+      described_class.new(user, query, project: project)
+    end
+
+    it "passes the project's organization_id to NotesFinder" do
+      expect(NotesFinder).to receive(:new).with(
+        anything,
+        hash_including(organization_id: project.organization_id)
+      ).and_call_original
+
+      results.objects('notes')
     end
   end
 
@@ -329,8 +352,8 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
   end
 
   describe '#limited_notes_count' do
-    let(:project) { create(:project, :public) }
-    let(:note) { create(:note_on_issue, project: project) }
+    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:note) { create(:note_on_issue, project: project) }
     let(:query) { note.note }
 
     context 'when count_limit is lower than total amount' do
@@ -375,7 +398,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
     let(:query) { search_phrase }
 
     context 'when project is internal' do
-      let(:project) { create(:project, :internal, :repository) }
+      let_it_be(:project) { create(:project, :internal, :repository) }
 
       subject(:commits) { results.objects('commits') }
 
@@ -393,8 +416,11 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
     end
 
     context 'when project is private' do
-      let!(:creator) { create(:user, username: 'private-project-author') }
-      let!(:private_project) { create(:project, :private, :repository, creator: creator, namespace: creator.namespace) }
+      let_it_be(:creator) { create(:user, username: 'private-project-author') }
+      let_it_be(:private_project) do
+        create(:project, :private, :repository, creator: creator, namespace: creator.namespace)
+      end
+
       let(:team_master) do
         user = create(:user, username: 'private-project-master')
         private_project.add_maintainer(user)
@@ -419,7 +445,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
         end
       end
 
-      context 'team access' do
+      context 'with team access' do
         context 'when the user is the creator' do
           let(:user) { creator }
 
@@ -442,9 +468,9 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
   end
 
   describe 'commit search' do
-    context 'pagination' do
-      let(:project) { create(:project, :public, :repository) }
+    let_it_be(:project) { create(:project, :public, :repository) }
 
+    context 'with pagination' do
       it 'returns the correct results for each page' do
         expect(results_page(1)).to contain_exactly(commit('b83d6e391c22777fca1ed3012fce84f633d7fed0'))
         expect(results_page(2)).to contain_exactly(commit('498214de67004b1da3d820901307bed2a68a8ef6'))
@@ -455,7 +481,7 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
         expect(results_page(1).total_pages).to eq(project.repository.commit_count)
       end
 
-      context 'limiting requested commits' do
+      context 'when limiting requested commits' do
         context 'on page 1' do
           it "limits to #{described_class::COUNT_LIMIT}" do
             expect(project.repository)
@@ -488,9 +514,8 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
       end
     end
 
-    context 'by commit message' do
-      let(:project) { create(:project, :public, :repository) }
-      let(:commit) { project.repository.commit('59e29889be61e6e0e5e223bfa9ac2721d31605b8') }
+    context 'when searching by commit message' do
+      let_it_be(:commit) { project.repository.commit('59e29889be61e6e0e5e223bfa9ac2721d31605b8') }
       let(:message) { 'Sorry, I did a mistake' }
       let(:query) { message }
 
@@ -524,9 +549,8 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
       end
     end
 
-    context 'by commit hash' do
-      let(:project) { create(:project, :public, :repository) }
-      let(:commit) { project.repository.commit('0b4bc9a') }
+    context 'when searching by commit hash' do
+      let_it_be(:commit) { project.repository.commit('0b4bc9a') }
 
       commit_hashes = { short: '0b4bc9a', full: '0b4bc9a49b562e85de7cc9e834518ea6828729b9' }
 
@@ -551,10 +575,83 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
     end
   end
 
+  describe 'milestones search' do
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, group: group) }
+    let(:query) { 'release' }
+
+    before_all do
+      project.add_developer(user)
+    end
+
+    context 'with project milestones' do
+      let_it_be(:project_milestone) { create(:milestone, project: project, title: 'release v1') }
+
+      it 'returns project milestones' do
+        expect(results.objects('milestones')).to include(project_milestone)
+      end
+    end
+
+    context 'with group milestones' do
+      let_it_be(:group_milestone) { create(:milestone, group: group, title: 'release v2') }
+
+      it 'includes group milestones inherited by the project' do
+        expect(results.objects('milestones')).to include(group_milestone)
+      end
+    end
+
+    context 'with ancestor group milestones' do
+      let_it_be(:parent_group) { create(:group) }
+      let_it_be(:child_group) { create(:group, parent: parent_group) }
+      let_it_be(:project_in_child_group) { create(:project, :public, group: child_group) }
+      let_it_be(:ancestor_milestone) { create(:milestone, group: parent_group, title: 'release v3') }
+
+      it 'includes milestones from ancestor groups' do
+        project_in_child_group.add_developer(user)
+        results = described_class.new(user, 'release', project: project_in_child_group)
+
+        expect(results.objects('milestones')).to include(ancestor_milestone)
+      end
+    end
+
+    context 'with both project and group milestones' do
+      let_it_be(:project_milestone) { create(:milestone, project: project, title: 'release alpha') }
+      let_it_be(:group_milestone) { create(:milestone, group: group, title: 'release beta') }
+
+      it 'includes both project and group milestones' do
+        objects = results.objects('milestones')
+
+        expect(objects).to include(project_milestone, group_milestone)
+      end
+    end
+
+    context 'when user cannot read milestones' do
+      let_it_be(:private_project) { create(:project, :private) }
+      let_it_be(:milestone) { create(:milestone, project: private_project, title: 'release secret') }
+
+      it 'returns no milestones' do
+        results = described_class.new(user, 'release', project: private_project)
+
+        expect(results.objects('milestones')).to be_empty
+      end
+    end
+
+    context 'with a project in a personal namespace (no group)' do
+      let_it_be(:personal_project) { create(:project, :public, namespace: user.namespace) }
+      let_it_be(:personal_milestone) { create(:milestone, project: personal_project, title: 'release personal') }
+
+      it 'returns project milestones without errors' do
+        results = described_class.new(user, 'release', project: personal_project)
+
+        expect(results.objects('milestones')).to include(personal_milestone)
+      end
+    end
+  end
+
   describe 'user search' do
     let(:query) { 'gob' }
 
-    let_it_be(:user_1) { create(:user, username: 'gob_bluth') }
+    let_it_be(:user_1, freeze: false) { create(:user, username: 'gob_bluth') }
     let_it_be(:user_2) { create(:user, username: 'michael_bluth') }
     let_it_be(:user_3) { create(:user, username: 'gob_2018') }
     let_it_be(:group) { create(:group) }

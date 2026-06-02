@@ -4,6 +4,18 @@ module Groups
   class TransferService < Groups::BaseService
     TransferError = Class.new(StandardError)
 
+    # Shorter lock retry timing for Sidekiq context (~2 minutes worst case).
+    # Default WithLockRetries config retries for ~40 minutes which is too long.
+    LOCK_RETRY_TIMING = [
+      [0.5.seconds, 2.seconds],
+      [0.5.seconds, 2.seconds],
+      [1.second, 5.seconds],
+      [1.second, 5.seconds],
+      [2.seconds, 10.seconds],
+      [2.seconds, 15.seconds],
+      [5.seconds, 30.seconds]
+    ].freeze
+
     attr_reader :error, :new_parent_group
 
     def initialize(group, user, params = {})
@@ -17,6 +29,36 @@ module Groups
 
     def log_group_transfer_error(group, new_parent_group, error_message)
       log_transfer(group, new_parent_group, error_message)
+    end
+
+    def schedule_async_transfer(new_parent_group)
+      @new_parent_group = new_parent_group
+      ensure_allowed_transfer
+
+      cancel_stale_transfer_state
+
+      group.state_metadata[:transfer_target_parent_id] = new_parent_group&.id
+
+      unless group.schedule_transfer(transition_user: current_user)
+        raise TransferError, s_('TransferGroup|Unable to initiate transfer. The group may already have a transfer in progress.')
+      end
+
+      Namespaces::Groups::TransferWorker.perform_async(
+        group.id,
+        new_parent_group&.id,
+        current_user.id
+      )
+
+      ServiceResponse.success(
+        message: s_("TransferGroup|Group transfer has been queued. You will be notified when it completes.")
+      )
+    rescue TransferError => e
+      @group.errors.clear
+      @error = e.message
+
+      log_group_transfer_error(@group, @new_parent_group, e.message)
+
+      ServiceResponse.error(message: e.message)
     end
 
     def execute(new_parent_group)
@@ -58,17 +100,25 @@ module Groups
 
     def proceed_to_transfer
       old_root_ancestor_id = @group.root_ancestor.id
+      old_path = @group.full_path
       was_root_group = @group.root?
 
-      Gitlab::Database::QueryAnalyzers::PreventCrossDatabaseModification.temporary_ignore_tables_in_transaction(
-        %w[routes redirect_routes], url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/424280'
-      ) do
-        Group.transaction do
-          update_group_attributes
-          ensure_ownership
-          update_integrations
-          update_crm_objects
-          remove_namespace_commit_emails(was_root_group)
+      Gitlab::Database::WithLockRetries.new(
+        connection: ApplicationRecord.connection,
+        logger: Gitlab::AppLogger,
+        timing_configuration: LOCK_RETRY_TIMING,
+        klass: self.class
+      ).run(raise_on_exhaustion: true) do
+        Gitlab::Database::QueryAnalyzers::PreventCrossDatabaseModification.temporary_ignore_tables_in_transaction(
+          %w[routes redirect_routes], url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/424280'
+        ) do
+          Group.transaction do
+            update_group_attributes
+            ensure_ownership
+            update_integrations
+            update_crm_objects
+            remove_namespace_commit_emails(was_root_group)
+          end
         end
       end
 
@@ -82,6 +132,7 @@ module Groups
       post_update_hooks(@updated_project_ids, old_root_ancestor_id)
       propagate_integrations
       update_pending_builds
+      send_transfer_instructions(old_path)
 
       true
     end
@@ -97,10 +148,35 @@ module Groups
     # Overridden in EE
     def transfer_status_data(old_root_ancestor_id); end
 
+    def send_transfer_instructions(old_path)
+      group = @group
+
+      group.run_after_commit_or_now do
+        NotificationService.new.group_was_transferred(group, old_path)
+      end
+    end
+
     # Overridden in EE
     def post_update_hooks(updated_project_ids, old_root_ancestor_id)
       refresh_project_authorizations
       refresh_descendant_groups if @new_parent_group
+    end
+
+    # Note: There is a small window where a worker could acquire the lease between
+    # the lease check and cancel_transfer!. This is acceptable because the worker's own
+    # cancel_stale_transfer_state handles this as a safety net.
+    def cancel_stale_transfer_state
+      return unless group.transfer_in_progress? || group.transfer_scheduled?
+
+      lease_key = Namespaces::Groups::TransferWorker.lease_key(group.id)
+      return if Gitlab::ExclusiveLease.get_uuid(lease_key)
+
+      Gitlab::AppLogger.warn(
+        message: 'Cancelling stale transfer state - no active worker lease found',
+        state: group.state,
+        group_id: group.id
+      )
+      group.cancel_transfer!
     end
 
     # Overridden in EE

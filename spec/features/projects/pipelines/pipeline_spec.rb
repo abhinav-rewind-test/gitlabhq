@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   include ProjectForksHelper
 
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project, freeze: false) { create(:project) }
 
   let(:user) { create(:user) }
   let(:role) { :developer }
@@ -13,7 +13,6 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   before do
     sign_in(user)
     project.add_role(user, role)
-    stub_feature_flags(pipelines_page_graphql: false)
   end
 
   shared_context 'pipeline builds' do
@@ -60,7 +59,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
     include_context 'pipeline builds'
 
     let_it_be(:group) { create(:group) }
-    let_it_be(:project, reload: true) { create(:project, :repository, group: group) }
+    let_it_be_with_reload(:project) { create(:project, :repository, group: group) }
 
     let(:pipeline) do
       create(:ci_pipeline, name: 'Build pipeline', project: project, ref: 'master', sha: project.commit.id, user: user)
@@ -759,7 +758,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
     describe 'GET /:project/-/pipelines/:id' do
       include_context 'pipeline builds'
 
-      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
 
       let(:pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id, user: user) }
 
@@ -818,7 +817,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         expect(page).to have_content('cross-build')
       end
 
-      context 'when a scheduled pipeline is created by a blocked user' do
+      context 'when a scheduled pipeline is created by a blocked user', :sidekiq_inline do
         let(:project)  { create(:project, :repository) }
 
         let(:schedule) do
@@ -866,7 +865,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   end
 
   context 'when build requires resource', :sidekiq_inline do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     let(:pipeline) { create(:ci_pipeline, project: project) }
     let(:resource_group) { create(:ci_resource_group, project: project) }
@@ -1015,7 +1014,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   describe 'GET /:project/-/pipelines/:id/builds' do
     include_context 'pipeline builds'
 
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     let(:pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id) }
 
@@ -1209,7 +1208,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   end
 
   describe 'GET /:project/-/pipelines/latest' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     let!(:pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id) }
 
@@ -1224,7 +1223,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   end
 
   context 'when user sees pipeline flags in a pipeline detail page' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     context 'when pipeline is latest' do
       include_context 'pipeline builds'

@@ -2,23 +2,22 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Admin impersonates user', feature_category: :user_management do
+RSpec.describe 'Admin impersonates user', :enable_admin_mode, feature_category: :user_management do
   let_it_be(:user) { create(:omniauth_user, provider: 'twitter', extern_uid: '123456') }
   let_it_be(:current_user) { create(:admin) }
 
   before do
     sign_in(current_user)
-    enable_admin_mode!(current_user, use_ui: true)
   end
 
   describe 'GET /admin/users/:id' do
     describe 'Impersonation' do
-      let_it_be(:another_user) { create(:user) }
+      let_it_be(:another_user, freeze: false) { create(:user) }
 
       context 'before impersonating' do
         subject { visit admin_user_path(user_to_visit) }
 
-        let_it_be(:user_to_visit) { another_user }
+        let_it_be(:user_to_visit, freeze: false) { another_user }
 
         shared_examples "user that cannot be impersonated" do
           it 'disables impersonate button' do
@@ -66,7 +65,7 @@ RSpec.describe 'Admin impersonates user', feature_category: :user_management do
         end
 
         context 'for user with expired password' do
-          let_it_be(:user_to_visit) do
+          let_it_be(:user_to_visit, freeze: false) do
             another_user.update!(password_expires_at: Time.zone.now - 5.minutes)
             another_user
           end
@@ -143,7 +142,7 @@ RSpec.describe 'Admin impersonates user', feature_category: :user_management do
             stub_application_setting_enum('email_confirmation_setting', 'soft')
           end
 
-          let_it_be(:another_user) { create(:user, :unconfirmed) }
+          let_it_be(:another_user, freeze: false) { create(:user, :unconfirmed) }
           let(:warning_alert) { page.find(:css, '[data-testid="alert-warning"]') }
 
           context 'with an email that does not contain HTML' do
@@ -192,11 +191,10 @@ RSpec.describe 'Admin impersonates user', feature_category: :user_management do
         end
 
         context 'a user with an expired password' do
-          before do
-            another_user.update!(password_expires_at: Time.zone.now - 5.minutes)
-          end
-
           it 'is redirected back to the impersonated users page in the admin after stopping' do
+            expect(page).to have_content "You are now impersonating #{another_user.username}"
+            another_user.update!(password_expires_at: Time.zone.now - 5.minutes)
+
             subject
 
             expect(page).to have_current_path("/admin/users/#{another_user.username}", ignore_query: true)

@@ -10,6 +10,7 @@ module API
     SCOPE_ENTITY = {
       merge_requests: Entities::MergeRequestBasic,
       issues: Entities::IssueBasic,
+      work_items: Entities::WorkItem,
       projects: Entities::BasicProjectDetails,
       milestones: Entities::Milestone,
       notes: Entities::Note,
@@ -22,6 +23,7 @@ module API
 
     before do
       authenticate!
+      set_current_organization
 
       check_rate_limit!(
         :search_rate_limit,
@@ -37,7 +39,7 @@ module API
     urgency :low
 
     rescue_from ActiveRecord::QueryCanceled do |_e|
-      render_api_error!({ error: 'Request timed out' }, 408)
+      render_api_error!('Request timed out', 408)
     end
 
     helpers do
@@ -46,6 +48,7 @@ module API
           merge_requests: :with_api_entity_associations,
           projects: :with_api_entity_associations,
           issues: :with_api_entity_associations,
+          work_items: :with_api_entity_associations,
           milestones: :with_api_entity_associations,
           commits: :with_api_commit_entity_associations
         }.freeze
@@ -53,7 +56,14 @@ module API
 
       def search_service(additional_params = {})
         strong_memoize_with(:search_service, additional_params) do
-          SearchService.new(current_user, search_params.merge(additional_params))
+          # Skip legacy scope conversion for API requests to maintain backward compatibility
+          SearchService.new(
+            current_user,
+            search_params.merge(additional_params).merge(
+              organization_id: Current.organization.id,
+              skip_legacy_scope_conversion: true
+            )
+          )
         end
       end
 
@@ -70,6 +80,8 @@ module API
       def search(additional_params = {})
         return Kaminari.paginate_array([]) if @project.present? && !project_scope_allowed?
 
+        bad_request!('All requested work item types are unavailable or do not exist') if unavailable_work_item_types?
+
         search_service = search_service(additional_params)
         if search_service.global_search? && !search_service.global_search_enabled_for_scope?
           forbidden!('Global Search is disabled for this scope')
@@ -78,14 +90,16 @@ module API
         search_type_errors = search_service.search_type_errors
         bad_request!(search_type_errors) if search_type_errors
 
+        if search_service.scope != params[:scope]
+          bad_request!("Scope '#{params[:scope]}' is not available for this search")
+        end
+
         @search_duration_s = Benchmark.realtime do
           @results = search_service.search_objects(preload_method)
         end
 
         search_results = search_service.search_results
-        if search_results.respond_to?(:failed?) && search_results.failed?(search_service.scope)
-          bad_request!(search_results.error(search_service.scope))
-        end
+        bad_request!(search_results.error(search_service.scope)) if search_results.try(:failed?, search_service.scope)
 
         set_global_search_log_information(additional_params)
 
@@ -108,7 +122,7 @@ module API
 
         search_service = search_service(additional_params)
         Gitlab::Metrics::GlobalSearchSlis.record_error_rate(
-          error: @search_duration_s.nil? || (status < 200 || status >= 400),
+          error: @search_duration_s.nil? || status >= 500,
           search_type: search_type(additional_params),
           search_level: search_service.level,
           search_scope: @search_duration_s.nil? ? user_requested_search_scope : search_service.scope
@@ -117,6 +131,15 @@ module API
 
       def project_scope_allowed?
         ::Search::Navigation.new(user: current_user, project: @project).tab_enabled_for_project?(params[:scope].to_sym)
+      end
+
+      def unavailable_work_item_types?
+        # If user requested specific work item types but none are available, return true
+        # This prevents returning all work items when unavailable types (e.g., epic on CE) are requested
+        return false unless params[:type].present? && params[:scope] == 'work_items'
+
+        processed_params = ::Search::Params.new(params)
+        processed_params[:work_item_type_ids].blank?
       end
 
       def snippets?
@@ -133,9 +156,7 @@ module API
 
       def verify_search_scope_for_ee!(_); end
 
-      def verify_ee_param_regex!(_); end
-
-      def verify_ee_param_exclude_forks!(_); end
+      def verify_ee_blob_search_params!(_); end
 
       def verify_ee_param_fields!(_); end
 
@@ -170,12 +191,14 @@ module API
         entity.execute_batch_counting(@results)
       end
 
-      params :search_params_common do
+      params :params_common do
         optional :state, type: String, desc: 'Filter results by state', values: Helpers::SearchHelpers.search_states
         optional :confidential, type: Boolean, desc: 'Filter results by confidentiality'
+        optional :type, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
+          desc: Helpers::SearchHelpers.work_item_type_filter_desc
       end
 
-      params :search_params_archived_filter do
+      params :param_archived_filter do
         optional :include_archived, type: Boolean, default: false,
           desc: 'Includes archived projects in the search. Introduced in GitLab 18.9.'
       end
@@ -185,6 +208,10 @@ module API
       end
 
       params :ee_param_exclude_forks do
+        # Overridden in EE
+      end
+
+      params :ee_param_num_context_lines do
         # Overridden in EE
       end
 
@@ -198,8 +225,8 @@ module API
     # rubocop: enable Cop/InjectEnterpriseEditionModule
 
     resource :search do
-      desc 'Search on GitLab' do
-        detail 'This feature was introduced in GitLab 10.5.'
+      desc 'Search an instance' do
+        detail 'Searches for a term across the entire GitLab instance. The response depends on the requested scope.'
         tags ['search']
       end
 
@@ -208,19 +235,20 @@ module API
         requires :scope, type: String, desc: 'The scope of the search',
           values: Helpers::SearchHelpers.global_search_scopes
 
-        use :search_params_common
-        use :search_params_archived_filter
+        use :params_common
+        use :param_archived_filter
         use :ee_param_fields
         use :ee_param_exclude_forks
+        use :ee_param_num_context_lines
         use :ee_param_regex
         use :pagination
       end
+      route_setting :authorization, permissions: :use_global_search, boundary_type: :user
       route_setting :mcp, tool_name: :gitlab_search_in_instance,
         params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
       get do
         verify_search_scope_for_ee!(search_type)
-        verify_ee_param_regex!(search_type)
-        verify_ee_param_exclude_forks!(search_type)
+        verify_ee_blob_search_params!(search_type)
         verify_ee_param_fields!(search_type)
 
         set_headers('Content-Transfer-Encoding' => 'binary')
@@ -241,21 +269,23 @@ module API
         requires :scope, type: String, desc: 'The scope of the search',
           values: Helpers::SearchHelpers.group_search_scopes
 
-        use :search_params_common
-        use :search_params_archived_filter
+        use :params_common
+        use :param_archived_filter
         use :ee_param_fields
         use :ee_param_exclude_forks
+        use :ee_param_num_context_lines
         use :ee_param_regex
         use :pagination
       end
+      route_setting :authorization, permissions: :use_global_search, boundary_type: :group
       route_setting :mcp, tool_name: :gitlab_search_in_group,
-        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
+        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService],
+        resource_name: "group"
       get ':id/(-/)search' do
         additional_params = { group_id: user_group.id }
         search_type = search_type(additional_params)
         verify_search_scope_for_ee!(search_type)
-        verify_ee_param_regex!(search_type)
-        verify_ee_param_exclude_forks!(search_type)
+        verify_ee_blob_search_params!(search_type)
         verify_ee_param_fields!(search_type)
 
         set_headers
@@ -279,18 +309,20 @@ module API
         optional :ref, type: String,
           desc: 'The name of a repository branch or tag. If not given, the default branch is used'
 
-        use :search_params_common
+        use :params_common
         use :ee_param_fields
+        use :ee_param_num_context_lines
         use :ee_param_regex
         use :pagination
       end
+      route_setting :authorization, permissions: :use_global_search, boundary_type: :project
       route_setting :mcp, tool_name: :gitlab_search_in_project,
-        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
+        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService],
+        resource_name: "project"
       get ':id/(-/)search' do
         additional_params = { project_id: user_project.id, repository_ref: params[:ref] }
         search_type = search_type(additional_params)
-        verify_ee_param_regex!(search_type)
-        verify_ee_param_exclude_forks!(search_type)
+        verify_ee_blob_search_params!(search_type)
         verify_ee_param_fields!(search_type)
 
         set_headers

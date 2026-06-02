@@ -28,8 +28,8 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
     end
   end
 
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:repository) { project.repository.raw }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:repository, freeze: false) { project.repository.raw }
 
   let(:mutable_project) { create(:project, :repository) }
   let(:mutable_repository) { mutable_project.repository.raw }
@@ -198,8 +198,8 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
     end
 
     context 'when references are ambiguous' do
-      let_it_be(:ambiguous_project) { create(:project, :repository) }
-      let_it_be(:repository) { ambiguous_project.repository.raw }
+      let_it_be(:ambiguous_project, freeze: false) { create(:project, :repository) }
+      let_it_be(:repository, freeze: false) { ambiguous_project.repository.raw }
       let_it_be(:branch_merged_commit_id) { ambiguous_project.repository.find_branch('branch-merged').dereferenced_target.id }
       let_it_be(:branch_master_commit_id) { ambiguous_project.repository.find_branch('master').dereferenced_target.id }
       let_it_be(:tag_1_0_0_commit_id) { ambiguous_project.repository.find_tag('v1.0.0').dereferenced_target.id }
@@ -1452,8 +1452,8 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
   end
 
   describe '#raw_changes_between' do
-    let(:old_rev) {}
-    let(:new_rev) {}
+    let(:old_rev) { nil }
+    let(:new_rev) { nil }
     let(:changes) { repository.raw_changes_between(old_rev, new_rev) }
 
     context 'initial commit' do
@@ -1512,18 +1512,18 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
   end
 
   describe '#count_commits' do
-    it { expect(repository.count_commits(ref: "master")).to eq(37) }
-    it { expect(repository.count_commits(ref: "feature")).to eq(9) }
-    it { expect(repository.count_commits(ref: "does-not-exist")).to eq(0) }
+    it { expect(repository.count_commits(revisions: "master")).to eq(37) }
+    it { expect(repository.count_commits(revisions: "feature")).to eq(9) }
+    it { expect(repository.count_commits(revisions: "does-not-exist")).to eq(0) }
 
     it_behaves_like 'wrapping gRPC errors', Gitlab::GitalyClient::CommitService, :commit_count do
-      subject { repository.count_commits(ref: 'master') }
+      subject { repository.count_commits(revisions: 'master') }
     end
 
     describe 'extended commit counting' do
       context 'with after timestamp' do
         it 'returns the number of commits after timestamp' do
-          options = { ref: 'master', after: Time.iso8601('2013-03-03T20:15:01+00:00') }
+          options = { revisions: 'master', after: Time.iso8601('2013-03-03T20:15:01+00:00') }
 
           expect(repository.count_commits(options)).to eq(37)
         end
@@ -1531,7 +1531,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       context 'with before timestamp' do
         it 'returns the number of commits before timestamp' do
-          options = { ref: 'feature', before: Time.iso8601('2015-03-03T20:15:01+00:00') }
+          options = { revisions: 'feature', before: Time.iso8601('2015-03-03T20:15:01+00:00') }
 
           expect(repository.count_commits(options)).to eq(9)
         end
@@ -1539,7 +1539,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       context 'with max_count' do
         it 'returns the number of commits with path' do
-          options = { ref: 'master', max_count: 5 }
+          options = { revisions: 'master', max_count: 5 }
 
           expect(repository.count_commits(options)).to eq(5)
         end
@@ -1547,7 +1547,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       context 'with path' do
         it 'returns the number of commits with path' do
-          options = { ref: 'master', path: 'encoding' }
+          options = { revisions: 'master', path: 'encoding' }
 
           expect(repository.count_commits(options)).to eq(2)
         end
@@ -1569,7 +1569,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       context 'with max_count' do
         it 'returns the number of commits up to the passed limit' do
-          options = { ref: 'master', max_count: 10, after: Time.iso8601('2013-03-03T20:15:01+00:00') }
+          options = { revisions: 'master', max_count: 10, after: Time.iso8601('2013-03-03T20:15:01+00:00') }
 
           expect(repository.count_commits(options)).to eq(10)
         end
@@ -1577,7 +1577,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       context "with all" do
         it "returns the number of commits in the whole repository" do
-          options = { all: true }
+          options = { revisions: '--all' }
 
           expect(repository.count_commits(options)).to eq(330)
         end
@@ -1597,7 +1597,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
         end
       end
 
-      context 'without all or ref being specified' do
+      context 'without revisions being specified' do
         it "raises an ArgumentError" do
           expect { repository.count_commits({}) }.to raise_error(ArgumentError)
         end
@@ -2151,10 +2151,10 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
 
       expect(languages).to match_array(
         [
-          { value: a_value_within(0.1).of(66.7), label: "Ruby", color: "#701516", highlight: "#701516" },
-          { value: a_value_within(0.1).of(22.96), label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
-          { value: a_value_within(0.1).of(7.9), label: "HTML", color: "#e34c26", highlight: "#e34c26" },
-          { value: a_value_within(0.1).of(2.51), label: "CoffeeScript", color: "#244776", highlight: "#244776" }
+          { value: a_value_within(0.1).of(66.7), label: "Ruby", color: "#701516", highlight: "#701516", language_id: 326 },
+          { value: a_value_within(0.1).of(22.96), label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a", language_id: 183 },
+          { value: a_value_within(0.1).of(7.9), label: "HTML", color: "#e34c26", highlight: "#e34c26", language_id: 146 },
+          { value: a_value_within(0.1).of(2.51), label: "CoffeeScript", color: "#244776", highlight: "#244776", language_id: 63 }
         ])
     end
 
@@ -2179,7 +2179,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
     subject(:license) { repository.license }
 
     context 'when no license file can be found' do
-      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
       let(:repository) { project.repository.raw_repository }
 
       before do
@@ -2193,8 +2193,8 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
       it { is_expected.to have_attributes(key: 'mit') }
     end
 
-    context 'when license is not recognized ' do
-      let_it_be(:project) { create(:project, :repository) }
+    context 'when license is not recognized' do
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
       let(:repository) { project.repository.raw_repository }
 
       before do
@@ -2263,7 +2263,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
   end
 
   describe '#add_branch' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
     let(:repository) { project.repository.raw }
     let(:branch_name) { "branch-to-create" }
 
@@ -2607,6 +2607,32 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
     end
   end
 
+  describe '#initial_commit' do
+    subject(:initial_commit) { repository.initial_commit(ref) }
+
+    let(:ref) { nil }
+
+    it 'returns the first commit with no parents' do
+      expect(initial_commit).to be_a(Gitlab::Git::Commit)
+      expect(initial_commit.parent_ids).to be_empty
+    end
+
+    context 'when ref is specified' do
+      let(:ref) { 'master' }
+
+      it 'returns the initial commit for that ref' do
+        expect(initial_commit).to be_a(Gitlab::Git::Commit)
+        expect(initial_commit.parent_ids).to be_empty
+      end
+    end
+
+    context 'when repository is empty' do
+      let(:repository) { create(:project, :empty_repo).repository.raw }
+
+      it { is_expected.to be_nil }
+    end
+  end
+
   describe '#create_from_bundle' do
     let(:valid_bundle_path) { File.join(Dir.tmpdir, "repo-#{SecureRandom.hex}.bundle") }
     let(:malicious_bundle_path) { Rails.root.join('spec/fixtures/malicious.bundle') }
@@ -2793,7 +2819,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
   end
 
   describe '#import_repository' do
-    let_it_be(:repository) { create(:project).repository }
+    let_it_be(:repository, freeze: false) { create(:project).repository }
 
     let(:url) { 'http://invalid.invalid' }
 
@@ -3107,7 +3133,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
       context 'when the manual override is used on non-detectable file' do
         let(:gitattr_content) { "file1.txt gitlab-generated\n" }
 
-        it 'returns both manually overriden file and the detected file' do
+        it 'returns both manually overridden file and the detected file' do
           expect(generated_files).to contain_exactly('file1.txt', 'package-lock.json')
         end
       end
@@ -3115,7 +3141,7 @@ RSpec.describe Gitlab::Git::Repository, feature_category: :source_code_managemen
       context 'when the manual override is used on the detectable file' do
         let(:gitattr_content) { "package-lock.json gitlab-generated\n" }
 
-        it 'returns the overriden file' do
+        it 'returns the overridden file' do
           expect(generated_files).to contain_exactly('package-lock.json')
         end
       end

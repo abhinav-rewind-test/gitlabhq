@@ -37,6 +37,9 @@ module WorkItems
 
         validate_full_path
 
+        validate_work_item_type_ids
+        validate_not_work_item_type_ids
+
         ServiceResponse.success(payload: { filters: sanitized_filters, warnings: @warnings })
       rescue ArgumentError => e
         ServiceResponse.error(message: e.message)
@@ -49,6 +52,11 @@ module WorkItems
 
         # Rename issue_types back to types for consistency with GraphQL input
         sanitized_filters[:types] = sanitized_filters.delete(:issue_types) if sanitized_filters.key?(:issue_types)
+
+        # Rename label_wildcard_id back to label_name for consistency with GraphQL input
+        if sanitized_filters.key?(:label_wildcard_id)
+          sanitized_filters[:label_name] = sanitized_filters.delete(:label_wildcard_id)
+        end
 
         # Handle static negated filters
         return unless filters[:not]
@@ -218,6 +226,37 @@ module WorkItems
         else
           add_warning(:crm_organization_id, "CRM organization not found")
         end
+      end
+
+      def validate_work_item_type_ids
+        return unless filters[:work_item_type_ids]
+
+        found_gids = resolve_work_item_type_ids(filters[:work_item_type_ids], :work_item_type_ids)
+        sanitized_filters[:work_item_type_ids] = found_gids if found_gids.present?
+      end
+
+      def validate_not_work_item_type_ids
+        negated_type_ids = filters.dig(:not, :work_item_type_ids)
+        return unless negated_type_ids
+
+        found_gids = resolve_work_item_type_ids(negated_type_ids, :not_work_item_type_ids)
+        return unless found_gids.present?
+
+        sanitized_filters[:not] ||= {}
+        sanitized_filters[:not][:work_item_type_ids] = found_gids
+      end
+
+      def resolve_work_item_type_ids(type_ids, warning_key)
+        found_types = work_item_types_provider.by_ids(type_ids)
+
+        missing_count = type_ids.size - found_types.size
+        add_warning(warning_key, "#{missing_count} work item type(s) not found") if missing_count > 0
+
+        found_types.map { |t| t.to_global_id.to_s }
+      end
+
+      def work_item_types_provider
+        @work_item_types_provider ||= ::WorkItems::TypesFramework::Provider.new(container)
       end
 
       def validate_full_path

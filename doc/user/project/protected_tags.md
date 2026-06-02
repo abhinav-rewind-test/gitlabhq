@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use protected tags in Git to control who can create tags, and prevent accidental tag updates or deletion.
 title: Protected tags
 ---
@@ -26,16 +26,16 @@ Each rule allows you to match either:
 This feature evolved out of [protected branches](repository/branches/protected.md).
 
 > [!note]
-> To create or delete a protected tag, you must be in the **Allowed to create or delete** list for that protected tag.
+> To create or delete a protected tag, you must be in the **Allowed to create** list for that protected tag.
 
 ## Configure protected tags
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Protected tags**.
 1. Select **Add new**.
 1. To protect a single tag, select **Tag**, then choose your tag from the dropdown list.
@@ -57,7 +57,7 @@ The protected tag (or wildcard) displays in the **Protected tags** list.
 
 To set the members of a group or subgroup as Allowed to create protected tags:
 
-1. On the left sidebar, select **Search or go** to and find your project.
+1. In the left sidebar, select **Search or go** to and find your project.
 1. Select **Settings** > **Repository**.
 1. Expand **Protected tags**.
 1. Add groups to the following field:
@@ -152,8 +152,8 @@ Prerequisites:
 
 To allow a deploy key to create a protected tag:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Protected tags**.
 1. From the **Tag** dropdown list, select the tag you want to protect.
 1. From the **Allowed to create** list, select the deploy key.
@@ -171,8 +171,7 @@ security or operational issues.
 To prevent this problem:
 
 1. Identify the branch names you do not want used as tags.
-1. As described in [Configure protected tags](#configure-protected-tags),
-   create a protected tag:
+1. Create a protected tag described in [configure protected tags](#configure-protected-tags):
 
    - For the **Name**, provide a name, such as `stable`. You can also create a wildcard
      like `stable-*` to match multiple names, like `stable-v1` and `stable-v2`.
@@ -199,17 +198,17 @@ The tag remains in the repository but is no longer protected.
 
 Prerequisites:
 
-- You must have at least the Maintainer role.
+- You must have the Maintainer or Owner role.
 
 To unprotect a tag:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Protected tags**.
 1. Next to the protected tag rule you want to remove, select **Unprotect**.
 
 > [!warning]
-> After you unprotect a tag pattern, any user with at least the Developer role
+> After you unprotect a tag pattern, any user with the Developer, Maintainer, or Owner role
 > can delete tags matching that pattern.
 
 ## Delete a protected tag
@@ -217,15 +216,16 @@ To unprotect a tag:
 You can delete tags that have protection rules applied to them.
 This removes the tag from the repository, not the protection rule itself.
 If you want to remove the protection rule without deleting the tag,
-see [Unprotect a tag](#unprotect-a-tag).
+see [unprotect a tag](#unprotect-a-tag).
 
 Prerequisites:
 
-- You must be in the **Allowed to create or delete** list.
+- Be in the **Allowed to create** list of roles or users for that tag.
+- The Maintainer or Owner role in the project.
 
 To delete a protected tag:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Tags**.
 1. Next to the tag you want to delete, select **Delete** ({{< icon name="remove" >}}).
 1. On the confirmation dialog, enter the tag name and select **Yes, delete protected tag**.
@@ -236,5 +236,5 @@ Git commands or third-party Git clients.
 
 ## Related topics
 
-- [Protected Tags API](../../api/protected_tags.md)
+- [Protected tags API](../../api/protected_tags.md)
 - [Tags API](../../api/tags.md)

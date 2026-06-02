@@ -33,7 +33,6 @@ module Issuable
   include Import::HasImportSource
 
   TITLE_LENGTH_MAX = 255
-  DESCRIPTION_LENGTH_MAX = 1.megabyte
   SEARCHABLE_FIELDS = %w[title description].freeze
   MAX_NUMBER_OF_ASSIGNEES_OR_REVIEWERS = 200
 
@@ -45,7 +44,7 @@ module Issuable
   }.with_indifferent_access.freeze
 
   included do
-    cache_markdown_field :title, pipeline: :single_line_markdown
+    cache_markdown_field :title, pipeline: :single_line
     cache_markdown_field :description, issuable_reference_expansion_enabled: true
 
     redact_field :description
@@ -54,27 +53,15 @@ module Issuable
     belongs_to :updated_by, class_name: 'User'
     belongs_to :last_edited_by, class_name: 'User'
 
-    has_many :notes, as: :noteable, inverse_of: :noteable, dependent: :destroy do # rubocop:disable Cop/ActiveRecordDependent
-      def authors_loaded?
-        # We check first if we're loaded to not load unnecessarily.
-        loaded? && to_a.all? { |note| note.association(:author).loaded? }
-      end
-
-      def award_emojis_loaded?
-        # We check first if we're loaded to not load unnecessarily.
-        loaded? && to_a.all? { |note| note.association(:award_emoji).loaded? }
-      end
-
-      def projects_loaded?
-        # We check first if we're loaded to not load unnecessarily.
-        loaded? && to_a.all? { |note| note.association(:project).loaded? }
-      end
-
-      def system_note_metadata_loaded?
-        # We check first if we're loaded to not load unnecessarily.
-        loaded? && to_a.all? { |note| note.association(:system_note_metadata).loaded? }
-      end
-    end
+    has_many :notes, -> { extending Notes::ParticipantAssociationsExtension }, as: :noteable, inverse_of: :noteable, dependent: :destroy # rubocop:disable Cop/ActiveRecordDependent
+    has_many :notes_with_possible_mentions, -> {
+      Note.from_union(
+        [
+          user,
+          system.with_possible_mentions
+        ], remove_duplicates: false
+      ).extending(Notes::ParticipantAssociationsExtension)
+    }, class_name: 'Note', as: :noteable, inverse_of: :noteable
 
     has_many :note_authors, -> { distinct }, through: :notes, source: :author
     has_many :user_note_authors, -> { distinct.where("notes.system = false") }, through: :notes, source: :author
@@ -92,9 +79,10 @@ module Issuable
 
     validates :author, presence: true
     validates :title, presence: true, length: { maximum: TITLE_LENGTH_MAX }
-    # we validate the description against DESCRIPTION_LENGTH_MAX only for Issuables being created and on updates if
+    # we validate the description against the limit only for Issuables being created and on updates if
     # the description changes to avoid breaking the existing Issuables which may have their descriptions longer
-    validates :description, bytesize: { maximum: -> { DESCRIPTION_LENGTH_MAX } }, if: :validate_description_length?
+    validates :description, bytesize: { maximum: -> { Gitlab::CurrentSettings.description_and_note_max_size } },
+      if: :validate_description_length?
     validate :validate_assignee_size_length, unless: :importing?
 
     before_validation :truncate_description_on_import!
@@ -153,10 +141,11 @@ module Issuable
       includes(*associations)
     end
 
-    attr_mentionable :title, pipeline: :single_line_markdown
+    attr_mentionable :title, pipeline: :single_line
     attr_mentionable :description
 
     participant :author
+    participant :system_note_authors
     participant :notes_for_participants
     participant :assignees
 
@@ -253,11 +242,11 @@ module Issuable
       # previous_description will be nil for new records
       return true if previous_description.blank?
 
-      previous_description.bytesize <= DESCRIPTION_LENGTH_MAX
+      previous_description.bytesize <= Gitlab::CurrentSettings.description_and_note_max_size
     end
 
     def truncate_description_on_import!
-      self.description = description&.slice(0, Issuable::DESCRIPTION_LENGTH_MAX) if importing?
+      self.description = description&.slice(0, Gitlab::CurrentSettings.description_and_note_max_size) if importing?
     end
 
     def validate_assignee_size_length
@@ -270,11 +259,7 @@ module Issuable
 
   class_methods do
     def participant_includes
-      if Feature.enabled?(:remove_per_source_permission_from_participants, Feature.current_request)
-        [:author, :award_emoji, { notes: [:author, :award_emoji] }]
-      else
-        [:author, :award_emoji, { notes: [:author, :award_emoji, :system_note_metadata] }]
-      end
+      [:author, :award_emoji, { notes_with_possible_mentions: [:author, :award_emoji] }]
     end
 
     # Searches for records with a matching title.
@@ -600,7 +585,7 @@ module Issuable
     changes
   end
 
-  def to_hook_data(user, old_associations: {}, action: nil)
+  def to_hook_data(user, old_associations: {}, action: nil, actioned_at: nil)
     changes = reportable_changes
 
     if old_associations.present?
@@ -608,7 +593,11 @@ module Issuable
       changes.merge!(hook_reviewer_changes(old_associations)) if allows_reviewers?
     end
 
-    Gitlab::DataBuilder::Issuable.new(self).build(user: user, changes: changes, action: action)
+    Gitlab::DataBuilder::Issuable.new(self).build(
+      user: user,
+      changes: changes,
+      action: action,
+      actioned_at: actioned_at)
   end
 
   def labels_array
@@ -653,11 +642,15 @@ module Issuable
     assignees.map(&:username).join(',')
   end
 
-  def notes_for_participants
-    notes_with_associations.limit(Noteable::MAX_NOTES_LIMIT * 2)
+  def system_note_authors
+    User.id_in(notes.system.select(:author_id).distinct)
   end
 
-  def notes_with_associations
+  def notes_for_participants
+    notes_with_associations(notes_with_possible_mentions).limit(Noteable::MAX_NOTES_LIMIT * 2)
+  end
+
+  def notes_with_associations(relation = notes)
     # If A has_many Bs, and B has_many Cs, and you do
     # `A.includes(b: :c).each { |a| a.b.includes(:c) }`, sadly ActiveRecord
     # will do the inclusion again. So, we check if all notes in the relation
@@ -665,18 +658,13 @@ module Issuable
     # `inc_notes_with_associations` was used) and skip the inclusion if that's
     # the case.
     includes = []
-    includes << :author unless notes.authors_loaded?
-    includes << :award_emoji unless notes.award_emojis_loaded?
-
-    unless Feature.enabled?(:remove_per_source_permission_from_participants, Feature.current_request)
-      includes << :project unless notes.projects_loaded?
-      includes << :system_note_metadata unless notes.system_note_metadata_loaded?
-    end
+    includes << :author unless relation.authors_loaded?
+    includes << :award_emoji unless relation.award_emojis_loaded?
 
     if persisted? && includes.any?
-      notes.includes(includes)
+      relation.includes(includes)
     else
-      notes
+      relation
     end
   end
 
@@ -708,15 +696,6 @@ module Issuable
   #
   def draftless_title_changed(old_title)
     old_title != title
-  end
-
-  def read_ability_for(participable_source)
-    return super if participable_source == self
-    return super if participable_source.is_a?(Note) && participable_source.system?
-
-    name =  participable_source.try(:issuable_ability_name) || :read_issuable_participables
-
-    { name: name, subject: self }
   end
 
   def supports_health_status?

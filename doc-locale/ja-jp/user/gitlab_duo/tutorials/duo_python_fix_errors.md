@@ -1,8 +1,8 @@
 ---
-stage: none
+stage: Tutorials
 group: Tutorials
 description: このチュートリアルでは、GitLab Duoを使用して、Pythonのショップアプリケーションのエラーを修正する方法について説明します。
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: 'チュートリアル: GitLab Duoを使用して、Pythonのショップアプリケーションのエラーを修正する'
 ---
 
@@ -312,7 +312,6 @@ pytest -v tests/test_shop.py
 ここでは、コード提案（特にコード生成）を使用して、データベースのエラー処理と接続管理を改善します:
 
 1. IDEで`app/database.py`ファイルを開きます。
-
 1. まず、ハードコードされたデータベースパスを修正します。`DATABASE_PATH`が定義されている行にカーソルを置き、次のように入力します:
 
    ```python
@@ -578,7 +577,6 @@ GitLab Duo Chatを使用して、`Article`クラスのデータ検証を実装�
 ここでは、コード提案を使用して、ルートのエラー処理を改善します:
 
 1. IDEで`app/routes/shop.py`ファイルを開きます。
-
 1. まず、GETルートに優れたエラー処理を追加しましょう。`get_all_books`関数の先頭にカーソルを置き、次のように入力します:
 
    ```plaintext
@@ -749,7 +747,6 @@ GitLab Duo Chatを使用して、`Article`クラスのデータ検証を実装�
 最後に行う改善は、Chatを使用してFlaskアプリケーション設定を改善することです。
 
 1. IDEで`app/__init__.py`ファイルを開きます。
-
 1. IDEでChatを開き、次のように入力します:
 
    ```plaintext
@@ -949,7 +946,6 @@ GitLab Duo Chatを使用して、`Article`クラスのデータ検証を実装�
    - 存在しないIDで`DELETE /books/999`。
 
 1. エラー処理がすべてのエラーケースに対して正しく機能することを検証します。
-
 1. オプション。エラー処理が正しく機能することを検証する方法をChatに質問します。
 
 ## まとめ {#summary}
@@ -969,12 +965,13 @@ GitLab Duo Chatを使用して、`Article`クラスのデータ検証を実装�
 
 - [GitLab Duoのユースケース](../use_cases.md)
 - [GitLab Duoのスタートガイド](../../get_started/getting_started_gitlab_duo.md)
-- ブログ投稿: [Streamline DevSecOps engineering workflows with GitLab Duo](https://about.gitlab.com/blog/2024/12/05/streamline-devsecops-engineering-workflows-with-gitlab-duo/)
-<!-- markdownlint-disable -->
-- <i class="fa-youtube-play" aria-hidden="true"></i> [GitLab Duo Chat（エージェント）](https://youtu.be/uG9-QLAJrrg?si=c25SR7DoRAep7jvQ)
+- ブログ投稿: [Streamline DevSecOps engineering workflows with GitLab Duo](https://about.gitlab.com/blog/streamline-devsecops-engineering-workflows-with-gitlab-duo/)
+  <!-- markdownlint-disable -->
+- <i class="fa-youtube-play" aria-hidden="true"></i> [GitLab Duo Chat（エージェント型）](https://youtu.be/uG9-QLAJrrg?si=c25SR7DoRAep7jvQ)
   <!-- Video published on 2025-06-02 -->
-- <i class="fa-youtube-play" aria-hidden="true"></i> [GitLab Duo Chat（クラシック）](https://youtu.be/ZQBAuf-CTAY?si=0o9-xJ_ATTsL1oew)
+- <i class="fa-youtube-play" aria-hidden="true"></i> [GitLab Duo Chat（非エージェント型）](https://youtu.be/ZQBAuf-CTAY?si=0o9-xJ_ATTsL1oew)
   <!-- Video published on 2024-04-18 -->
-- <i class="fa-youtube-play" aria-hidden="true"></i>[GitLab Duo Code Suggestions](https://youtu.be/ds7SG1wgcVM?si=MfbzPIDpikGhoPh7)
-<!-- Video published on 2024-01-24 -->
+- <i class="fa-youtube-play" aria-hidden="true"></i>[GitLab Duoコード提案](https://youtu.be/ds7SG1wgcVM?si=MfbzPIDpikGhoPh7)
+  <!-- Video published on 2024-01-24 -->
+
 <!-- markdownlint-enable -->

@@ -2,7 +2,6 @@
 itself: # project
   unexposed_attributes:
     - bfg_object_map
-    - delete_error
     - detected_repository_languages
     - disable_overriding_approvers_per_merge_request
     - external_authorization_classification_label
@@ -97,15 +96,17 @@ ci_cd_settings:
     - project_id
     - merge_trains_enabled
     - merge_trains_skip_train_allowed
+    - max_pipelines_per_merge_train
     - merge_pipelines_enabled
     - auto_rollback_enabled
     - inbound_job_token_scope_enabled
     - restrict_pipeline_cancellation_role
     - push_repository_for_job_token_allowed
+    - cross_project_push_for_job_token_allowed
     - id_token_sub_claim_components
     - delete_pipelines_in_seconds
     - allow_composite_identities_to_run_pipelines
-    - display_pipeline_variables
+    - max_pipelines_per_merge_train
   remapped_attributes:
     pipeline_variables_minimum_override_role: ci_pipeline_variables_minimum_override_role
     push_repository_for_job_token_allowed: ci_push_repository_for_job_token_allowed
@@ -117,6 +118,7 @@ ci_cd_settings:
     separated_caches: ci_separated_caches
     allow_fork_pipelines_to_run_in_parent_project: ci_allow_fork_pipelines_to_run_in_parent_project
     delete_pipelines_in_seconds: ci_delete_pipelines_in_seconds
+    display_pipeline_variables: ci_display_pipeline_variables
   computed_attributes:
     - restrict_user_defined_variables
 
@@ -197,9 +199,9 @@ project_setting:
     - require_reauthentication_to_approve
     - observability_alerts_enabled
     - spp_repository_pipeline_access
+    - security_policy_pipeline_must_succeed
     - max_number_of_vulnerabilities
     - extended_prat_expiry_webhooks_execute
-    - protect_merge_request_pipelines
     - model_prompt_cache_enabled
     - web_based_commit_signing_enabled
     - duo_context_exclusion_settings
@@ -207,7 +209,16 @@ project_setting:
     - duo_foundational_flows_enabled
     - duo_sast_fp_detection_enabled
     - duo_sast_vr_workflow_enabled
+    - duo_secret_detection_fp_enabled
     - enabled_foundational_flows
+    - reviewer_assignment_strategy
+    - merge_request_title_regex
+    - merge_request_title_regex_description
+    - pipeline_execution_policy_bot_access_enabled
+    - pipeline_execution_policy_bot_access_file_patterns
+    - pipeline_execution_policy_bot_access_group_id
+    - dap_session_tracking_enabled
+    - tool_approval_for_session_enabled
 build_service_desk_setting: # service_desk_setting
   unexposed_attributes:
     - project_id

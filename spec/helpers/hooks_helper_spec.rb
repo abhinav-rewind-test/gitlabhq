@@ -22,11 +22,15 @@ RSpec.describe HooksHelper, feature_category: :integrations do
   end
 
   describe '#webhook_form_data' do
-    subject { helper.webhook_form_data(project_hook) }
+    subject(:form_data) { helper.webhook_form_data(project_hook) }
 
     context 'when there are no URL variables' do
+      before do
+        stub_feature_flags(project_deploy_token_expiring_notifications: false)
+      end
+
       it 'returns proper data' do
-        is_expected.to match(
+        expect(form_data).to match(
           name: project_hook.name,
           description: project_hook.description,
           secret_token: nil,
@@ -34,7 +38,11 @@ RSpec.describe HooksHelper, feature_category: :integrations do
           url_variables: "[]",
           custom_headers: "[]",
           is_new_hook: "false",
-          triggers: expected_triggers
+          is_system_hook: "false",
+          triggers: expected_triggers,
+          deploy_token_events_enabled: 'false',
+          has_signing_token: 'false',
+          signing_token_docs_path: anything
         )
       end
     end
@@ -42,8 +50,12 @@ RSpec.describe HooksHelper, feature_category: :integrations do
     context 'when there are URL variables' do
       let(:project_hook) { build_stubbed(:project_hook, :url_variables, :token, project: project) }
 
+      before do
+        stub_feature_flags(project_deploy_token_expiring_notifications: false)
+      end
+
       it 'returns proper data' do
-        is_expected.to match(
+        expect(form_data).to match(
           name: project_hook.name,
           description: project_hook.description,
           secret_token: WebHook::SECRET_MASK,
@@ -51,7 +63,11 @@ RSpec.describe HooksHelper, feature_category: :integrations do
           url_variables: Gitlab::Json.dump([{ key: 'abc' }, { key: 'def' }]),
           custom_headers: "[]",
           is_new_hook: "false",
-          triggers: expected_triggers
+          is_system_hook: "false",
+          triggers: expected_triggers,
+          deploy_token_events_enabled: 'false',
+          has_signing_token: 'false',
+          signing_token_docs_path: anything
         )
       end
     end
@@ -59,8 +75,12 @@ RSpec.describe HooksHelper, feature_category: :integrations do
     context 'when there are custom headers' do
       let(:project_hook) { build_stubbed(:project_hook, :token, project: project, custom_headers: { test: 'blub' }) }
 
+      before do
+        stub_feature_flags(project_deploy_token_expiring_notifications: false)
+      end
+
       it 'returns proper data' do
-        is_expected.to match(
+        expect(form_data).to match(
           name: project_hook.name,
           description: project_hook.description,
           secret_token: WebHook::SECRET_MASK,
@@ -68,8 +88,68 @@ RSpec.describe HooksHelper, feature_category: :integrations do
           url_variables: "[]",
           custom_headers: Gitlab::Json.dump([{ key: 'test', value: WebHook::SECRET_MASK }]),
           is_new_hook: "false",
-          triggers: expected_triggers
+          is_system_hook: "false",
+          triggers: expected_triggers,
+          deploy_token_events_enabled: 'false',
+          has_signing_token: 'false',
+          signing_token_docs_path: anything
         )
+      end
+    end
+
+    context 'when project hook with feature flag enabled' do
+      before do
+        stub_feature_flags(project_deploy_token_expiring_notifications: true)
+      end
+
+      it 'includes deploy_token_events_enabled as true' do
+        expect(form_data).to include(deploy_token_events_enabled: 'true')
+      end
+    end
+
+    context 'when project hook with feature flag disabled' do
+      before do
+        stub_feature_flags(project_deploy_token_expiring_notifications: false)
+      end
+
+      it 'includes deploy_token_events_enabled as false' do
+        expect(form_data).to include(deploy_token_events_enabled: 'false')
+      end
+    end
+
+    context 'when hook is a system hook' do
+      subject(:form_data) { helper.webhook_form_data(system_hook) }
+
+      it 'does not include deploy_token_events_enabled' do
+        expect(form_data).not_to have_key(:deploy_token_events_enabled)
+      end
+
+      it 'includes is_system_hook as true' do
+        expect(form_data).to include(is_system_hook: 'true')
+      end
+    end
+
+    context 'when project hook has no project association' do
+      let(:project_hook_without_project) { build_stubbed(:project_hook, project: nil) }
+
+      subject(:form_data) { helper.webhook_form_data(project_hook_without_project) }
+
+      it 'does not include deploy_token_events_enabled' do
+        expect(form_data).not_to have_key(:deploy_token_events_enabled)
+      end
+    end
+
+    context 'when hook has a signing token' do
+      let(:project_hook) { build_stubbed(:project_hook, :signing_token, project: project) }
+
+      it 'includes has_signing_token as true' do
+        expect(form_data).to include(has_signing_token: 'true')
+      end
+    end
+
+    context 'when hook has no signing token' do
+      it 'includes has_signing_token as false' do
+        expect(form_data).to include(has_signing_token: 'false')
       end
     end
   end

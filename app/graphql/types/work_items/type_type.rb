@@ -92,7 +92,7 @@ module Types
       field :can_user_create_items, GraphQL::Types::Boolean, # rubocop:disable GraphQL/ExtractType -- no need for extraction
         null: true,
         description: 'Indicates whether the work item type is creatable by the API.',
-        method: :creatable?,
+        method: :can_user_create_items?,
         experiment: { milestone: '18.8' }
 
       field :visible_in_settings, GraphQL::Types::Boolean,
@@ -107,12 +107,6 @@ module Types
         method: :archived?,
         experiment: { milestone: '18.8' }
 
-      field :is_filterable, GraphQL::Types::Boolean,
-        null: true,
-        description: 'Indicates whether the work item type should be filterable.',
-        method: :filterable?,
-        experiment: { milestone: '18.8' }
-
       field :is_group_work_item_type, GraphQL::Types::Boolean,
         null: true,
         description: 'Indicates whether the work item type belongs only to a group.',
@@ -124,6 +118,18 @@ module Types
         description: 'Indicates whether the work item type is enabled.',
         method: :enabled?,
         experiment: { milestone: '18.9' }
+
+      field :is_filterable_list_view, GraphQL::Types::Boolean,
+        null: false,
+        description: 'Indicates whether the work item type is filterable in list view.',
+        method: :filterable_list_view?,
+        experiment: { milestone: '18.10' }
+
+      field :is_filterable_board_view, GraphQL::Types::Boolean,
+        null: false,
+        description: 'Indicates whether the work item type is filterable in board view.',
+        method: :filterable_board_view?,
+        experiment: { milestone: '18.10' }
 
       def widgets
         object.widget_definitions(context[:resource_parent])
@@ -139,7 +145,7 @@ module Types
 
       def unavailable_widgets_on_conversion(target:)
         source_type = object
-        target_type = GitlabSchema.find_by_gid(target).sync
+        target_type = ::WorkItems::TypesFramework::Provider.new(context[:resource_parent]).find_by_gid(target)
 
         return [] unless source_type && target_type
 
@@ -148,3 +154,5 @@ module Types
     end
   end
 end
+
+Types::WorkItems::TypeType.prepend_mod

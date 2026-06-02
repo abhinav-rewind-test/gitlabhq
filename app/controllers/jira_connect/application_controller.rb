@@ -7,7 +7,7 @@ class JiraConnect::ApplicationController < ApplicationController
   skip_before_action :verify_authenticity_token
   before_action :verify_atlassian_jwt!
 
-  feature_category :integrations
+  feature_category :team_planning
 
   attr_reader :current_jira_installation
 
@@ -40,7 +40,7 @@ class JiraConnect::ApplicationController < ApplicationController
       next unless jwt
       next unless jwt.iss_claim
 
-      JiraConnectInstallation.find_by_client_key(jwt.iss_claim)
+      JiraConnectInstallation.find_by_client_key_and_organization_id(jwt.iss_claim, Current.organization.id)
     end
   end
 

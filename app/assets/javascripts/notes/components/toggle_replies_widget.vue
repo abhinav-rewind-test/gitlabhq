@@ -8,7 +8,7 @@ import {
   GlAvatarsInline,
   GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
-import { uniqBy } from 'lodash';
+import { uniqBy } from 'lodash-es';
 import { s__ } from '~/locale';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 
@@ -37,7 +37,13 @@ export default {
       type: Array,
       required: true,
     },
+    tag: {
+      type: String,
+      default: 'li',
+      required: false,
+    },
   },
+  emits: ['toggle'],
   computed: {
     lastReply() {
       return this.replies[this.replies.length - 1];
@@ -64,10 +70,11 @@ export default {
 </script>
 
 <template>
-  <li
+  <component
+    :is="tag"
     :class="{ '!gl-rounded-b-lg gl-text-subtle': collapsed }"
     class="toggle-replies-widget gl-border-r gl-border-l !gl-flex gl-flex-wrap gl-items-center gl-border-l-section gl-border-r-section gl-bg-subtle gl-px-5 gl-py-2 gl-leading-24"
-    :aria-expanded="ariaState"
+    :aria-expanded="tag === 'li' ? ariaState : undefined"
   >
     <gl-button
       ref="toggle"
@@ -133,5 +140,5 @@ export default {
     >
       {{ $options.i18n.collapseReplies }}
     </gl-button>
-  </li>
+  </component>
 </template>

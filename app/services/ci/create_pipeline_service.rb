@@ -15,6 +15,7 @@ module Ci
       Gitlab::Ci::Pipeline::Chain::Validate::SecurityOrchestrationPolicy,
       Gitlab::Ci::Pipeline::Chain::AssignPartition,
       Gitlab::Ci::Pipeline::Chain::PipelineExecutionPolicies::EvaluatePolicies,
+      Gitlab::Ci::Pipeline::Chain::NoPipeline,
       Gitlab::Ci::Pipeline::Chain::Skip,
       Gitlab::Ci::Pipeline::Chain::Validate::Config,
       Gitlab::Ci::Pipeline::Chain::Config::Content,
@@ -40,9 +41,8 @@ module Ci
       Gitlab::Ci::Pipeline::Chain::CreateCrossDatabaseAssociations,
       Gitlab::Ci::Pipeline::Chain::CancelPendingPipelines,
       Gitlab::Ci::Pipeline::Chain::Metrics,
-      Gitlab::Ci::Pipeline::Chain::TemplateUsage,
+      Gitlab::Ci::Pipeline::Chain::TriggerBuildHooks,
       Gitlab::Ci::Pipeline::Chain::ComponentUsage,
-      Gitlab::Ci::Pipeline::Chain::KeywordUsage,
       Gitlab::Ci::Pipeline::Chain::Pipeline::Process].freeze
 
     # Create a new pipeline in the specified project.
@@ -73,6 +73,9 @@ module Ci
       @logger = build_logger
       @command_logger = Gitlab::Ci::Pipeline::CommandLogger.new
       @pipeline = Ci::Pipeline.new
+
+      return ServiceResponse.error(message: "Missing project parameter", payload: @pipeline) if project.nil?
+      return ServiceResponse.error(message: "Missing user parameter", payload: @pipeline) if current_user.nil?
 
       validate_options!(options)
 
@@ -121,12 +124,18 @@ module Ci
       end
 
       if error_message = pipeline.full_error_messages.presence || pipeline.failure_reason.presence
-        ::Ci::PipelineCreation::Requests.failed(params[:pipeline_creation_request], error_message)
-        GraphqlTriggers.ci_pipeline_creation_requests_updated(merge_request) if merge_request
+        unless params[:defer_request_completion]
+          ::Ci::PipelineCreation::Requests.failed(params[:pipeline_creation_request], error_message)
+          GraphqlTriggers.ci_pipeline_creation_requests_updated(merge_request) if merge_request
+        end
+
         ServiceResponse.error(message: error_message, payload: pipeline)
       else
-        ::Ci::PipelineCreation::Requests.succeeded(params[:pipeline_creation_request], pipeline.id)
-        GraphqlTriggers.ci_pipeline_creation_requests_updated(merge_request) if merge_request
+        unless params[:defer_request_completion]
+          ::Ci::PipelineCreation::Requests.succeeded(params[:pipeline_creation_request], pipeline.id)
+          GraphqlTriggers.ci_pipeline_creation_requests_updated(merge_request) if merge_request
+        end
+
         ServiceResponse.success(payload: pipeline)
       end
 
@@ -166,8 +175,8 @@ module Ci
     # :nocov:
     # rubocop:enable Gitlab/NoCodeCoverageComment
 
-    def extra_options(content: nil, dry_run: false, linting: false, duo_workflow_definition: nil)
-      { content: content, dry_run: dry_run, linting: linting, duo_workflow_definition: duo_workflow_definition }
+    def extra_options(content: nil, dry_run: false, linting: false, duo_workflow_definition: nil, trigger_api_request: false, suspend_options: nil)
+      { content: content, dry_run: dry_run, linting: linting, duo_workflow_definition: duo_workflow_definition, trigger_api_request: trigger_api_request, suspend_options: suspend_options }
     end
 
     def build_logger

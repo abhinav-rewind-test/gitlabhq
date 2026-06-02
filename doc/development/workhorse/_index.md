@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: GitLab Workhorse
 ---
 
@@ -109,8 +109,9 @@ make install PREFIX=/foo
 On some operating systems, such as FreeBSD, you may have to use
 `gmake` instead of `make`.
 
-*NOTE*: Some features depends on build tags, make sure to check
-[Workhorse configuration](configuration.md) to enable them.
+> [!note]
+> Some features depend on build tags, make sure to check
+> [Workhorse configuration](configuration.md) to enable them.
 
 ### Run time dependencies
 

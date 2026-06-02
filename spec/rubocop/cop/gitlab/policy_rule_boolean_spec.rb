@@ -3,7 +3,7 @@
 require 'rubocop_spec_helper'
 require_relative '../../../../rubocop/cop/gitlab/policy_rule_boolean'
 
-RSpec.describe RuboCop::Cop::Gitlab::PolicyRuleBoolean do
+RSpec.describe RuboCop::Cop::Gitlab::PolicyRuleBoolean, feature_category: :tooling do
   it 'registers offense for &&' do
     expect_offense(<<~RUBY)
       rule { conducts_electricity && batteries }.enable :light_bulb
@@ -29,6 +29,13 @@ RSpec.describe RuboCop::Cop::Gitlab::PolicyRuleBoolean do
     expect_offense(<<~RUBY)
       rule { conducts_electricity ? can?(:magnetize) : batteries }.enable :motor
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ if and ternary operators are not allowed within a rule block.
+    RUBY
+  end
+
+  it 'registers offense for && in a rule numblock' do
+    expect_offense(<<~RUBY)
+      rule { _1 && _2 }.enable :light_bulb
+      ^^^^^^^^^^^^^^^^^ && is not allowed within a rule block. Did you mean to use `&`?
     RUBY
   end
 

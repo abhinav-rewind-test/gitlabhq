@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Event data
 ---
 
@@ -15,10 +15,13 @@ title: Event data
 {{< history >}}
 
 - Toggle [enabled](https://gitlab.com/gitlab-org/gitlab/-/issues/510333) in GitLab 17.11.
+- Environment variable override [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/567724) in GitLab 18.9.
 
 {{< /history >}}
 
 ## Data tracking for product usage at event level
+
+**Important**: Starting with GitLab 18.0, Self-Managed and Dedicated instances collect event-level data, providing more detailed insights into product usage. Previously, only aggregated metrics were collected from Self-Managed instances.
 
 For more information about changes to product usage data collection, read the blog post
 [More granular product usage insights for GitLab Self-Managed and Dedicated](https://about.gitlab.com/blog/more-granular-product-usage-insights-for-gitlab-self-managed-and-dedicated/).
@@ -55,27 +58,172 @@ To enable or disable event-level data collection:
 
 1. Sign in as a user with administrator access.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Metrics and Profiling**.
+1. In the left sidebar, select **Settings** > **Metrics and Profiling**.
 1. Expand **Event tracking**.
 1. To enable the setting, select the checkbox **Enable event tracking**. To disable the setting, clear the checkbox.
 1. Select **Save changes**.
 
-### Programmatically enabling or disabling event-level data collection
+### Programmatically configure event-level data collection
 
-This configuration only works for new instances during first-time installation.
+You can configure event-level data collection programmatically using either:
 
-**For Omnibus installations:**
+- **Initial defaults**: Apply only during first-time installation
+- **Environment variable override**: Apply at runtime and take precedence over database settings
 
-Set `gitlab_rails['initial_gitlab_product_usage_data']` to `false` to disable usage data collection during installation.
+#### Initial defaults (installation only)
 
-**For Kubernetes Operator deployments:**
+These settings only apply during the initial installation of GitLab. Changing these settings after installation has no effect.
 
-Set `global.appConfig.initialDefaults.gitlabProductUsageData` to `false` to disable event-level data collection.
+{{< tabs >}}
 
-**Important notes:**
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Initial defaults only apply during installation. Changing these settings later has no effect.
-- To enable or disable event data collection after installation, use the Administrator settings as described in the previous section.
+Set `gitlab_rails['initial_gitlab_product_usage_data']` to `false` in `/etc/gitlab/gitlab.rb`:
+
+```ruby
+gitlab_rails['initial_gitlab_product_usage_data'] = false
+```
+
+Then reconfigure GitLab:
+
+```shell
+sudo gitlab-ctl reconfigure
+```
+
+{{< /tab >}}
+
+{{< tab title="Helm chart (Kubernetes)" >}}
+
+Set `global.appConfig.initialDefaults.gitlabProductUsageData` to `false` in your values file:
+
+```yaml
+global:
+  appConfig:
+    initialDefaults:
+      gitlabProductUsageData: false
+```
+
+Or via command line:
+
+```shell
+helm install gitlab gitlab/gitlab \
+  --set global.appConfig.initialDefaults.gitlabProductUsageData=false
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
+#### Environment variable override (runtime)
+
+> [!note]
+> Introduced in GitLab 18.9.
+
+The `GITLAB_PRODUCT_USAGE_DATA_ENABLED` environment variable allows you to control event-level data collection at runtime. When set, this environment variable:
+
+- Takes precedence over the database setting
+- Cannot be changed through the Admin UI (the toggle is disabled)
+- Applies immediately without requiring a database migration
+
+This is useful for:
+
+- Air-gapped environments requiring automated configuration
+- Deployments that need consistent settings across upgrades
+- Automated deployment workflows where UI access is not practical
+
+Valid values are `true` or `false`.
+
+{{< tabs >}}
+
+{{< tab title="Linux package (Omnibus)" >}}
+
+Set the environment variable in `/etc/gitlab/gitlab.rb`:
+
+```ruby
+gitlab_rails['env']['GITLAB_PRODUCT_USAGE_DATA_ENABLED'] = 'false'
+```
+
+Then reconfigure GitLab:
+
+```shell
+sudo gitlab-ctl reconfigure
+```
+
+{{< /tab >}}
+
+{{< tab title="Helm chart (Kubernetes)" >}}
+
+Set the environment variable using `extraEnv` in your values file:
+
+```yaml
+gitlab:
+  sidekiq:
+    extraEnv:
+      GITLAB_PRODUCT_USAGE_DATA_ENABLED: 'false'
+  webservice:
+    extraEnv:
+      GITLAB_PRODUCT_USAGE_DATA_ENABLED: 'false'
+```
+
+Or via command line:
+
+```shell
+helm upgrade gitlab gitlab/gitlab \
+  --set gitlab.sidekiq.extraEnv.GITLAB_PRODUCT_USAGE_DATA_ENABLED='false' \
+  --set gitlab.webservice.extraEnv.GITLAB_PRODUCT_USAGE_DATA_ENABLED='false'
+```
+
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
+
+Pass the environment variable when starting the container:
+
+```shell
+docker run --env GITLAB_PRODUCT_USAGE_DATA_ENABLED=false gitlab/gitlab-ee:latest
+```
+
+Or in a Docker Compose file:
+
+```yaml
+services:
+  gitlab:
+    image: gitlab/gitlab-ee:latest
+    environment:
+      GITLAB_PRODUCT_USAGE_DATA_ENABLED: 'false'
+```
+
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+Set the environment variable before starting GitLab:
+
+```shell
+export GITLAB_PRODUCT_USAGE_DATA_ENABLED=false
+```
+
+Or add it to your systemd service file or init script.
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
+#### Check the current setting source
+
+When the environment variable override is active, the Admin UI displays a warning banner indicating that the setting is controlled by an environment variable and cannot be changed through the UI.
+
+You can also check the setting source through the API:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  "https://gitlab.example.com/api/v4/application/settings" | jq '.gitlab_product_usage_data_enabled, .gitlab_product_usage_data_source'
+```
+
+The `gitlab_product_usage_data_source` field returns either:
+
+- `environment`: The setting is controlled by the `GITLAB_PRODUCT_USAGE_DATA_ENABLED` environment variable
+- `database`: The setting is controlled by the database (can be changed via Admin UI)
 
 ### Event delivery timing
 

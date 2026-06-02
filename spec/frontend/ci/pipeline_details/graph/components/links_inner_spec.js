@@ -129,14 +129,6 @@ describe('Links Inner component', () => {
       setupComponentWithFixture(pipelineData);
     });
 
-    it('renders one link', () => {
-      expect(findAllLinksPath()).toHaveLength(1);
-    });
-
-    it('path does not contain NaN values', () => {
-      expect(wrapper.html()).not.toContain('NaN');
-    });
-
     it('matches snapshot and has expected path', () => {
       expect(wrapper.html()).toMatchSnapshot();
     });
@@ -204,7 +196,7 @@ describe('Links Inner component', () => {
     it('highlight needs on hover', async () => {
       const firstLink = findAllLinksPath().at(0);
 
-      const defaultColorClass = 'gl-stroke-gray-200';
+      const defaultColorClass = 'gl-stroke-gray-700';
       const hoverColorClass = 'gl-stroke-blue-400';
 
       expect(firstLink.classes(defaultColorClass)).toBe(true);

@@ -14,6 +14,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   include MergeRequestsHelper
   include ParseCommitDate
   include RapidDiffs::Resource
+  include ProductAnalyticsTracking
 
   prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:rss) }
   skip_before_action :merge_request, only: [:index, :bulk_update, :export_csv]
@@ -40,7 +41,8 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   before_action only: [:show, :diffs, :rapid_diffs, :reports] do
     push_frontend_feature_flag(:mr_pipelines_graphql, project)
-    push_frontend_feature_flag(:notifications_todos_buttons, current_user)
+    push_frontend_feature_flag(:rapid_diffs_on_mr_show, current_user, type: :beta)
+    push_frontend_feature_flag(:stacked_merge_requests, current_user)
   end
 
   before_action do
@@ -94,6 +96,9 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   helper_method :rapid_diffs_page_enabled?
 
+  track_internal_event :diffs, name: 'view_merge_request_diffs', additional_properties: { label: 'legacy_diffs' }
+  track_internal_event :rapid_diffs, name: 'view_merge_request_diffs', additional_properties: { label: 'rapid_diffs' }
+
   def index
     @merge_requests = @issuables
 
@@ -112,9 +117,32 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def rapid_diffs
-    return render_404 unless rapid_diffs_page_enabled?
+    unless rapid_diffs_page_enabled?
+      cookies.delete(:rapid_diffs_enabled)
+      return redirect_to(diffs_project_merge_request_path(project, @merge_request))
+    end
 
+    rapid_diffs_presenter.offset = 5
     show_merge_request
+  rescue StandardError => exception
+    log_exception(exception)
+
+    feedback_link = view_context.link_to(
+      _("Leave feedback"),
+      "https://gitlab.com/gitlab-org/gitlab/-/work_items/596236",
+      class: 'gl-link',
+      target: '_blank',
+      rel: 'noopener noreferrer'
+    )
+
+    redirect_to(
+      diffs_project_merge_request_path(project, @merge_request, rapid_diffs_disabled: 'true'),
+      alert: safe_format(
+        _("Rapid Diffs encountered an error and has been temporarily disabled. " \
+          "The page has loaded using the standard diff view. %{feedback_link}"),
+        feedback_link: feedback_link
+      )
+    )
   end
 
   def commits
@@ -177,14 +205,6 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
         all: @pipelines_count
       }
     }
-  end
-
-  def sast_reports
-    reports_response(merge_request.compare_sast_reports(current_user), head_pipeline)
-  end
-
-  def secret_detection_reports
-    reports_response(merge_request.compare_secret_detection_reports(current_user), head_pipeline)
   end
 
   def context_commits
@@ -370,16 +390,12 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def versions
-    return render_404 unless ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :wip)
+    return render_404 unless ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :beta)
 
-    viewable_merge_request_diffs = @merge_request.viewable_recent_merge_request_diffs
-
-    render json: RapidDiffs::MergeRequestDiffEntity.represent(
-      viewable_merge_request_diffs,
-      merge_request: @merge_request,
-      merge_request_diffs: viewable_merge_request_diffs,
-      merge_request_diff: @merge_request.merge_request_diff,
-      path_extra_options: { rapid_diffs: true }
+    render json: RapidDiffs::DiffCompareVersionsEntity.represent(
+      @merge_request,
+      diff_id: rapid_diff_options[:diff_id],
+      start_sha: rapid_diff_options[:start_sha]
     )
   end
 
@@ -511,7 +527,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def get_diffs_count
-    return @commit.raw_diffs.size if commit
+    return if commit
     return @merge_request.context_commits_diff.raw_diffs.size if show_only_context_commits?
     return @merge_request.merge_request_diffs.find_by_id(params[:diff_id])&.size if params[:diff_id]
     return @merge_request.merge_head_diff.size if @merge_request.diffable_merge_ref? && params[:start_sha].blank?
@@ -538,7 +554,11 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def merge!
-    return :failed unless @merge_request.mergeable?(**skipped_checks)
+    if auto_merge_requested?
+      return :failed unless @merge_request.auto_merge_eligible?(strategy: auto_merge_strategy)
+    else
+      return :failed unless @merge_request.mergeable?
+    end
 
     squashing = params.fetch(:squash, false)
     merge_service = ::MergeRequests::MergeService
@@ -618,7 +638,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     if pipeline&.active?
       ::Gitlab::PollingInterval.set_header(response, interval: 3000)
 
-      render json: '', status: :no_content && return
+      return render json: '', status: :no_content
     end
 
     case report_comparison[:status]
@@ -693,15 +713,15 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     if @merge_request.reached_versions_limit?
       flash[:alert] = format(
         _("This merge request has reached the maximum limit of %{limit} versions and cannot be updated further. " \
-          "Close this merge request and create a new one instead."), limit: MergeRequest::DIFF_VERSION_LIMIT)
+          "Close this merge request and create a new one instead."), limit: Gitlab::CurrentSettings.diff_max_versions)
       return
     end
 
     return unless @merge_request.reached_diff_commits_limit?
 
-    flash[:alert] =
-      _("This merge request has too many diff commits, and can't be updated. " \
-        "Close this merge request and create a new one.")
+    flash[:alert] = format(
+      _("This merge request has reached the maximum limit of %{limit} diff commits and cannot be updated further. " \
+        "Close this merge request and create a new one instead."), limit: Gitlab::CurrentSettings.diff_max_commits)
   end
 
   def diff_file_component(base_args)
@@ -711,30 +731,33 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def complete_diff_path
+    return project_commit_path(project, commit, format: :diff) if commit
+
     merge_request_path(merge_request, format: :diff)
   end
 
   def email_format_path
+    return project_commit_path(project, commit, format: :patch) if commit
+
     merge_request_path(merge_request, format: :patch)
   end
 
   def rapid_diffs_page_enabled?
-    ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :wip) &&
-      params[:rapid_diffs] == 'true'
-  end
-
-  def skipped_checks
-    if auto_merge_requested?
-      @merge_request.skipped_auto_merge_checks(
-        auto_merge_strategy: auto_merge_strategy
-      )
-    else
-      {}
-    end
+    ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :beta) &&
+      params[:rapid_diffs_disabled] != 'true' &&
+      (params[:rapid_diffs] == 'true' || cookies[:rapid_diffs_enabled] == 'true')
   end
 
   def auto_merge_strategy
     params[:auto_merge_strategy] || merge_request.default_auto_merge_strategy
+  end
+
+  def tracking_namespace_source
+    project.namespace
+  end
+
+  def tracking_project_source
+    project
   end
 end
 

@@ -1,23 +1,23 @@
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
+import { createMockSubscription } from 'mock-apollo-client';
 import { GlButton, GlDisclosureDropdown, GlLoadingIcon, GlSearchBoxByType } from '@gitlab/ui';
-
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { createAlert } from '~/alert';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
-
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
 import JobDropdownItem from '~/ci/common/private/job_dropdown_item.vue';
 import PipelineStageDropdown from '~/ci/pipeline_mini_graph/pipeline_stage_dropdown.vue';
-
 import getPipelineStageJobsQuery from '~/ci/pipeline_mini_graph/graphql/queries/get_pipeline_stage_jobs.query.graphql';
+import stageJobsUpdatedSubscription from '~/ci/pipeline_mini_graph/graphql/subscriptions/stage_jobs_updated.subscription.graphql';
 import {
   createMockPipelineStageJobs,
   mockPipelineStageJobs,
   pipelineStage,
   pipelineStageJobsFetchError,
+  stageJobUpdated,
 } from './mock_data';
 
 Vue.use(VueApollo);
@@ -26,6 +26,8 @@ jest.mock('~/alert');
 describe('PipelineStageDropdown', () => {
   let wrapper;
   let pipelineStageResponse;
+  let mockSubscription;
+  let subscriptionHandler;
 
   const defaultProps = {
     stage: pipelineStage,
@@ -34,6 +36,13 @@ describe('PipelineStageDropdown', () => {
   const createComponent = ({ pipelineStageHandler = pipelineStageResponse, props = {} } = {}) => {
     const handlers = [[getPipelineStageJobsQuery, pipelineStageHandler]];
     const mockApollo = createMockApollo(handlers);
+
+    subscriptionHandler = jest.fn(() => {
+      mockSubscription = createMockSubscription();
+      return mockSubscription;
+    });
+
+    mockApollo.defaultClient.setRequestHandler(stageJobsUpdatedSubscription, subscriptionHandler);
 
     wrapper = mountExtended(PipelineStageDropdown, {
       directives: {
@@ -121,11 +130,14 @@ describe('PipelineStageDropdown', () => {
       expect(wrapper.emitted('mini-graph-stage-click')).toHaveLength(1);
     });
 
-    it('has fired the stage query', async () => {
+    it('reactively fetches fresh data when the dropdown opens', async () => {
       await createComponent();
       await clickStageDropdown();
       const { stage } = defaultProps;
 
+      const { stageJobs } = wrapper.vm.$apollo.queries;
+
+      expect(stageJobs.options.fetchPolicy).toBe('cache-and-network');
       expect(pipelineStageResponse).toHaveBeenCalledWith({ id: stage.id });
     });
 
@@ -244,36 +256,6 @@ describe('PipelineStageDropdown', () => {
     });
   });
 
-  describe('polling', () => {
-    beforeEach(async () => {
-      pipelineStageResponse.mockResolvedValue(mockPipelineStageJobs);
-      await createComponent();
-      await clickStageDropdown();
-    });
-
-    it('starts polling when dropdown is open', () => {
-      expect(pipelineStageResponse).toHaveBeenCalledTimes(1);
-
-      jest.advanceTimersByTime(8000);
-
-      expect(pipelineStageResponse).toHaveBeenCalledTimes(2);
-    });
-
-    it('stops polling when dropdown is closed', async () => {
-      expect(pipelineStageResponse).toHaveBeenCalledTimes(1);
-
-      jest.advanceTimersByTime(8000);
-
-      expect(pipelineStageResponse).toHaveBeenCalledTimes(2);
-
-      await clickStageDropdown();
-
-      jest.advanceTimersByTime(8000);
-
-      expect(pipelineStageResponse).toHaveBeenCalledTimes(2);
-    });
-  });
-
   describe('merge train message', () => {
     it('does not display a message if the pipeline is not part of a merge train', async () => {
       await createComponent();
@@ -289,6 +271,60 @@ describe('PipelineStageDropdown', () => {
       await clickStageDropdown();
 
       expect(findMergeTrainMessage().exists()).toBe(true);
+    });
+  });
+
+  describe('subscription', () => {
+    beforeEach(async () => {
+      await createComponent();
+    });
+
+    it('calls subscription with correct variables', async () => {
+      await clickStageDropdown();
+
+      await waitForPromises();
+
+      expect(subscriptionHandler).toHaveBeenCalledWith({ stageId: 'gid://gitlab/Ci::Stage/409' });
+    });
+
+    it('unsubscribes when dropdown is closed', async () => {
+      await clickStageDropdown();
+
+      await waitForPromises();
+
+      const unsubscribeSpy = jest.spyOn(wrapper.vm.jobSubscription, 'unsubscribe');
+
+      await clickStageDropdown();
+
+      expect(unsubscribeSpy).toHaveBeenCalled();
+    });
+
+    it('updates the specific job status when subscription receives an update', async () => {
+      await clickStageDropdown();
+
+      expect(findJobDropdownItems().at(0).props('job').detailedStatus.group).toBe('success');
+
+      mockSubscription.next({ data: { ciStageUpdated: stageJobUpdated } });
+
+      await waitForPromises();
+
+      expect(findJobDropdownItems().at(0).props('job').detailedStatus.group).toBe('pending');
+    });
+
+    it('updates the job icon when the subscription receives a new status', async () => {
+      await clickStageDropdown();
+
+      await waitForPromises();
+
+      const findFirstIcon = () => findJobDropdownItems().at(0).findComponent(CiIcon);
+
+      expect(findFirstIcon().props('status').group).toBe('success');
+
+      mockSubscription.next({ data: { ciStageUpdated: stageJobUpdated } });
+
+      await waitForPromises();
+
+      expect(findFirstIcon().props('status').group).toBe('pending');
     });
   });
 });

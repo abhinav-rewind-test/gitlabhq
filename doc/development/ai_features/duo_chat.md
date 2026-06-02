@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Duo Chat
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: GitLab Duo Chat
 ---
 
@@ -106,53 +106,6 @@ After the tools have gathered the required information, it is returned to the
 zero-shot agent, which asks the large language model if enough information has
 been gathered to provide the final answer to the user's question.
 
-### Customizing interaction with GitLab Duo Chat
-
-You can customize user interaction with GitLab Duo Chat in several ways.
-
-#### Programmatically open GitLab Duo Chat
-
-To provide users with a more dynamic way to access GitLab Duo Chat, you can
-integrate functionality directly into their applications to open the GitLab Duo
-Chat interface. The following example shows how to open the GitLab Duo Chat
-drawer by using an event listener and the GitLab Duo Chat global state:
-
-```javascript
-import { duoChatGlobalState } from '~/super_sidebar/constants';
-myFancyToggleToOpenChat.addEventListener('click', () => {
-  duoChatGlobalState.isShown = true;
-});
-```
-
-#### Initiating GitLab Duo Chat with a pre-defined prompt
-
-In some scenarios, you may want to direct users towards a specific topic or
-query when they open GitLab Duo Chat. We have a utility function that will
-open DuoChat drawer and send a command in a queue for DuoChat to execute on.
-This should trigger the loading state and the streaming with the given prompt.
-
-```javascript
-import { sendDuoChatCommand } from 'ee/ai/utils';
-[...]
-
-methods: {
-  openChatWithPrompt() {
-    sendDuoChatCommand(
-      {
-        question: '/feedback' // This is your prompt
-        resourceId: 'gid:://gitlab/WorkItem/1', // A unique ID to identify the action for streaming
-        variables: {} // Any additional graphql variables you want to pass to ee/app/assets/javascripts/ai/graphql/chat.mutation.graphql when executing the query
-      }
-    )
-  }
-}
-```
-
-Note that `sendDuoChatCommand` cannot be chained, meaning that you can send one command to DuoChat and have to wait until this action is done before sending a different command or the previous command might not work as expected.
-
-This enhancement allows for a more tailored user experience by guiding the
-conversation in GitLab Duo Chat towards predefined areas of interest or concern.
-
 ### Adding a new tool
 
 To add a new tool you need to add changes both to [AI Gateway](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist)
@@ -175,21 +128,16 @@ If you want to add a new tool, contact the GitLab Duo Chat team. We're working o
    - `example` of question and desired answer
 
 1. Add tool to `__all__` list of tools in `ai_gateway/chat/tools/gitlab.py`.
-
 1. Add tool class to the `DuoChatToolsRegistry` in `ai_gateway/chat/toolset.py` with an appropriate Unit Primitive.
-
 1. Add test for your changes.
 
 #### Changes in Rails Monolith
 
 1. Create files for the tool in the `ee/lib/gitlab/llm/chain/tools/` folder. Use existing tools like `issue_reader` or
    `epic_reader` as a template.
-
 1. Write a class for the tool that includes instructions for the large language model on how to use the tool
    to gather information - the main prompts that this tool is using.
-
 1. Implement code in the tool to parse the response from the large language model and return it to the [chat agent](https://gitlab.com/gitlab-org/gitlab/-/blob/e0220502f1b3459b5a571d510ce5d1826877c3ce/ee/lib/gitlab/llm/chain/agents/single_action_executor.rb).
-
 1. Add the new tool name to the `tools` array in `ee/lib/gitlab/llm/completions/chat.rb` so the agent knows about it.
 
 #### Testing all together
@@ -269,7 +217,8 @@ LangSmith integration works with any tools, including [GitLab Centralized Evalua
 > It's not available in Production environment.
 
 1. Access [LangSmith](https://smith.langchain.com/) and create an account
-   1. Optional. [Create an Access Request](https://gitlab.com/gitlab-com/team-member-epics/access-requests/-/issues/new?issuable_template=Individual_Bulk_Access_Request) to be added to the GitLab organization in LangSmith.
+   1. Request access through Lumos
+   1. [Create an access request](https://gitlab.com/gitlab-com/team-member-epics/access-requests/-/work_items) (template `LangSmith_Access_Request`) for the `Editor` role
 1. Create [an API key](https://docs.smith.langchain.com/#create-an-api-key) (be careful where you create API key - they can be created in personal namespace or in GL namespace).
 1. Set the following environment variables in GDK.
 
@@ -297,11 +246,14 @@ LangSmith integration works with any tools, including [GitLab Centralized Evalua
 
    Project name is an existing project in LangSmith or a new one. It's enough to put a new name in the environment variable -
    the project will be created during request.
-
 1. Restart GDK.
 1. Ask any question to Chat.
 1. Observe project in the LangSmith [page](https://smith.langchain.com/) > Projects > \[Project name\]. 'Runs' tab should contain
    your last requests.
+
+### Sharing your LangSmith traces (for internal team members)
+
+You can share your trace URL with team members directly by copying the entire URL from the web browser. This is the preferred way of sharing your traces instead of the ["share" trace feature present in the LangSmith UI](https://docs.langchain.com/langsmith/share-trace). Sharing a trace publicly will make it accessible to anyone with the link, even if they don’t have a LangSmith access via OKTA. Traces contain sensitive information such as CI tokens.
 
 ## Evaluate your merge request in one click
 
@@ -357,6 +309,263 @@ To view the results of these tests, open the `e2e:test-on-omnibus-ee` child pipe
 The `ai-gateway` job activates a cloud license and then assigns a GitLab Duo Pro seat to a test user, before the tests are run.
 
 For more information, see [AiGateway Scenarios](https://gitlab.com/gitlab-org/gitlab-qa/-/blob/master/docs/what_tests_can_be_run.md#aigateway-scenarios).
+
+## Client-side observability
+
+Duo Agentic Chat reports client-side errors to Sentry to support monitoring and triage.
+
+### Capture Sentry errors
+
+Use the `captureExceptionForDuoChat` wrapper in
+`ee/app/assets/javascripts/ai/duo_agentic_chat/observability/sentry_utils.js`
+instead of calling Sentry directly.
+The wrapper automatically adds the `feature_category: 'duo_chat'` tag to every exception.
+Callers can add extra tags, but cannot override `feature_category`.
+
+```javascript
+import { captureExceptionForDuoChat } from '../observability/sentry_utils';
+
+// Report an error with no extra context.
+captureExceptionForDuoChat(new Error('Something went wrong'));
+
+// Report an error with extra metadata.
+captureExceptionForDuoChat(error, { extra: { info, component: 'MyComponent' } });
+```
+
+## Integrating with Duo Chat in the frontend
+
+You can add Duo Chat integration to your feature by using one of two shared
+Vue components. Both components check whether Duo Chat is available for the
+current user and render nothing when it is not.
+
+- `DuoChatQuickAction` (`ee/app/assets/javascripts/ai/shared/widgets/duo_chat_quick_action.vue`):
+  renders a button that opens Duo Chat and sends a prompt. Use this when you
+  want to trigger a specific Duo Chat action from a page, such as summarizing
+  comments or explaining a resource.
+- `OpenAgenticChatButton` (`ee/app/assets/javascripts/ai/shared/widgets/open_agentic_chat_button.vue`):
+  renders a button that opens Duo Chat with a specific agent pre-selected,
+  without auto-sending a prompt. Use this when you want to open Duo Chat with
+  a custom agent and one or more prompt suggestions.
+
+### Open Duo Chat with a pre-defined prompt (DuoChatQuickAction)
+
+Use `DuoChatQuickAction` to add a button that opens Duo Chat and sends a
+predefined prompt. The component respects the user's current chat mode
+(Classic or Agentic) and sends the appropriate prompt for each mode.
+
+The component is located at
+`ee/app/assets/javascripts/ai/shared/widgets/duo_chat_quick_action.vue`.
+
+#### Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `buttonText` | String | Yes | Label shown on the button. |
+| `resourceId` | String | Yes | GraphQL global ID of the resource (for example, `gid://gitlab/Issue/1`). Used to provide context of the relevant object to Duo Chat. |
+| `trackingInfo` | Object | Yes | Tracking metadata. Must include a `label` key in `snake_case` with at least two words (for example, `{ label: 'issue_view_summary' }`). |
+| `command` | Object | Yes | Must include `agenticPrompt` (a natural-language prompt for Agentic mode) or `agent` (an agent object). |
+| `classicQuickAction` | String | No | A slash command to send in Classic Chat mode (for example, `'/summarize_comments'`). Defaults to `null`. |
+| `buttonOptions` | Object | No | Additional props passed to the underlying `GlButton` (for example, `{ size: 'small' }`). |
+
+#### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `duo-tool-completed` | `{ name, args }` | Emitted when an agentic tool completes. `name` is the tool name; `args` is the tool output. |
+
+#### Example
+
+```javascript
+// app/assets/javascripts/my_feature/components/my_component.vue
+import { DUO_CHAT_QUICK_ACTION_SUMMARIZE, DUO_CHAT_AGENT_PLANNER } from '~/ai/constants';
+import { s__ } from '~/locale';
+
+export default {
+  name: 'MyComponent',
+  components: {
+    DuoChatQuickAction: () => import('ee_component/ai/shared/widgets/duo_chat_quick_action.vue'),
+  },
+  inject: {
+    resourceGlobalId: { default: null },
+    noteableType: { default: '' },
+  },
+  computed: {
+    summarizeTracking() {
+      return { label: 'my_feature_view_summary', property: this.noteableType };
+    },
+  },
+  buttonOptions: { size: 'small' },
+  classicQuickAction: DUO_CHAT_QUICK_ACTION_SUMMARIZE,
+  summarizeCommand: {
+    agent: { name: DUO_CHAT_AGENT_PLANNER },
+    agenticPrompt: s__('AI|Summarize the comments on this issue.'),
+  },
+};
+```
+
+```html
+<duo-chat-quick-action
+  v-if="resourceGlobalId"
+  :button-text="s__('AISummary|View summary')"
+  :resource-id="resourceGlobalId"
+  :tracking-info="summarizeTracking"
+  :classic-quick-action="$options.classicQuickAction"
+  :command="$options.summarizeCommand"
+  :button-options="$options.buttonOptions"
+/>
+```
+
+### Open Duo Chat with prompt suggestions (OpenAgenticChatButton)
+
+Use `OpenAgenticChatButton` to add a button that opens Duo Chat with a custom
+agent pre-selected and one or more prompt suggestions that appear in
+Duo Agentic Chat's empty state UI.
+
+The component is located at
+`ee/app/assets/javascripts/ai/shared/widgets/open_agentic_chat_button.vue`.
+
+#### Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `buttonText` | String | Yes | Label shown on the button. |
+| `resourceId` | String | Yes | GraphQL global ID of the resource. Used to bind streaming responses. |
+| `agent` | Object | Yes | Agent to pre-select, identified by `name` (for example, `{ name: 'My Feature Assistant' }`). |
+| `welcomeMessage` | String | No | Message shown in the empty-state panel before the user types. |
+| `predefinedPrompts` | Array | No | Suggestion chips shown in the empty state. |
+| `buttonOptions` | Object | No | Additional props passed to the underlying `GlButton`. |
+
+#### Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `tool-completed` | `{ name, args }` | Emitted when the agent's tool completes. `name` is the tool name; `args` is the tool output. |
+
+#### Example: Implementing a feature that uses Duo Chat to fill a web form
+
+The implementation has three parts:
+
+1. A custom agent with its own tool that collects information from the user and
+   returns structured data your component can consume. Each agent must define its
+   own tool — there is no shared generic tool.
+1. A button that opens Duo Chat with that agent pre-selected and a few prompt suggestions.
+1. A component that listens for the tool completion event and applies the result.
+
+##### Step 1: Create a custom agent with a tool
+
+Create a flow configuration in the
+[AI Gateway repository](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist)
+under `duo_workflow_service/agent_platform/v1/flows/configs/`. You must define
+your own tool for the agent. The tool name you choose here is what you listen
+for in the frontend in Step 3.
+
+See [foundational_chat_agents.md](foundational_chat_agents.md) for the full agent
+creation process.
+
+##### Step 2: Add the button to your component
+
+Import `OpenAgenticChatButton` and define the agent, welcome message, and
+predefined prompts as component-level constants.
+
+```javascript
+// ee/app/assets/javascripts/my_feature/components/my_component.vue
+import OpenAgenticChatButton from 'ee/ai/shared/widgets/open_agentic_chat_button.vue';
+import { convertToGraphQLId } from '~/graphql_shared/utils';
+import { TYPENAME_USER } from '~/graphql_shared/constants';
+import { s__, __ } from '~/locale';
+
+const AGENT = { name: __('My Feature Assistant') };
+const TOOL_NAME = 'my_feature_tool';
+const WELCOME_MESSAGE = s__('MyFeature|I can help you configure this feature.');
+const PREDEFINED_PROMPTS = [
+  s__('MyFeature|Enable read access to repositories.'),
+  s__('MyFeature|Set up CI/CD pipeline permissions.'),
+];
+
+export default {
+  name: 'MyComponent',
+  components: { OpenAgenticChatButton },
+  computed: {
+    resourceId() {
+      return convertToGraphQLId(TYPENAME_USER, window.gon?.current_user_id);
+    },
+  },
+  methods: {
+    handleToolCompleted({ name, args } = {}) {
+      if (name !== TOOL_NAME || !args || typeof args !== 'object') return;
+
+      // Apply the tool output to your component
+      this.myField = args.my_field;
+    },
+  },
+  AGENT,
+  WELCOME_MESSAGE,
+  PREDEFINED_PROMPTS,
+};
+```
+
+```html
+<open-agentic-chat-button
+  :button-text="__('Configure with Duo')"
+  :resource-id="resourceId"
+  :agent="$options.AGENT"
+  :welcome-message="$options.WELCOME_MESSAGE"
+  :predefined-prompts="$options.PREDEFINED_PROMPTS"
+  @tool-completed="handleToolCompleted"
+/>
+```
+
+`predefinedPrompts` is an array of strings displayed as suggestion chips when
+the chat panel is empty. Use `welcomeMessage` to explain to the user what the
+agent can do. Both are optional but recommended to reduce time-to-first-prompt.
+
+##### Step 3: Handle the tool completion event
+
+When the agent's tool completes, `OpenAgenticChatButton` emits a
+`tool-completed` event. The payload has the shape `{ name, args }` where `name`
+is the tool name and `args` is the object of arguments returned by the tool.
+
+Because all tool completions are broadcast through the same event, check that
+`name` matches the tool name defined in your agent configuration before acting on the
+payload.
+
+```javascript
+const TOOL_NAME = 'my_feature_tool'; // Must match the tool name in your agent config
+
+methods: {
+  handleToolCompleted({ name, args } = {}) {
+    if (name !== TOOL_NAME || !args || typeof args !== 'object') return;
+
+    // Apply the tool output to your component
+    this.myField = args.my_field;
+  },
+},
+```
+
+The event payload has the shape:
+
+```javascript
+{
+  name: 'my_feature_tool', // tool name as defined in your agent config
+  args: {
+    // fields defined by your tool
+    my_field: 'value',
+  }
+}
+```
+
+For a complete real-world example, see
+`ee/app/assets/javascripts/personal_access_tokens/components/create_granular_token/ask_dap_permissions.vue`.
+
+#### Known limitations
+
+- Agents must implement their own tool; AI Catalog agents cannot share tools for this pattern.
+  ([ai-assist#2113](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/work_items/2113))
+- Custom questions cannot be defined in the agent YAML; they must be hardcoded in the calling component.
+  ([GitLab#594533](https://gitlab.com/gitlab-org/gitlab/-/work_items/594533))
+- Agents created for a specific page are still selectable as foundational agents site-wide.
+- Streaming responses are not supported.
+- The agent does not read existing form field values.
 
 ## GraphQL Subscription
 
@@ -537,12 +746,13 @@ GitLab Duo Chat is enabled in the [Staging](https://staging.gitlab.com/users/sig
 Because GitLab Duo Chat is currently only available to members of groups in the
 Premium and Ultimate tiers, Staging Ref may be an easier place to test changes as a GitLab
 team member because
-[you can make yourself an instance Admin in Staging Ref](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/staging-ref/#admin-access)
+[you can make yourself an instance Admin in Staging Ref](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/environments/staging-ref/#admin-access)
 and, as an Admin, easily create licensed groups for testing.
 
 ### Important Testing Considerations
 
-**Note**: A user who has a seat in multiple groups with different tiers of GitLab Duo add-on gets the highest tier experience across the entire instance.
+> [!note]
+> A user who has a seat in multiple groups with different tiers of GitLab Duo add-on gets the highest tier experience across the entire instance.
 
 It's not possible to test feature separation between different GitLab Duo add-ons if your test account has a seat in a higher tier add-on.
 To properly test different tiers, create a separate test account for each tier you need to test.
@@ -693,7 +903,7 @@ flow of how we construct a Chat prompt:
    ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/30817374f2feecdaedbd3a0efaad93feaed5e0a0/ee/lib/gitlab/duo/chat/react_executor.rb#L207)
    | [example tool class](https://gitlab.com/gitlab-org/gitlab/-/blob/971d07aa37d9f300b108ed66304505f2d7022841/ee/lib/gitlab/llm/chain/tools/identifier.rb))
       1. The tool executor classes include `Concerns::AiDependent` and use its `request` method.
-      ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/30817374f2feecdaedbd3a0efaad93feaed5e0a0/ee/lib/gitlab/llm/chain/concerns/ai_dependent.rb#L14))
+         ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/30817374f2feecdaedbd3a0efaad93feaed5e0a0/ee/lib/gitlab/llm/chain/concerns/ai_dependent.rb#L14))
       1. The `request` method uses the `ai_request` instance
          that was injected into the `context` in `Llm::Completions::Chat`. For Chat,
          this is `Gitlab::Llm::Chain::Requests::AiGateway`. ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/971d07aa37d9f300b108ed66304505f2d7022841/ee/lib/gitlab/llm/completions/chat.rb#L42)).
@@ -702,7 +912,7 @@ flow of how we construct a Chat prompt:
          This tells the `ai_request` to send the prompt to the `/v1/prompts/chat` endpoint ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/30817374f2feecdaedbd3a0efaad93feaed5e0a0/ee/lib/gitlab/llm/chain/requests/ai_gateway.rb#L87)).
 
       1. AI Gateway `/v1/prompts/chat` endpoint receives the request on `api.v1.prompts.invoke`
-      ([code](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/989ead63fae493efab255180a51786b69a403b49/ai_gateway/api/v1/prompts/invoke.py#L41)).
+         ([code](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/989ead63fae493efab255180a51786b69a403b49/ai_gateway/api/v1/prompts/invoke.py#L41)).
       1. `api.v1.prompts.invoke` gets the correct tool prompt from the tool prompt registry ([code](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/989ead63fae493efab255180a51786b69a403b49/ai_gateway/api/v1/prompts/invoke.py#L49)).
       1. The prompt is called either as a [stream](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/989ead63fae493efab255180a51786b69a403b49/ai_gateway/api/v1/prompts/invoke.py#L86) or as a [non-streamed invocation](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/989ead63fae493efab255180a51786b69a403b49/ai_gateway/api/v1/prompts/invoke.py#L96).
       1. If the tool answer is not final, the response is added to `agent_scratchpad` and the loop in `Gitlab::Duo::Chat::ReactExecutor` starts again, adding the additional context to the request. It loops to up to 10 times until a final answer is reached. ([code](https://gitlab.com/gitlab-org/gitlab/-/blob/30817374f2feecdaedbd3a0efaad93feaed5e0a0/ee/lib/gitlab/duo/chat/react_executor.rb#L44))

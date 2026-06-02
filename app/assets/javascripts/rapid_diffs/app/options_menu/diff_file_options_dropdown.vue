@@ -39,11 +39,11 @@ export default {
   computed: {
     allItems() {
       return [
+        ...this.items,
         {
           text: __('Copy link to the file'),
           action: this.onFileLinkCopyClick,
         },
-        ...this.items,
       ];
     },
   },
@@ -76,7 +76,7 @@ export default {
       const url = withLinkedFileUrlParams(new URL(window.location), {
         oldPath: this.oldPath,
         newPath: this.newPath,
-        fileId: this.fileId,
+        hash: this.fileId,
       });
       copyToClipboard(url);
       toast(__('Link to diff file copied.'));

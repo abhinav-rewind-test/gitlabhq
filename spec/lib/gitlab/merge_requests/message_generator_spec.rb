@@ -889,6 +889,206 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
     end
   end
 
+  describe '#new_mr_title' do
+    let(:merge_request) do
+      build(
+        :merge_request,
+        source_project: project,
+        target_project: project,
+        target_branch: 'master',
+        source_branch: source_branch,
+        author: author,
+        description: merge_request_description,
+        title: merge_request_title
+      )
+    end
+
+    subject(:generator) { described_class.new(merge_request: merge_request, current_user: current_user) }
+
+    before do
+      compare = CompareService.new(
+        project,
+        merge_request.source_branch
+      ).execute(
+        project,
+        merge_request.target_branch
+      )
+
+      merge_request.compare_commits = compare.commits
+      merge_request.compare = compare
+    end
+
+    context 'when template is nil' do
+      it 'returns nil' do
+        expect(generator.new_mr_title(nil)).to be_nil
+      end
+    end
+
+    context 'when template is blank' do
+      it 'returns nil' do
+        expect(generator.new_mr_title('')).to be_nil
+      end
+    end
+
+    context 'when template uses %{source_branch}' do
+      it 'returns the source branch name' do
+        expect(generator.new_mr_title('%{source_branch}')).to eq('feature')
+      end
+    end
+
+    context 'when template uses %{target_branch}' do
+      it 'returns the target branch name' do
+        expect(generator.new_mr_title('%{target_branch}')).to eq('master')
+      end
+    end
+
+    context 'when template uses %{title_from_branch}' do
+      it 'returns the humanized branch name' do
+        expect(generator.new_mr_title('%{title_from_branch}')).to eq('Feature')
+      end
+    end
+
+    context 'when template uses %{first_commit_title}' do
+      it 'returns the commit subject (first line of the commit message)' do
+        expect(generator.new_mr_title('%{first_commit_title}')).to eq('Feature added')
+      end
+    end
+
+    context 'when template uses %{issue_id}' do
+      context 'when an issue is passed' do
+        let(:issue) { create(:issue, project: project, iid: 42) }
+
+        it 'returns the issue IID' do
+          expect(generator.new_mr_title('%{issue_id}', issue: issue)).to eq('42')
+        end
+      end
+
+      context 'when no issue is passed' do
+        it 'treats the placeholder as blank and returns nil' do
+          expect(generator.new_mr_title('%{issue_id}')).to be_nil
+        end
+
+        it 'removes the placeholder and keeps surrounding text' do
+          expect(generator.new_mr_title('%{issue_id} suffix')).to eq('suffix')
+        end
+      end
+    end
+
+    context 'when template uses %{issue_title}' do
+      context 'when an issue is passed' do
+        let(:issue) { create(:issue, project: project, title: 'Fix the login bug') }
+
+        it 'returns the issue title' do
+          expect(generator.new_mr_title('%{issue_title}', issue: issue)).to eq('Fix the login bug')
+        end
+      end
+
+      context 'when no issue is passed' do
+        it 'treats the placeholder as blank and returns nil' do
+          expect(generator.new_mr_title('%{issue_title}')).to be_nil
+        end
+      end
+    end
+
+    context 'when template combines %{issue_id} and %{issue_title}' do
+      let(:issue) { create(:issue, project: project, iid: 123, title: 'Fix the login bug') }
+
+      it 'renders both placeholders' do
+        expect(generator.new_mr_title('Resolve %{issue_id} "%{issue_title}"', issue: issue))
+          .to eq('Resolve 123 "Fix the login bug"')
+      end
+    end
+
+    context 'when template uses %{first_commit}' do
+      it 'treats the placeholder as disallowed and removes it' do
+        expect(generator.new_mr_title('%{first_commit} suffix')).to eq('suffix')
+      end
+
+      it 'returns nil when the template only contains the disallowed placeholder' do
+        expect(generator.new_mr_title('%{first_commit}')).to be_nil
+      end
+    end
+
+    context 'when template uses %{first_multiline_commit}' do
+      it 'treats the placeholder as disallowed and removes it' do
+        expect(generator.new_mr_title('%{first_multiline_commit} suffix')).to eq('suffix')
+      end
+
+      it 'returns nil when the template only contains the disallowed placeholder' do
+        expect(generator.new_mr_title('%{first_multiline_commit}')).to be_nil
+      end
+    end
+
+    context 'when template combines variables with static text' do
+      it 'renders the combined result' do
+        expect(generator.new_mr_title('MR: %{source_branch} -> %{target_branch}')).to eq('MR: feature -> master')
+      end
+    end
+
+    context 'when template uses only a disallowed placeholder' do
+      it 'returns nil because the resolved template is blank' do
+        expect(generator.new_mr_title('%{title}')).to be_nil
+      end
+    end
+
+    context 'when template mixes a disallowed placeholder with static text' do
+      it 'returns the static text with the disallowed placeholder removed' do
+        expect(generator.new_mr_title('%{title} - suffix')).to eq('- suffix')
+      end
+    end
+
+    context 'when commit has a multiline message and template has trailing text' do
+      before do
+        multiline_message = "Feature added\n\nSigned-off-by: John Doe <john@example.com>"
+        commit = merge_request.first_commit
+        allow(commit).to receive_messages(safe_message: multiline_message, title: 'Feature added')
+        allow(merge_request).to receive(:first_commit).and_return(commit)
+      end
+
+      it 'preserves trailing text after %{first_commit_title}' do
+        expect(generator.new_mr_title('%{first_commit_title} Hello!')).to eq('Feature added Hello!')
+      end
+
+      it 'preserves text before and after %{first_commit_title}' do
+        expect(generator.new_mr_title('MR: %{first_commit_title} [%{source_branch}]'))
+          .to eq('MR: Feature added [feature]')
+      end
+
+      it 'returns only the commit subject when using %{first_commit_title}' do
+        expect(generator.new_mr_title('%{first_commit_title}')).to eq('Feature added')
+      end
+    end
+
+    context 'when first_commit is nil' do
+      before do
+        allow(merge_request).to receive(:first_commit).and_return(nil)
+      end
+
+      it 'removes the placeholder line and returns the remaining template' do
+        expect(generator.new_mr_title("%{first_commit_title}\n%{source_branch}")).to eq('feature')
+      end
+
+      it 'returns nil when the template only contains %{first_commit_title}' do
+        expect(generator.new_mr_title('%{first_commit_title}')).to be_nil
+      end
+    end
+
+    context 'when the merge request is not persisted and has no compare commits' do
+      before do
+        merge_request.compare_commits = []
+        merge_request.compare = nil
+      end
+
+      it 'returns nil because %{first_commit_title} resolves to blank' do
+        expect(generator.new_mr_title('%{first_commit_title}')).to be_nil
+      end
+
+      it 'removes the placeholder and keeps surrounding text' do
+        expect(generator.new_mr_title('%{first_commit_title} suffix')).to eq('suffix')
+      end
+    end
+  end
+
   describe '#new_mr_description' do
     let(:merge_request) do
       build(

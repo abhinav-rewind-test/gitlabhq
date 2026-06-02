@@ -3,12 +3,15 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { STATUS_CLOSED } from '~/issues/constants';
 import IssueCardTimeInfo from '~/work_items/list/components/issue_card_time_info.vue';
 import IssuableMilestone from '~/vue_shared/issuable/list/components/issuable_milestone.vue';
+import WorkItemParentMetadata from '~/work_items/components/shared/work_item_parent_metadata.vue';
 import {
   WIDGET_TYPE_MILESTONE,
   WIDGET_TYPE_START_AND_DUE_DATE,
   WIDGET_TYPE_TIME_TRACKING,
+  WIDGET_TYPE_HIERARCHY,
 } from '~/work_items/constants';
 import WorkItemAttribute from '~/vue_shared/components/work_item_attribute.vue';
+import { mockParentWorkItem } from 'ee_else_ce_jest/work_items/mock_data';
 
 describe('CE IssueCardTimeInfo component', () => {
   let wrapper;
@@ -64,9 +67,44 @@ describe('CE IssueCardTimeInfo component', () => {
     ],
   });
 
+  const featuresObject = ({
+    milestoneStartDate,
+    milestoneDueDate,
+    startDate,
+    dueDate,
+    state,
+    timeEstimate,
+  } = {}) => ({
+    state,
+    features: {
+      milestone: {
+        milestone: {
+          dueDate: milestoneDueDate,
+          startDate: milestoneStartDate,
+          title: 'My milestone',
+          webPath: '/milestone/webPath',
+        },
+      },
+    },
+    widgets: [
+      {
+        type: WIDGET_TYPE_START_AND_DUE_DATE,
+        dueDate,
+        startDate,
+      },
+      {
+        type: WIDGET_TYPE_TIME_TRACKING,
+        humanReadableAttributes: {
+          timeEstimate,
+        },
+      },
+    ],
+  });
+
   const findMilestone = () => wrapper.findComponent(IssuableMilestone);
   const findWorkItemAttribute = () => wrapper.findComponent(WorkItemAttribute);
   const findDueDateIcon = () => wrapper.findByTestId('issuable-due-date').findComponent(GlIcon);
+  const findParentMetadata = () => wrapper.findComponent(WorkItemParentMetadata);
 
   const mountComponent = ({ issue = issueObject(), hiddenMetadataKeys = [] } = {}) =>
     shallowMountExtended(IssueCardTimeInfo, {
@@ -77,9 +115,10 @@ describe('CE IssueCardTimeInfo component', () => {
     });
 
   describe.each`
-    type           | object
-    ${'issue'}     | ${issueObject}
-    ${'work item'} | ${workItemObject}
+    type                         | object
+    ${'issue'}                   | ${issueObject}
+    ${'work item'}               | ${workItemObject}
+    ${'work item with features'} | ${featuresObject}
   `('with $type object', ({ object }) => {
     describe('milestone', () => {
       it('renders', () => {
@@ -148,6 +187,48 @@ describe('CE IssueCardTimeInfo component', () => {
           });
         });
       });
+
+      describe('when approaching', () => {
+        it('classifies today as approaching, not overdue', () => {
+          wrapper = mountComponent({ issue: object({ dueDate: '2020-07-06' }) });
+
+          expect(findDueDateIcon().props()).toMatchObject({
+            variant: 'warning',
+            name: 'calendar-due',
+          });
+          expect(findWorkItemAttribute().props('tooltipText')).toBe('Dates (due soon)');
+        });
+
+        it('renders with warning variant and calendar-due icon when due within 6 days', () => {
+          wrapper = mountComponent({ issue: object({ dueDate: '2020-07-12' }) });
+
+          expect(findDueDateIcon().props()).toMatchObject({
+            variant: 'warning',
+            name: 'calendar-due',
+          });
+        });
+
+        it('renders with normal variant when due exactly 7 days away', () => {
+          wrapper = mountComponent({ issue: object({ dueDate: '2020-07-13' }) });
+
+          expect(findDueDateIcon().props()).toMatchObject({
+            variant: 'current',
+            name: 'calendar',
+          });
+          expect(findWorkItemAttribute().props('tooltipText')).toBe('Dates');
+        });
+
+        it('does not apply approaching state when issue is closed', () => {
+          wrapper = mountComponent({
+            issue: object({ dueDate: '2020-07-09', state: STATUS_CLOSED }),
+          });
+
+          expect(findDueDateIcon().props()).toMatchObject({
+            variant: 'current',
+            name: 'calendar',
+          });
+        });
+      });
     });
 
     describe('start date', () => {
@@ -184,6 +265,28 @@ describe('CE IssueCardTimeInfo component', () => {
     });
   });
 
+  describe('features.milestone priority', () => {
+    it('uses features.milestone over widgets milestone', () => {
+      wrapper = mountComponent({
+        issue: {
+          ...workItemObject(),
+          features: {
+            milestone: {
+              milestone: {
+                title: 'Features milestone',
+                webPath: '/features/milestone',
+              },
+            },
+          },
+        },
+      });
+
+      const milestone = findMilestone();
+      expect(milestone.exists()).toBe(true);
+      expect(milestone.props('milestone')).toMatchObject({ title: 'Features milestone' });
+    });
+  });
+
   describe('hiddenMetadataKeys', () => {
     it('hides multiple metadata fields', () => {
       wrapper = mountComponent({
@@ -203,6 +306,32 @@ describe('CE IssueCardTimeInfo component', () => {
 
       expect(findMilestone().exists()).toBe(true);
       expect(findWorkItemAttribute().exists()).toBe(true);
+    });
+  });
+
+  describe('parent metadata', () => {
+    it('does not render parent metadata when parent is not present', () => {
+      wrapper = mountComponent({ issue: issueObject() });
+
+      expect(findParentMetadata().exists()).toBe(false);
+    });
+
+    it('renders parent metadata when parent is present', () => {
+      wrapper = mountComponent({
+        issue: {
+          ...workItemObject(),
+          widgets: [
+            ...workItemObject().widgets,
+            {
+              type: WIDGET_TYPE_HIERARCHY,
+              parent: mockParentWorkItem,
+            },
+          ],
+        },
+      });
+
+      expect(findParentMetadata().exists()).toBe(true);
+      expect(findParentMetadata().props('parent')).toEqual(mockParentWorkItem);
     });
   });
 });

@@ -1,5 +1,5 @@
 <script>
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { GlCollapsibleListbox } from '@gitlab/ui';
 import { s__ } from '~/locale';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
@@ -22,6 +22,7 @@ export default {
       required: true,
     },
   },
+  emits: ['input'],
   apollo: {
     project: {
       query: searchModelsQuery,

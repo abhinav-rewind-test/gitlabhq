@@ -10,7 +10,8 @@ import {
   parseBoolean,
 } from '~/lib/utils/common_utils';
 import { __ } from '~/locale';
-import { apolloProvider } from '~/graphql_shared/issuable_client';
+import { apolloProvider, defaultClient } from '~/graphql_shared/issuable_client';
+import { currentReviewers } from '~/graphql_shared/issuable_client_state';
 import Translate from '~/vue_shared/translate';
 import UserSelect from '~/vue_shared/components/user_select/user_select.vue';
 import SubmitReviewButton from '~/batch_comments/components/submit_review_button.vue';
@@ -26,6 +27,7 @@ import MilestoneDropdown from './components/milestone/milestone_dropdown.vue';
 import SidebarParticipantsWidget from './components/participants/sidebar_participants_widget.vue';
 import SidebarReferenceWidget from './components/copy/sidebar_reference_widget.vue';
 import SidebarReviewers from './components/reviewers/sidebar_reviewers.vue';
+import SidebarRelatedWorkItems from './components/related_work_items/related_work_items.vue';
 import SidebarReviewersInputs from './components/reviewers/sidebar_reviewers_inputs.vue';
 import SidebarSeverityWidget from './components/severity/sidebar_severity_widget.vue';
 import SidebarDropdownWidget from './components/sidebar_dropdown_widget.vue';
@@ -41,6 +43,23 @@ import MoveIssueButton from './components/move/move_issue_button.vue';
 
 Vue.use(Translate);
 Vue.use(VueApollo);
+
+defaultClient.cache.policies.addTypePolicies({
+  MergeRequest: {
+    fields: {
+      reviewers: {
+        merge(existing, incoming, context) {
+          const nodes = incoming?.nodes || [];
+          currentReviewers(
+            // eslint-disable-next-line no-underscore-dangle
+            nodes.map((node) => context.cache.extract()[node.__ref] || node),
+          );
+          return incoming;
+        },
+      },
+    },
+  },
+});
 
 function getSidebarOptions(sidebarOptEl = document.querySelector('.js-sidebar-options')) {
   return JSON.parse(sidebarOptEl.innerHTML);
@@ -185,6 +204,11 @@ function mountSidebarReviewers(mediator) {
     new Vue({
       el: reviewersInputEl,
       name: 'SidebarReviewersInputsRoot',
+      apolloProvider,
+      provide: {
+        issuableIid: String(iid),
+        projectPath: fullPath,
+      },
       render(createElement) {
         return createElement(SidebarReviewersInputs);
       },
@@ -699,6 +723,29 @@ export function mountAssigneesDropdown() {
   });
 }
 
+function mountRelatedWorkItems() {
+  const el = document.querySelector('.js-sidebar-related-work-items-root');
+
+  if (!el) {
+    return null;
+  }
+
+  const { fullPath, id } = getSidebarOptions();
+
+  return new Vue({
+    el,
+    name: 'SidebarRelatedWorkItemsRoot',
+    apolloProvider,
+    provide: {
+      fullPath,
+      id,
+      isGroup: false,
+      preventRouterNav: true,
+    },
+    render: (createElement) => createElement(SidebarRelatedWorkItems),
+  });
+}
+
 export function mountSidebar(mediator) {
   mountSidebarTodoWidget();
   mountSidebarAssigneesWidget();
@@ -717,6 +764,7 @@ export function mountSidebar(mediator) {
   mountSidebarEscalationStatus();
   mountMoveIssueButton();
   mountSubmitReviewButton();
+  mountRelatedWorkItems();
 }
 
 export { getSidebarOptions };

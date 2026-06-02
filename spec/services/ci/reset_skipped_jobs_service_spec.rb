@@ -421,7 +421,8 @@ RSpec.describe Ci::ResetSkippedJobsService, :sidekiq_inline, feature_category: :
       stub_ci_pipeline_yaml_file(config)
 
       upstream_pipeline = create(:ci_pipeline, project: project)
-      bridge = create(:ci_bridge, :strategy_depend, pipeline: upstream_pipeline, status: 'success', user: user)
+      bridge = create(:ci_bridge, :strategy_depend, pipeline: upstream_pipeline, status: 'success', user: user,
+        downstream: project)
       create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge)
     end
 
@@ -445,16 +446,6 @@ RSpec.describe Ci::ResetSkippedJobsService, :sidekiq_inline, feature_category: :
         )
 
         expect { service.execute(input_processables) }.not_to raise_error
-      end
-
-      context 'when the rescue_stale_object_errors_in_pipeline_processing feature flag is disabled' do
-        before do
-          stub_feature_flags(rescue_stale_object_errors_in_pipeline_processing: false)
-        end
-
-        it 'raises an error' do
-          expect { service.execute(input_processables) }.to raise_error(ActiveRecord::StaleObjectError)
-        end
       end
     end
   end

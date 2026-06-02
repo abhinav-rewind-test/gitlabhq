@@ -1,15 +1,14 @@
 ---
 stage: AI-powered
 group: Workflow Catalog
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Data Analyst Agent
 ---
 
 {{< details >}}
 
-- Tier: Premium, Ultimate
+- Tier: [Free](../../../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-- Status: Beta
 
 {{< /details >}}
 
@@ -22,17 +21,14 @@ title: Data Analyst Agent
   to [beta](../../../../policy/development_stages_support.md#beta) in GitLab 18.7.
 - [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/issues/583940)
   in GitLab 18.7.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/584536) in GitLab 18.11.
 
 {{< /history >}}
 
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
-
 The Data Analyst Agent is a specialized AI assistant that helps you query, visualize, and surface
 data across the GitLab platform. It uses [GitLab Query Language (GLQL)](../../../glql/_index.md)
-to retrieve and analyze data, then provides clear, actionable insights about your projects and groups.
+and [Orbit](https://docs.gitlab.com/orbit/) to retrieve and analyze data, then provides clear, actionable insights about your projects and groups.
+For information about which data sources and fields are available on your tier, see [GLQL data sources](../../../glql/data_sources/_index.md) and [what Orbit indexes](https://docs.gitlab.com/orbit/remote/indexing/).
 
 Use the Data Analyst Agent when you need help with:
 
@@ -45,8 +41,7 @@ Use the Data Analyst Agent when you need help with:
   including issues, merge requests, epics, comments, wikis, snippets, and releases.
 
 <i class="fa-youtube-play" aria-hidden="true"></i>
-For an overview, see the [GitLab Duo Data Analyst beta release demo](https://youtu.be/9MTT2P_t-CU).
-<!-- Video published on 2025-12-15 -->
+For an overview, see the [GitLab Duo Data Analyst demo](https://youtu.be/9MTT2P_t-CU).
 
 You can leave feedback in [issue 574028](https://gitlab.com/gitlab-org/gitlab/-/issues/574028).
 
@@ -54,23 +49,72 @@ You can leave feedback in [issue 574028](https://gitlab.com/gitlab-org/gitlab/-/
 
 - The agent can perform light aggregation on queried data, but results may be
   incomplete for datasets exceeding 100 items.
-- GLQL supports querying [specific areas](../../../glql/_index.md#supported-areas)
+- GLQL supports querying [specific areas](../../../glql/data_sources/_index.md)
   but not all GitLab data sources.
 - The agent cannot output directly to work items or dashboards. However, you can copy the generated GLQL
   queries and embed them on any page that supports GitLab Flavored Markdown.
 
-## Access the Data Analyst Agent
+## Use the Data Analyst Agent
+
+You can use the Data Analyst Agent in the GitLab UI, VS Code, and JetBrains IDEs.
+
+### In the GitLab UI
 
 Prerequisites:
 
-- Foundational agents must be [turned on](_index.md#turn-foundational-agents-on-or-off).
+- [Turn on](_index.md#turn-foundational-agents-on-or-off) foundational agents.
 
-1. Open GitLab Duo Chat:
+To use the Data Analyst Agent in the GitLab UI:
 
-   On the GitLab Duo sidebar, select either **New GitLab Duo Chat** ({{< icon name="pencil-square" >}}) or **Current GitLab Duo Chat** ({{< icon name="duo-chat" >}}).
+1. On the GitLab Duo sidebar, select **Add new chat** ({{< icon name="pencil-square" >}}).
+1. From the dropdown list, select **Data Analyst**.
 
    A Chat conversation opens in the GitLab Duo sidebar on the right side of your screen.
+1. Enter your analytics question or request. To get the best results from your request:
 
+   - Specify the scope (project or group) when asking about data.
+   - Include time ranges for time-based analysis.
+   - Be specific about the type of work items you're interested in.
+
+### In VS Code
+
+Prerequisites:
+
+- [Turn on](_index.md#turn-foundational-agents-on-or-off) foundational agents.
+- Install and configure [GitLab for VS Code](../../../../editor_extensions/visual_studio_code/setup.md)
+  version 6.57.3 or later.
+- Set a [default GitLab Duo namespace](../../../profile/preferences.md#set-a-default-gitlab-duo-namespace).
+
+To use the Data Analyst Agent in VS Code:
+
+1. In VS Code, in the left sidebar, select **GitLab Duo Agent Platform** ({{< icon name="duo-agentic-chat" >}}).
+1. Select the **Chat** tab.
+1. From the **New chat** ({{< icon name="duo-chat-new" >}}) dropdown list, select **Data Analyst**.
+1. Enter your analytics question or request. To get the best results from your request:
+
+   - Specify the scope (project or group) when asking about data.
+   - Include time ranges for time-based analysis.
+   - Be specific about the type of work items you're interested in.
+
+### In JetBrains IDEs
+
+Prerequisites:
+
+- [Turn on](_index.md#turn-foundational-agents-on-or-off) foundational agents.
+- Install and configure the [GitLab Duo plugin for JetBrains IDEs](../../../../editor_extensions/jetbrains_ide/setup.md)
+  version 3.24.4 or later.
+- Set a [default GitLab Duo namespace](../../../profile/preferences.md#set-a-default-gitlab-duo-namespace).
+
+First, enable the GitLab Duo Agent Platform:
+
+1. In your JetBrains IDE, go to **Settings** > **Tools** > **GitLab Duo**.
+1. Under **GitLab Duo Agent Platform**, select the **Enable GitLab Duo Agent Platform** checkbox.
+1. Restart your IDE if prompted.
+
+Then, to use the Data Analyst Agent:
+
+1. In your JetBrains IDE, on the right tool window bar, select **GitLab Duo Agent Platform** ({{< icon name="duo-agentic-chat" >}}).
+1. Select the **Chat** tab.
 1. From the **New chat** ({{< icon name="duo-chat-new" >}}) dropdown list, select **Data Analyst**.
 1. Enter your analytics question or request. To get the best results from your request:
 

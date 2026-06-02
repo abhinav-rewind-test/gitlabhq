@@ -9,10 +9,11 @@
 // change the references in the code or API.
 
 import { GlModal } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { initRecaptchaScript } from '~/captcha/init_recaptcha_script';
 
 export default {
+  name: 'CaptchaModal',
   components: {
     GlModal,
   },

@@ -354,7 +354,7 @@ RSpec.describe ObjectStorage, :clean_gitlab_redis_shared_state, feature_category
         subject { uploader.migrate!(new_store) }
 
         shared_examples "updates the underlying <mounted>_store" do
-          it do
+          it 'migrates the storage' do
             subject
 
             expect(object.file_store).to eq(new_store)
@@ -1007,7 +1007,7 @@ RSpec.describe ObjectStorage, :clean_gitlab_redis_shared_state, feature_category
                 uploader.store!(uploaded_file)
               end
 
-              it 'file to be remotely stored in permament location' do
+              it 'file to be remotely stored in permanent location' do
                 subject
 
                 expect(uploader).to be_exists
@@ -1031,7 +1031,7 @@ RSpec.describe ObjectStorage, :clean_gitlab_redis_shared_state, feature_category
                 uploader.store!(uploaded_file)
               end
 
-              it 'file to be remotely stored in permament location' do
+              it 'file to be remotely stored in permanent location' do
                 subject
 
                 expect(uploader).to be_exists
@@ -1137,7 +1137,7 @@ RSpec.describe ObjectStorage, :clean_gitlab_redis_shared_state, feature_category
               uploader.store!(uploaded_file)
             end
 
-            it 'file to be remotely stored in permament location' do
+            it 'file to be remotely stored in permanent location' do
               subject
 
               expect(uploader).to be_exists
@@ -1236,7 +1236,7 @@ RSpec.describe ObjectStorage, :clean_gitlab_redis_shared_state, feature_category
                 uploader.store!(uploaded_file)
               end
 
-              it 'file to be remotely stored in permament location' do
+              it 'file to be remotely stored in permanent location' do
                 subject
 
                 expect(uploader).to be_exists

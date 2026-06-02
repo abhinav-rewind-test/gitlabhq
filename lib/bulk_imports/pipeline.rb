@@ -13,7 +13,7 @@ module BulkImports
 
     CACHE_KEY_EXPIRATION = 2.hours
     NDJSON_EXPORT_TIMEOUT = 90.minutes
-    EMPTY_EXPORT_STATUS_TIMEOUT = 5.minutes
+    EXPORT_PENDING_TIMEOUT = 5.minutes
 
     def initialize(context)
       @context = context
@@ -89,7 +89,7 @@ module BulkImports
       # `MyTransformerTwo` method is the last.
       def transformers
         strong_memoize(:transformers) do
-          defined_transformers = self.class.transformers.map(&method(:instantiate))
+          defined_transformers = self.class.transformers.map { |transformer| instantiate(transformer) }
 
           transformers = []
           transformers << self if respond_to?(:transform)

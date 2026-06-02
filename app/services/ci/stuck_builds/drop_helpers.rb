@@ -11,21 +11,31 @@ module Ci
         end
       end
 
-      def drop_incomplete(builds, failure_reason:)
-        fetch(builds) do |build|
-          drop_incomplete_build :outdated, build, failure_reason
-        end
-      end
-
-      def drop_stuck(builds, failure_reason:)
-        fetch(builds) do |build|
-          break unless build.stuck?
+      def drop_stuck_from_queue(builds_queue, failure_reason:)
+        fetch_from_queue(builds_queue) do |build|
+          next unless build.stuck?
 
           drop_build :stuck, build, failure_reason
         end
       end
 
       # rubocop: disable CodeReuse/ActiveRecord
+      def fetch_from_queue(builds_queue)
+        builds_queue.each_batch(of: BATCH_SIZE) do |batch|
+          # Pending build_ids are very rarely in more than one partition
+          batch.select(:partition_id, :build_id).group_by(&:partition_id).each do |partition_id, records|
+            jobs = Ci::Build
+                    .in_partition(partition_id)
+                    .id_in(records.map(&:build_id))
+                    .includes(:tags, :runner, project: [:namespace, :route])
+
+            jobs.each do |job|
+              Gitlab::ApplicationContext.with_context(project: job.project) { yield(job) }
+            end
+          end
+        end
+      end
+
       def fetch(builds)
         loop do
           jobs = builds.includes(:tags, :runner, project: [:namespace, :route])
@@ -42,17 +52,6 @@ module Ci
       # rubocop: enable CodeReuse/ActiveRecord
 
       def drop_build(type, build, reason)
-        log_dropping_message(type, build, reason)
-        Gitlab::OptimisticLocking.retry_lock(build, 3, name: 'stuck_ci_jobs_worker_drop_build') do |b|
-          b.drop!(reason)
-        end
-      rescue StandardError => ex
-        build.doom!
-
-        track_exception_for_build(ex, build)
-      end
-
-      def drop_incomplete_build(type, build, reason)
         log_dropping_message(type, build, reason)
         Gitlab::OptimisticLocking.retry_lock(build, 3, name: 'stuck_ci_jobs_worker_drop_build') do |b|
           # retry_lock resets the build on retry. Builds only lock on status, so

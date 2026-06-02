@@ -1,9 +1,10 @@
 <script>
 import { GlTooltip, GlDisclosureDropdown } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { __ } from '~/locale';
 
 export default {
+  name: 'ToolbarMoreDropdown',
   components: {
     GlDisclosureDropdown,
     GlTooltip,

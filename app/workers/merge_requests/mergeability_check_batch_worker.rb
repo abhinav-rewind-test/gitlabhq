@@ -3,6 +3,7 @@
 module MergeRequests
   class MergeabilityCheckBatchWorker
     include ApplicationWorker
+    include Gitlab::Utils::StrongMemoize
 
     data_consistency :sticky
 
@@ -17,15 +18,24 @@ module MergeRequests
     end
 
     def perform(merge_request_ids, user_id)
-      merge_requests = MergeRequest.id_in(merge_request_ids)
       user = User.find_by_id(user_id)
+      return unless user
 
-      merge_requests.each do |merge_request|
-        # Skip projects that user doesn't have update_merge_request access
-        next if merge_status_recheck_not_allowed?(merge_request, user)
+      # rubocop: disable CodeReuse/ActiveRecord -- doesn't seem useful to move to model
+      merge_requests = MergeRequest.id_in(merge_request_ids).preload(target_project: :project_feature)
+      # rubocop: enable CodeReuse/ActiveRecord
 
-        merge_request.mark_as_checking
+      projects = merge_requests.map(&:target_project).uniq
 
+      Preloaders::ProjectPolicyPreloader.new(projects, user).execute
+
+      allowed_merge_requests = merge_requests.reject do |merge_request|
+        merge_status_recheck_not_allowed?(merge_request.project, user)
+      end
+
+      MergeRequest.batch_mark_as_checking(allowed_merge_requests.map(&:id))
+
+      allowed_merge_requests.each do |merge_request|
         result = merge_request.check_mergeability
 
         next unless result&.error?
@@ -40,8 +50,10 @@ module MergeRequests
 
     private
 
-    def merge_status_recheck_not_allowed?(merge_request, user)
-      !Ability.allowed?(user, :update_merge_request, merge_request.project)
+    def merge_status_recheck_not_allowed?(project, user)
+      strong_memoize_with(:merge_status_recheck_not_allowed, project.id, user.id) do
+        !Ability.allowed?(user, :update_merge_request, project)
+      end
     end
   end
 end

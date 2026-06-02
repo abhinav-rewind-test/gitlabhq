@@ -1,28 +1,30 @@
 import { shallowMount } from '@vue/test-utils';
 import { GlBreadcrumb } from '@gitlab/ui';
+import { STATUS_OPEN } from '~/issues/constants';
+import { DEFAULT_PAGE_SIZE } from '~/vue_shared/issuable/list/constants';
+import { UPDATED_DESC } from '~/work_items/list/constants';
 import WorkItemBreadcrumb from '~/work_items/components/work_item_breadcrumb.vue';
-import { WORK_ITEM_TYPE_NAME_EPIC, WORK_ITEM_TYPE_NAME_TICKET } from '~/work_items/constants';
+import { WORK_ITEM_TYPE_NAME_TICKET, ROUTES } from '~/work_items/constants';
+import { setPlanningViewAllItemsFilters } from '~/work_items/pages/planning_view_state';
 
 describe('WorkItemBreadcrumb', () => {
   let wrapper;
 
   const findBreadcrumb = () => wrapper.findComponent(GlBreadcrumb);
 
+  beforeEach(() => {
+    setPlanningViewAllItemsFilters(null);
+  });
+
   const createComponent = ({
     workItemType = null,
     $route = {},
-    listPath = '/epics',
     isGroup = true,
-    workItemPlanningView = false,
     props = {},
   } = {}) => {
     wrapper = shallowMount(WorkItemBreadcrumb, {
       provide: {
         workItemType,
-        glFeatures: {
-          workItemPlanningView,
-        },
-        listPath,
         isGroup,
       },
       mocks: {
@@ -32,15 +34,77 @@ describe('WorkItemBreadcrumb', () => {
     });
   };
 
+  describe('when a session exists', () => {
+    it('uses session sortKey and always resets state to open in the index crumb', () => {
+      setPlanningViewAllItemsFilters({ sortKey: UPDATED_DESC, state: 'closed', filterTokens: [] });
+      createComponent({
+        $route: { name: 'workItem', params: { iid: '1', type: 'work_items' }, path: '/1' },
+      });
+
+      const indexCrumb = findBreadcrumb()
+        .props('items')
+        .find((c) => c.to?.name === ROUTES.index);
+
+      expect(indexCrumb.to.query).toEqual({
+        sort: 'updated_desc',
+        state: STATUS_OPEN,
+        first_page_size: DEFAULT_PAGE_SIZE,
+      });
+    });
+
+    it('uses session filters when navigating from a saved view to All items', () => {
+      setPlanningViewAllItemsFilters({
+        sortKey: UPDATED_DESC,
+        state: STATUS_OPEN,
+        filterTokens: [],
+      });
+      createComponent({
+        $route: {
+          name: ROUTES.savedView,
+          params: { view_id: '123', type: 'work_items' },
+          path: '/views/123',
+        },
+      });
+
+      const indexCrumb = findBreadcrumb()
+        .props('items')
+        .find((c) => c.to?.name === ROUTES.index);
+
+      expect(indexCrumb.to.query).toEqual({
+        sort: 'updated_desc',
+        state: STATUS_OPEN,
+        first_page_size: DEFAULT_PAGE_SIZE,
+      });
+    });
+  });
+
+  describe('when no session exists', () => {
+    it('navigates to All items without query params', () => {
+      createComponent({
+        $route: {
+          name: ROUTES.savedView,
+          params: { view_id: '123', type: 'work_items' },
+          path: '/views/123',
+        },
+      });
+
+      const indexCrumb = findBreadcrumb()
+        .props('items')
+        .find((c) => c.to?.name === ROUTES.index);
+
+      expect(indexCrumb.to.query).toBeUndefined();
+    });
+  });
+
   describe('when the workspace is a group', () => {
     it('renders root `Work items` breadcrumb on work items list page', () => {
-      createComponent({ workItemPlanningView: true });
+      createComponent();
 
       expect(findBreadcrumb().props('items')).toEqual([
         {
           text: 'Work items',
           to: {
-            name: 'workItemList',
+            name: ROUTES.index,
             query: undefined,
             params: { type: 'work_items' },
           },
@@ -48,44 +112,14 @@ describe('WorkItemBreadcrumb', () => {
       ]);
     });
 
-    it('renders root `Issues` breadcrumb on work items list page', () => {
-      createComponent();
-
-      expect(findBreadcrumb().props('items')).toEqual([
-        {
-          text: 'Issues',
-          to: {
-            name: 'workItemList',
-            query: undefined,
-            params: { type: 'issues' },
-          },
-        },
-      ]);
-    });
-
-    it('renders root `Epics` breadcrumb on epics list page', () => {
-      createComponent({ workItemType: WORK_ITEM_TYPE_NAME_EPIC });
-
-      expect(findBreadcrumb().props('items')).toEqual([
-        {
-          text: 'Epics',
-          to: {
-            name: 'workItemList',
-            query: undefined,
-            params: { type: 'epics' },
-          },
-        },
-      ]);
-    });
-
-    it('renders root `Service Desk` breadcrumb on epics list page', () => {
-      createComponent({ workItemType: WORK_ITEM_TYPE_NAME_TICKET, workItemPlanningView: true });
+    it('renders root `Service Desk` breadcrumb on service desk list page', () => {
+      createComponent({ workItemType: WORK_ITEM_TYPE_NAME_TICKET });
 
       expect(findBreadcrumb().props('items')).toEqual([
         {
           text: 'Service Desk',
           to: {
-            name: 'workItemList',
+            name: ROUTES.index,
             query: undefined,
             params: { type: 'service_desk' },
           },
@@ -95,39 +129,19 @@ describe('WorkItemBreadcrumb', () => {
   });
 
   describe('when the workspace is a project', () => {
-    describe('when in issues mode', () => {
-      it('renders root breadcrumb with router link if on work item project issues list', () => {
-        createComponent({ isGroup: false, listPath: '/issues' });
+    it('renders root `Work items` breadcrumb with router link', () => {
+      createComponent({ isGroup: false });
 
-        expect(findBreadcrumb().props('items')).toEqual([
-          {
-            text: 'Issues',
-            to: {
-              name: 'workItemList',
-              query: undefined,
-              params: { type: 'issues' },
-            },
+      expect(findBreadcrumb().props('items')).toEqual([
+        {
+          text: 'Work items',
+          to: {
+            name: ROUTES.index,
+            query: undefined,
+            params: { type: 'work_items' },
           },
-        ]);
-      });
-    });
-
-    describe('when task is on work_items path with feature flag off', () => {
-      it('renders root `Issues` breadcrumb with href to respect feature flag state', () => {
-        createComponent({
-          isGroup: false,
-          listPath: '/issues',
-          workItemViewForIssues: true,
-          $route: { path: '/work_items/123' },
-        });
-
-        expect(findBreadcrumb().props('items')).toEqual([
-          {
-            text: 'Issues',
-            href: '/issues',
-          },
-        ]);
-      });
+        },
+      ]);
     });
   });
 
@@ -135,13 +149,15 @@ describe('WorkItemBreadcrumb', () => {
     createComponent({ $route: { name: 'new' } });
 
     expect(findBreadcrumb().props('items')).toEqual(
-      expect.arrayContaining([{ text: 'New', to: { name: 'new', params: { type: 'issues' } } }]),
+      expect.arrayContaining([
+        { text: 'New', to: { name: 'new', params: { type: 'work_items' } } },
+      ]),
     );
   });
 
   it('combines static and dynamic breadcrumbs', () => {
     createComponent({
-      $route: { name: 'workItem', params: { iid: '1', type: 'issues' }, path: '/1' },
+      $route: { name: 'workItem', params: { iid: '1', type: 'work_items' }, path: '/1' },
       props: {
         staticBreadcrumbs: [{ text: 'Static', href: '/static' }],
       },
@@ -150,21 +166,21 @@ describe('WorkItemBreadcrumb', () => {
     expect(findBreadcrumb().props('items')).toEqual([
       { text: 'Static', href: '/static' },
       {
-        text: 'Issues',
-        to: { name: 'workItemList', query: undefined, params: { type: 'issues' } },
+        text: 'Work items',
+        to: { name: ROUTES.index, query: undefined, params: { type: 'work_items' } },
       },
-      { text: '#1', to: { name: 'workItem', params: { type: 'issues', iid: '1' } } },
+      { text: '#1', to: { name: 'workItem', params: { type: 'work_items', iid: '1' } } },
     ]);
   });
 
   it('renders work item iid breadcrumb on work item detail page', () => {
     createComponent({
-      $route: { name: 'workItem', params: { iid: '1', type: 'issues' }, path: '/1' },
+      $route: { name: 'workItem', params: { iid: '1', type: 'work_items' }, path: '/1' },
     });
 
     expect(findBreadcrumb().props('items')).toEqual(
       expect.arrayContaining([
-        { text: '#1', to: { name: 'workItem', params: { type: 'issues', iid: '1' } } },
+        { text: '#1', to: { name: 'workItem', params: { type: 'work_items', iid: '1' } } },
       ]),
     );
   });

@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Secret Detection
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project security settings API
 description: API endpoints to list and update project security options like secret push protection.
 ---
@@ -16,7 +16,7 @@ description: API endpoints to list and update project security options like secr
 Every API call to project security settings must be [authenticated](rest/authentication.md).
 
 If a project is private, and a user isn't a member of the project to which the security setting
-belongs, requests to that project returns a `404 Not Found` status code.
+belongs, requests to that project return a `404 Not Found` status code.
 
 ## List all project security settings
 
@@ -24,7 +24,7 @@ Lists all security settings for the project.
 
 Prerequisites:
 
-- You must have the Developer, Maintainer, or Owner role for the project.
+- You must have the Security Manager, Developer, Maintainer, or Owner role for the project.
 
 ```plaintext
 GET /projects/:id/security_settings
@@ -83,7 +83,8 @@ PUT /projects/:id/security_settings
 ```shell
 curl --request PUT \
   --header "PRIVATE-TOKEN: <your_access_token>" \
-  --url "https://gitlab.example.com/api/v4/projects/7/security_settings?secret_push_protection_enabled=false"
+  --data "secret_push_protection_enabled=false" \
+  --url "https://gitlab.example.com/api/v4/projects/7/security_settings"
 ```
 
 Example response:

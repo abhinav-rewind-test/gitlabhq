@@ -9,6 +9,8 @@ module Mutations
       include Gitlab::Utils::StrongMemoize
 
       authorize :admin_project
+      authorize_granular_token permissions: :update_ci_cd_setting,
+        boundary_argument: :full_path, boundary_type: :project
 
       argument :full_path, GraphQL::Types::ID,
         required: true,
@@ -40,6 +42,11 @@ module Mutations
         required: false,
         description: 'Indicates the ability to push to the original project ' \
           'repository using a job token'
+
+      argument :cross_project_push_for_job_token_allowed, GraphQL::Types::Boolean,
+        required: false,
+        description: 'Indicates the ability to push to this repository using ' \
+          'a job token from an allowlisted project'
 
       argument :display_pipeline_variables, GraphQL::Types::Boolean,
         required: false,
@@ -97,6 +104,7 @@ module Mutations
           ci_outbound_job_token_scope_enabled: args[:job_token_scope_enabled],
           ci_inbound_job_token_scope_enabled: args[:inbound_job_token_scope_enabled],
           ci_push_repository_for_job_token_allowed: args[:push_repository_for_job_token_allowed],
+          ci_cross_project_push_for_job_token_allowed: args[:cross_project_push_for_job_token_allowed],
           restrict_user_defined_variables: args[:restrict_user_defined_variables],
           ci_pipeline_variables_minimum_override_role: args[:pipeline_variables_minimum_override_role],
           ci_display_pipeline_variables: args[:display_pipeline_variables],

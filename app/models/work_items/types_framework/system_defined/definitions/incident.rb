@@ -8,11 +8,11 @@ module WorkItems
           class << self
             def widgets
               %w[
+                ai_session
                 assignees
                 award_emoji
                 crm_contacts
                 current_user_todos
-                custom_fields
                 description
                 development
                 email_participants
@@ -42,6 +42,10 @@ module WorkItems
               }
             end
 
+            def allowed_child_types
+              [{ type: :task, maximum_depth: 1 }]
+            end
+
             def use_legacy_view?
               true
             end
@@ -52,6 +56,10 @@ module WorkItems
 
             def configurable?
               false
+            end
+
+            def filterable_board_view?
+              true
             end
           end
         end

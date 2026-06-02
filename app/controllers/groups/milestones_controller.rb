@@ -13,7 +13,7 @@ class Groups::MilestonesController < Groups::ApplicationController
     respond_to do |format|
       format.html do
         @milestone_states = Milestone.states_count(group_projects_with_access.without_order, [group])
-        @milestones = milestones.page(params[:page])
+        @milestones = milestones.page(milestones_finder_params[:page])
       end
       format.json do
         render json: milestones.to_json(only: [:id, :title, :due_date], methods: :name)
@@ -70,7 +70,8 @@ class Groups::MilestonesController < Groups::ApplicationController
         render json: {
           errors: [
             format(
-              _("Someone edited this %{model_name} at the same time you did. Please refresh your browser and make sure your changes will not unintentionally remove theirs."),
+              _("Someone edited this %{model_name} at the same time you did. " \
+                "Please refresh your browser and make sure your changes will not unintentionally remove theirs."),
               model_name: _('milestone')
             )
           ]
@@ -111,7 +112,7 @@ class Groups::MilestonesController < Groups::ApplicationController
   end
 
   def milestone
-    @noteable = @milestone ||= group.milestones.find_by_iid(params[:id])
+    @noteable = @milestone ||= group.milestones.find_by_iid(milestones_finder_params[:id])
 
     render_404 unless @milestone
   end
@@ -119,8 +120,12 @@ class Groups::MilestonesController < Groups::ApplicationController
   def search_params
     groups = request.format.json? ? group_ids(include_ancestors: true) : group_ids
 
-    @sort = params[:sort] || 'due_date_asc'
+    @sort = milestones_finder_params[:sort] || 'due_date_asc'
     params.permit(:state, :search_title).merge(sort: @sort, group_ids: groups, project_ids: group_projects_with_access)
+  end
+
+  def milestones_finder_params
+    params.permit(:id, :page, :sort)
   end
 
   def group_projects_with_access

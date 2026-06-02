@@ -6,7 +6,7 @@ RSpec.describe Issues::ExportCsvService, :with_license, feature_category: :team_
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, :public, group: group) }
-  let_it_be(:issue) { create(:issue, project: project, author: user) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project, author: user) }
   let_it_be(:bad_issue) { create(:issue, project: project, author: user) }
 
   subject { described_class.new(Issue.all, project) }
@@ -17,7 +17,7 @@ RSpec.describe Issues::ExportCsvService, :with_license, feature_category: :team_
 
   describe '#email' do
     it 'emails csv' do
-      expect { subject.email(user) }.to change(ActionMailer::Base.deliveries, :count)
+      expect { subject.email(user) }.to change { ActionMailer::Base.deliveries.count }
     end
 
     it 'renders with a target filesize' do
@@ -174,7 +174,7 @@ RSpec.describe Issues::ExportCsvService, :with_license, feature_category: :team_
       context 'with label links' do
         let(:labeled_issues) { create_list(:labeled_issue, 2, project: project, author: user, labels: [feature_label, idea_label]) }
 
-        it 'does not run a query for each label link' do
+        it 'does not run a query for each label link', :request_store do
           control = ActiveRecord::QueryRecorder.new { csv }
 
           labeled_issues

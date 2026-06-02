@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review_workflow do
-  let_it_be(:merge_request) { create(:merge_request) }
+  let_it_be(:merge_request, freeze: false) { create(:merge_request) }
   let(:project) { merge_request.project }
 
   subject(:after_create_service) do
@@ -177,6 +177,17 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       end
     end
 
+    it 'triggers merge status subscription after prepared_at is set' do
+      merge_request.update!(prepared_at: nil)
+
+      allow(GraphqlTriggers).to receive(:merge_request_merge_status_updated)
+
+      execute_service
+
+      expect(GraphqlTriggers).to have_received(:merge_request_merge_status_updated)
+        .with(merge_request).at_least(:once)
+    end
+
     it_behaves_like 'internal event tracking' do
       let(:user) { merge_request.author }
       let(:event) { 'create_merge_request' }
@@ -197,8 +208,8 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       end
 
       context 'when merge request is assigned to someone' do
-        let_it_be(:assignee) { create(:user) }
-        let_it_be(:merge_request) { create(:merge_request, assignees: [assignee]) }
+        let_it_be(:assignee, freeze: false) { create(:user) }
+        let_it_be(:merge_request, freeze: false) { create(:merge_request, assignees: [assignee]) }
 
         it 'creates a todo for new assignee' do
           attributes = {
@@ -216,8 +227,8 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       end
 
       context 'when reviewer is assigned' do
-        let_it_be(:reviewer) { create(:user) }
-        let_it_be(:merge_request) { create(:merge_request, reviewers: [reviewer]) }
+        let_it_be(:reviewer, freeze: false) { create(:user) }
+        let_it_be(:merge_request, freeze: false) { create(:merge_request, reviewers: [reviewer]) }
 
         it 'creates a todo for new reviewer' do
           attributes = {
@@ -236,8 +247,8 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
     end
 
     context 'when saving references to issues that the created merge request closes' do
-      let_it_be(:first_issue) { create(:issue, project: merge_request.target_project) }
-      let_it_be(:second_issue) { create(:issue, project: merge_request.target_project) }
+      let_it_be(:first_issue, freeze: false) { create(:issue, project: merge_request.target_project) }
+      let_it_be(:second_issue, freeze: false) { create(:issue, project: merge_request.target_project) }
 
       it 'creates a `MergeRequestsClosingIssues` record for each issue' do
         merge_request.description = "Closes #{first_issue.to_reference} and #{second_issue.to_reference}"

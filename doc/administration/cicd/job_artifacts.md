@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Jobs artifacts administration
 ---
 
@@ -426,7 +426,7 @@ To change the default schedule on which expired artifacts are deleted:
 ## Set the maximum file size of the artifacts
 
 If artifacts are enabled, you can change the maximum file size of the
-artifacts through the [**Admin** area settings](../settings/continuous_integration.md#set-maximum-artifacts-size).
+artifacts through the [**Admin** area settings](limits.md#maximum-artifacts-size).
 
 ## Storage statistics
 

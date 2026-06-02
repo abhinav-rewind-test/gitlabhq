@@ -16,8 +16,8 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
     end
   end
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:new_parent_group) { create(:group, :public) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:new_parent_group, freeze: false) { create(:group, :public) }
 
   let!(:group_member) { create(:group_member, :owner, group: group, user: user) }
   let(:transfer_service) { described_class.new(group, user) }
@@ -35,7 +35,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
   end
 
   context 'handling packages' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:project) { create(:project, namespace: group) }
 
     let!(:new_group) { create(:group) }
@@ -77,7 +77,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
         end
 
         context 'with namespaced packages present' do
-          let_it_be(:package) { create(:npm_package, project: project, name: "@#{project.root_namespace.path}/test") }
+          let_it_be(:package, freeze: false) { create(:npm_package, project: project, name: "@#{project.root_namespace.path}/test") }
 
           it 'does not allow transfer' do
             transfer_service.execute(new_group)
@@ -99,7 +99,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
         context 'when transferring a group into a root group' do
           let_it_be(:root_group) { create(:group) }
-          let_it_be(:group) { create(:group, parent: root_group) }
+          let_it_be(:group, freeze: false) { create(:group, parent: root_group) }
           let_it_be(:new_group) { nil }
 
           it_behaves_like 'transfer allowed'
@@ -178,7 +178,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       end
 
       context 'when the user does not have the right policies' do
-        let_it_be(:group_member) { create(:group_member, :guest, group: group, user: user) }
+        let_it_be(:group_member, freeze: false) { create(:group_member, :guest, group: group, user: user) }
 
         it "returns false" do
           expect(transfer_service.execute(nil)).to be_falsy
@@ -191,9 +191,9 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       end
 
       context 'when there is a group with the same path' do
-        let_it_be(:group) { create(:group, :public, :nested, path: 'not-unique') }
+        let_it_be(:group, freeze: false) { create(:group, :public, :nested, path: 'not-unique') }
 
-        before do
+        before_all do
           create(:group, path: 'not-unique')
         end
 
@@ -251,7 +251,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       it_behaves_like 'ensuring allowed transfer for a group'
 
       context 'when the new parent group is the same as the previous parent group' do
-        let_it_be(:group) { create(:group, :public, :nested, parent: new_parent_group) }
+        let_it_be(:group, freeze: false) { create(:group, :public, :nested, parent: new_parent_group) }
 
         it 'returns false' do
           expect(transfer_service.execute(new_parent_group)).to be_falsy
@@ -264,7 +264,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       end
 
       context 'when the user does not have the right policies' do
-        let_it_be(:group_member) { create(:group_member, :guest, group: group, user: user) }
+        let_it_be(:group_member, freeze: false) { create(:group_member, :guest, group: group, user: user) }
 
         it "returns false" do
           expect(transfer_service.execute(new_parent_group)).to be_falsy
@@ -306,7 +306,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
       context 'when the parent group has a project with the same path' do
         let_it_be_with_reload(:group) { create(:group, :public, :nested, path: 'foo') }
-        let_it_be(:membership) { create(:group_member, :owner, group: new_parent_group, user: user) }
+        let_it_be(:membership, freeze: false) { create(:group_member, :owner, group: new_parent_group, user: user) }
         let_it_be(:project) { create(:project, path: 'foo', namespace: new_parent_group) }
 
         it 'adds an error on group' do
@@ -329,7 +329,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       end
 
       context 'when the group is allowed to be transferred' do
-        let_it_be(:new_parent_group, reload: true) { create(:group, :public) }
+        let_it_be_with_reload(:new_parent_group) { create(:group, :public) }
         let_it_be(:new_parent_group_integration) { create(:integrations_slack, :group, group: new_parent_group, webhook: 'http://new-group.slack.com') }
 
         before do
@@ -381,15 +381,15 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
             let_it_be(:group_instance_specific_integration) do
               create(
                 :beyond_identity_integration,
+                project: nil,
                 group: group,
-                instance: false,
                 active: true,
                 inherit_from_id: instance_specific_integration.id
               )
             end
 
             let_it_be(:parent_group_instance_specific_integration) do
-              create(:beyond_identity_integration, group: new_parent_group, instance: false, active: false)
+              create(:beyond_identity_integration, project: nil, group: new_parent_group, active: false)
             end
 
             it 'replaces inherited integrations', :aggregate_failures do
@@ -1080,8 +1080,34 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
       end
     end
 
+    context 'when transfer succeeds' do
+      let_it_be_with_reload(:group) { create(:group, :nested) }
+      let_it_be(:target) { create(:group) }
+
+      before do
+        group.add_owner(user)
+        target.add_owner(user)
+      end
+
+      it 'sends transfer notification email with the old path' do
+        old_path = group.full_path
+
+        expect_next_instance_of(NotificationService) do |notification|
+          expect(notification).to receive(:group_was_transferred).with(group, old_path)
+        end
+
+        transfer_service.execute(target)
+      end
+
+      it 'does not send notification when transfer fails' do
+        expect(NotificationService).not_to receive(:new)
+
+        transfer_service.execute(group.parent)
+      end
+    end
+
     context 'with namespace_commit_emails concerns' do
-      let_it_be(:group, reload: true) { create(:group) }
+      let_it_be_with_reload(:group) { create(:group) }
       let_it_be(:target) { create(:group) }
 
       before do
@@ -1110,6 +1136,166 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
           transfer_service.execute(target)
         end
+      end
+    end
+  end
+
+  describe 'lock retries in proceed_to_transfer' do
+    let_it_be_with_reload(:group) { create(:group, :public, :nested) }
+    let_it_be(:target) { create(:group) }
+
+    before do
+      group.add_owner(user)
+      target.add_owner(user)
+    end
+
+    it 'uses WithLockRetries for the transaction' do
+      expect_next_instance_of(Gitlab::Database::WithLockRetries) do |retries|
+        expect(retries).to receive(:run).with(raise_on_exhaustion: true).and_call_original
+      end
+
+      transfer_service.execute(target)
+    end
+
+    it 'raises AttemptsExhaustedError when lock retries are exhausted' do
+      lock_retries = instance_double(Gitlab::Database::WithLockRetries)
+      allow(Gitlab::Database::WithLockRetries).to receive(:new).and_return(lock_retries)
+      allow(lock_retries).to receive(:run)
+        .and_raise(Gitlab::Database::WithLockRetries::AttemptsExhaustedError)
+
+      expect { transfer_service.execute(target) }
+        .to raise_error(Gitlab::Database::WithLockRetries::AttemptsExhaustedError)
+    end
+  end
+
+  describe '#schedule_async_transfer' do
+    let_it_be(:current_parent_group) { create(:group) }
+    let_it_be(:new_parent_group, freeze: false) { create(:group, :public) }
+
+    let_it_be_with_reload(:group) { create(:group, :public, parent: current_parent_group) }
+    let_it_be(:new_parent_group_member, freeze: false) { create(:group_member, :owner, group: new_parent_group, user: user) }
+
+    subject(:schedule) { transfer_service.schedule_async_transfer(new_parent_group) }
+
+    it 'returns success response and enqueues the worker', :aggregate_failures do
+      expect(Namespaces::Groups::TransferWorker).to receive(:perform_async).with(
+        group.id,
+        new_parent_group.id,
+        user.id
+      )
+
+      expect(schedule).to be_success
+      expect(schedule.message).to eq('Group transfer has been queued. You will be notified when it completes.')
+    end
+
+    it 'transitions the group to transfer_scheduled' do
+      allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+
+      schedule
+
+      expect(group.reload.state).to eq('transfer_scheduled')
+    end
+
+    it 'stores transfer_target_parent_id in state_metadata', :aggregate_failures do
+      allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+
+      schedule
+
+      metadata = group.reload.state_metadata
+      expect(metadata['transfer_target_parent_id']).to eq(new_parent_group.id)
+      expect(metadata['transfer_scheduled_by_user_id']).to eq(user.id)
+      expect(metadata['transfer_scheduled_at']).to be_present
+    end
+
+    context 'when transferring to root (nil parent)' do
+      subject(:schedule) { transfer_service.schedule_async_transfer(nil) }
+
+      it 'enqueues the worker with nil new_parent_group_id', :aggregate_failures do
+        expect(Namespaces::Groups::TransferWorker).to receive(:perform_async).with(
+          group.id,
+          nil,
+          user.id
+        )
+
+        expect(schedule).to be_success
+        expect(schedule.message).to eq('Group transfer has been queued. You will be notified when it completes.')
+      end
+
+      it 'stores nil transfer_target_parent_id' do
+        allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+
+        schedule
+
+        expect(group.reload.state_metadata['transfer_target_parent_id']).to be_nil
+      end
+    end
+
+    context 'when the state transition fails' do
+      before do
+        group.update_column(:state, Group.states[:creation_in_progress])
+      end
+
+      it 'returns error response and does not enqueue the worker', :aggregate_failures do
+        expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+        expect(schedule).to be_error
+        expect(schedule.message).to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
+      end
+    end
+
+    context 'when group has stale transfer state with no active worker' do
+      before do
+        group.schedule_transfer!(transition_user: user)
+        group.start_transfer!(transition_user: user)
+      end
+
+      it 'cancels the stale state and proceeds with the transfer', :aggregate_failures do
+        allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+
+        expect(schedule).to be_success
+        expect(group.reload.state).to eq('transfer_scheduled')
+      end
+
+      it 'logs a warning about the stale state' do
+        allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+        allow(Gitlab::AppLogger).to receive(:warn)
+
+        schedule
+
+        expect(Gitlab::AppLogger).to have_received(:warn).with(hash_including(
+          message: 'Cancelling stale transfer state - no active worker lease found',
+          group_id: group.id
+        ))
+      end
+    end
+
+    context 'when group has stale transfer_scheduled state with no active worker' do
+      before do
+        group.schedule_transfer!(transition_user: user)
+      end
+
+      it 'cancels the stale state and proceeds with the transfer', :aggregate_failures do
+        allow(Namespaces::Groups::TransferWorker).to receive(:perform_async)
+
+        expect(schedule).to be_success
+        expect(group.reload.state).to eq('transfer_scheduled')
+      end
+    end
+
+    context 'when group has transfer state with active worker lease' do
+      before do
+        group.schedule_transfer!(transition_user: user)
+        group.start_transfer!(transition_user: user)
+        Gitlab::ExclusiveLease.new(
+          Namespaces::Groups::TransferWorker.lease_key(group.id), timeout: 30.minutes
+        ).try_obtain
+      end
+
+      it 'does not cancel the state and returns error', :aggregate_failures do
+        expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+        expect(schedule).to be_error
+        expect(schedule.message).to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
       end
     end
   end

@@ -1,5 +1,5 @@
 <script>
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import Tracking from '~/tracking';
@@ -78,13 +78,9 @@ export default {
   computed: {
     blameInfo() {
       return this.blameData.reduce((result, blame, index) => {
-        if (shouldRender(this.blameData, index)) {
-          result.push({
-            ...blame,
-            blameOffset: calculateBlameOffset(blame.lineno, index),
-          });
-        }
-
+        if (!shouldRender(this.blameData, index)) return result;
+        const blameOffset = calculateBlameOffset(blame.lineno);
+        if (blameOffset !== null) result.push({ ...blame, blameOffset });
         return result;
       }, []);
     },
@@ -108,7 +104,7 @@ export default {
     shouldPreloadBlame: {
       handler(shouldPreload) {
         if (!shouldPreload) return;
-        this.requestBlameInfo(this.renderedChunks[0]);
+        this.requestBlameInfoForRenderedChunks();
       },
     },
     showBlame: {
@@ -121,13 +117,12 @@ export default {
             if (!this.loadingChunks.includes(chunkIndex)) this.loadingChunks.push(chunkIndex);
           });
           await this.updateChunkOffsets(this.renderedChunks);
+          this.requestBlameInfoForRenderedChunks();
         } else {
           this.isBlameLoading = false;
           this.loadingChunks = [];
           this.blameData = [];
         }
-
-        this.requestBlameInfo(this.renderedChunks[0]);
       },
       immediate: true,
     },
@@ -168,11 +163,20 @@ export default {
     this.processPendingChunks.cancel?.();
   },
   methods: {
+    requestBlameInfoForRenderedChunks() {
+      this.renderedChunks.forEach(async (chunkIndex) => {
+        const chunk = this.chunks[chunkIndex];
+        if (chunk && !hasBlameDataForChunk(this.blameData, chunk)) {
+          await this.requestBlameInfo(chunkIndex);
+          this.loadingChunks = this.loadingChunks.filter((id) => id !== chunkIndex);
+        }
+      });
+    },
     async handleChunkAppear(chunkIndex, handleOverlappingChunk = true) {
       if (this.renderedChunks.includes(chunkIndex)) return;
 
       if (chunkIndex > 0 && handleOverlappingChunk) {
-        // request the blame information for overlapping chunk incase it is visible in the DOM
+        // request the blame information for overlapping chunk in case it is visible in the DOM
         this.handleChunkAppear(chunkIndex - 1, false);
       }
 
@@ -197,7 +201,6 @@ export default {
             toLine: chunk.startingFrom + chunk.totalLines,
             ignoreRevs: parseBoolean(getParameterByName('ignore_revs')),
           },
-          context: { batchKey: 'blameData' },
         });
 
         const blob = data?.project?.repository?.blobs?.nodes[0];
@@ -247,13 +250,14 @@ export default {
 <template>
   <div>
     <div class="flash-container gl-mb-3"></div>
-    <div ref="fileContent" class="gl-relative gl-flex">
+    <div ref="fileContent" class="gl-relative gl-flex gl-overflow-x-auto">
       <blame-info v-if="showBlame" :blame-info="blameInfo" :project-path="projectPath" />
 
       <blame-skeleton-loader
         v-for="chunkIndex in activeLoadingChunks"
         :key="`loading-${chunkIndex}`"
-        :total-lines="1"
+        :start-line="chunks[chunkIndex].startingFrom"
+        :total-lines="chunks[chunkIndex].totalLines"
         class="gl-absolute gl-left-0"
         :style="{ transform: `translateY(${chunkOffsets[chunkIndex] || 0}px)` }"
       />
@@ -282,8 +286,10 @@ export default {
           :starting-from="chunk.startingFrom"
           :blame-path="blob.blamePath"
           :blob-path="blob.path"
+          :is-blame-active="showBlame"
           @appear="() => handleAppear(index)"
           @disappear="() => handleDisappear(index)"
+          @highlighted="blameData = [...blameData]"
         />
       </div>
     </div>

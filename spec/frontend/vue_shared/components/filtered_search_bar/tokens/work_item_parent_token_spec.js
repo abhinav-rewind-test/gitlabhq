@@ -13,8 +13,10 @@ import BaseToken from '~/vue_shared/components/filtered_search_bar/tokens/base_t
 import WorkItemParentToken from '~/vue_shared/components/filtered_search_bar/tokens/work_item_parent_token.vue';
 import { OPTIONS_NONE_ANY } from '~/vue_shared/components/filtered_search_bar/constants';
 import searchWorkItemParentQuery from '~/vue_shared/components/filtered_search_bar/queries/search_work_item_parent.query.graphql';
+import allowedParentTypesQuery from '~/work_items/graphql/allowed_parent_types.query.graphql';
 
 import {
+  allowedParentTypesResponse,
   mockGroupParentWorkItemsQueryResponse,
   mockProjectParentWorkItemsQueryResponse,
 } from '../mock_data';
@@ -43,6 +45,7 @@ describe('WorkItemParentToken', () => {
   const searchProjectWorkItemsParentQueryHandler = jest
     .fn()
     .mockResolvedValue(mockProjectParentWorkItemsQueryResponse);
+  const allowedParentTypesQueryResponse = jest.fn().mockResolvedValue(allowedParentTypesResponse);
 
   const mockWorkItemParentToken = {
     type: 'parent',
@@ -61,11 +64,15 @@ describe('WorkItemParentToken', () => {
     value = { data: '' },
     active = false,
     queryHandler = searchProjectWorkItemsParentQueryHandler,
+    allowedParentTypesQueryHandler = allowedParentTypesQueryResponse,
     stubs = defaultStubs,
     mountFn = shallowMountExtended,
   } = {}) => {
     wrapper = mountFn(WorkItemParentToken, {
-      apolloProvider: createMockApollo([[searchWorkItemParentQuery, queryHandler]]),
+      apolloProvider: createMockApollo([
+        [searchWorkItemParentQuery, queryHandler],
+        [allowedParentTypesQuery, allowedParentTypesQueryHandler],
+      ]),
       propsData: {
         config,
         value,
@@ -115,8 +122,9 @@ describe('WorkItemParentToken', () => {
       describe('when request is successful', () => {
         const searchTerm = 'animals';
 
-        beforeEach(() => {
+        beforeEach(async () => {
           createComponent();
+          await waitForPromises();
           return triggerFetchWorkItems(searchTerm);
         });
 
@@ -128,7 +136,11 @@ describe('WorkItemParentToken', () => {
             in: 'TITLE',
             includeDescendants: false,
             includeAncestors: true,
-            types: ['EPIC', 'OBJECTIVE', 'ISSUE'],
+            workItemTypeIds: [
+              'gid://gitlab/WorkItems::Type/8',
+              'gid://gitlab/WorkItems::Type/6',
+              'gid://gitlab/WorkItems::Type/1',
+            ],
             isProject: true,
           });
         });
@@ -162,13 +174,14 @@ describe('WorkItemParentToken', () => {
       });
 
       describe('for project context', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
           const config = {
             ...mockWorkItemParentToken,
             fullPath: 'group/project',
             isProject: true,
           };
           createComponent({ config });
+          await waitForPromises();
           return triggerFetchWorkItems();
         });
 
@@ -180,20 +193,25 @@ describe('WorkItemParentToken', () => {
             in: undefined,
             includeDescendants: false,
             includeAncestors: true,
-            types: ['EPIC', 'OBJECTIVE', 'ISSUE'],
+            workItemTypeIds: [
+              'gid://gitlab/WorkItems::Type/8',
+              'gid://gitlab/WorkItems::Type/6',
+              'gid://gitlab/WorkItems::Type/1',
+            ],
             isProject: true,
           });
         });
       });
 
       describe('for group context', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
           const config = {
             ...mockWorkItemParentToken,
             fullPath: 'group',
             isProject: false,
           };
           createComponent({ config, queryHandler: searchGroupWorkItemsParentQueryHandler });
+          await waitForPromises();
           return triggerFetchWorkItems();
         });
 
@@ -205,7 +223,11 @@ describe('WorkItemParentToken', () => {
             in: undefined,
             includeDescendants: true,
             includeAncestors: true,
-            types: ['EPIC'],
+            workItemTypeIds: [
+              'gid://gitlab/WorkItems::Type/8',
+              'gid://gitlab/WorkItems::Type/6',
+              'gid://gitlab/WorkItems::Type/1',
+            ],
             isProject: false,
           });
         });
@@ -214,8 +236,9 @@ describe('WorkItemParentToken', () => {
       describe('with search term', () => {
         const searchTerm = 'epic title';
 
-        beforeEach(() => {
+        beforeEach(async () => {
           createComponent();
+          await waitForPromises();
           return triggerFetchWorkItems(searchTerm);
         });
 
@@ -227,7 +250,11 @@ describe('WorkItemParentToken', () => {
             in: 'TITLE',
             includeDescendants: false,
             includeAncestors: true,
-            types: ['EPIC', 'OBJECTIVE', 'ISSUE'],
+            workItemTypeIds: [
+              'gid://gitlab/WorkItems::Type/8',
+              'gid://gitlab/WorkItems::Type/6',
+              'gid://gitlab/WorkItems::Type/1',
+            ],
             isProject: true,
           });
         });
@@ -236,8 +263,9 @@ describe('WorkItemParentToken', () => {
       describe('with search term id', () => {
         const searchTerm = '132';
 
-        beforeEach(() => {
+        beforeEach(async () => {
           createComponent();
+          await waitForPromises();
           return triggerFetchWorkItems(searchTerm);
         });
 
@@ -249,7 +277,11 @@ describe('WorkItemParentToken', () => {
             in: undefined,
             includeDescendants: false,
             includeAncestors: true,
-            types: ['EPIC', 'OBJECTIVE', 'ISSUE'],
+            workItemTypeIds: [
+              'gid://gitlab/WorkItems::Type/8',
+              'gid://gitlab/WorkItems::Type/6',
+              'gid://gitlab/WorkItems::Type/1',
+            ],
             isProject: true,
             ids: [convertToGraphQLId(TYPENAME_WORK_ITEM, searchTerm)],
           });
@@ -296,6 +328,24 @@ describe('WorkItemParentToken', () => {
     });
 
     it('renders token item when value is selected', async () => {
+      await activateSuggestionsList();
+
+      expect(findViewSlot().text()).toBe('Order different types of grass');
+    });
+
+    it('renders token item when value is numeric', async () => {
+      const mockWorkItems = mockProjectParentWorkItemsQueryResponse.data.project.workItems.nodes;
+      const config = {
+        ...mockWorkItemParentToken,
+        initialWorkItems: mockWorkItems,
+      };
+      createComponent({
+        config,
+        value: { data: Number(getIdFromGraphQLId(mockWorkItems[0].iid)) },
+        mountFn: mountExtended,
+        stubs: { Portal: true },
+      });
+
       await activateSuggestionsList();
 
       expect(findViewSlot().text()).toBe('Order different types of grass');

@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_category: :groups_and_projects do
-  let_it_be(:user) { create(:user, organization: current_organization) }
-  let_it_be(:project, reload: true) { create(:project, :repository, creator: build(:user)) } # ensure creator != owner to avoid N+1 false-positive
-  let_it_be(:project2) { create(:project, :public) }
-  let_it_be(:personal_project) { create(:project, namespace: user.namespace) }
-  let_it_be(:personal_project_with_stars) { create(:project, namespace: user.namespace, star_count: 10) }
-  let_it_be(:pipeline) { create(:ci_pipeline, :success, project: project, sha: project.commit.sha, ref: project.default_branch) }
+  let_it_be(:user, freeze: false) { create(:user, organization: current_organization) }
+  let_it_be_with_reload(:project) { create(:project, :repository, creator: build(:user)) } # ensure creator != owner to avoid N+1 false-positive
+  let_it_be(:project2, freeze: false) { create(:project, :public) }
+  let_it_be(:personal_project, freeze: false) { create(:project, namespace: user.namespace) }
+  let_it_be(:personal_project_with_stars, freeze: false) { create(:project, namespace: user.namespace, star_count: 10) }
+  let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, :success, project: project, sha: project.commit.sha, ref: project.default_branch) }
 
   before do
     project.add_developer(user)
@@ -32,13 +32,6 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
 
   it_behaves_like 'a "Your work" page with sidebar and breadcrumbs', :dashboard_projects_path, :projects
 
-  it 'links to the "Explore projects" page' do
-    visit dashboard_projects_path
-    wait_for_requests
-
-    expect(page).to have_link("Explore projects", href: explore_projects_path)
-  end
-
   context 'when user has access to the project' do
     it 'shows role badge' do
       visit member_dashboard_projects_path
@@ -51,7 +44,7 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
   end
 
   context 'when last_activity_at and update_at are present', time_travel_to: '2025-01-27T09:44:07Z' do
-    let_it_be(:project_with_last_activity) do
+    let_it_be(:project_with_last_activity, freeze: false) do
       create(
         :project,
         namespace: user.namespace,
@@ -97,7 +90,7 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
   end
 
   context 'when a project is archived' do
-    let_it_be(:archived_project) { create(:project, :archived, namespace: user.namespace) }
+    let_it_be(:archived_project, freeze: false) { create(:project, :archived, namespace: user.namespace) }
     let(:personal_tab) { find(".nav-item:nth-child(3)") }
     let(:member_tab) { find(".nav-item:nth-child(4)") }
 
@@ -164,8 +157,8 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
     end
 
     context 'guest user of project and project has private pipelines' do
-      let_it_be(:guest_user) { create(:user) }
-      let_it_be(:project_with_private_pipelines) { create(:project, namespace: user.namespace, public_builds: false) }
+      let_it_be(:guest_user, freeze: false) { create(:user) }
+      let_it_be(:project_with_private_pipelines, freeze: false) { create(:project, namespace: user.namespace, public_builds: false) }
 
       before_all do
         project_with_private_pipelines.add_guest(guest_user)
@@ -198,14 +191,14 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
   end
 
   context 'when project has topics' do
-    let_it_be(:project_with_topics) { create(:project, namespace: user.namespace, topic_list: 'topic1') }
+    let_it_be(:project_with_topics, freeze: false) { create(:project, namespace: user.namespace, topic_list: 'topic1') }
 
     it 'shows project topics' do
       visit member_dashboard_projects_path
       wait_for_requests
 
       within_testid("projects-list-item-#{project_with_topics.id}") do
-        expect(page).to have_link('topic1', href: topic_explore_projects_path(topic_name: 'topic1'))
+        expect(page).to have_link('topic1', href: topic_organization_explore_projects_path(organization_path: current_organization.path, topic_name: 'topic1'))
       end
     end
   end
@@ -246,35 +239,8 @@ RSpec.describe 'Dashboard Projects', :js, :with_current_organization, feature_ca
     end
   end
 
-  it 'avoids an N+1 query in dashboard index', quarantine: {
-    issue: 'https://gitlab.com/gitlab-org/gitlab/-/work_items/589685',
-    type: :investigating
-  } do
-    visit member_dashboard_projects_path
-    wait_for_requests
-
-    control = ActiveRecord::QueryRecorder.new do
-      visit member_dashboard_projects_path
-      wait_for_requests
-    end
-
-    new_project = create(:project, :repository, name: 'new project')
-    create(:ci_pipeline, :with_job, status: :success, project: new_project, ref: new_project.commit.sha)
-    new_project.add_developer(user)
-
-    # There are a few known N+1 queries: https://gitlab.com/gitlab-org/gitlab/-/issues/214037
-    # - User#max_member_access_for_project_ids
-    # - ProjectsHelper#load_pipeline_status / Ci::CommitWithPipeline#last_pipeline
-    # - Ci::Pipeline#detailed_status
-
-    expect do
-      visit member_dashboard_projects_path
-      wait_for_requests
-    end.not_to exceed_query_limit(control).with_threshold(4)
-  end
-
   context 'for delayed deletion' do
-    let_it_be(:project) { create(:project, :archived, namespace: user.namespace, marked_for_deletion_at: Date.current) }
+    let_it_be(:project, freeze: false) { create(:project, :archived, namespace: user.namespace, marked_for_deletion_at: Date.current) }
 
     it 'renders Restore button', :js do
       visit inactive_dashboard_projects_path

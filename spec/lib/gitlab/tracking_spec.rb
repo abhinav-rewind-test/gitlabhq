@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 
 RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation do
@@ -35,7 +36,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
           expect(instance).to receive(:frontend_client_options)
         end
 
-        subject.frontend_client_options(nil)
+        subject.frontend_client_options
       end
     end
 
@@ -49,13 +50,12 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
           cookieDomain: '.gitlab.com',
           appId: '_abc123_',
           protocol: 'http',
-          port: 9090,
           forceSecureTracker: false,
           formTracking: true,
           linkClickTracking: true
         }
 
-        expect(subject.frontend_client_options(nil)).to match(expected_fields)
+        expect(subject.frontend_client_options).to match(expected_fields)
       end
     end
 
@@ -72,7 +72,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
           linkClickTracking: true
         }
 
-        expect(subject.frontend_client_options(nil)).to match(expected_fields)
+        expect(subject.frontend_client_options).to match(expected_fields)
       end
     end
 
@@ -95,15 +95,6 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
 
         it_behaves_like 'delegates to SnowplowMicro destination with proper options'
       end
-    end
-
-    it 'when feature flag is disabled' do
-      stub_feature_flags(additional_snowplow_tracking: false)
-
-      expect(subject.frontend_client_options(nil)).to include(
-        formTracking: false,
-        linkClickTracking: false
-      )
     end
   end
 

@@ -1,7 +1,7 @@
 ---
 stage: Growth
 group: Acquisition
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Product Qualified Lead (PQL) development guidelines
 ---
 
@@ -13,7 +13,6 @@ A hand-raise PQL is a user who requests to speak to sales from within the produc
 
 1. Set up GDK with a connection to your local CustomersDot instance.
 1. Set up CustomersDot to talk to a staging instance of Workato.
-
 1. Set up CustomersDot using the [standard install instructions](https://gitlab.com/gitlab-org/customers-gitlab-com/-/blob/staging/doc/setup/installation_steps.md).
 1. Set the `CUSTOMER_PORTAL_URL` environment variable to your local URL of your CustomersDot instance.
 1. Place `export CUSTOMER_PORTAL_URL=http://localhost:5000/` in your shell `rc` script (`~/.zshrc` or `~/.bash_profile` or `~/.bashrc`) and restart GDK.
@@ -123,7 +122,7 @@ The flow of a PQL lead is as follows:
 
 1. A user triggers a [`HandRaiseLeadButton` component](#embed-a-hand-raise-lead-form) on `gitlab.com`.
 1. The `HandRaiseLeadButton` submits any information to the following API endpoint: `/-/gitlab_subscriptions/hand_raise_leads`.
-1. That endpoint reposts the form to the CustomersDot `trials/create_hand_raise_lead` endpoint.
+1. That endpoint reposts the form to the CustomersDot `leads/gitlab_com/hand_raises` endpoint.
 1. CustomersDot records the form data to the `leads` table and posts the form to [Workato](https://handbook.gitlab.com/handbook/marketing/marketing-operations/workato/).
 1. Workato sends the form to Marketo.
 1. Marketo does scoring and sends the form to Salesforce.
@@ -135,28 +134,26 @@ The flow of a PQL lead is as follows:
 
 ```mermaid
 sequenceDiagram
-    Trial Frontend Forms ->>TrialsController#create_lead: GitLab.com frontend sends [lead] to backend
-    TrialsController#create->>CreateLeadService: [lead]
-    TrialsController#create->>ApplyTrialService: [lead] Apply the trial
-    CreateLeadService->>SubscriptionPortalClient#generate_trial(sync_to_gl#61;false): [lead] Creates customer account on CustomersDot
-    ApplyTrialService->>SubscriptionPortalClient#generate_trial(sync_to_gl#61;true): [lead] Asks CustomersDot to apply the trial on namespace
-    SubscriptionPortalClient#generate_trial(sync_to_gl#61;false)->>CustomersDot|TrialsController#create(sync_to_gl#61;false): GitLab.com sends [lead] to CustomersDot
-    SubscriptionPortalClient#generate_trial(sync_to_gl#61;true)->>CustomersDot|TrialsController#create(sync_to_gl#61;true): GitLab.com asks CustomersDot to apply the trial
-
-
+    Trial Frontend Forms->>TrialsController#35;create_lead: GitLab.com frontend sends [lead] to backend
+    TrialsController#35;create->>CreateLeadService: [lead]
+    TrialsController#35;create->>ApplyTrialService: [lead] Apply the trial
+    CreateLeadService->>SubscriptionPortalClient#35;generate_trial_lead: [lead] Creates customer account on CustomersDot
+    ApplyTrialService->>SubscriptionPortalClient#35;generate_trial(sync_to_gl#61;true): [lead] Asks CustomersDot to apply the trial on namespace
+    SubscriptionPortalClient#35;generate_trial_lead->>CustomersDot|Leads#58;#58;GitlabCom#58;#58;UltimatesController#35;create: GitLab.com sends [lead] to CustomersDot
+    SubscriptionPortalClient#35;generate_trial(sync_to_gl#61;true)->>CustomersDot|TrialsController#35;create(sync_to_gl#61;true): GitLab.com asks CustomersDot to apply the trial
 ```
 
 #### Trial lead flow on CustomersDot (`sync_to_gl`)
 
 ```mermaid
 sequenceDiagram
-    CustomersDot|TrialsController#create->>HostedPlans|CreateTrialService#execute: Save [lead] to leads table for monitoring purposes
-    HostedPlans|CreateTrialService#execute->>BaseTrialService#create_account: Creates a customer record in customers table
-    HostedPlans|CreateTrialService#create_lead->>CreateLeadService: Creates a lead record in customers table
-    HostedPlans|CreateTrialService#create_lead->>Workato|CreateLeadWorker: Async worker to submit [lead] to Workato
+    CustomersDot|Leads#58;#58;GitlabCom#58;#58;UltimatesController#35;create->>HostedPlans|CreateTrialService#35;execute: Save [lead] to leads table for monitoring purposes
+    HostedPlans|CreateTrialService#35;execute->>BaseTrialService#35;create_account: Creates a customer record in customers table
+    HostedPlans|CreateTrialService#35;create_lead->>CreateLeadService: Creates a lead record in customers table
+    HostedPlans|CreateTrialService#35;create_lead->>Workato|CreateLeadWorker: Async worker to submit [lead] to Workato
     Workato|CreateLeadWorker->>Workato|CreateLeadService: [lead]
-    Workato|CreateLeadService->>WorkatoApp#create_lead: [lead]
-    WorkatoApp#create_lead->>Workato: [lead] is sent to Workato
+    Workato|CreateLeadService->>WorkatoApp#35;create_lead: [lead]
+    WorkatoApp#35;create_lead->>Workato: [lead] is sent to Workato
 ```
 
 #### Applying the trial to a namespace on CustomersDot
@@ -177,15 +174,15 @@ sequenceDiagram
     HandRaiseForm Vue Component->>HandRaiseLeadsController#create: GitLab.com frontend sends [lead] to backend
     HandRaiseLeadsController#create->>CreateHandRaiseLeadService: [lead]
     CreateHandRaiseLeadService->>SubscriptionPortalClient: [lead]
-    SubscriptionPortalClient->>CustomersDot|TrialsController#create_hand_raise_lead: GitLab.com sends [lead] to CustomersDot
+    SubscriptionPortalClient->>CustomersDot|HandRaisesController#create: GitLab.com sends [lead] to CustomersDot
 ```
 
 #### Hand raise flow on CustomersDot
 
 ```mermaid
 sequenceDiagram
-    CustomersDot|TrialsController#create_hand_raise_lead->>CreateLeadService: Save [lead] to leads table for monitoring purposes
-    CustomersDot|TrialsController#create_hand_raise_lead->>Workato|CreateLeadWorker: Async worker to submit [lead] to Workato
+    CustomersDot|HandRaisesController#create->>CreateLeadService: Save [lead] to leads table for monitoring purposes
+    CustomersDot|HandRaisesController#create->>Workato|CreateLeadWorker: Async worker to submit [lead] to Workato
     Workato|CreateLeadWorker->>Workato|CreateLeadService: [lead]
     Workato|CreateLeadService->>WorkatoApp#create_lead: [lead]
     WorkatoApp#create_lead->>Workato: [lead] is sent to Workato

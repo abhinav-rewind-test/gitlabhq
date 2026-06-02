@@ -11,7 +11,7 @@ RSpec.describe API::GoProxy, feature_category: :package_registry do
   let_it_be(:base) { "#{Settings.build_gitlab_go_url}/#{project.full_path}" }
 
   let_it_be(:oauth) { create :oauth_access_token, scopes: 'api', resource_owner: user }
-  let_it_be(:job) { create :ci_build, user: user, status: :running, project: project }
+  let_it_be(:job, freeze: false) { create :ci_build, user: user, status: :running, project: project }
   let_it_be(:pa_token) { create :personal_access_token, user: user }
 
   let_it_be(:modules) do
@@ -318,6 +318,29 @@ RSpec.describe API::GoProxy, feature_category: :package_registry do
 
     context 'with the root module v2.0.0' do
       it_behaves_like 'a module archive resource', 'v2.0.0', ['go.mod', 'a.go', 'x.go'], path: '/v2'
+    end
+
+    describe 'package event tracking' do
+      let(:module_name) { base }
+      let(:resource) { 'v1.0.1.zip' }
+      let(:snowplow_gitlab_standard_context) { { project: project, namespace: project.namespace, user: user, property: 'i_package_golang_user' } }
+
+      subject { get_resource(user) }
+
+      it_behaves_like 'a package tracking event', described_class.name, 'pull_package'
+
+      it 'triggers the pull_package_from_registry internal event with the golang label' do
+        expect { get_resource(user) }.to trigger_internal_events('pull_package_from_registry').with(
+          category: 'InternalEventTracking',
+          project: project,
+          namespace: project.namespace,
+          user: user,
+          additional_properties: {
+            label: 'golang',
+            property: 'user'
+          }
+        )
+      end
     end
 
     it_behaves_like 'enforcing job token policies', :read_packages,

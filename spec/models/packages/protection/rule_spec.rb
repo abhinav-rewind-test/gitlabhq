@@ -12,19 +12,21 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
   end
 
   describe 'enums' do
-    it {
+    it do
       is_expected.to define_enum_for(:package_type).with_values(
+        cargo: Packages::Package.package_types[:cargo],
         conan: Packages::Package.package_types[:conan],
         generic: Packages::Package.package_types[:generic],
         helm: Packages::Package.package_types[:helm],
         maven: Packages::Package.package_types[:maven],
         npm: Packages::Package.package_types[:npm],
         nuget: Packages::Package.package_types[:nuget],
-        pypi: Packages::Package.package_types[:pypi]
+        pypi: Packages::Package.package_types[:pypi],
+        terraform_module: Packages::Package.package_types[:terraform_module]
       )
-    }
+    end
 
-    it {
+    it do
       is_expected.to(
         define_enum_for(:minimum_access_level_for_push)
           .with_values(
@@ -34,23 +36,23 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
           )
           .with_prefix(:minimum_access_level_for_push)
       )
-    }
+    end
 
-    it {
+    it do
       is_expected.to(
         define_enum_for(:minimum_access_level_for_delete)
           .with_values(owner: Gitlab::Access::OWNER, admin: Gitlab::Access::ADMIN)
           .with_prefix(:minimum_access_level_for_delete)
       )
-    }
+    end
 
-    it {
+    it do
       is_expected.to define_enum_for(:pattern_type).with_values(wildcard: 0).with_prefix(:pattern_type)
-    }
+    end
 
-    it {
+    it do
       is_expected.to define_enum_for(:target_field).with_values(package_name: 0).with_prefix(:target_field)
-    }
+    end
   end
 
   describe 'validations' do
@@ -59,11 +61,11 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
     shared_examples 'validates package_name formats' do |column_name|
       context 'for different package types' do
         subject(:rule) do
-          build(:package_protection_rule, {
+          build(:package_protection_rule,
             package_type: package_type,
             pattern_type: :wildcard,
             target_field: :package_name
-          })
+          )
         end
 
         where(:package_type, :value, :allowed) do
@@ -94,19 +96,34 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
           :pypi | '$my-scope/my-package-with space sign'            | false
           :pypi | 'my-scope/my-package-with-@at@-sign'              | false
           :pypi | 'my-scope/my-package-with-@at@-sign-and-widlcard' | false
+
+          :terraform_module | '*'                        | true
+          :terraform_module | 'my-module/my-system'      | true
+          :terraform_module | 'my-module/*'              | true
+          :terraform_module | '*/my-system'              | true
+          :terraform_module | 'my-module/my-system*'     | true
+          :terraform_module | '*my-module/my-system'     | true
+          :terraform_module | 'my-module/my-system/%'    | false
+          :terraform_module | 'My-Module/my-system'      | false
+          :terraform_module | 'my_module/my_system'      | false
+          :terraform_module | 'my-module'                | false
+          :terraform_module | 'my module/my system'      | false
+          :terraform_module | '@scope/my-module/system'  | false
         end
 
         with_them do
           if params[:allowed]
             it { is_expected.to allow_value(value).for(column_name) }
           else
-            it {
+            it do
               is_expected.not_to(
                 allow_value(value)
                 .for(column_name)
-                .with_message(/should be a valid #{package_type} package name with optional wildcard characters./i)
+                .with_message(
+                  /should be a valid #{package_type.to_s.gsub('_', '[_ ]')} package name with optional wildcard/i
+                )
               )
-            }
+            end
           end
         end
       end
@@ -273,6 +290,150 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
     end
   end
 
+  # PEP 503:
+  # 1. -, _, . are all equivalent separators
+  # 2. Case is ignored
+  # 3. Multiple consecutive separators collapse to a single separator.
+  #
+  # https://peps.python.org/pep-0503/
+  shared_examples 'PEP 503 normalized matching' do
+    let_it_be(:pep503_project) { create(:project) }
+    let_it_be(:pep503_rule) do
+      create(:package_protection_rule,
+        project: pep503_project,
+        package_type: :pypi,
+        package_name_pattern: 'my-package*')
+    end
+
+    context 'with PEP 503 separator equivalence' do
+      where(:package_name, :description) do
+        'my-package' | 'hyphen (canonical)'
+        'my_package' | 'underscore variant'
+        'my.package' | 'dot variant'
+      end
+
+      with_them do
+        it "matches #{params[:description]}" do
+          expect(find_result).to include(pep503_rule)
+        end
+      end
+    end
+
+    context 'with case insensitivity' do
+      where(:package_name, :description) do
+        'MY-PACKAGE' | 'all uppercase'
+        'My_Package' | 'mixed case with underscore'
+        'My.Package' | 'mixed case with dot'
+      end
+
+      with_them do
+        it "matches #{params[:description]}" do
+          expect(find_result).to include(pep503_rule)
+        end
+      end
+    end
+
+    context 'with consecutive and mixed separator collapsing' do
+      where(:package_name, :description) do
+        'my--package'  | 'consecutive hyphens'
+        'my__package'  | 'consecutive underscores'
+        'my..package'  | 'consecutive dots'
+        'my-_package'  | 'mixed hyphen-underscore'
+        'my._package'  | 'mixed dot-underscore'
+        'my-_.package' | 'triple mixed separators'
+      end
+
+      with_them do
+        it "matches #{params[:description]}" do
+          expect(find_result).to include(pep503_rule)
+        end
+      end
+    end
+
+    context 'with non-matching names' do
+      where(:package_name, :description) do
+        'other-package' | 'completely different name'
+        'mypackage'     | 'missing separator (not equivalent)'
+      end
+
+      with_them do
+        it "does not match #{params[:description]}" do
+          expect(find_result).not_to include(pep503_rule)
+        end
+      end
+    end
+  end
+
+  describe '.for_pypi_package_name' do
+    it_behaves_like 'PEP 503 normalized matching' do
+      let(:find_result) { described_class.for_pypi_package_name(package_name) }
+    end
+
+    context 'with version-like dot separators in the pattern' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:versioned_rule) do
+        create(:package_protection_rule,
+          project: project,
+          package_type: :pypi,
+          package_name_pattern: 'my-package-1.0*')
+      end
+
+      # The dot in "1.0" is also a separator, so 1.0, 1-0, 1_0 are equivalent
+      where(:package_name, :description) do
+        'my-package-1.0' | 'exact pattern match'
+        'my-package-1-0' | 'dot replaced with hyphen'
+        'my-package-1_0' | 'dot replaced with underscore'
+        'my_package_1.0' | 'all hyphens as underscores'
+      end
+
+      with_them do
+        it "matches #{params[:description]}" do
+          expect(described_class.for_pypi_package_name(package_name)).to include(versioned_rule)
+        end
+      end
+
+      it 'does not match when digits differ (separator removal changes meaning)' do
+        # "1.0" normalizes to "1-0", not "10" - the separator is replaced, not removed
+        expect(described_class.for_pypi_package_name('my-package-100')).not_to include(versioned_rule)
+        expect(described_class.for_pypi_package_name('my-package-10')).not_to include(versioned_rule)
+      end
+    end
+
+    it 'returns none for blank input' do
+      expect(described_class.for_pypi_package_name(nil)).to eq(described_class.none)
+      expect(described_class.for_pypi_package_name('')).to eq(described_class.none)
+    end
+  end
+
+  describe '.for_package_name_by_type' do
+    it_behaves_like 'PEP 503 normalized matching' do
+      let(:find_result) { described_class.for_package_name_by_type(package_name, :pypi) }
+    end
+
+    context 'with a non-PyPI package type' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:npm_rule) do
+        create(:package_protection_rule,
+          :npm,
+          project: project,
+          package_name_pattern: '@my-scope/my-package*')
+      end
+
+      it 'delegates to for_package_name' do
+        expect(described_class.for_package_name_by_type('@my-scope/my-package-foo', :npm)).to include(npm_rule)
+      end
+
+      it 'does not match non-matching names' do
+        expect(described_class.for_package_name_by_type('@other/package', :npm)).not_to include(npm_rule)
+      end
+    end
+
+    it 'returns none for blank input' do
+      expect(described_class.for_package_name_by_type(nil, :npm)).to eq(described_class.none)
+      expect(described_class.for_package_name_by_type('', :pypi)).to eq(described_class.none)
+    end
+  end
+
   describe '.for_package_type' do
     let_it_be(:npm_package_rule) { create(:package_protection_rule, package_type: :npm) }
 
@@ -364,6 +525,19 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
       )
     end
 
+    let_it_be(:project_with_pypi_ppr) { create(:project) }
+
+    let_it_be(:ppr_for_pypi) do
+      create(:package_protection_rule,
+        package_name_pattern: 'my-pypi-package*',
+        pattern: 'my-pypi-package*',
+        project: project_with_pypi_ppr,
+        package_type: :pypi,
+        minimum_access_level_for_delete: :owner,
+        minimum_access_level_for_push: :maintainer
+      )
+    end
+
     subject do
       project
         .package_protection_rules
@@ -448,6 +622,18 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
       ref(:project_without_ppr) | :push   | Gitlab::Access::OWNER      | '@my-scope/my-package-prod'               | :npm   | false
       ref(:project_without_ppr) | :delete | Gitlab::Access::DEVELOPER  | '@my-scope/my-package-prod'               | :npm   | false
       ref(:project_without_ppr) | :delete | Gitlab::Access::OWNER      | '@my-scope/my-package-prod'               | :npm   | false
+
+      # PyPI normalization bypass scenarios - all normalized variants should be protected
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::DEVELOPER  | 'my-pypi-package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::DEVELOPER  | 'my_pypi_package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::DEVELOPER  | 'my.pypi.package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::DEVELOPER  | 'MY-PYPI-PACKAGE'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::DEVELOPER  | 'My_Pypi_Package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::MAINTAINER | 'my_pypi_package'       | :pypi  | false
+      ref(:project_with_pypi_ppr) | :push   | Gitlab::Access::MAINTAINER | 'my.pypi.package'       | :pypi  | false
+      ref(:project_with_pypi_ppr) | :delete | Gitlab::Access::DEVELOPER  | 'my_pypi_package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :delete | Gitlab::Access::DEVELOPER  | 'my.pypi.package'       | :pypi  | true
+      ref(:project_with_pypi_ppr) | :delete | Gitlab::Access::OWNER      | 'my_pypi_package'       | :pypi  | false
     end
     # rubocop:enable Layout/LineLength
 
@@ -468,7 +654,7 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
     end
 
     let_it_be(:project2) { create(:project) }
-    let_it_be(:project2_ppr) do create(:package_protection_rule, project: project2) end
+    let_it_be(:project2_ppr) { create(:package_protection_rule, project: project2) }
 
     let_it_be(:unprotected_project) { create(:project) }
 
@@ -564,6 +750,32 @@ RSpec.describe Packages::Protection::Rule, type: :model, feature_category: :pack
 
     with_them do
       it { is_expected.to match_array expected_result }
+    end
+
+    context 'with PyPI PEP 503 normalization' do
+      let(:pypi_type) { Packages::Package.package_types[:pypi] }
+
+      it_behaves_like 'PEP 503 normalized matching' do
+        let!(:pep503_project) { create(:project) }
+        let!(:pep503_rule) do
+          create(:package_protection_rule,
+            project: pep503_project,
+            package_type: :pypi,
+            package_name_pattern: 'my-package*')
+        end
+
+        let(:find_result) do
+          result = described_class.for_push_exists_for_projects_and_packages(
+            [[pep503_project.id, package_name, pypi_type]]
+          ).to_a
+
+          if result.first&.fetch('protected', false)
+            described_class.where(package_type: :pypi, project: pep503_project)
+          else
+            described_class.none
+          end
+        end
+      end
     end
   end
 

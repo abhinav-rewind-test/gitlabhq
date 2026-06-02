@@ -1,7 +1,7 @@
 /* eslint-disable class-methods-use-this, @gitlab/require-i18n-strings */
 
 import $ from 'jquery';
-import { uniq, escape } from 'lodash';
+import { uniq, escape } from 'lodash-es';
 import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { getEmojiScoreWithIntent } from '~/emoji/utils';
 import { scrollToElement } from '~/lib/utils/scroll_utils';
@@ -314,9 +314,10 @@ export class AwardsHandler {
   }
 
   addAwardToEmojiBar(votesBlock, emoji) {
+    const $votesBlock = $(votesBlock);
     this.addEmojiToFrequentlyUsedList(emoji);
     const normalizedEmoji = this.emoji.normalizeEmojiName(emoji);
-    const $emojiButton = this.findEmojiIcon(votesBlock, normalizedEmoji).closest('button');
+    const $emojiButton = this.findEmojiIcon($votesBlock, normalizedEmoji).closest('button');
     if ($emojiButton.length > 0) {
       if (this.isActive($emojiButton)) {
         this.decrementCounter($emojiButton, normalizedEmoji);
@@ -324,12 +325,12 @@ export class AwardsHandler {
         const counter = $emojiButton.find('.js-counter');
         counter.text(parseInt(counter.text(), 10) + 1);
         $emojiButton.addClass('active');
-        this.addYouToUserList(votesBlock, normalizedEmoji);
+        this.addYouToUserList($votesBlock, normalizedEmoji);
         this.animateEmoji($emojiButton);
       }
     } else {
-      votesBlock.removeClass('hidden');
-      this.createEmoji(votesBlock, normalizedEmoji);
+      $votesBlock.removeClass('hidden');
+      this.createEmoji($votesBlock, normalizedEmoji);
     }
   }
 

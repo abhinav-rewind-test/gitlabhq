@@ -32,6 +32,9 @@ module Clusters
       self.reactive_cache_work_type = :external_dependency
 
       belongs_to :cluster, inverse_of: :platform_kubernetes, class_name: 'Clusters::Cluster'
+      belongs_to :organization, class_name: 'Organizations::Organization', optional: true
+      belongs_to :group, optional: true
+      belongs_to :project, optional: true
 
       attr_encrypted :password,
         mode: :per_attribute_iv,
@@ -237,7 +240,7 @@ module Clusters
 
         Gitlab::ErrorTracking.track_exception(FailedVersionCheckError.new) unless response.success?
 
-        json_response = Gitlab::Json.parse(response.body)
+        json_response = Gitlab::Json.safe_parse(response.body) || {}
         json_response["minor"].to_i
       end
 

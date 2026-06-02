@@ -31,28 +31,35 @@ RSpec.describe Bitbucket::ApiConnection, feature_category: :importers do
       end
 
       it 'logs the retries and raises an error if it does not succeed on retry' do
-        allow(Gitlab::HTTP).to receive(:get).and_raise(HTTParty::ResponseError, 'some error')
+        httparty_response = instance_double(Net::HTTPResponse, code: '429')
+        allow(Gitlab::HTTP).to receive(:get).and_raise(HTTParty::ResponseError.new(httparty_response))
         stub_const('Bitbucket::ExponentialBackoff::INITIAL_DELAY', 0.0)
         allow(Random).to receive(:rand).and_return(0.001)
 
         expect(Gitlab::BitbucketImport::Logger).to receive(:info)
-          .with(message: 'Retrying in 0.0 seconds due to some error')
+          .with(message: /Retrying in .+ seconds due to/)
           .twice
 
         expect { connection.get('/users') }.to raise_error(Bitbucket::ExponentialBackoff::RateLimitError)
       end
     end
 
-    context 'when using app password authentication' do
-      subject(:connection) { described_class.new(username: 'foo', app_password: 'bar') }
-
-      it_behaves_like 'bitbucket api connection', 'foo', 'bar'
-    end
-
     context 'when using API token authentication' do
       subject(:connection) { described_class.new(email: 'user@example.com', api_token: 'token123') }
 
       it_behaves_like 'bitbucket api connection', 'user@example.com', 'token123'
+    end
+  end
+
+  describe '#get_response_code' do
+    subject(:connection) { described_class.new(email: 'user@example.com', api_token: 'token123') }
+
+    it 'returns the HTTP status code as an integer' do
+      expect(Gitlab::HTTP)
+        .to receive(:get)
+        .and_return(instance_double(HTTParty::Response, code: 404, success?: false, parsed_response: {}))
+
+      expect(connection.get_response_code('/repositories/workspace/repo/issues')).to eq(404)
     end
   end
 end

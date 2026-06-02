@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class GlobalPolicy < BasePolicy
+  include ::Authn::SubgroupProvisionedServiceAccountRestriction
+
   desc "User is an internal user"
   with_options scope: :user, score: 0
   condition(:internal) { @user&.internal? }
@@ -78,9 +80,14 @@ class GlobalPolicy < BasePolicy
 
   rule { blocked | internal }.policy do
     prevent :log_in
-    prevent :access_api
     prevent :receive_notifications
     prevent :use_slash_commands
+  end
+
+  # Internal users with :_access_api_as_internal_user (e.g. security policy bots)
+  # are exempt from this prevention.
+  rule { blocked | (internal & ~can?(:_access_api_as_internal_user)) }.policy do
+    prevent :access_api
   end
 
   rule { ~can?(:access_api) }.prevent :execute_graphql_mutation
@@ -177,6 +184,8 @@ class GlobalPolicy < BasePolicy
 
   # We can't use `read_statistics` because the user may have different permissions for different projects
   rule { admin }.enable :use_project_statistics_filters
+
+  rule { admin }.enable :admin_service_accounts
 
   rule { external_user }.prevent :create_snippet
 end

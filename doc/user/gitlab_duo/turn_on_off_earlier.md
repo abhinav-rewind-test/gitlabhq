@@ -1,8 +1,8 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-title: GitLab Duo availability - earlier versions
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: Control GitLab Duo availability for earlier GitLab versions
 ---
 
 {{< details >}}
@@ -46,7 +46,7 @@ Prerequisites:
 
 To turn GitLab Duo on or off for a group or subgroup:
 
-1. On the top bar, select **Search or go to** and find your group or subgroup.
+1. In the top bar, select **Search or go to** and find your group or subgroup.
 1. Go to the settings, based on your deployment type and group level:
    - For GitLab.com top-level groups: Select **Settings** > **GitLab Duo** and select **Change configuration**.
    - For GitLab.com subgroups: Select **Settings** > **General** and expand **GitLab Duo features**.
@@ -63,9 +63,8 @@ for a group, including its subgroups and projects.
 
 > [!note]
 > In GitLab 17.7:
-> 
+>
 > - For GitLab.com, the GitLab Duo settings page is only available for top-level groups, not for subgroups.
-> 
 > - For GitLab Self-Managed, the GitLab Duo settings page is not available for groups or subgroups.
 
 Prerequisites:
@@ -74,7 +73,7 @@ Prerequisites:
 
 To turn GitLab Duo on or off for a top-level group:
 
-1. On the top bar, select **Search or go to** and find your top-level group.
+1. In the top bar, select **Search or go to** and find your top-level group.
 1. Select **Settings** > **GitLab Duo**.
 1. Select **Change configuration**.
 1. Choose an option.
@@ -89,9 +88,8 @@ for a group and its subgroups and projects.
 
 > [!note]
 > In GitLab 17.4 to 17.6:
-> 
+>
 > - For GitLab.com, the GitLab Duo settings page is only available for top-level groups, not for subgroups.
-> 
 > - For GitLab Self-Managed, the GitLab Duo settings page is not available for groups or subgroups.
 
 Prerequisites:
@@ -100,7 +98,7 @@ Prerequisites:
 
 To turn GitLab Duo on or off for a top-level group:
 
-1. On the top bar, select **Search or go to** and find your top-level group.
+1. In the top bar, select **Search or go to** and find your top-level group.
 1. Select **Settings** > **GitLab Duo**.
 1. Select **Change configuration**.
 1. Choose an option.
@@ -119,7 +117,7 @@ Prerequisites:
 
 To turn GitLab Duo on or off for a group or subgroup:
 
-1. On the top bar, select **Search or go to** and find your group or subgroup.
+1. In the top bar, select **Search or go to** and find your group or subgroup.
 1. Select **Settings** > **General**.
 1. Expand **Permissions and group features**.
 1. Select or clear the **Use GitLab Duo features** checkbox.
@@ -142,12 +140,12 @@ In GitLab 17.4 to 18.1, follow these instructions to turn GitLab Duo on or off f
 
 Prerequisites:
 
-- You must have the Owner or Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To turn GitLab Duo on or off for a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Under **GitLab Duo**, turn the toggle on or off.
 1. Select **Save changes**.
@@ -190,7 +188,7 @@ Prerequisites:
 To turn GitLab Duo on or off for an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **GitLab Duo**.
+1. In the left sidebar, select **GitLab Duo**.
 1. Select **Change configuration**.
 1. Choose an option.
 1. Select **Save changes**.
@@ -208,7 +206,7 @@ Prerequisites:
 To turn GitLab Duo on or off for an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **GitLab Duo features**.
 1. Choose an option.
 1. Select **Save changes**.
@@ -225,7 +223,7 @@ Prerequisites:
 
 To turn GitLab Duo on or off for an instance:
 
-1. On the left sidebar, at the bottom, select **Admin area**.
+1. In the left sidebar, at the bottom, select **Admin area**.
 1. Select **Settings** > **General**.
 1. Expand **AI-powered features**.
 1. Select or clear the **Use Duo features** checkbox.

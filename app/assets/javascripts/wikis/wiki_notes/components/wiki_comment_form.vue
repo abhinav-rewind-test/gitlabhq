@@ -83,6 +83,13 @@ export default {
       default: false,
     },
   },
+  emits: [
+    'cancel',
+    'creating-note:done',
+    'creating-note:failed',
+    'creating-note:start',
+    'creating-note:success',
+  ],
   data() {
     return {
       errors: [],
@@ -127,6 +134,7 @@ export default {
     },
     autosaveKeyInternalNote() {
       if (this.userSignedId) {
+        // eslint-disable-next-line @gitlab/no-hardcoded-urls -- local storage key, not a URL
         return getAutosaveKey(this.noteableType, `${this.noteId}/InternalNote`);
       }
 

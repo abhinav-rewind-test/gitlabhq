@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Web terminals (deprecated)
 description: Information about Web terminals.
 ---
@@ -126,5 +126,6 @@ Prerequisites:
 To limit the terminal session lifetime in your GitLab instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Web terminal**.
+1. In the left sidebar, select **Settings** > **General**.
+1. Expand **Web terminal**.
 1. Set a `max session time`.

@@ -24,6 +24,7 @@ module Gitlab
           auto_rollback_deployment: { threshold: 1, interval: 3.minutes },
           autocomplete_users: { threshold: -> { application_settings.autocomplete_users_limit }, interval: 1.minute },
           autocomplete_users_unauthenticated: { threshold: -> { application_settings.autocomplete_users_unauthenticated_limit }, interval: 1.minute },
+          bitbucket_server_import: { threshold: 6, interval: 1.minute },
           bulk_delete_todos: { threshold: 6, interval: 1.minute },
           bulk_import: { threshold: 6, interval: 1.minute },
           ci_job_processed_subscription: { threshold: 50, interval: 1.minute },
@@ -40,6 +41,7 @@ module Gitlab
           fetch_google_ip_list: { threshold: 10, interval: 1.minute },
           github_import: { threshold: 6, interval: 1.minute },
           fogbugz_import: { threshold: 1, interval: 1.minute },
+          geo_proxy: { threshold: 60, interval: 1.minute },
           gitea_import: { threshold: 6, interval: 1.minute },
           gitlab_shell_operation: { threshold: application_settings.gitlab_shell_operation_limit, interval: 1.minute },
           glql: { threshold: 1, interval: 15.minutes },
@@ -62,6 +64,7 @@ module Gitlab
           notification_emails: { threshold: 1000, interval: 1.day },
           oauth_dynamic_registration: { threshold: 5, interval: 1.hour },
           offline_export: { threshold: 6, interval: 1.minute },
+          offline_import: { threshold: 6, interval: 1.minute },
           permanent_email_failure: { threshold: 5, interval: 1.day },
           phone_verification_send_code: { threshold: 5, interval: 1.day },
           phone_verification_verify_code: { threshold: 5, interval: 1.day },
@@ -88,12 +91,15 @@ module Gitlab
             threshold: -> { application_settings.projects_api_rate_limit_unauthenticated }, interval: 10.minutes
           },
           raw_blob: { threshold: -> { application_settings.raw_blob_request_limit }, interval: 1.minute },
+          raw_blob_unauthenticated: { threshold: -> { application_settings.raw_blob_request_limit_unauthenticated }, interval: 1.minute },
           runner_jobs_request_api: { threshold: -> { application_settings.runner_jobs_request_api_limit }, interval: 1.minute },
           runner_jobs_patch_trace_api: { threshold: -> { application_settings.runner_jobs_patch_trace_api_limit }, interval: 1.minute },
           runner_jobs_api: { threshold: -> { application_settings.runner_jobs_endpoints_api_limit }, interval: 1.minute },
           search_rate_limit: { threshold: -> { application_settings.search_rate_limit }, interval: 1.minute },
           search_rate_limit_unauthenticated: { threshold: -> { application_settings.search_rate_limit_unauthenticated }, interval: 1.minute },
+          service_account_creation: { threshold: 10, interval: 1.minute },
           temporary_email_failure: { threshold: 300, interval: 1.day },
+          token_exchange: { threshold: 60, interval: 1.minute },
           update_environment_canary_ingress: { threshold: 1, interval: 1.minute },
           update_namespace_name: { threshold: -> { application_settings.update_namespace_name_rate_limit }, interval: 1.hour },
           user_large_commit_request: { threshold: 3, interval: 30.seconds },
@@ -111,7 +117,6 @@ module Gitlab
           user_status: { threshold: -> { application_settings.users_api_limit_status }, interval: 1.minute },
           username_exists: { threshold: 20, interval: 1.minute },
           users_get_by_id: { threshold: -> { application_settings.users_get_by_id_limit }, interval: 10.minutes },
-          vertex_embeddings_api: { threshold: 450, interval: 1.minute },
           web_hook_calls: { interval: 1.minute },
           web_hook_calls_low: { interval: 1.minute },
           web_hook_calls_mid: { interval: 1.minute },
@@ -274,6 +279,17 @@ module Gitlab
         rate_limit_value(value)
       end
 
+      # Returns the threshold value for a given rate limit key, resolving any
+      # Proc against the current application settings.
+      #
+      # @param key [Symbol] Key attribute registered in `.rate_limits`
+      # @return [Integer] The resolved threshold; 0 when the key disables itself.
+      def threshold(key)
+        value = rate_limit_value_by_key(key, :threshold)
+
+        rate_limit_value(value)
+      end
+
       private
 
       def _throttled?(key, scope:, strategy:, threshold: nil, interval: nil, users_allowlist: nil, peek: false)
@@ -282,13 +298,45 @@ module Gitlab
         return false if scoped_user_in_allowlist?(scope, users_allowlist)
 
         threshold_value = threshold || threshold(key)
-
         return false if threshold_value == 0
 
         interval_value = interval || interval(key)
-
         return false if interval_value == 0
 
+        labkit_decision = dispatch_to_labkit(
+          key,
+          scope: scope,
+          strategy: strategy,
+          peek: peek,
+          threshold: threshold,
+          interval: interval
+        )
+
+        return labkit_decision if !labkit_decision.nil? && LabkitAdapter.enforce?(key)
+
+        legacy_decision = legacy_throttled?(
+          key,
+          scope: scope,
+          strategy: strategy,
+          peek: peek,
+          threshold_value: threshold_value,
+          interval_value: interval_value
+        )
+
+        unless labkit_decision.nil?
+          LabkitAdapter.record_divergence(key, labkit_decision, legacy_decision,
+            interval_seconds: interval_value)
+        end
+
+        legacy_decision
+      end
+
+      # Computes the throttle decision via the legacy Redis counter shape
+      # (application_rate_limiter:<key>:<scope>:<period_key>). Increments
+      # the counter unless +peek+, then compares against +threshold_value+.
+      # Returns false when the counter is missing (peek with no prior
+      # increment) so callers treat "no counter" as "not throttled".
+      def legacy_throttled?(key, scope:, strategy:, peek:, threshold_value:, interval_value:)
         # `period_key` is based on the current time and interval so when time passes to the next interval
         # the key changes and the rate limit count starts again from 0.
         # Based on https://github.com/rack/rack-attack/blob/886ba3a18d13c6484cd511a4dc9b76c0d14e5e96/lib/rack/attack/cache.rb#L63-L68
@@ -300,7 +348,6 @@ module Gitlab
                 else
                   # We add a 1 second buffer to avoid timing issues when we're at the end of a period
                   expiry = interval_value - time_elapsed_in_period + 1
-
                   strategy.increment(cache_key, expiry)
                 end
 
@@ -311,10 +358,40 @@ module Gitlab
         value > threshold_value
       end
 
-      def threshold(key)
-        value = rate_limit_value_by_key(key, :threshold)
+      # Routes a check through the labkit adapter when applicable, returning
+      # labkit's boolean decision or nil if the adapter does not handle this
+      # call. Plain IncrementPerAction maps to labkit's INCR-mode rules;
+      # IncrementPerActionedResource maps to labkit's count_distinct (SADD)
+      # rules with +resource_id+ as the SET member. IncrementResourceUsagePerAction
+      # stays on the legacy path. Peek dispatches to a read-only Redis
+      # round-trip so the labkit counter only advances via paired non-peek
+      # call sites.
+      def dispatch_to_labkit(key, scope:, strategy:, peek:, threshold:, interval:)
+        resource_id = nil
+        case strategy
+        when IncrementPerAction
+          # INCR-mode strategy maps to any non-count_distinct labkit rule.
+        when IncrementPerActionedResource
+          # SADD/SCARD-mode strategy is only equivalent to a count_distinct
+          # labkit rule. For INCR-mode keys called with a resource (e.g. an
+          # ad-hoc test call to a cohort 1-3 key with resource:) the labkit
+          # counter would diverge silently from legacy, so stay on legacy.
+          return unless LabkitAdapter.set_mode?(key)
 
-        rate_limit_value(value)
+          resource_id = strategy.resource_key
+        else
+          return
+        end
+
+        context = { resource_id: resource_id, threshold: threshold, interval: interval }
+
+        return unless LabkitAdapter.shadow_or_enforce?(key, context: context)
+
+        if peek
+          LabkitAdapter.run_peek!(key, scope: scope, context: context)
+        else
+          LabkitAdapter.run!(key, scope: scope, context: context)
+        end
       end
 
       def rate_limit_value(value)

@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Compliance frameworks report
 ---
 
@@ -32,20 +32,20 @@ The default framework for the group has a **default** badge.
 
 To view the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 
 ## Create a new compliance framework
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To create a new compliance framework from the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 1. Select the **New framework**.
 1. Select **Create blank framework**.
@@ -55,12 +55,12 @@ To create a new compliance framework from the compliance frameworks report:
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To edit a compliance framework from the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 1. Hover over framework and select **Edit the framework**.
 1. Select the **Save changes** to edit compliance framework.
@@ -69,12 +69,12 @@ To edit a compliance framework from the compliance frameworks report:
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To delete a compliance framework from the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 1. Hover over framework and select **Edit the framework**.
 1. Select the **Delete framework** to delete compliance framework.
@@ -89,20 +89,20 @@ To delete a compliance framework from the compliance frameworks report:
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To set a compliance framework as [default](../compliance_frameworks/_index.md#default-compliance-frameworks)] from the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 1. Next to the compliance framework you want to set as default, select {{< icon name="pencil" >}} action.
 1. Select the **Set as default** to set as default.
 
 To remove a compliance framework as default from the compliance frameworks report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Frameworks** tab.
 1. Next to the compliance framework that is default, select {{< icon name="pencil" >}} action.
 1. Select the **Remove as default** to remove as default.
@@ -120,12 +120,12 @@ Exports the contents of a compliance frameworks report in a group. Reports are t
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To export the standards adherence report for projects in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. In the upper-right corner, select **Export**.
 1. Select **Export framework report**.
 

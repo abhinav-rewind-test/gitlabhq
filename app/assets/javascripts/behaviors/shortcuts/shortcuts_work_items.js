@@ -2,6 +2,7 @@ import ClipboardJS from 'clipboard';
 import toast from '~/vue_shared/plugins/global_toast';
 import { s__ } from '~/locale';
 import { DEBOUNCE_DROPDOWN_DELAY } from '~/sidebar/components/labels/labels_select_widget/constants';
+import { suppressShortcutsUntilInputFocus } from '~/lib/mousetrap';
 import {
   ISSUE_MR_CHANGE_ASSIGNEE,
   ISSUE_MR_CHANGE_MILESTONE,
@@ -53,10 +54,11 @@ export default class ShortcutsWorkItem {
   }
 
   static openSidebarDropdown(selector) {
+    suppressShortcutsUntilInputFocus();
     setTimeout(() => {
       const shortcutSelector = `.${selector} .shortcut-sidebar-dropdown-toggle`;
       const editBtn =
-        document.querySelector(`.work-item-drawer ${shortcutSelector}`) ||
+        document.querySelector(`.work-item-detail-panel ${shortcutSelector}`) ||
         document.querySelector(`.modal ${shortcutSelector}`) ||
         document.querySelector(shortcutSelector);
       editBtn?.click();
@@ -69,7 +71,7 @@ export default class ShortcutsWorkItem {
     // on merge request, editing is on a different page
     const editDescriptionSelector = '.shortcut-edit-wi-description';
     const editButton =
-      document.querySelector(`.work-item-drawer ${editDescriptionSelector}`) ||
+      document.querySelector(`.work-item-detail-panel ${editDescriptionSelector}`) ||
       document.querySelector(`.modal ${editDescriptionSelector}`) ||
       document.querySelector(editDescriptionSelector);
 
@@ -90,7 +92,7 @@ export default class ShortcutsWorkItem {
   async copyReference() {
     const refSelector = '.shortcut-copy-reference';
     const refButton =
-      document.querySelector(`.work-item-drawer ${refSelector}`) ||
+      document.querySelector(`.work-item-detail-panel ${refSelector}`) ||
       document.querySelector(`.modal ${refSelector}`) ||
       document.querySelector(refSelector);
     const copiedRef = refButton?.dataset.clipboardText;

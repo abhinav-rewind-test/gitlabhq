@@ -54,7 +54,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         let(:token) { 'invalid token' }
 
         it "returns an Unauthorized exception" do
-          expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+          expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
           expect(@current_authenticated_job).to be_nil
         end
       end
@@ -63,10 +63,10 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         let(:token) { job.token }
 
         it 'return user' do
-          expect(subject).to eq(user)
+          expect(auth_subject).to eq(user)
           expect(@current_authenticated_job).to eq job
-          expect(subject).to be_from_ci_job_token
-          expect(subject.ci_job_token_scope.current_project).to eq(job.project)
+          expect(auth_subject).to be_from_ci_job_token
+          expect(auth_subject.ci_job_token_scope.current_project).to eq(job.project)
         end
       end
 
@@ -74,7 +74,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         let(:token) { failed_job.token }
 
         it 'returns an Unauthorized exception' do
-          expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+          expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
           expect(@current_authenticated_job).to be_nil
         end
       end
@@ -83,7 +83,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         let(:token) { [job.token, 'invalid token'] }
 
         it "returns an Unauthorized exception" do
-          expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+          expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
           expect(@current_authenticated_job).to be_nil
         end
       end
@@ -98,15 +98,15 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         case without_job_token_allowed
         when :error
           it 'returns an Unauthorized exception' do
-            expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+            expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
             expect(@current_authenticated_job).to be_nil
           end
         when :user
           it 'returns the user' do
-            expect(subject).to eq(user)
+            expect(auth_subject).to eq(user)
             expect(@current_authenticated_job).to eq job
-            expect(subject).to be_from_ci_job_token
-            expect(subject.ci_job_token_scope.current_project).to eq(job.project)
+            expect(auth_subject).to be_from_ci_job_token
+            expect(auth_subject.ci_job_token_scope.current_project).to eq(job.project)
           end
         else
           it 'returns nil' do
@@ -121,7 +121,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   shared_examples 'rejects tokens that are too large' do
     let(:token) { 'x' * (described_class::MAX_JOB_TOKEN_SIZE_BYTES + 1) }
 
-    it { expect { subject }.to raise_error Gitlab::Auth::InvalidTokenError, 'Token exceeds maximum size' }
+    it { expect { auth_subject }.to raise_error Gitlab::Auth::InvalidTokenError, 'Token exceeds maximum size' }
   end
 
   shared_examples 'composite identity authentication' do
@@ -147,11 +147,11 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       context 'when the token resource owner has composite_identity_enforced' do
         context 'when linked composite identity is available' do
           it 'returns the scoped user' do
-            expect(subject).to eq(scoped_user)
+            expect(auth_subject).to eq(scoped_user)
           end
 
           it 'sets the scoped user to composite_identity_enforced' do
-            expect(subject.composite_identity_enforced?).to be(true)
+            expect(auth_subject.composite_identity_enforced?).to be(true)
           end
         end
 
@@ -161,7 +161,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           end
 
           it 'raises an error' do
-            expect { subject }.to raise_error(::Gitlab::Auth::UnauthorizedError)
+            expect { auth_subject }.to raise_error(::Gitlab::Auth::UnauthorizedError)
           end
         end
       end
@@ -172,13 +172,22 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         end
 
         it 'returns the resource owner user' do
-          expect(subject).to eq(primary_user)
+          expect(auth_subject).to eq(primary_user)
         end
 
         it 'does not set the user to composite_identity_enforced' do
-          expect(subject.composite_identity_enforced?).to be(false)
+          expect(auth_subject.composite_identity_enforced?).to be(false)
         end
       end
+    end
+  end
+
+  describe 'BEARER_PATTERN' do
+    it 'matches Bearer prefix case-insensitively' do
+      expect(described_class::BEARER_PATTERN).to match('Bearer token')
+      expect(described_class::BEARER_PATTERN).to match('bearer token')
+      expect(described_class::BEARER_PATTERN).to match('BEARER token')
+      expect(described_class::BEARER_PATTERN).not_to match('token')
     end
   end
 
@@ -186,9 +195,9 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
     context 'with composite CI_JOB_TOKEN (JWT)', :request_store do
       let_it_be(:scoped_user) { create(:user) }
       let_it_be(:service_account) { create(:user, :service_account, composite_identity_enforced: true) }
-      let_it_be(:project, reload: true) { create(:project, :private, developers: scoped_user) }
-      let_it_be(:pipeline, reload: true) { create(:ci_pipeline, project: project, user: service_account) }
-      let_it_be(:job, reload: true) do
+      let_it_be_with_reload(:project) { create(:project, :private, developers: scoped_user) }
+      let_it_be_with_reload(:pipeline) { create(:ci_pipeline, project: project, user: service_account) }
+      let_it_be_with_reload(:job) do
         create(:ci_build, :running, pipeline: pipeline, project: project, user: service_account, options: { scoped_user_id: scoped_user.id })
       end
 
@@ -208,7 +217,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       end
     end
 
-    subject { find_user_from_bearer_token }
+    subject(:auth_subject) { find_user_from_bearer_token }
 
     context 'when the token is passed as an oauth token' do
       before do
@@ -507,7 +516,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
     let_it_be(:deploy_token, freeze: true) { create(:deploy_token) }
     let_it_be(:route_authentication_setting) { { deploy_token_allowed: true } }
 
-    subject { deploy_token_from_request }
+    subject(:auth_subject) { deploy_token_from_request }
 
     it { is_expected.to be_nil }
 
@@ -622,6 +631,19 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       end
     end
 
+    context 'when PAT with glpat- prefix is provided' do
+      before do
+        set_header('SCRIPT_NAME', '/api/endpoint')
+        set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
+      end
+
+      it 'returns user without performing OAuth token lookup' do
+        expect(self).not_to receive(:find_oauth_access_token)
+
+        expect(find_user_from_access_token).to eq(user)
+      end
+    end
+
     context 'with OAuth headers' do
       context 'with valid personal access token' do
         before do
@@ -650,14 +672,14 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           set_bearer_token(personal_access_token.token)
         end
 
-        it 'returns user' do
+        it 'returns user after OAuth lookup fails and falls back to PAT lookup' do
           expect(find_user_from_access_token).to eq user
         end
       end
     end
 
     it_behaves_like 'composite identity authentication' do
-      subject { find_user_from_access_token }
+      subject(:auth_subject) { find_user_from_access_token }
     end
 
     context 'automatic reuse detection' do
@@ -828,6 +850,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
 
           before do
             stub_feature_flags(iam_svc_oauth: user)
+            set_header(described_class::PRIVATE_TOKEN_HEADER, nil)
             set_bearer_token(iam_jwt_token)
             set_header('SCRIPT_NAME', '/api/endpoint')
           end
@@ -846,7 +869,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
     end
 
     it_behaves_like 'composite identity authentication' do
-      subject { find_user_from_web_access_token(:api) }
+      subject(:auth_subject) { find_user_from_web_access_token(:api) }
 
       before do
         set_header('SCRIPT_NAME', '/api/endpoint')
@@ -1012,7 +1035,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
 
       context 'when IAM service is disabled' do
         before do
-          allow(Gitlab.config.authn.iam_service).to receive(:enabled).and_return(false)
+          allow(Authn::IamAuthService).to receive(:enabled?).and_return(false)
         end
 
         it 'raises UnauthorizedError' do
@@ -1129,9 +1152,9 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
     context 'with composite CI_JOB_TOKEN over basic auth', :request_store do
       let_it_be(:scoped_user) { create(:user) }
       let_it_be(:service_account) { create(:user, :service_account, composite_identity_enforced: true) }
-      let_it_be(:project, reload: true) { create(:project, :private, developers: scoped_user) }
-      let_it_be(:pipeline, reload: true) { create(:ci_pipeline, project: project, user: service_account) }
-      let_it_be(:job, reload: true) do
+      let_it_be_with_reload(:project) { create(:project, :private, developers: scoped_user) }
+      let_it_be_with_reload(:pipeline) { create(:ci_pipeline, project: project, user: service_account) }
+      let_it_be_with_reload(:job) do
         create(:ci_build, :running, pipeline: pipeline, project: project, user: service_account, options: { scoped_user_id: scoped_user.id })
       end
 
@@ -1144,7 +1167,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       end
     end
 
-    subject { find_user_from_job_token_basic_auth }
+    subject(:auth_subject) { find_user_from_job_token_basic_auth }
 
     context 'when the request does not have AUTHORIZATION header' do
       it { is_expected.to be_nil }
@@ -1188,7 +1211,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   end
 
   describe '#find_user_from_basic_auth_password' do
-    subject { find_user_from_basic_auth_password }
+    subject(:auth_subject) { find_user_from_basic_auth_password }
 
     context 'when the request does not have AUTHORIZATION header' do
       it { is_expected.to be_nil }
@@ -1232,7 +1255,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   end
 
   describe '#find_user_from_lfs_token' do
-    subject { find_user_from_lfs_token }
+    subject(:auth_subject) { find_user_from_lfs_token }
 
     context 'when the request does not have AUTHORIZATION header' do
       it { is_expected.to be_nil }
@@ -1288,7 +1311,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   end
 
   describe '#find_user_from_personal_access_token' do
-    subject { find_user_from_personal_access_token }
+    subject(:auth_subject) { find_user_from_personal_access_token }
 
     it 'returns nil without access token' do
       allow_any_instance_of(described_class).to receive(:access_token).and_return(nil)
@@ -1308,12 +1331,12 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       allow_any_instance_of(described_class).to receive(:access_token).and_return(personal_access_token)
       allow_any_instance_of(PersonalAccessToken).to receive(:user).and_return(nil)
 
-      expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+      expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
     end
   end
 
   describe '#validate_access_token!' do
-    subject { validate_and_save_access_token! }
+    subject(:auth_subject) { validate_and_save_access_token! }
 
     context 'with a job token' do
       let(:route_authentication_setting) { { job_token_allowed: true } }
@@ -1324,7 +1347,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       end
 
       it 'does not raise an error' do
-        expect { subject }.not_to raise_error
+        expect { auth_subject }.not_to raise_error
       end
     end
 
@@ -1340,12 +1363,47 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
       end
 
       it 'saves the token info in the environment' do
-        subject
+        auth_subject
 
         expect(::Current.token_info).not_to be_nil
       end
 
+      it 'includes auth_header_type in token info' do
+        set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
+
+        auth_subject
+
+        expect(::Current.token_info[:auth_header_type]).to eq('private_token_header')
+      end
+
+      context 'when a previous failed validation left auth failure context' do
+        before do
+          set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
+        end
+
+        it 'clears auth failure context on successful validation', :aggregate_failures do
+          # Simulate a prior failed auth attempt (e.g. wrong scope) that set auth failure context
+          expect { validate_and_save_access_token!(scopes: [:sudo]) }
+            .to raise_error(Gitlab::Auth::InsufficientScopeError)
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_reason']).to eq('insufficient_scope')
+
+          validate_and_save_access_token!
+
+          expect(Gitlab::ApplicationContext.current).not_to include(
+            'meta.auth_fail_reason',
+            'meta.auth_fail_token_id',
+            'meta.auth_fail_requested_scopes',
+            'meta.auth_fail_token_type',
+            'meta.auth_fail_auth_header_type'
+          )
+        end
+      end
+
       context 'when the token is not valid' do
+        before do
+          set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
+        end
+
         it 'returns Gitlab::Auth::ExpiredError if token expired', :aggregate_failures do
           personal_access_token.update!(expires_at: 1.day.ago)
 
@@ -1355,6 +1413,8 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{personal_access_token.id}")
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_requested_scopes']).to eq("api read_api")
           expect(Gitlab::ApplicationContext.current['meta.user']).to eq(user.username)
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_type']).to eq('PersonalAccessToken')
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_auth_header_type']).to eq('private_token_header')
         end
 
         it 'returns Gitlab::Auth::RevokedError if token revoked', :aggregate_failures do
@@ -1366,6 +1426,8 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{personal_access_token.id}")
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_requested_scopes']).to be_nil
           expect(Gitlab::ApplicationContext.current['meta.user']).to eq(user.username)
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_type']).to eq('PersonalAccessToken')
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_auth_header_type']).to eq('private_token_header')
         end
 
         it 'returns Gitlab::Auth::InsufficientScopeError if invalid token scope', :aggregate_failures do
@@ -1375,6 +1437,30 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{personal_access_token.id}")
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_requested_scopes']).to eq('sudo')
           expect(Gitlab::ApplicationContext.current['meta.user']).to eq(user.username)
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_type']).to eq('PersonalAccessToken')
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_auth_header_type']).to eq('private_token_header')
+        end
+
+        context 'when token in header has CI job token prefix' do
+          before do
+            set_header(described_class::PRIVATE_TOKEN_HEADER, "#{Ci::Build::TOKEN_PREFIX}random_string")
+          end
+
+          it 'logs CiJobToken as auth_fail_token_type', :aggregate_failures do
+            expect { validate_and_save_access_token!(scopes: [:sudo]) }.to raise_error(Gitlab::Auth::InsufficientScopeError)
+            expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_type']).to eq('CiJobToken')
+          end
+        end
+
+        context 'when token is not delivered via standard auth headers' do
+          before do
+            set_header(described_class::PRIVATE_TOKEN_HEADER, nil)
+          end
+
+          it 'logs other as auth_fail_auth_header_type', :aggregate_failures do
+            expect { validate_and_save_access_token!(scopes: [:sudo]) }.to raise_error(Gitlab::Auth::InsufficientScopeError)
+            expect(Gitlab::ApplicationContext.current['meta.auth_fail_auth_header_type']).to eq('other')
+          end
         end
       end
     end
@@ -1386,6 +1472,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         before do
           stub_config_setting(impersonation_enabled: false)
           allow_any_instance_of(described_class).to receive(:access_token).and_return(personal_access_token)
+          set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
         end
 
         it 'returns Gitlab::Auth::ImpersonationDisabled' do
@@ -1394,6 +1481,8 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{personal_access_token.id}")
           expect(Gitlab::ApplicationContext.current['meta.auth_fail_requested_scopes']).to be_nil
           expect(Gitlab::ApplicationContext.current['meta.user']).to eq(user.username)
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_token_type']).to eq('PersonalAccessToken')
+          expect(Gitlab::ApplicationContext.current['meta.auth_fail_auth_header_type']).to eq('private_token_header')
         end
       end
     end
@@ -1492,7 +1581,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   describe '#find_job_from_job_token' do
     let(:token) { job.token }
 
-    subject { find_job_from_job_token }
+    subject(:auth_subject) { find_job_from_job_token }
 
     shared_examples "job from token" do
       it { is_expected.to eq(job) }
@@ -1501,7 +1590,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         let(:token) { failed_job.token }
 
         it 'raises UnauthorizedError' do
-          expect { subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
+          expect { auth_subject }.to raise_error(Gitlab::Auth::UnauthorizedError)
         end
       end
     end
@@ -1556,7 +1645,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   describe '#find_user_from_job_token' do
     let(:token) { job.token }
 
-    subject { find_user_from_job_token }
+    subject(:auth_subject) { find_user_from_job_token }
 
     shared_examples 'finds user when job token allowed' do
       context 'when the token is in the headers' do
@@ -1678,7 +1767,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   describe '#cluster_agent_token_from_authorization_token' do
     let_it_be_with_reload(:agent_token) { create(:cluster_agent_token) }
 
-    subject { cluster_agent_token_from_authorization_token }
+    subject(:auth_subject) { cluster_agent_token_from_authorization_token }
 
     context 'when route_setting is empty' do
       it { is_expected.to be_nil }
@@ -1772,7 +1861,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
   end
 
   describe '#authentication_token_present?' do
-    subject { authentication_token_present? }
+    subject(:auth_subject) { authentication_token_present? }
 
     context 'no auth header/param/oauth' do
       before do
@@ -1820,7 +1909,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         it 'returns true' do
           set_param(:private_token, 'invalid')
 
-          expect(subject).to be(true)
+          expect(auth_subject).to be(true)
         end
       end
 
@@ -1828,7 +1917,7 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         it 'returns true' do
           set_param(:job_token, 'invalid')
 
-          expect(subject).to be(true)
+          expect(auth_subject).to be(true)
         end
       end
 
@@ -1836,9 +1925,44 @@ RSpec.describe Gitlab::Auth::AuthFinders, feature_category: :system_access do
         it 'returns true' do
           set_param(:token, 'invalid')
 
-          expect(subject).to be(true)
+          expect(auth_subject).to be(true)
         end
       end
+    end
+  end
+
+  describe '#pat_prefix_token?' do
+    subject(:auth_subject) { pat_prefix_token? }
+
+    context 'when token has glpat- prefix' do
+      before do
+        set_header(described_class::PRIVATE_TOKEN_HEADER, personal_access_token.token)
+      end
+
+      it { is_expected.to be(true) }
+    end
+
+    context 'when token has custom PAT prefix' do
+      let(:custom_prefix) { 'myorg-pat-' }
+
+      before do
+        stub_application_setting(personal_access_token_prefix: custom_prefix)
+        set_header(described_class::PRIVATE_TOKEN_HEADER, "#{custom_prefix}abc123")
+      end
+
+      it { is_expected.to be(true) }
+    end
+
+    context 'when token does not have glpat- prefix' do
+      before do
+        set_bearer_token('some_oauth_token_without_prefix')
+      end
+
+      it { is_expected.to be(false) }
+    end
+
+    context 'when no token is present' do
+      it { is_expected.to be(false) }
     end
   end
 end

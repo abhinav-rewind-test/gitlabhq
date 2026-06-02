@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure snippets settings for your GitLab instance.
 title: Snippets
 ---
@@ -57,7 +57,7 @@ curl --request PUT \
   --url "https://gitlab.example.com/api/v4/application/settings?snippet_size_limit=52428800"
 ```
 
-To [retrieve the current value](../../api/settings.md#get-details-on-current-application-settings)
+To [retrieve the current value](../../api/settings.md#retrieve-details-on-current-application-settings)
 from the API:
 
 ```shell

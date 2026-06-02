@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Composition Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Multi-container scanning
 description: Image vulnerability scanning, configuration, customization, and reporting.
 ---
@@ -39,15 +39,16 @@ Multi-container scanning supports:
 - Images from private registries (with authentication configured)
 - Multi-architecture images
 
-## Enable multi-container scanning
+## Turn on multi-container scanning
 
 Prerequisites:
 
+- The Developer, Maintainer, or Owner role for the project.
 - GitLab Runner with Docker executor.
 - A `.gitlab-multi-image.yml` configuration file in your repository root.
 - At least one container image to scan.
 
-To enable multi-container scanning:
+To turn on multi-container scanning:
 
 1. Create a `.gitlab-multi-image.yml` file in your repository root:
 
@@ -201,9 +202,15 @@ variables:
 
 ## View scan results
 
-After the pipeline completes:
+Prerequisites:
 
-1. On the top bar, select **Search or go to** and find your project.
+- The Developer, Maintainer, or Owner role for the project.
+- Multi-container scanning turned on for the project.
+- A pipeline has completed with container scanning results.
+
+To view scan results:
+
+1. In the top bar, select **Search or go to** and find your project.
 1. Go to your merge request or pipeline details page.
 1. Select the **Security** tab.
 1. View detected vulnerabilities from all scanned images.

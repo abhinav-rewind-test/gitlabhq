@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Connect AI tools to your GitLab instance with the GitLab MCP server.
 title: GitLab MCP server
 ---
@@ -50,8 +50,12 @@ For a click-through demo, see [GitLab Duo Agent Platform - GitLab MCP server](ht
 
 ## Prerequisites
 
-- Have [GitLab Duo Core](../../gitlab_duo/turn_on_off.md#turn-gitlab-duo-core-on-or-off) and
-  [beta and experimental features](../../gitlab_duo/turn_on_off.md#turn-on-beta-and-experimental-features) turned on.
+- Have GitLab Duo turned on:
+  - On GitLab.com, [for the top-level group](../../duo_agent_platform/turn_on_off.md#for-a-top-level-group).
+  - On GitLab Self-Managed and GitLab Dedicated, [for the instance](../../duo_agent_platform/turn_on_off.md#for-an-instance).
+- Have beta and experimental features turned on:
+  - On GitLab.com, [for the top-level group](../../duo_agent_platform/turn_on_off.md#on-gitlabcom-2).
+  - On GitLab Self-Managed and GitLab Dedicated, [for the instance](../../duo_agent_platform/turn_on_off.md#on-gitlab-self-managed-2).
 
 ## Connect a client to the GitLab MCP server
 
@@ -68,6 +72,7 @@ and provide different methods to configure the GitLab MCP server settings.
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/577575) in GitLab 18.6.
+- Tool prefixing [added](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230406) in GitLab 18.11.
 
 {{< /history >}}
 
@@ -83,6 +88,27 @@ To configure the GitLab MCP server by using HTTP transport, use this format:
     "GitLab": {
       "type": "http",
       "url": "https://<gitlab.example.com>/api/v4/mcp"
+    }
+  }
+}
+```
+
+You can add a prefix to tool names by configuring an
+`X-Gitlab-Mcp-Server-Tool-Name-Prefix` HTTP header.
+Prefixing can help you avoid tool name conflicts with other MCP servers
+or with multiple GitLab instances in your configuration.
+
+The prefix is truncated to the first 32 characters if it exceeds this limit.
+
+```json
+{
+  "mcpServers": {
+    "GitLab": {
+      "type": "http",
+      "url": "https://<gitlab.example.com>/api/v4/mcp",
+      "headers": {
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix": "gitlab_"
+      }
     }
   }
 }
@@ -333,6 +359,40 @@ You can now start a new chat and ask a question depending on the [available tool
 > You're responsible for guarding against prompt injection when you use these tools.
 > Exercise extreme caution or use MCP tools only on GitLab objects you trust.
 
+## Connect Kiro IDE and CLI to the GitLab MCP server
+
+Kiro IDE and CLI use HTTP transport for direct connection without additional dependencies.
+To configure the GitLab MCP server in Kiro IDE or CLI:
+
+1. Edit `~/.kiro/settings/mcp.json` and add the GitLab MCP server.
+   - Replace `<gitlab.example.com>` with:
+     - On GitLab Self-Managed, your GitLab instance URL.
+     - On GitLab.com, `gitlab.com`.
+
+   ```json
+   {
+     "mcpServers": {
+       "GitLab": {
+         "type": "http",
+         "url": "https://<gitlab.example.com>/api/v4/mcp"
+       }
+     }
+   }
+   ```
+
+1. Save the configuration.
+
+   The OAuth authorization page should appear.
+   Otherwise, open Kiro CLI and run the `/mcp` command.
+
+1. In your browser, review and approve the authorization request.
+
+You can now start a new chat and ask a question depending on the [available tools](mcp_server_tools.md).
+
+> [!warning]
+> You're responsible for guarding against prompt injection when you use these tools.
+> Exercise extreme caution or use MCP tools only on GitLab objects you trust.
+
 ## Connect OpenAI Codex to the GitLab MCP server
 
 OpenAI Codex uses HTTP transport for direct connection without additional dependencies.
@@ -343,9 +403,9 @@ To configure the GitLab MCP server in OpenAI Codex:
      - On GitLab Self-Managed, your GitLab instance URL.
      - On GitLab.com, `gitlab.com`.
 
-  ```shell
-  codex mcp add --url "https://<gitlab.example.com>/api/v4/mcp" GitLab
-  ```
+   ```shell
+   codex mcp add --url "https://<gitlab.example.com>/api/v4/mcp" GitLab
+   ```
 
 1. Edit `~/.codex/config.toml` and, in the `[features]` section,
    enable the `rmcp_client` feature flag.
@@ -417,3 +477,7 @@ You can now start a new chat and ask a question depending on the [available tool
 > [!warning]
 > You're responsible for guarding against prompt injection when you use these tools.
 > Exercise extreme caution or use MCP tools only on GitLab objects you trust.
+
+## Related topics
+
+- [MCP servers in the AI Catalog](ai_catalog_mcp_servers.md)

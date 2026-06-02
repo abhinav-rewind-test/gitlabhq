@@ -177,26 +177,40 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
           expect(pipeline_metadata.project_id).to eq(pipeline.project_id)
         end
 
-        it 'preserves work_item_type for all issues (legacy with issue_type and new with work_item_type)',
+        it 'preserves work_item_type for all issues across legacy and new export formats',
           :aggregate_failures do
-          task_issue1 = Issue.find_by(title: 'task by issue_type')
-          task_issue2 = Issue.find_by(title: 'task by both attributes')
+          task_issue_by_issue_type = Issue.find_by(title: 'task by issue_type')
+          task_issue_by_both = Issue.find_by(title: 'task by both attributes')
           incident_issue = Issue.find_by(title: 'incident by work_item_type')
           issue_with_invalid_type = Issue.find_by(title: 'invalid issue type')
+          task_issue_by_name = Issue.find_by(title: 'task by name')
+          unknown_issue_by_name = Issue.find_by(title: 'unknown type by name')
+
           issue_type = build(:work_item_system_defined_type, :issue)
           task_type = build(:work_item_system_defined_type, :task)
           incident_type = build(:work_item_system_defined_type, :incident)
 
-          expect(task_issue1.work_item_type_id).to eq(task_type.id)
-          expect(task_issue2.work_item_type_id).to eq(task_type.id)
+          expect(task_issue_by_issue_type.work_item_type_id).to eq(task_type.id)
+          expect(task_issue_by_both.work_item_type_id).to eq(task_type.id)
           expect(incident_issue.work_item_type_id).to eq(incident_type.id)
           expect(issue_with_invalid_type.work_item_type_id).to eq(issue_type.id)
+          expect(task_issue_by_name.work_item_type_id).to eq(task_type.id)
+          expect(unknown_issue_by_name.work_item_type_id).to eq(issue_type.id)
 
-          other_issue_types = Issue.where.not(
-            id: [task_issue1.id, task_issue2.id, incident_issue.id, issue_with_invalid_type]
-          ).pluck(:work_item_type_id)
+          known_issue_ids = [
+            task_issue_by_issue_type.id, task_issue_by_both.id, incident_issue.id,
+            issue_with_invalid_type.id, task_issue_by_name.id, unknown_issue_by_name.id
+          ]
+          other_issue_types = Issue.where.not(id: known_issue_ids).pluck(:work_item_type_id)
 
           expect(other_issue_types).to all(eq(issue_type.id))
+        end
+
+        it 'tags issues with unresolvable work item type names with the missing type label' do
+          unknown_issue_by_name = Issue.find_by(title: 'unknown type by name')
+
+          expect(unknown_issue_by_name.labels.map(&:title))
+            .to include("#{_('imported')}:Non-existent type")
         end
 
         it 'preserves updated_at on issues' do
@@ -264,7 +278,13 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
         end
 
         context 'event at forth level of the tree' do
-          let(:event) { Event.find_by(action: 6) }
+          let(:event) do
+            Event
+              .where(action: :commented, target_type: 'Note')
+              .joins('INNER JOIN notes ON notes.id = events.target_id')
+              .where(notes: { noteable_type: 'MergeRequest' })
+              .first
+          end
 
           it 'restores the event' do
             expect(event).not_to be_nil
@@ -274,7 +294,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
             expect(event.action).not_to be_nil
           end
 
-          it 'event belongs to note, belongs to merge request, belongs to a project', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9482' do
+          it 'event belongs to note, belongs to merge request, belongs to a project' do
             expect(event.note.noteable.project).not_to be_nil
           end
         end
@@ -358,7 +378,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
         end
 
         it 'has project labels' do
-          expect(ProjectLabel.count).to eq(3)
+          expect(ProjectLabel.count).to eq(4)
           expect(ProjectLabel.pluck(:group_id).compact).to be_empty
         end
 
@@ -466,17 +486,6 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
           award_emoji = @project.issues.first.notes.first.award_emoji.first
 
           expect(award_emoji.name).to eq('clapper')
-        end
-
-        it 'restores work_item_description for issues' do
-          issue = @project.issues.find_by(title: 'Voluptatem')
-          work_item_description = issue.work_item_description
-
-          expect(work_item_description).to be_present
-          expect(work_item_description.description).to eq('Aliquam enim illo et possimus.')
-          expect(work_item_description.description_html).to include('Aliquam enim illo et possimus.')
-          expect(work_item_description.last_edited_at).to eq(Time.parse('2016-06-14T15:02:47.967Z'))
-          expect(work_item_description.last_edited_by_id).to be_present
         end
 
         it 'restores container_expiration_policy' do
@@ -1186,7 +1195,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_
         it 'restores project members' do
           restorer.restore
 
-          expect(project.members.map(&:user)).to contain_exactly(user, user2)
+          expect(project.members.map(&:user)).to contain_exactly(project.owner, user, user2)
         end
       end
     end

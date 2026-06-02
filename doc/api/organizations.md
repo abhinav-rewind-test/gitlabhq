@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Organizations API
 ---
 
@@ -66,7 +66,7 @@ Example response:
   "description": "A new organization",
   "created_at": "2024-09-18T02:35:15.371Z",
   "updated_at": "2024-09-18T02:35:15.371Z",
-  "web_url": "https://gitlab.example.com/-/organizations/new-org",
+  "web_url": "https://gitlab.example.com/o/new-org/-/overview",
   "avatar_url": "https://gitlab.example.com/uploads/-/system/organizations/organization_detail/avatar/42/avatar.png"
 }
 ```

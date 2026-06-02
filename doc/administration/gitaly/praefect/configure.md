@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Configure Gitaly Cluster (Praefect)
 ---
 
@@ -525,8 +525,9 @@ On the Praefect node:
 
 <!--
 Updates to example must be made at:
-- https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/administration/gitaly/praefect.md
-- all reference architecture pages
+
+- <https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/administration/gitaly/configure_gitaly.md#configure-gitaly-server>
+- All reference architecture pages
 -->
 
    ```ruby
@@ -780,7 +781,6 @@ Configure Praefect with TLS.
 For Linux package installations:
 
 1. Create certificates for Praefect servers.
-
 1. On the Praefect servers, create the `/etc/gitlab/ssl` directory and copy your key
    and certificate there:
 
@@ -806,7 +806,6 @@ For Linux package installations:
    ```
 
 1. Save the file and [reconfigure](../../restart_gitlab.md#reconfigure-a-linux-package-installation).
-
 1. On the Praefect clients (including each Gitaly server), copy the certificates,
    or their certificate authority, into `/etc/gitlab/trusted-certs`:
 
@@ -949,6 +948,28 @@ You can also appoint an authoritative name server by setting it in this format:
 
 - `dns://[authority_host]:[authority_port]/[host]:[port]`
 
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/585789) in GitLab 18.10.
+
+{{< /history >}}
+
+To use service discovery with TLS encryption, use the `dns+tls` scheme:
+
+- `dns+tls:[host]:[port]` (shorthand form)
+- `dns+tls:///[host]:[port]` (note the three slashes)
+- `dns+tls://[authority_host]:[authority_port]/[host]:[port]`
+
+The `dns+tls://` scheme combines DNS-based service discovery with TLS encryption.
+You must configure TLS on your Praefect servers before using this scheme. For more
+information, see [Enable TLS](#enable-tls-support).
+
+Each Praefect endpoint's TLS certificate must include a Subject Alternative Name
+(SAN) that matches the hostname used in `PRAEFECT_SERVICE_DISCOVERY_ADDRESS` below.
+For example, if the address is `dns+tls:///praefect.service.consul:3305`, each
+Praefect node's certificate must have `praefect.service.consul` as a SAN entry.
+Connections fail if the SAN does not match.
+
 {{< tabs >}}
 
 {{< tab title="Linux package (Omnibus)" >}}
@@ -962,6 +983,17 @@ You can also appoint an authoritative name server by setting it in this format:
    gitlab_rails['repositories_storages'] = {
      "default" => {
        "gitaly_address" => 'dns:PRAEFECT_SERVICE_DISCOVERY_ADDRESS:2305',
+       "gitaly_token" => 'PRAEFECT_EXTERNAL_TOKEN'
+     }
+   }
+   ```
+
+   To use TLS, change the scheme to `dns+tls://`:
+
+   ```ruby
+   gitlab_rails['repositories_storages'] = {
+     "default" => {
+       "gitaly_address" => 'dns+tls://DNS_SERVER_ADDRESS:53/PRAEFECT_SERVICE_DISCOVERY_ADDRESS:3305',
        "gitaly_token" => 'PRAEFECT_EXTERNAL_TOKEN'
      }
    }
@@ -983,6 +1015,16 @@ You can also appoint an authoritative name server by setting it in this format:
        storages:
          default:
            gitaly_address: dns:PRAEFECT_SERVICE_DISCOVERY_ADDRESS:2305
+   ```
+
+   To use TLS, change the scheme to `dns+tls://`:
+
+   ```yaml
+   gitlab:
+     repositories:
+       storages:
+         default:
+           gitaly_address: dns+tls://DNS_SERVER_ADDRESS:53/PRAEFECT_SERVICE_DISCOVERY_ADDRESS:3305
    ```
 
 1. Save the file and [restart GitLab](../../restart_gitlab.md#self-compiled-installations).
@@ -1444,7 +1486,7 @@ Particular attention should be shown to:
 1. Check that the Praefect storage is configured to store new repositories:
 
    1. In the upper-right corner, select **Admin**.
-   1. On the left sidebar, select **Settings** > **Repository**.
+   1. In the left sidebar, select **Settings** > **Repository**.
    1. Expand the **Repository storage** section.
 
    Following this guide, the `default` storage should have weight 100 to store all new repositories.

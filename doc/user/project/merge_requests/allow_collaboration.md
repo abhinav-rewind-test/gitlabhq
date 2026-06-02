@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: When you fork a merge request, you can set whether or not members of the upstream repository can contribute to your fork.
 title: Collaborate on merge requests across forks
 ---
@@ -55,7 +55,7 @@ upstream members of the project you're contributing to:
 You can push directly to the branch of the forked repository if:
 
 - The author of the merge request enabled contributions from upstream members.
-- You have at least the Developer role for the upstream project.
+- You have the Developer, Maintainer, or Owner role for the upstream project.
 
 To push changes, or add a commit, to the branch of a fork, you can use command line Git.
 For more information, see [use Git to push to a fork as an upstream member](../../../topics/git/forks.md#push-to-a-fork-as-an-upstream-member).
@@ -73,6 +73,6 @@ To see the pipeline status from the merge request page of a forked project
 going back to the original project:
 
 1. [Create a group](../../group/_index.md#create-a-group) containing all the upstream members.
-1. On the top bar, select **Search or go to** and find the forked project.
+1. In the top bar, select **Search or go to** and find the forked project.
 1. Go to the **Manage** > **Members** page in the forked project and invite the newly-created
    group to the forked project.

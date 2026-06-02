@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Recommended deployments at scale.
 title: Reference architectures
 ---
@@ -21,7 +21,7 @@ First, consider whether GitLab Self-Managed is the right choice for you and your
 
 Running any application in production is complex, and the same applies for GitLab. While we aim to make this as smooth as possible, there are still the general complexities based on your design. Typically, you have to manage all aspects such as hardware, operating systems, networking, storage, security, GitLab itself, and more. This includes both the initial setup of the environment and the longer term maintenance.
 
-You must have a working knowledge of running and maintaining applications in production if you decide to go down this route. If you aren't in this position, our [Professional Services](https://about.gitlab.com/services/#implementation-services) team offers implementation services. Those who want a more managed solution long term, can explore our other offerings such as [GitLab SaaS](../../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage) or [GitLab Dedicated](../../subscriptions/gitlab_dedicated/_index.md).
+You must have a working knowledge of running and maintaining applications in production if you decide to go down this route. If you aren't in this position, our [Professional Services](https://about.gitlab.com/services/#implementation-services) team offers implementation services. Those who want a more managed solution long term, can explore our other offerings such as [GitLab.com](../../subscriptions/manage_seats.md#gitlabcom-billing-and-usage) or [GitLab Dedicated](../../subscriptions/gitlab_dedicated/_index.md).
 
 If you are considering using the GitLab Self-Managed approach, we encourage you to read through this page in full, specifically the following sections:
 
@@ -195,7 +195,7 @@ For comprehensive analysis of these factors, see [reference architecture sizing]
 - Component-specific scaling recommendations for different workload patterns.
 - Network bandwidth analysis for heavy data transfer scenarios.
 
-If this situation applies to you, reach out to your GitLab representative or our [Support team](https://about.gitlab.com/support/)
+If this situation applies to you, reach out to your GitLab representative or our [Support team](https://support.gitlab.com/)
 for further guidance.
 
 ### Cloud provider services
@@ -329,7 +329,7 @@ Their presence and how they are used can put a significant strain on the entire 
 The performance implications are largely software in nature. Additional hardware resources lead to diminishing returns.
 
 > [!warning]
-> If this applies to you, we strongly recommend you follow the linked documentation and reach out to your GitLab representative or our [Support team](https://about.gitlab.com/support/) for further guidance.
+> If this applies to you, we strongly recommend you follow the linked documentation and reach out to your GitLab representative or our [Support team](https://support.gitlab.com/) for further guidance.
 
 Large monorepos come with notable cost. If you have such a repository,
 follow these guidance to ensure good performance and to keep costs in check:
@@ -353,11 +353,12 @@ You might have to adjust the suggested specifications to compensate if you use:
 - Hundreds of concurrent CI jobs for [large repositories](../../user/project/repository/monorepos/_index.md).
 - Custom scripts that [run at high frequency](../logs/log_parsing.md#print-top-api-user-agents).
 - [Integrations](../../integration/_index.md) in many large projects.
+- [Feature flags](../../operations/feature_flags.md#performance-factors) in projects with large user bases.
 - [Server hooks](../server_hooks.md).
 - [System hooks](../system_hooks.md).
 
 Generally, you should have robust monitoring in place to measure the impact of any additional workloads to
-inform any changes needed to be made. Reach out to your GitLab representative or our [Support team](https://about.gitlab.com/support/)
+inform any changes needed to be made. Reach out to your GitLab representative or our [Support team](https://support.gitlab.com/)
 for further guidance.
 
 ### Load Balancers
@@ -422,11 +423,11 @@ Additionally, the following cloud provider services are recommended for use as p
 
 | Cloud Service  | GCP                                                    | AWS                                                | Azure                                                                                                   | Bare Metal               |
 |----------------|--------------------------------------------------------|----------------------------------------------------|---------------------------------------------------------------------------------------------------------|--------------------------|
-| Object Storage | [Cloud Storage](https://cloud.google.com/storage)      | [S3](https://aws.amazon.com/s3/)                   | [Azure Blob Storage](https://azure.microsoft.com/en-gb/products/storage/blobs)                          | [MinIO](https://min.io/) |
+| Object Storage | [Cloud Storage](https://cloud.google.com/storage)      | [S3](https://aws.amazon.com/s3/)                   | [Azure Blob Storage](https://azure.microsoft.com/en-gb/products/storage/blobs)                          | S3-compatible object storage |
 | Database       | [Cloud SQL](https://cloud.google.com/sql) <sup>2</sup> | [RDS](https://aws.amazon.com/rds/)                 | [Azure Database for PostgreSQL Flexible Server](https://azure.microsoft.com/en-gb/products/postgresql/) |                          |
 | Redis          | [Memorystore](https://cloud.google.com/memorystore)    | [ElastiCache](https://aws.amazon.com/elasticache/) | [Azure Cache for Redis (Premium)](https://azure.microsoft.com/en-gb/products/cache)                     |                          |
 
-<!-- Disable ordered list rule https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md029---ordered-list-item-prefix -->
+<!-- Disable ordered list rule <https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md029---ordered-list-item-prefix> -->
 <!-- markdownlint-disable MD029 -->
 1. To ensure good performance, deploy the [Premium tier of Azure Cache for Redis](https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-overview#service-tiers).
 2. For optimal performance, especially in larger environments (500 RPS / 25k users or higher),
@@ -491,7 +492,8 @@ Redis is primarily single threaded. For environments targeting the 200 RPS / 10,
 
 ### Best practices for object storage
 
-GitLab has been tested against [various object storage providers](../object_storage.md#supported-object-storage-providers) that are expected to work.
+GitLab has been tested against [various object storage providers](../object_storage.md#object-storage-provider-support)
+that are expected to work.
 
 Use a reputable solution that has full S3 compatibility.
 
@@ -568,19 +570,16 @@ Each reference architecture is tested against specific throughput targets based 
 
 The listed RPS targets were selected based on real customer data of total environmental loads corresponding to the user count, including CI and other workloads.
 
->>> [!note]
-
-- These RPS breakdowns represent test targets based on typical workload patterns. Your actual workload composition may vary. For guidance on assessing your specific RPS composition and when adjustments are needed, see [Understanding RPS composition](sizing.md#understanding-rps-composition-and-workload-patterns).
-- Network latency between components in test environments was observed at <5 ms but note this is not intended as a hard requirement.
-
->>>
+> [!note]
+>
+> - These RPS breakdowns represent test targets based on typical workload patterns. Your actual workload composition may
+>   vary. For guidance on assessing your specific RPS composition and when adjustments are needed, see
+>   [Understanding RPS composition](sizing.md#understanding-rps-composition-and-workload-patterns).
+> - Network latency between components in test environments was observed at <5 ms but note this is not intended as a hard requirement.
 
 ### Test coverage and results
 
-Testing is designed to be effective and provide good coverage for all reference architecture targets. Testing frequency varies by architecture type and size:
-
-- Linux package environments: Daily or weekly of all sizes on GCP and AWS.
-- Cloud Native environments: Weekly testing of select configurations on GCP and AWS.
+Testing is designed to be effective and provide good coverage for the reference architecture targets, spanning Linux package and Cloud Native environments. The specific environments and configurations tested are reviewed regularly to ensure the best coverage and cost-to-value balance, and may change over time.
 
 Our testing also includes prototype variations of these architectures being explored for potential future inclusion. Test results are publicly available on the [Reference Architecture wiki](https://gitlab.com/gitlab-org/reference-architectures/-/wikis/Benchmarks/Latest).
 
@@ -595,7 +594,7 @@ In this section you can find links to documentation for relevant areas and speci
 The reference architectures are designed as validated starting points based on typical workload patterns, not final configurations. Most production deployments benefit from adjustments based on actual usage patterns that emerge through monitoring. The architectures are scalable throughout, and you can tune them iteratively as your workload characteristics become clear. Scaling can be done component-by-component or wholesale to the next architecture size when metrics indicate sustained resource pressure.
 
 > [!note]
-> If a component is continuously exhausting its given resources, reach out to our [Support team](https://about.gitlab.com/support/) before performing any significant scaling.
+> If a component is continuously exhausting its given resources, reach out to our [Support team](https://support.gitlab.com/) before performing any significant scaling.
 
 #### When to scale
 
@@ -662,7 +661,7 @@ You should take an iterative approach when scaling downwards, to ensure there ar
 In some cases, scaling a component significantly may result in knock on effects for downstream components, impacting performance. The architectures are designed with balance in mind to ensure components that depend on each other are congruent in terms of specifications. Notably scaling a component may result in additional throughput being passed to the other components it depends on. As a result, you could have to scale these other dependent components as well. To determine this, monitor the saturation metrics of all dependent services before scaling. If multiple interdependent components show saturation, they should be scaled together in a coordinated manner rather than sequentially, preventing bottlenecks from simply shifting between components.
 
 > [!note]
-> The architectures have been designed to have elasticity to accommodate an upstream component being scaled. However, reach out to our [Support team](https://about.gitlab.com/support/) before you make any significant changes to your environment to be safe.
+> The architectures have been designed to have elasticity to accommodate an upstream component being scaled. However, reach out to our [Support team](https://support.gitlab.com/) before you make any significant changes to your environment to be safe.
 
 The following components can impact others when they have been significantly scaled:
 

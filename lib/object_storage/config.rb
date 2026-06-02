@@ -7,6 +7,8 @@ module ObjectStorage
     GOOGLE_PROVIDER = 'Google'
 
     LOCATIONS = {
+      agent_plan_content: Gitlab.config.agent_plan_content,
+      ai_catalog: Gitlab.config.ai_catalog,
       artifacts: Gitlab.config.artifacts,
       ci_secure_files: Gitlab.config.ci_secure_files,
       dependency_proxy: Gitlab.config.dependency_proxy,
@@ -91,11 +93,7 @@ module ObjectStorage
     end
 
     def fog_attributes
-      @fog_attributes ||= begin
-        return {} unless aws_server_side_encryption_enabled?
-
-        aws_server_side_encryption_headers.compact
-      end
+      @fog_attributes ||= aws_server_side_encryption_enabled? ? aws_server_side_encryption_headers.compact : {}
     end
 
     def aws_server_side_encryption_enabled?

@@ -26,6 +26,7 @@ import {
 import PaginatedTableWithSearchAndTabs from '~/vue_shared/components/paginated_table_with_search_and_tabs/paginated_table_with_search_and_tabs.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import TooltipOnTruncate from '~/vue_shared/components/tooltip_on_truncate/tooltip_on_truncate.vue';
+import workItemTypesConfigurationQuery from '~/work_items/graphql/work_item_types_configuration.query.graphql';
 import {
   I18N,
   INCIDENT_STATUS_TABS,
@@ -45,6 +46,7 @@ import getIncidents from '../graphql/queries/get_incidents.query.graphql';
 const MAX_VISIBLE_ASSIGNEES = 3;
 
 export default {
+  name: 'IncidentsList',
   trackIncidentCreateNewOptions,
   trackIncidentListViewsOptions,
   i18n: I18N,
@@ -160,7 +162,7 @@ export default {
           assigneeUsername: this.assigneeUsername,
           projectPath: this.projectPath,
           status: this.statusFilter,
-          issueTypes: ['INCIDENT'],
+          workItemTypeIds: this.incidentTypeId,
           sort: this.sort,
           firstPageSize: this.pagination.firstPageSize,
           lastPageSize: this.pagination.lastPageSize,
@@ -174,6 +176,10 @@ export default {
           pageInfo,
         };
       },
+      skip() {
+        // Wait until we get the incident ID from workItemTypesConfigurationQuery before calling query
+        return !this.incidentTypeId;
+      },
       error() {
         this.errored = true;
       },
@@ -186,11 +192,26 @@ export default {
           authorUsername: this.authorUsername,
           assigneeUsername: this.assigneeUsername,
           projectPath: this.projectPath,
-          issueTypes: ['INCIDENT'],
+          workItemTypeIds: this.incidentTypeId,
         };
       },
       update(data) {
         return data.project?.issueStatusCounts;
+      },
+      skip() {
+        // Wait until we get the incident ID from workItemTypesConfigurationQuery before calling query
+        return !this.incidentTypeId;
+      },
+    },
+    workItemTypesConfiguration: {
+      query: workItemTypesConfigurationQuery,
+      variables() {
+        return {
+          fullPath: this.projectPath,
+        };
+      },
+      update(data) {
+        return data?.namespace?.workItemTypes?.nodes || [];
       },
     },
   },
@@ -209,14 +230,21 @@ export default {
       authorUsername: this.authorUsernameQuery,
       assigneeUsername: this.assigneeUsernameQuery,
       pagination: initialPaginationState,
+      workItemTypesConfiguration: [],
     };
   },
   computed: {
+    incidentTypeId() {
+      return this.workItemTypesConfiguration.find((type) => type.isIncidentManagement)?.id;
+    },
     showErrorMsg() {
       return this.errored && !this.isErrorAlertDismissed;
     },
     loading() {
-      return this.$apollo.queries.incidents.loading;
+      return (
+        this.$apollo.queries.incidents.loading ||
+        this.$apollo.queries.workItemTypesConfiguration.loading
+      );
     },
     isEmpty() {
       return !this.incidents?.list?.length;

@@ -7,7 +7,8 @@ RSpec.describe 'getting organization information', feature_category: :organizati
   using RSpec::Parameterized::TableSyntax
 
   let(:object) { organization }
-  let(:query) { graphql_query_for(:organization, { id: organization.to_global_id }, organization_fields) }
+  let(:query_param) { { 'id' => organization.to_gid } }
+  let(:query) { graphql_query_for(:organization, query_param, organization_fields) }
   let(:current_user) { user }
   let(:organization_fields) do
     <<~FIELDS
@@ -21,8 +22,12 @@ RSpec.describe 'getting organization information', feature_category: :organizati
     FIELDS
   end
 
-  let_it_be(:organization_owner) { create(:organization_owner) }
-  let_it_be(:organization) { organization_owner.organization }
+  let_it_be(:public_organization) { create(:organization, :public) }
+  let_it_be(:private_organization) { create(:organization, :private) }
+  let_it_be(:private_organization_owner) { create(:organization_owner, organization: private_organization) }
+
+  let_it_be(:organization) { public_organization }
+  let_it_be(:organization_owner, freeze: false) { create(:organization_owner, organization: public_organization) }
   let_it_be(:user) { organization_owner.user }
   let_it_be(:project) { create(:project, organization: organization) { |p| p.add_developer(user) } }
   let_it_be(:other_group) do
@@ -33,11 +38,18 @@ RSpec.describe 'getting organization information', feature_category: :organizati
 
   subject(:request_organization) { post_graphql(query, current_user: current_user) }
 
+  it_behaves_like 'authorizing granular token permissions for GraphQL', :read_organization do
+    let(:boundary_object) { :instance }
+    let(:organization_fields) { 'id path' }
+    let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+  end
+
   context 'when the user does not have access to the organization' do
     let(:current_user) { create(:user) }
 
     context 'when organization is private' do
-      let_it_be(:organization) { create(:organization, :private) }
+      let(:organization) { private_organization }
+      let(:query_param) { { 'id' => private_organization.to_gid } }
 
       it 'returns no organization' do
         request_organization
@@ -62,6 +74,40 @@ RSpec.describe 'getting organization information', feature_category: :organizati
       end
     end
 
+    context 'when organization id parameter is not provided' do
+      let(:query_param) { {} }
+
+      context 'when user has access to current_organization' do
+        it 'returns current organization' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :id)).to eq(current_organization.to_gid.to_s)
+        end
+      end
+
+      context 'when user does not have access to current_organization' do
+        let(:current_organization) { create(:organization, :private) }
+        let(:current_user) { create(:user) }
+
+        it 'returns nil' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :id)).to be_nil
+        end
+      end
+
+      context 'when current_organization is public and user has no explicit access' do
+        let(:current_organization) { create(:organization, :public) }
+        let(:current_user) { create(:user) }
+
+        it 'returns the public organization' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :id)).to eq(current_organization.to_gid.to_s)
+        end
+      end
+    end
+
     context 'when requesting organization user' do
       let(:organization_fields) do
         <<~FIELDS
@@ -83,6 +129,25 @@ RSpec.describe 'getting organization information', feature_category: :organizati
             }
           }
         FIELDS
+      end
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL',
+        [:read_organization, :read_organization_user, :read_badge] do
+        let(:boundary_object) { :instance }
+        let(:organization_fields) do
+          <<~FIELDS
+            organizationUsers {
+              nodes {
+                badges {
+                  text
+                  variant
+                }
+              }
+            }
+          FIELDS
+        end
+
+        let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
       end
 
       it 'returns correct organization user fields' do
@@ -298,7 +363,7 @@ RSpec.describe 'getting organization information', feature_category: :organizati
       end
 
       context 'when organization is default' do
-        let_it_be(:default_organization) { create(:organization, :default, organization_users: [organization_owner]) } # rubocop:disable Gitlab/RSpec/AvoidCreateDefaultOrganization -- the application code checks for default organization so we need to test this.
+        let_it_be(:default_organization, freeze: false) { create(:organization, :default, organization_users: [organization_owner]) } # rubocop:disable Gitlab/RSpec/AvoidCreateDefaultOrganization -- the application code checks for default organization so we need to test this.
         let(:object) { default_organization }
 
         it "returns unscoped root path" do
@@ -313,14 +378,33 @@ RSpec.describe 'getting organization information', feature_category: :organizati
           expect(graphql_data_at(:organization, :root_path)).to eq("/o/#{organization.path}")
         end
       end
+    end
 
-      context 'when organization_scoped_paths feature flag is disabled' do
-        before do
-          stub_feature_flags(organization_scoped_paths: false)
+    describe 'visibility field' do
+      let(:organization_fields) do
+        <<~FIELDS
+          id
+          visibility
+        FIELDS
+      end
+
+      context 'when organization is public' do
+        it 'returns public visibility' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :visibility)).to eq(Gitlab::VisibilityLevel.string_level(organization.visibility_level))
         end
+      end
 
-        it 'returns unscoped root path' do
-          expect(root_path).to eq('/')
+      context 'when organization is private' do
+        let(:organization) { private_organization }
+        let(:current_user) { private_organization_owner.user }
+        let(:query_param) { { 'id' => private_organization.to_gid } }
+
+        it 'returns private visibility' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :visibility)).to eq(Gitlab::VisibilityLevel.string_level(organization.visibility_level))
         end
       end
     end

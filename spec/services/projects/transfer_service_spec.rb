@@ -207,7 +207,7 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
   end
 
   context 'when transfer succeeds' do
-    before do
+    before_all do
       group.add_owner(user)
     end
 
@@ -263,7 +263,7 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
     context 'with a project integration' do
       let_it_be_with_reload(:project) { create(:project, namespace: user.namespace) }
       let_it_be(:instance_integration) { create(:integrations_slack, :instance) }
-      let_it_be(:project_integration) { create(:integrations_slack, project: project) }
+      let_it_be(:project_integration, freeze: false) { create(:integrations_slack, project: project) }
 
       context 'when it inherits from instance_integration' do
         before do
@@ -289,14 +289,13 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
           create(
             :beyond_identity_integration,
             project: project,
-            instance: false,
             active: true,
             inherit_from_id: instance_specific_integration.id
           )
         end
 
         let!(:group_instance_specific_integration) do
-          create(:beyond_identity_integration, group: target, instance: false, active: false)
+          create(:beyond_identity_integration, project: nil, group: target, active: false)
         end
 
         it 'creates an integration inheriting from the default' do
@@ -339,9 +338,11 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
       end.to raise_error(ActiveRecord::ActiveRecordError)
     end
 
-    before do
+    before_all do
       group.add_owner(user)
+    end
 
+    before do
       expect_any_instance_of(Labels::TransferService).to receive(:execute).and_raise(ActiveRecord::StatementInvalid, "PG ERROR")
     end
 
@@ -437,8 +438,11 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
     let_it_be_with_reload(:project) { create(:project, :repository, :legacy_storage, namespace: group) }
     let(:target) { create(:group, parent: group) }
 
-    before do
+    before_all do
       group.add_owner(user)
+    end
+
+    before do
       allow(project).to receive(:has_container_registry_tags?).and_return(true)
     end
 
@@ -550,6 +554,23 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
       expect(transfer_result).to eq false
       expect(project.namespace).to eq(user.namespace)
       expect(project.errors[:new_namespace]).to include('Project with same name or path in target namespace already exists')
+    end
+  end
+
+  context 'when target namespace has a conflicting ProjectNamespace from a deleted project' do
+    let!(:deleted_project) { create(:project, name: project.name, group: group) }
+
+    before do
+      group.add_owner(user)
+      deleted_project.update_columns(pending_delete: true, name: "#{project.name}-deleted", path: "#{project.path}-deleted")
+    end
+
+    it 'does not allow the project transfer' do
+      transfer_result = execute_transfer
+
+      expect(transfer_result).to eq false
+      expect(project.namespace).to eq(user.namespace)
+      expect(project.errors[:new_namespace].first).to include('recently deleted')
     end
   end
 
@@ -696,7 +717,7 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
     let!(:project) { create(:project, :repository, namespace: user.namespace) }
     let!(:old_disk_path) { project.repository.disk_path }
 
-    before do
+    before_all do
       group.add_owner(user)
     end
 
@@ -790,7 +811,7 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
   describe 'transferring a design repository' do
     subject { described_class.new(project, user) }
 
-    before do
+    before_all do
       group.add_owner(user)
     end
 
@@ -898,6 +919,136 @@ RSpec.describe Projects::TransferService, feature_category: :groups_and_projects
     context 'with a different root_ancestor' do
       it 'deletes issue contacts' do
         expect { execute_transfer }.to change { CustomerRelations::IssueContact.count }.by(-2)
+      end
+    end
+  end
+
+  describe 'lock retries in proceed_to_transfer' do
+    before do
+      group.add_owner(user)
+    end
+
+    it 'uses WithLockRetries for the transaction' do
+      expect_next_instance_of(Gitlab::Database::WithLockRetries) do |retries|
+        expect(retries).to receive(:run).with(raise_on_exhaustion: true).and_call_original
+      end
+
+      execute_transfer
+    end
+
+    it 'raises AttemptsExhaustedError when lock retries are exhausted' do
+      lock_retries = instance_double(Gitlab::Database::WithLockRetries)
+      allow(Gitlab::Database::WithLockRetries).to receive(:new).and_return(lock_retries)
+      allow(lock_retries).to receive(:run)
+        .and_raise(Gitlab::Database::WithLockRetries::AttemptsExhaustedError)
+
+      expect { execute_transfer }.to raise_error(Gitlab::Database::WithLockRetries::AttemptsExhaustedError)
+    end
+  end
+
+  describe '#schedule_async_transfer' do
+    let_it_be(:user) { create(:user) }
+    let_it_be_with_reload(:project) { create(:project) }
+    let_it_be(:new_namespace) { create(:group) }
+
+    subject(:service) { described_class.new(project, user) }
+
+    before_all do
+      project.add_owner(user)
+      new_namespace.add_owner(user)
+    end
+
+    it 'transitions project namespace to transfer_scheduled and enqueues the worker' do
+      expect(Projects::TransferWorker).to receive(:perform_async).with(
+        project.id,
+        new_namespace.id,
+        user.id
+      )
+
+      result = service.schedule_async_transfer(new_namespace)
+
+      expect(result).to be_success
+      expect(result.message).to eq('Project transfer has been queued. You will be notified when it completes.')
+
+      project_namespace = project.project_namespace.reload
+      expect(project_namespace.state).to eq('transfer_scheduled')
+      expect(project_namespace.state_metadata['transfer_target_parent_id']).to eq(new_namespace.id)
+    end
+
+    context 'when the state transition fails' do
+      before do
+        project.project_namespace.update_column(:state, Namespace.states[:creation_in_progress])
+      end
+
+      it 'returns error response and does not enqueue the worker' do
+        expect(Projects::TransferWorker).not_to receive(:perform_async)
+
+        result = service.schedule_async_transfer(new_namespace)
+
+        expect(result).to be_error
+        expect(result.message).to eq('Unable to initiate transfer. The project may already have a transfer in progress.')
+      end
+    end
+
+    context 'when project namespace has stale transfer state with no active worker' do
+      before do
+        project.project_namespace.schedule_transfer!(transition_user: user)
+        project.project_namespace.start_transfer!(transition_user: user)
+      end
+
+      it 'cancels the stale state and proceeds with the transfer', :aggregate_failures do
+        allow(Projects::TransferWorker).to receive(:perform_async)
+
+        result = service.schedule_async_transfer(new_namespace)
+
+        expect(result).to be_success
+        expect(project.project_namespace.reload.state).to eq('transfer_scheduled')
+      end
+
+      it 'logs a warning about the stale state' do
+        allow(Projects::TransferWorker).to receive(:perform_async)
+        allow(Gitlab::AppLogger).to receive(:warn)
+
+        service.schedule_async_transfer(new_namespace)
+
+        expect(Gitlab::AppLogger).to have_received(:warn).with(hash_including(
+          message: 'Cancelling stale transfer state - no active worker lease found',
+          project_id: project.id
+        ))
+      end
+    end
+
+    context 'when project namespace has stale transfer_scheduled state with no active worker' do
+      before do
+        project.project_namespace.schedule_transfer!(transition_user: user)
+      end
+
+      it 'cancels the stale state and proceeds with the transfer', :aggregate_failures do
+        allow(Projects::TransferWorker).to receive(:perform_async)
+
+        result = service.schedule_async_transfer(new_namespace)
+
+        expect(result).to be_success
+        expect(project.project_namespace.reload.state).to eq('transfer_scheduled')
+      end
+    end
+
+    context 'when project namespace has transfer state with active worker lease' do
+      before do
+        project.project_namespace.schedule_transfer!(transition_user: user)
+        project.project_namespace.start_transfer!(transition_user: user)
+        Gitlab::ExclusiveLease.new(
+          Projects::TransferWorker.lease_key(project.id), timeout: 30.minutes
+        ).try_obtain
+      end
+
+      it 'does not cancel the state and returns error', :aggregate_failures do
+        expect(Projects::TransferWorker).not_to receive(:perform_async)
+
+        result = service.schedule_async_transfer(new_namespace)
+
+        expect(result).to be_error
+        expect(result.message).to eq('Unable to initiate transfer. The project may already have a transfer in progress.')
       end
     end
   end

@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Architecture
 ---
 
@@ -38,7 +38,7 @@ In the past, we had a [Frontend RFC project](https://gitlab.com/gitlab-org/front
 1. Issues that were completed often did not need a RFC in the first place (small issues)
 1. Changes were often proposed "naively" without clear time and resource allocation
 
-In most instances where we would have created a RFC, a Design Document can be used instead as it will have it's own RFC attached to it. This makes the conversation centered around the technical design and RFCs are just a way to further the completion of the design.
+In most instances where we would have created a RFC, a Design Document can be used instead as it will have its own RFC attached to it. This makes the conversation centered around the technical design and RFCs are just a way to further the completion of the design.
 
 ### Entry in the Frontend documentation
 

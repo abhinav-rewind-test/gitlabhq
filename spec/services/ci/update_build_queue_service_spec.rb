@@ -35,6 +35,29 @@ RSpec.describe Ci::UpdateBuildQueueService, feature_category: :continuous_integr
         end
       end
 
+      context 'when pending_build_args are present on the build' do
+        let(:precomputed_args) { Ci::PendingBuild.args_from_build(build) }
+
+        before do
+          allow(build).to receive(:pending_build_args).and_return(precomputed_args)
+        end
+
+        it 'calls upsert_from_args! instead of create_queuing_entry!' do
+          expect(Ci::PendingBuild).to receive(:upsert_from_args!)
+            .with(precomputed_args)
+            .and_call_original
+          expect(build).not_to receive(:create_queuing_entry!)
+
+          subject.push(build, transition)
+        end
+
+        it 'returns the build id' do
+          queued = subject.push(build, transition)
+
+          expect(queued).to eq build.id
+        end
+      end
+
       context 'when invalid transition is detected' do
         it 'raises an error' do
           allow(transition).to receive(:to).and_return('created')
@@ -129,7 +152,7 @@ RSpec.describe Ci::UpdateBuildQueueService, feature_category: :continuous_integr
   end
 
   describe 'runner builds tracking' do
-    let_it_be(:runner) { create(:ci_runner, :instance_type) }
+    let_it_be(:runner, freeze: false) { create(:ci_runner, :instance_type) }
 
     let(:build) { create(:ci_build, runner: runner, pipeline: pipeline) }
 
@@ -162,7 +185,7 @@ RSpec.describe Ci::UpdateBuildQueueService, feature_category: :continuous_integr
       end
 
       context 'when a project runner build can be tracked' do
-        let_it_be(:runner) { create(:ci_runner, :project, projects: [project]) }
+        let_it_be(:runner, freeze: false) { create(:ci_runner, :project, projects: [project]) }
 
         it 'creates a new project runner build tracking entry' do
           expect { build_id }.to change { Ci::RunningBuild.count }.from(0).to(1)
@@ -244,7 +267,7 @@ RSpec.describe Ci::UpdateBuildQueueService, feature_category: :continuous_integr
       end
 
       context 'when project runner build tracking entry exists' do
-        let_it_be(:runner) { create(:ci_runner, :project, projects: [project]) }
+        let_it_be(:runner, freeze: false) { create(:ci_runner, :project, projects: [project]) }
 
         before do
           create(:ci_running_build, build: build, project: project, runner: runner)
@@ -347,7 +370,7 @@ RSpec.describe Ci::UpdateBuildQueueService, feature_category: :continuous_integr
     end
 
     context 'when updating shared runners' do
-      let_it_be(:runner) { create(:ci_runner, :instance) }
+      let_it_be(:runner, freeze: false) { create(:ci_runner, :instance) }
 
       it_behaves_like 'matching build'
       it_behaves_like 'mismatching tags'

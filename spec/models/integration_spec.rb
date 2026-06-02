@@ -13,6 +13,7 @@ RSpec.describe Integration, feature_category: :integrations do
   describe "associations" do
     it { is_expected.to belong_to(:project).inverse_of(:integrations) }
     it { is_expected.to belong_to(:group).inverse_of(:integrations) }
+    it { is_expected.to belong_to(:inherit_from).optional }
 
     it do
       is_expected.to have_one(:issue_tracker_data)
@@ -249,15 +250,15 @@ RSpec.describe Integration, feature_category: :integrations do
     end
 
     describe '.for_group' do
-      let!(:jira_group_integration) { create(:jira_integration, project_id: nil, group_id: group.id) }
-      let!(:jira_project_integration) { create(:jira_integration, project: project) }
+      let_it_be(:jira_group_integration) { create(:jira_integration, project_id: nil, group_id: group.id) }
+      let_it_be(:jira_project_integration) { create(:jira_integration, project: project) }
 
       it 'returns the right group integration' do
         expect(described_class.for_group(group)).to contain_exactly(jira_group_integration)
       end
 
       context 'when there is an instance specific integration' do
-        let!(:beyond_identity_integration) { create(:beyond_identity_integration, instance: false, group: group) }
+        let!(:beyond_identity_integration) { create(:beyond_identity_integration, project: nil, group: group) }
 
         it 'includes the instance specific integration' do
           expect(described_class.for_group(group)).to include(jira_group_integration, beyond_identity_integration)
@@ -648,7 +649,7 @@ RSpec.describe Integration, feature_category: :integrations do
       # this  will be removed as part of https://gitlab.com/gitlab-org/gitlab/issues/29404
       context 'when data is stored in properties' do
         let(:properties) { data_params }
-        let!(:integration) do
+        let(:integration) do
           create(:jira_integration, :without_properties_callback, project: project,
             properties: properties.merge(additional: 'something'))
         end
@@ -739,8 +740,8 @@ RSpec.describe Integration, feature_category: :integrations do
   end
 
   describe '.create_from_default_integrations' do
-    let!(:instance_integration) { create(:confluence_integration, :instance, confluence_url: 'https://example.atlassian.net/wiki', organization: create(:organization)) }
-    let!(:instance_level_instance_specific_integration) { create(:beyond_identity_integration, :instance) }
+    let_it_be(:instance_integration) { create(:confluence_integration, :instance, confluence_url: 'https://example.atlassian.net/wiki', organization: create(:organization)) }
+    let_it_be(:instance_level_instance_specific_integration) { create(:beyond_identity_integration, :instance) }
 
     it 'creates integrations from default integrations' do
       expect(described_class).to receive(:create_from_active_default_integrations)
@@ -809,7 +810,7 @@ RSpec.describe Integration, feature_category: :integrations do
         end
 
         context 'when passing a group' do
-          let!(:subgroup) { create(:group, parent: group) }
+          let(:subgroup) { create(:group, parent: group) }
 
           it 'creates an integration from the group-level integration' do
             described_class.create_from_active_default_integrations(subgroup, :group_id)
@@ -905,7 +906,7 @@ RSpec.describe Integration, feature_category: :integrations do
       end
 
       context 'with active group-level integration' do
-        let!(:group_integration) { create(:beyond_identity_integration, group: group, instance: false) }
+        let!(:group_integration) { create(:beyond_identity_integration, project: nil, group: group) }
 
         it 'creates an integration from the group-level integration' do
           described_class.create_from_default_instance_specific_integrations(project, :project_id)
@@ -916,7 +917,7 @@ RSpec.describe Integration, feature_category: :integrations do
 
         context 'when group level integration is not active' do
           let!(:group_integration) do
-            create(:beyond_identity_integration, group: group, instance: false, active: false)
+            create(:beyond_identity_integration, project: nil, group: group, active: false)
           end
 
           it 'creates an integration from the group-level integration' do
@@ -929,7 +930,7 @@ RSpec.describe Integration, feature_category: :integrations do
         end
 
         context 'when passing a group' do
-          let!(:subgroup) { create(:group, parent: group) }
+          let(:subgroup) { create(:group, parent: group) }
 
           it 'creates an integration from the group-level integration' do
             described_class.create_from_default_instance_specific_integrations(subgroup, :group_id)
@@ -942,7 +943,7 @@ RSpec.describe Integration, feature_category: :integrations do
         context 'with an active subgroup' do
           let_it_be(:subgroup) { create(:group, parent: group) }
           let_it_be(:project) { create(:project, group: subgroup) }
-          let!(:subgroup_integration) { create(:beyond_identity_integration, group: subgroup, instance: false) }
+          let!(:subgroup_integration) { create(:beyond_identity_integration, project: nil, group: subgroup) }
 
           it 'creates an integration from the subgroup-level integration' do
             described_class.create_from_default_instance_specific_integrations(project, :project_id)
@@ -967,8 +968,8 @@ RSpec.describe Integration, feature_category: :integrations do
 
                 context 'when having an integration inheriting settings' do
                   let!(:subgroup_integration) do
-                    create(:beyond_identity_integration, group: subgroup, inherit_from_id: group_integration.id,
-                      instance: false)
+                    create(:beyond_identity_integration, project: nil, group: subgroup,
+                      inherit_from_id: group_integration.id)
                   end
 
                   it 'creates an integration from the group-level integration' do
@@ -1031,12 +1032,12 @@ RSpec.describe Integration, feature_category: :integrations do
     let_it_be(:project) { create(:project, :in_subgroup) }
     let(:group) { project.root_namespace }
     let(:subgroup) { project.group }
-    let!(:group_integration) { create(:confluence_integration, :group, group: group) }
-    let!(:subgroup_integration) do
+    let(:group_integration) { create(:confluence_integration, :group, group: group) }
+    let(:subgroup_integration) do
       create(:confluence_integration, :group, group: subgroup, inherit_from_id: group_integration.id)
     end
 
-    let!(:project_custom_settings_integration) do
+    let(:project_custom_settings_integration) do
       create(:confluence_integration, project: project, inherit_from_id: nil)
     end
 
@@ -1616,6 +1617,104 @@ RSpec.describe Integration, feature_category: :integrations do
         expect(described_class.last.project_id).to eq(project.id)
         expect(described_class.last.group_id).to be_nil
         expect(described_class.last.organization_id).to be_nil
+      end
+    end
+
+    context 'when filter is set' do
+      let(:filter) do
+        {
+          'rules' => [
+            { 'field' => 'status', 'operator' => 'eq', 'value' => 'failed' }
+          ]
+        }
+      end
+
+      before do
+        record.filter = filter
+      end
+
+      it 'includes filter in the hash' do
+        hash = record.to_database_hash
+
+        expect(hash).to have_key('filter')
+        expect(hash['filter']).to eq(filter)
+      end
+
+      it 'preserves filter when saving with insert_all' do
+        hash = record.to_database_hash
+        hash[:project_id] = project.id
+
+        expect do
+          described_class.insert_all([hash])
+        end.to change { described_class.count }.by(1)
+
+        expect(described_class.last.filter).to eq(filter)
+      end
+    end
+
+    context 'when filter is nil' do
+      it 'includes filter as nil in the hash' do
+        hash = record.to_database_hash
+
+        expect(hash).to have_key('filter')
+        expect(hash['filter']).to be_empty
+      end
+    end
+
+    context 'when filter is already a hash {}' do
+      it 'leaves the value unchanged and does not log an error' do
+        record.filter = {}
+
+        expect(record).not_to receive(:log_error)
+        expect(record.filter).to eq({})
+        expect(record.to_database_hash['filter']).to eq({})
+      end
+    end
+
+    context 'when filter is the string {}' do
+      it 'normalizes filter to a hash' do
+        record.filter = '{}'
+
+        expect(record.filter).to eq({})
+        expect(record.to_database_hash['filter']).to eq({})
+      end
+
+      it 'normalizes filter before validation' do
+        record.update_column(:filter, '{}')
+
+        record.assign_attributes(active: false)
+        expect(record).to be_valid
+        expect(record.filter).to eq({})
+      end
+
+      it 'logs an error with a stack trace when normalizing a string filter value' do
+        expect(record).to receive(:log_error).with(
+          'Integration filter value is a string, normalizing',
+          filter_value: '{}',
+          caller: be_an(Array)
+        )
+
+        record.filter = '{}'
+      end
+    end
+
+    context 'when filter is the string "\"{}\"" (a double-encoded JSON string)' do
+      it 'normalizes to an empty hash in a single save cycle' do
+        allow(record).to receive(:log_error)
+
+        record.filter = '"{}"'
+
+        expect(record.filter).to eq({})
+        expect(record.to_database_hash['filter']).to eq({})
+      end
+    end
+
+    context 'when normalized_jsonb_value is called with a non-filter column' do
+      it 'falls back to reading the raw attribute' do
+        record.filter = { 'rules' => [] }
+
+        expect(record.send(:normalized_jsonb_value, 'filter')).to eq({ 'rules' => [] })
+        expect(record.send(:normalized_jsonb_value, 'other_column')).to eq(record['other_column'])
       end
     end
   end

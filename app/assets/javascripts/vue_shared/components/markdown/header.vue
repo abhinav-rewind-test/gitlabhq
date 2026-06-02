@@ -1,9 +1,9 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
 import { GlPopover, GlButton, GlTooltipDirective, GlFormInput } from '@gitlab/ui';
-import { GL_COLOR_ORANGE_50, GL_COLOR_ORANGE_200 } from '@gitlab/ui/src/tokens/build/js/tokens';
 import $ from 'jquery';
-import { escapeRegExp } from 'lodash';
+import { escapeRegExp } from 'lodash-es';
+import { MARKDOWN_EVENT_SHOW, MARKDOWN_EVENT_HIDE } from '~/behaviors/preview_markdown';
 import {
   keysFor,
   BOLD_TEXT,
@@ -13,6 +13,10 @@ import {
   INDENT_LINE,
   OUTDENT_LINE,
   FIND_AND_REPLACE,
+  FIND_AND_REPLACE_NEXT,
+  FIND_AND_REPLACE_PREV,
+  FIND_AND_REPLACE_REPLACE,
+  FIND_AND_REPLACE_REPLACE_ALL,
 } from '~/behaviors/shortcuts/keybindings';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { getModifierKey } from '~/constants';
@@ -27,11 +31,10 @@ import DrawioToolbarButton from './drawio_toolbar_button.vue';
 import CommentTemplatesModal from './comment_templates_modal.vue';
 import HeaderDivider from './header_divider.vue';
 import ToolbarMoreDropdown from './toolbar_more_dropdown.vue';
+import { FIND_AND_REPLACE_FOCUSABLE_SELECTOR } from './constants';
 
 export default {
   findAndReplace: {
-    highlightColor: GL_COLOR_ORANGE_50,
-    highlightColorActive: GL_COLOR_ORANGE_200,
     highlightClass: 'js-highlight',
     highlightClassActive: 'js-highlight-active',
   },
@@ -151,6 +154,7 @@ export default {
       },
       modifierKey,
       shiftKey: modifierKey === '⌘' ? '⇧' : 'Shift+',
+      altKey: modifierKey === '⌘' ? '⌥' : 'Alt+',
     };
   },
   computed: {
@@ -194,7 +198,7 @@ export default {
     },
     findAndReplace_MatchCountText() {
       if (!this.findAndReplace.totalMatchCount) {
-        return s__('MarkdownEditor|No records');
+        return s__('MarkdownEditor|No results');
       }
 
       return sprintf(s__('MarkdownEditor|%{currentHighlight} of %{totalHighlights}'), {
@@ -244,6 +248,18 @@ export default {
         modifierKey: this.modifierKey,
       });
     },
+    findNextButtonTitle() {
+      return s__('MarkdownEditor|Find next (F3)');
+    },
+    findPrevButtonTitle() {
+      return s__('MarkdownEditor|Find previous (Shift+F3)');
+    },
+    replaceButtonTitle() {
+      return sprintf(s__('MarkdownEditor|Replace (%{altKey}R)'), { altKey: this.altKey });
+    },
+    replaceAllButtonTitle() {
+      return sprintf(s__('MarkdownEditor|Replace all (%{altKey}A)'), { altKey: this.altKey });
+    },
   },
   watch: {
     showSuggestPopover() {
@@ -256,7 +272,6 @@ export default {
 
         if (previousActive) {
           previousActive.classList.remove(options.highlightClassActive);
-          previousActive.style.backgroundColor = options.highlightColor;
         }
 
         const newActive = this.cloneDiv
@@ -265,21 +280,20 @@ export default {
 
         if (newActive) {
           newActive.classList.add(options.highlightClassActive);
-          newActive.style.backgroundColor = options.highlightColorActive;
         }
       },
     },
   },
   mounted() {
-    $(document).on('markdown-preview:show.vue', this.showMarkdownPreview);
-    $(document).on('markdown-preview:hide.vue', this.hideMarkdownPreview);
+    document.addEventListener(MARKDOWN_EVENT_SHOW, this.showMarkdownPreview);
+    document.addEventListener(MARKDOWN_EVENT_HIDE, this.hideMarkdownPreview);
     $(document).on('markdown-editor:find-and-replace:show', this.findAndReplace_show);
 
     this.updateSuggestPopoverVisibility();
   },
   beforeDestroy() {
-    $(document).off('markdown-preview:show.vue', this.showMarkdownPreview);
-    $(document).off('markdown-preview:hide.vue', this.hideMarkdownPreview);
+    document.removeEventListener(MARKDOWN_EVENT_SHOW, this.showMarkdownPreview);
+    document.removeEventListener(MARKDOWN_EVENT_HIDE, this.hideMarkdownPreview);
     $(document).off('markdown-editor:find-and-replace:show', this.findAndReplace_show);
   },
   methods: {
@@ -289,18 +303,21 @@ export default {
       this.suggestPopoverVisible = this.showSuggestPopover && this.canSuggest;
     },
     isValid(form) {
-      return (
-        !form ||
-        (form.find('.js-vue-markdown-field').length && $(this.$el).closest('form')[0] === form[0])
-      );
+      if (!form) return true;
+
+      const formEl = form.jquery ? form[0] : form;
+      const isVueMarkdownField = formEl.querySelector('.js-vue-markdown-field');
+      const belongsToThisForm = this.$el.closest('form') === formEl;
+
+      return isVueMarkdownField && belongsToThisForm;
     },
-    showMarkdownPreview(_, form) {
-      if (!this.isValid(form)) return;
+    showMarkdownPreview(e) {
+      if (!this.isValid(e?.detail?.form)) return;
 
       this.$emit('showPreview');
     },
-    hideMarkdownPreview(_, form) {
-      if (!this.isValid(form)) return;
+    hideMarkdownPreview(e) {
+      if (!this.isValid(e?.detail?.form)) return;
 
       this.$emit('hidePreview');
     },
@@ -317,7 +334,7 @@ export default {
       this.tag = '';
 
       const transformed = CopyAsGFM.transformGFMSelection(documentFragment);
-      const area = this.$el.parentNode.querySelector('textarea');
+      const area = this.$el.parentNode.querySelector('textarea.js-gfm-input');
 
       CopyAsGFM.nodeToGFM(transformed)
         .then((gfm) => {
@@ -326,7 +343,7 @@ export default {
         .catch(() => {});
     },
     getCurrentTextArea() {
-      return this.$el.closest('.md-area')?.querySelector('textarea');
+      return this.$el.closest('.md-area')?.querySelector('textarea.js-gfm-input');
     },
     insertIntoTextarea(text) {
       const textArea = this.getCurrentTextArea();
@@ -382,7 +399,7 @@ export default {
       this.insertIntoTextarea(savedReply);
 
       setTimeout(() => {
-        this.$el.closest('.md-area')?.querySelector('textarea')?.focus();
+        this.$el.closest('.md-area')?.querySelector('textarea.js-gfm-input')?.focus();
       }, 500);
     },
     findAndReplace_show(_, form) {
@@ -395,12 +412,66 @@ export default {
       this.getCurrentTextArea()?.removeEventListener('scroll', this.findAndReplace_syncScroll);
       this.cloneDiv?.parentElement.removeChild(this.cloneDiv);
       this.cloneDiv = undefined;
+      this.getCurrentTextArea()?.focus();
     },
     findAndReplace_handleKeyDown(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-      } else if (e.key === 'Escape') {
+      }
+    },
+    findAndReplace_handleShortcutsAndFocusTrap(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
         this.findAndReplace_close();
+        return;
+      }
+
+      if (e.key === 'F3') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.shiftKey) {
+          this.findAndReplace_handlePrev();
+        } else {
+          this.findAndReplace_handleNext();
+        }
+
+        return;
+      }
+
+      if (this.findAndReplace.shouldShowReplaceInput) {
+        if (e.altKey && e.code === 'KeyR') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.findAndReplace_replaceNext();
+          return;
+        }
+
+        if (e.altKey && e.code === 'KeyA') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.findAndReplace_replaceAll();
+          return;
+        }
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const focusable = Array.from(
+        e.currentTarget.querySelectorAll(FIND_AND_REPLACE_FOCUSABLE_SELECTOR),
+      );
+
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     },
     findAndReplace_handleKeyUp(e) {
@@ -425,41 +496,40 @@ export default {
       // RegExp.escape is not available in jest environment and some older browsers
       const escapedText = (RegExp.escape || escapeRegExp).call(null, textToFind);
 
-      // Regex with global modifier maintains state between calls, causing inconsistent behaviour.
-      // So we have to test against a regexp without the global flag when matching segments.
-      const regexWithoutG = new RegExp(escapedText, 'g');
-
+      // Split with a capturing group: match segments land at odd indices, non-matches at even.
+      // This avoids a regex `.test()` call per segment and sidesteps the `lastIndex` pitfall
+      // that comes with reusing a regex that has the global flag.
       const segments = textArea.value.split(new RegExp(`(${escapedText})`, 'g'));
       const options = this.$options.findAndReplace;
 
-      // Clear previous contents
-      this.cloneDiv.innerHTML = '';
+      // Build all nodes in a DocumentFragment so the DOM is updated in a single operation.
+      const fragment = document.createDocumentFragment();
       let counter = 0;
 
-      segments.forEach((segment) => {
-        // If the segment matches the text we're highlighting
-        if (regexWithoutG.test(segment)) {
+      segments.forEach((segment, index) => {
+        if (index % 2 === 1) {
+          // Odd index → this segment is a match
           const span = document.createElement('span');
           span.classList.add(options.highlightClass);
-          span.style.backgroundColor = options.highlightColor;
-          span.style.display = 'inline-block';
           span.textContent = segment; // Use textContent for safe text insertion
 
           // Highlight first match
           if (counter === 0) {
             span.classList.add(options.highlightClassActive);
-            span.style.backgroundColor = options.highlightColorActive;
           }
 
-          this.cloneDiv.appendChild(span);
+          fragment.appendChild(span);
           this.findAndReplace.totalMatchCount += 1;
           counter += 1;
         } else {
-          // Otherwise, just append the plain text
-          const textNode = document.createTextNode(segment);
-          this.cloneDiv.appendChild(textNode);
+          // Even index → plain text between matches
+          fragment.appendChild(document.createTextNode(segment));
         }
       });
+
+      // Clear previous contents and attach all new nodes at once
+      this.cloneDiv.innerHTML = '';
+      this.cloneDiv.appendChild(fragment);
 
       if (this.findAndReplace.totalMatchCount > 0) {
         this.findAndReplace.highlightedMatchIndex = 1;
@@ -541,12 +611,15 @@ export default {
         this.findAndReplace.highlightedMatchIndex = 1;
       }
     },
-    findAndReplace_replaceNext() {
+    async findAndReplace_replaceNext() {
       const textArea = this.getCurrentTextArea();
 
-      if (!textArea) {
-        return;
+      if (!textArea || !textArea.value.length) {
+        return false;
       }
+
+      // Save position before the re-highlight resets it to 1.
+      const savedIndex = this.findAndReplace.highlightedMatchIndex;
 
       function findNthOccurrence(str, searchStr, n) {
         let index = -1;
@@ -565,14 +638,51 @@ export default {
         this.findAndReplace.highlightedMatchIndex,
       );
 
+      if (index === -1) {
+        return false;
+      }
+
       textArea.setSelectionRange(index, index + this.findAndReplace.find.length);
       insertText(textArea, this.findAndReplace.replace);
 
-      // Re-higlight
-      this.findAndReplace_highlightMatchingText(this.findAndReplace.find);
+      // Re-highlight and then restore the match position. The replaced match
+      // is gone so the total drops by one; clamp to the new total so that
+      // replacing the last occurrence wraps correctly instead of going out
+      // of bounds.
+      await this.findAndReplace_highlightMatchingText(this.findAndReplace.find);
+
+      if (this.findAndReplace.totalMatchCount > 0) {
+        this.findAndReplace.highlightedMatchIndex = Math.min(
+          savedIndex,
+          this.findAndReplace.totalMatchCount,
+        );
+      }
+
+      return true;
+    },
+    async findAndReplace_replaceAll() {
+      const textArea = this.getCurrentTextArea();
+
+      if (!textArea || !textArea.value.length || !this.findAndReplace.find) {
+        return;
+      }
+
+      const escapedText = (RegExp.escape || escapeRegExp).call(null, this.findAndReplace.find);
+      const newValue = textArea.value.replace(
+        new RegExp(escapedText, 'g'),
+        this.findAndReplace.replace,
+      );
+
+      // Replace the entire textarea content in a single undoable operation, then
+      // re-highlight once — instead of looping replaceNext() which would trigger
+      // a full DOM rebuild after every individual replacement.
+      textArea.setSelectionRange(0, textArea.value.length);
+      insertText(textArea, newValue);
+
+      await this.findAndReplace_highlightMatchingText(this.findAndReplace.find);
     },
     skipToInput() {
-      this.$el.closest('.md-area')?.querySelector('textarea')?.focus();
+      this.$el.closest('.md-area')?.querySelector('textarea.js-gfm-input')?.focus();
     },
   },
   shortcuts: {
@@ -583,6 +693,10 @@ export default {
     indent: keysFor(INDENT_LINE),
     outdent: keysFor(OUTDENT_LINE),
     findAndReplace: keysFor(FIND_AND_REPLACE),
+    findAndReplaceNext: keysFor(FIND_AND_REPLACE_NEXT),
+    findAndReplacePrev: keysFor(FIND_AND_REPLACE_PREV),
+    findAndReplaceReplace: keysFor(FIND_AND_REPLACE_REPLACE),
+    findAndReplaceReplaceAll: keysFor(FIND_AND_REPLACE_REPLACE_ALL),
   },
   i18n: {
     comment: __('This comment was generated by AI'),
@@ -871,70 +985,104 @@ export default {
     </div>
     <div
       v-if="findAndReplace.shouldShowBar"
-      class="gl-border gl-absolute gl-right-0 gl-z-3 gl-flex gl-items-baseline gl-rounded-bl-base gl-border-r-0 gl-bg-section gl-p-3 gl-shadow-sm"
+      class="gl-border gl-absolute gl-right-0 gl-z-3 gl-rounded-bl-base gl-border-r-0 gl-bg-section gl-p-3 gl-shadow-sm"
+      role="dialog"
+      :aria-label="s__('MarkdownEditor|Find and replace')"
       data-testid="find-and-replace"
+      @keydown="findAndReplace_handleShortcutsAndFocusTrap"
     >
-      <div class="gl-mr-3">
-        <gl-button
-          category="tertiary"
-          size="small"
-          data-testid="replace-toggle"
-          aria-controls="replace-section"
-          :aria-expanded="findAndReplace.shouldShowReplaceInput"
-          :icon="findAndReplace_ToggleIcon"
-          :aria-label="s__('MarkdownEditor|Toggle section')"
-          @click="findAndReplace.shouldShowReplaceInput = !findAndReplace.shouldShowReplaceInput"
-        />
-      </div>
-      <div>
-        <gl-form-input
-          v-model="findAndReplace.find"
-          :placeholder="s__('MarkdownEditor|Find')"
-          autofocus
-          class="gl-min-w-36 gl-mb-3"
-          data-testid="find-input"
-          @keydown="findAndReplace_handleKeyDown"
-          @keyup="findAndReplace_handleKeyUp"
-        />
-        <div v-if="findAndReplace.shouldShowReplaceInput" aria-describedby="replace-section">
-          <gl-form-input
-            v-model="findAndReplace.replace"
-            :placeholder="s__('MarkdownEditor|Replace')"
-            class="gl-mb-3"
-            data-testid="replace-input"
+      <div class="gl-flex gl-items-baseline">
+        <div class="gl-mr-3">
+          <gl-button
+            category="tertiary"
+            size="small"
+            data-testid="replace-section-toggle"
+            aria-controls="replace-section"
+            :aria-expanded="findAndReplace.shouldShowReplaceInput"
+            :icon="findAndReplace_ToggleIcon"
+            :aria-label="s__('MarkdownEditor|Toggle section')"
+            @click="findAndReplace.shouldShowReplaceInput = !findAndReplace.shouldShowReplaceInput"
           />
-          <gl-button @click="findAndReplace_replaceNext">
-            {{ s__('MarkdownEditor|Replace') }}
-          </gl-button>
+        </div>
+        <div>
+          <gl-form-input
+            v-model="findAndReplace.find"
+            :placeholder="s__('MarkdownEditor|Find')"
+            autofocus
+            class="gl-mb-3 gl-w-20"
+            data-testid="find-input"
+            @keydown="findAndReplace_handleKeyDown"
+            @keyup="findAndReplace_handleKeyUp"
+          />
+        </div>
+        <div
+          class="gl-ml-4 gl-min-w-12 gl-whitespace-nowrap"
+          data-testid="find-and-replace-matches"
+        >
+          {{ findAndReplace_MatchCountText }}
+        </div>
+        <div class="gl-ml-2">
+          <gl-button
+            v-gl-tooltip
+            category="tertiary"
+            icon="arrow-up"
+            size="small"
+            data-testid="find-prev"
+            :title="findPrevButtonTitle"
+            :aria-label="findPrevButtonTitle"
+            @click="findAndReplace_handlePrev"
+          />
+          <gl-button
+            v-gl-tooltip
+            category="tertiary"
+            icon="arrow-down"
+            size="small"
+            data-testid="find-next"
+            :title="findNextButtonTitle"
+            :aria-label="findNextButtonTitle"
+            @click="findAndReplace_handleNext"
+          />
+          <gl-button
+            category="tertiary"
+            icon="close"
+            size="small"
+            data-testid="find-and-replace-close"
+            :aria-label="s__('MarkdownEditor|Close find and replace bar')"
+            @click="findAndReplace_close"
+          />
         </div>
       </div>
-      <div class="gl-ml-4 gl-min-w-12 gl-whitespace-nowrap" data-testid="find-and-replace-matches">
-        {{ findAndReplace_MatchCountText }}
-      </div>
-      <div class="gl-ml-2">
-        <gl-button
-          category="tertiary"
-          icon="arrow-up"
-          size="small"
-          data-testid="find-prev"
-          :aria-label="s__('MarkdownEditor|Find previous')"
-          @click="findAndReplace_handlePrev"
+      <div
+        v-if="findAndReplace.shouldShowReplaceInput"
+        aria-describedby="replace-section"
+        class="gl-ml-7 gl-flex gl-items-center"
+      >
+        <gl-form-input
+          v-model="findAndReplace.replace"
+          :placeholder="s__('MarkdownEditor|Replace')"
+          data-testid="replace-input"
+          class="gl-mr-4 gl-w-20"
         />
         <gl-button
+          v-gl-tooltip
           category="tertiary"
-          icon="arrow-down"
+          icon="replace"
+          class="gl-mr-2"
           size="small"
-          data-testid="find-next"
-          :aria-label="s__('MarkdownEditor|Find next')"
-          @click="findAndReplace_handleNext"
+          data-testid="replace-button"
+          :title="replaceButtonTitle"
+          :aria-label="replaceButtonTitle"
+          @click="findAndReplace_replaceNext"
         />
         <gl-button
+          v-gl-tooltip
           category="tertiary"
-          icon="close"
+          icon="replace-all"
           size="small"
-          data-testid="find-and-replace-close"
-          :aria-label="s__('MarkdownEditor|Close find and replace bar')"
-          @click="findAndReplace_close"
+          data-testid="replace-all-button"
+          :title="replaceAllButtonTitle"
+          :aria-label="replaceAllButtonTitle"
+          @click="findAndReplace_replaceAll"
         />
       </div>
     </div>

@@ -11,7 +11,7 @@ RSpec.describe Gitlab::RelativePositioning::ItemContext do
   indices = (0..).take(range.size)
 
   let_it_be(:default_user) { create_default(:user) }
-  let_it_be(:project, reload: true) { create(:project) }
+  let_it_be_with_reload(:project) { create(:project) }
 
   let(:start) { ((range.first + range.last) / 2.0).floor }
   let(:subjects) { issues.map { |i| described_class.new(i.reset, range) } }
@@ -43,26 +43,10 @@ RSpec.describe Gitlab::RelativePositioning::ItemContext do
         expect(positions).to eq(positions.uniq)
       end
 
-      it 'is possible to create_space_right, which will move the gap to immediately after' do
-        subject.create_space_right
-
-        expect(subject.find_next_gap_after).to have_attributes(start_pos: subject.relative_position)
-        expect(positions).to all(be_between(range.first, range.last))
-        expect(positions).to eq(positions.uniq)
-      end
-
       it 'is possible to shift_left, which will consume the gap at the start' do
         subject.shift_left
 
         expect(subject.find_next_gap_before).not_to be_present
-        expect(positions).to all(be_between(range.first, range.last))
-        expect(positions).to eq(positions.uniq)
-      end
-
-      it 'is possible to create_space_left, which will move the gap to immediately before' do
-        subject.create_space_left
-
-        expect(subject.find_next_gap_before).to have_attributes(start_pos: subject.relative_position)
         expect(positions).to all(be_between(range.first, range.last))
         expect(positions).to eq(positions.uniq)
       end
@@ -226,6 +210,25 @@ RSpec.describe Gitlab::RelativePositioning::ItemContext do
 
     it 'raises InvalidPosition when the item cannot be found' do
       expect { subject.at_position(501) }.to raise_error Gitlab::RelativePositioning::InvalidPosition
+    end
+  end
+
+  context 'with items across projects' do
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project_1) { create(:project, group: group) }
+    let_it_be(:project_2) { create(:project, group: group) }
+
+    let_it_be(:issue_1) { create(:issue, project: project_1, relative_position: 103) }
+    let_it_be(:issue_2) { create(:issue, project: project_1, relative_position: 101) }
+    let_it_be(:issue_3) { create(:issue, project: project_2, relative_position: 102) }
+    let_it_be(:issue_4) { create(:issue, project: project_2, relative_position: 105) }
+
+    it 'computes correct minimum' do
+      expect(described_class.new(issue_1, range).min_relative_position).to eq(101)
+    end
+
+    it 'computes correct maximum' do
+      expect(described_class.new(issue_1, range).max_relative_position).to eq(105)
     end
   end
 end

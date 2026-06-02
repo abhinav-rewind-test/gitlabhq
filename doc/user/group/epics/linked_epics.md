@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Product Planning
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Link epics to coordinate work across teams, manage dependencies, and connect short-term execution with long-term planning in GitLab.
 title: Linked epics
 ---
@@ -19,7 +19,7 @@ the epic description. You can link epics in different groups.
 The relationship only shows up in the UI if the user can see both epics.
 When you try to close an epic that has open blockers, a warning is displayed.
 
-To manage linked epics through our API, see [Linked epics API](../../../api/linked_epics.md).
+To manage linked, see the [linked epics API](../../../api/linked_epics.md).
 
 ## Ways to use linked epics
 
@@ -119,8 +119,8 @@ Link an epic and another:
 
 Prerequisites:
 
-- You must have at least the Guest role for both groups or group and project.
-- For GitLab SaaS: the epic that you're editing must be in a group on GitLab Ultimate.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for both groups, or for the group and project.
+- For GitLab.com: the epic that you're editing must be in a group on GitLab Ultimate.
   The epics you're linking can be in a group on a lower tier.
 
 To link one epic to another item:
@@ -162,7 +162,7 @@ Alternatively, you can add linked items using [quick actions](../../project/quic
 
 Prerequisites:
 
-- You must have at least the Guest role for the epic's group.
+- You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role for the epic's group.
 
 To remove a linked item:
 

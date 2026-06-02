@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe Projects::CommitController, feature_category: :source_code_management do
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:user) { project.owner }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:user, freeze: false) { project.owner }
 
   describe 'GET #discussions' do
-    let_it_be(:sha) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
-    let_it_be(:commit) { project.commit_by(oid: sha) }
+    let_it_be(:sha, freeze: false) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
+    let_it_be(:commit, freeze: false) { project.commit_by(oid: sha) }
 
     let(:params) do
       {
@@ -109,11 +109,27 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
         end
       end
     end
+
+    context 'with a non-existent commit' do
+      let(:params) do
+        {
+          namespace_id: project.namespace,
+          project_id: project,
+          id: '0000000000000000000000000000000000000000'
+        }
+      end
+
+      it 'returns 404' do
+        send_request
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
   end
 
   describe 'POST #create_discussions' do
-    let_it_be(:sha) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
-    let_it_be(:commit) { project.commit_by(oid: sha) }
+    let_it_be(:sha, freeze: false) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
+    let_it_be(:commit, freeze: false) { project.commit_by(oid: sha) }
 
     let(:params) do
       {
@@ -153,6 +169,24 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
 
       it 'does not allow note creation' do
         expect { send_request }.not_to change { Note.count }
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
+    context 'with a non-existent commit' do
+      let(:params) do
+        {
+          namespace_id: project.namespace,
+          project_id: project,
+          id: '0000000000000000000000000000000000000000'
+        }
+      end
+
+      let(:request_params) { { note: { note: 'Test note' } } }
+
+      it 'returns 404' do
+        send_request
 
         expect(response).to have_gitlab_http_status(:not_found)
       end
@@ -242,7 +276,7 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
       end
 
       context 'on a deleted line' do
-        let_it_be(:sha) { "d59c60028b053793cecfb4022de34602e1a9218e" }
+        let_it_be(:sha, freeze: false) { "d59c60028b053793cecfb4022de34602e1a9218e" }
         let(:diff_file) { commit.diffs.diff_files.find { |f| f.old_path == 'files/js/commit.js.coffee' } }
 
         let(:position_data) do
@@ -366,9 +400,9 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
   end
 
   describe '#show' do
-    let_it_be(:sha) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
-    let_it_be(:commit) { project.commit_by(oid: sha) }
-    let_it_be(:diff_view) { :inline }
+    let_it_be(:sha, freeze: false) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
+    let_it_be(:commit, freeze: false) { project.commit_by(oid: sha) }
+    let_it_be(:diff_view, freeze: false) { :inline }
 
     let(:params) do
       { view: diff_view }
@@ -534,7 +568,7 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
 
       context 'without a signed in user' do
         it_behaves_like 'rate limited endpoint', rate_limit_key: :expanded_diff_files do
-          let_it_be(:project) { create(:project, :public, :repository) }
+          let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
           let(:request_ip) { '1.2.3.4' }
 
           def request
@@ -547,6 +581,54 @@ RSpec.describe Projects::CommitController, feature_category: :source_code_manage
           end
         end
       end
+    end
+  end
+
+  describe 'GET #merge_requests' do
+    let_it_be(:sha, freeze: false) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
+
+    let_it_be(:older_mr, freeze: false) do
+      create(
+        :merge_request,
+        source_project: project,
+        source_branch: 'feature',
+        target_branch: 'master',
+        merge_commit_sha: sha
+      )
+    end
+
+    let_it_be(:newer_mr, freeze: false) do
+      create(
+        :merge_request, :merged,
+        source_project: project,
+        source_branch: 'fix',
+        target_branch: 'master',
+        merge_commit_sha: sha
+      )
+    end
+
+    let(:params) do
+      {
+        namespace_id: project.namespace,
+        project_id: project,
+        id: sha,
+        format: :json
+      }
+    end
+
+    it 'returns merge requests ordered oldest first', :aggregate_failures do
+      sign_in(user)
+
+      get merge_requests_namespace_project_commit_path(params)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(response.content_type).to eq('application/json; charset=utf-8')
+
+      iids = Gitlab::Json.parse(response.body).pluck('iid')
+
+      expect(iids.count).to eq(2)
+      expect(iids.first).to eq(older_mr.iid)
+      expect(iids.last).to eq(newer_mr.iid)
     end
   end
 

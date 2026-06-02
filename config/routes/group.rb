@@ -57,6 +57,8 @@ constraints(Namespaces::GroupUrlConstraint.new) do
         post :create_deploy_token, path: 'deploy_token/create'
       end
 
+      resources :service_accounts, path: 'service_accounts(/*vueroute)', only: [:index]
+
       resources :access_tokens, only: [:index, :create] do
         member do
           put :revoke
@@ -190,6 +192,7 @@ constraints(Namespaces::GroupUrlConstraint.new) do
     resources :achievements, only: [:index, :new, :edit]
 
     resources :work_items, only: [:index, :show], param: :iid
+    get 'work_items/new', to: 'work_items#show', as: :work_item_new, format: false
 
     resource :import_history, only: [:show]
 
@@ -198,7 +201,9 @@ constraints(Namespaces::GroupUrlConstraint.new) do
       resource :setup, only: [:show], controller: 'setup'
       resource :access_requests, only: [:create]
     end
-    resources :observability, only: [:show]
+    resources :observability, only: [:show], constraints: { id: %r{[a-zA-Z0-9._-]+} }, format: false
+    get 'observability/*sub_path', to: 'observability#show', as: :observability_sub_path, format: false,
+      constraints: { sub_path: %r{[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*} }
 
     resources :step_up_auths, only: [:new]
 
@@ -233,4 +238,8 @@ scope format: false do
     post 'v2/*group_id/dependency_proxy/containers/*image/manifests/*tag/upload/authorize' => 'groups/dependency_proxy_for_containers#authorize_upload_manifest' # rubocop:todo Cop/PutGroupRoutesUnderScope
     post 'v2/*group_id/dependency_proxy/containers/*image/manifests/*tag/upload' => 'groups/dependency_proxy_for_containers#upload_manifest' # rubocop:todo Cop/PutGroupRoutesUnderScope
   end
+
+  # Catch-all route for OCI spec endpoints (e.g., referrers) that are not yet implemented
+  # Returns 404 instead of redirecting to sign_in, allowing clients to handle the response correctly
+  match 'v2/*group_id/dependency_proxy/containers/*image/referrers/*tag', to: 'groups/dependency_proxy_for_containers#referrers_not_found', via: [:get, :head, :post, :put, :patch, :delete]
 end

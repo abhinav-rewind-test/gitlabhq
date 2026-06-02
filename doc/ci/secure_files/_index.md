@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project-level secure files
 ---
 
@@ -21,9 +21,9 @@ title: Project-level secure files
 This feature is part of [Mobile DevOps](../mobile_devops/_index.md).
 The feature is still in development, but you can:
 
-- [Request a feature](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?issuable_template=feature_request).
-- [Report a bug](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?issuable_template=report_bug).
-- [Share feedback](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?issuable_template=general_feedback).
+- [Request a feature](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?description_template=feature_request).
+- [Report a bug](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?description_template=report_bug).
+- [Share feedback](https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/feedback/-/issues/new?description_template=general_feedback).
 
 You can securely store up to 100 files for use in CI/CD pipelines as secure files. These files are stored securely outside of your project's repository and are not version controlled. It is safe to store sensitive information in these files. Secure files support both plain text and binary file types but must be 5 MB or less.
 
@@ -37,7 +37,7 @@ by using the [`glab securefile`](https://gitlab.com/gitlab-org/cli/-/tree/main/d
 To add a secure file to a project:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand the **Secure Files** section.
 1. Select **Upload File**.
 1. Find the file to upload, select **Open**, and the file upload begins immediately.
@@ -131,9 +131,9 @@ A [unique encryption key](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app
 is generated for each file when it is created and persisted in the database. The encrypted uploaded files
 are stored in either local storage or object storage depending on the [GitLab instance configuration](../../administration/cicd/secure_files.md).
 
-Individual files can be retrieved with the [secure files download API](../../api/secure_files.md#download-secure-file).
-Metadata can be retrieved with the [list](../../api/secure_files.md#list-project-secure-files)
-or [show](../../api/secure_files.md#show-secure-file-details) API endpoints. Files can also be retrieved
+Individual files can be retrieved with the [secure files download API](../../api/secure_files.md#download-a-secure-file).
+Metadata can be retrieved with the [list](../../api/secure_files.md#list-all-secure-files-for-a-project)
+or [show](../../api/secure_files.md#retrieve-details-of-a-secure-file) API endpoints. Files can also be retrieved
 with the [`glab securefile`](https://gitlab.com/gitlab-org/cli/-/tree/main/docs/source/securefile)
 command. This command automatically verifies the checksum of each file as it is downloaded.
 

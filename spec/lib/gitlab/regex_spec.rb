@@ -235,6 +235,30 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.not_to match('foo/bar') }
   end
 
+  describe '.cd_name_regex' do
+    subject { described_class.cd_name_regex }
+
+    it { is_expected.to match('foo') }
+    it { is_expected.to match('Foo') }
+    it { is_expected.to match('foo-bar') }
+    it { is_expected.to match('foo_bar') }
+    it { is_expected.to match('foo-bar-baz') }
+    it { is_expected.to match('FooBar') }
+    it { is_expected.to match('foo123') }
+    it { is_expected.to match('123foo') }
+    it { is_expected.to match('_foo') }
+    it { is_expected.to match('a') }
+    it { is_expected.to match('1') }
+    it { is_expected.not_to match('-foo') }
+    it { is_expected.not_to match('foo-') }
+    it { is_expected.not_to match('foo bar') }
+    it { is_expected.not_to match('foo/bar') }
+    it { is_expected.not_to match('foo.bar') }
+    it { is_expected.not_to match('foo!') }
+    it { is_expected.not_to match('foo@bar') }
+    it { is_expected.not_to match('') }
+  end
+
   describe '.kubernetes_dns_subdomain_regex' do
     subject { described_class.kubernetes_dns_subdomain_regex }
 
@@ -277,6 +301,18 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.to match(OpenSSL::Digest.hexdigest('MD5', 'valid_MD5')) }
     it { is_expected.to match(OpenSSL::Digest.hexdigest('SHA1', 'valid_SHA-1')) }
     it { is_expected.not_to match('0') }
+    it { is_expected.not_to match('g' * 32) }
+    it { is_expected.not_to match('a' * 41) }
+  end
+
+  describe '.conan_revision_regex_combined' do
+    subject { described_class.conan_revision_regex_combined }
+
+    it { is_expected.to match(OpenSSL::Digest.hexdigest('MD5', 'valid_MD5')) }
+    it { is_expected.to match(OpenSSL::Digest.hexdigest('SHA1', 'valid_SHA-1')) }
+    it { is_expected.to match('0') }
+    it { is_expected.not_to match('00') }
+    it { is_expected.not_to match('01') }
     it { is_expected.not_to match('g' * 32) }
     it { is_expected.not_to match('a' * 41) }
   end
@@ -722,6 +758,7 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.to match('example.com/foo%2Fbar') }
     it { is_expected.to match('example.com/foo/bar') }
     it { is_expected.to match('example.com/foo/bar/baz') }
+    it { is_expected.to match('git.sr.ht/~user/repo') }
     it { is_expected.to match('tl.dr.foo.bar.baz') }
     it { is_expected.to match('(tl.dr.foo.bar.baz)') }
     it { is_expected.to match(' tl.dr.foo.bar.baz ') }
@@ -1143,6 +1180,14 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
       it { is_expected.not_to match(%(must start in first column <!--\ncomment\n-->)) }
       it { expect(subject.match(markdown)[:html_comment_block]).to eq expected }
     end
+  end
+
+  describe '.rubygems_gemspec_file_name_regex' do
+    subject { described_class.rubygems_gemspec_file_name_regex }
+
+    it { is_expected.to match('my-gem-1.0.0.gemspec.rz') }
+    it { is_expected.to match('gem_name-2.3.4.gemspec.rz') }
+    it { is_expected.not_to match('my-gem-1.0.0.gem') }
   end
 
   describe '.ml_model_file_name_regex' do

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Groups, feature_category: :groups_and_projects do
+RSpec.describe API::Groups, :with_current_organization, feature_category: :groups_and_projects do
   include GroupAPIHelpers
   include UploadHelpers
   include WorkhorseHelpers
@@ -11,13 +11,13 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
   let_it_be(:admin) { create(:admin) }
-  let_it_be(:group1) { create(:group, path: 'some_path', avatar: File.open(uploaded_image_temp_path), owners: user1, organization: current_organization) }
+  let_it_be(:group1, freeze: false) { create(:group, path: 'some_path', avatar: File.open(uploaded_image_temp_path), owners: user1, organization: current_organization) }
   let_it_be(:group2) { create(:group, :private, owners: user2) }
   let_it_be(:project1) { create(:project, namespace: group1) }
   let_it_be(:project2) { create(:project, namespace: group2, name: 'testing') }
   let_it_be(:project3) { create(:project, namespace: group1, path: 'test', visibility_level: Gitlab::VisibilityLevel::PRIVATE) }
   let_it_be(:archived_project) { create(:project, namespace: group1, archived: true) }
-  let_it_be(:marked_for_deletion_project) { create(:project, namespace: group1, marked_for_deletion_at: Date.current) }
+  let_it_be(:marked_for_deletion_project) { create(:project, :aimed_for_deletion, namespace: group1) }
 
   def expect_log_keys(caller_id:, route:, root_namespace:)
     expect(API::API::LOG_FORMATTER).to receive(:call) do |_severity, _datetime, _, data|
@@ -38,8 +38,8 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
         make_upload_request
 
         group_id = json_response['id']
-        expect(json_response['avatar_url']).to eq('http://localhost/uploads/'\
-                                                  '-/system/group/avatar/'\
+        expect(json_response['avatar_url']).to eq('http://localhost/uploads/' \
+                                                  '-/system/group/avatar/' \
                                                   "#{group_id}/banana_sample.gif")
       end
     end
@@ -310,7 +310,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
               expect(response).to have_gitlab_http_status(:method_not_allowed)
               expect(json_response['error']).to eq(
-                'Offset pagination has a maximum allowed offset of 50000 for requests that return objects of type Group. '\
+                'Offset pagination has a maximum allowed offset of 50000 for requests that return objects of type Group. ' \
                 'Remaining records can be retrieved using keyset pagination.'
               )
             end
@@ -739,7 +739,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
       it "returns one of user1's groups", :aggregate_failures do
         # TODO remove this in https://gitlab.com/gitlab-org/gitlab/-/issues/545723.
-        allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(109)
+        allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(112)
 
         project = create(:project, namespace: group2, path: 'Foo')
         project2 = create(:project, namespace: group2, path: 'Foo2')
@@ -1232,15 +1232,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     end
 
     context 'when authenticated as the group owner' do
-      before do
-        # Remove this after https://gitlab.com/gitlab-org/gitlab/-/work_items/588408
-        allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(105)
-      end
-
       it 'updates the group', :aggregate_failures do
-        # TODO: remove threshold once https://gitlab.com/gitlab-org/gitlab/-/work_items/588290 is resolved
-        allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(103)
-
         workhorse_form_with_file(
           api("/groups/#{group1.id}", user1),
           method: :put,
@@ -2625,7 +2617,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     end
 
     context 'when authenticated as user' do
-      it_behaves_like 'authorizing granular token permissions', :read_invited_group do
+      it_behaves_like 'authorizing granular token permissions', :read_group_invited_group do
         let(:boundary_object) { main_group }
         let(:user) { user1 }
         let(:request) do
@@ -2824,12 +2816,8 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     let_it_be(:user1) { create(:user) }
     let_it_be(:user2) { create(:user) }
 
-    let_it_be_with_refind(:group) { create(:group, owners: user1) }
-    let_it_be_with_refind(:group_2) { create(:group, owners: user1) }
-
-    before_all do
-      group.namespace_settings.update!(archived: true)
-    end
+    let_it_be_with_reload(:group) { create(:group, :archived, owners: user1) }
+    let_it_be_with_reload(:group_2) { create(:group, :archived, owners: user1) }
 
     context 'when unauthenticated' do
       it 'returns 401' do
@@ -2920,7 +2908,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     end
 
     context 'when authenticated as user' do
-      it_behaves_like 'authorizing granular token permissions', :read_sub_group do
+      it_behaves_like 'authorizing granular token permissions', :read_subgroup do
         let(:boundary_object) { group1 }
         let(:user) { user1 }
         let(:request) do
@@ -3456,10 +3444,12 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
           parent.add_owner(user3)
         end
 
-        it 'creates group' do
+        it 'creates group with the specified default_branch_protection_defaults' do
           subject
 
           expect(response).to have_gitlab_http_status(:created)
+          expect(json_response['default_branch_protection_defaults']['allowed_to_push'])
+            .to eq([{ "access_level" => Gitlab::Access::DEVELOPER }])
         end
       end
 
@@ -3544,7 +3534,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     shared_examples_for 'immediately enqueues the job to delete the group' do
       it 'immediately enqueues the job to delete the group', :clean_gitlab_redis_queues do
         Sidekiq::Testing.fake! do
-          expect { api_request }.to change(GroupDestroyWorker.jobs, :size).by(1)
+          expect { api_request }.to change { GroupDestroyWorker.jobs.size }.by(1)
         end
 
         expect(response).to have_gitlab_http_status(:accepted)
@@ -3556,7 +3546,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
       it 'does not immediately enqueues the job to delete the group', :clean_gitlab_redis_queues do
         Sidekiq::Testing.fake! do
-          expect { api_request }.not_to change(GroupDestroyWorker.jobs, :size)
+          expect { api_request }.not_to change { GroupDestroyWorker.jobs.size }
         end
 
         expect(response).to have_gitlab_http_status(expected_http_status)
@@ -3567,13 +3557,13 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     shared_examples_for 'marks group for delayed deletion' do
       it 'marks group for delayed deletion', :clean_gitlab_redis_queues do
         Sidekiq::Testing.fake! do
-          expect { api_request }.not_to change(GroupDestroyWorker.jobs, :size)
+          expect { api_request }.not_to change { GroupDestroyWorker.jobs.size }
         end
 
         group.reload
 
         expect(response).to have_gitlab_http_status(:accepted)
-        expect(group.marked_for_deletion_on).to eq(Date.current)
+        expect(group.self_deletion_scheduled_deletion_created_on).to eq(Date.current)
         expect(group.deleting_user).to eq(user)
       end
     end
@@ -3598,13 +3588,13 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
       it 'do not mark group for delayed deletion but return success', :clean_gitlab_redis_queues do
         Sidekiq::Testing.fake! do
-          expect { subject }.not_to change(GroupDestroyWorker.jobs, :size)
+          expect { subject }.not_to change { GroupDestroyWorker.jobs.size }
         end
 
         group.reload
 
         expect(response).to have_gitlab_http_status(:accepted)
-        expect(group.marked_for_deletion_on).to be_nil
+        expect(group.self_deletion_scheduled_deletion_created_on).to be_nil
         expect(group.deleting_user).to be_nil
       end
     end
@@ -3617,40 +3607,6 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
         before do
           group.update!(parent: parent_group)
-        end
-
-        describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
-          before do
-            stub_application_setting(allow_immediate_namespaces_deletion: false)
-          end
-
-          it_behaves_like 'does not immediately enqueues the job to delete the group' do
-            let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
-          end
-
-          context 'when current user is an admin' do
-            let_it_be(:user) { admin }
-            let(:admin_mode) { true }
-
-            context 'when group is already marked for deletion' do
-              let(:params) { { permanently_remove: true, full_path: group.full_path } }
-
-              before do
-                create(:group_deletion_schedule, group: group, marked_for_deletion_on: Date.current)
-                group.add_owner(admin)
-              end
-
-              it_behaves_like 'immediately enqueues the job to delete the group'
-
-              context 'when admin_mode is false' do
-                let(:admin_mode) { false }
-
-                it_behaves_like 'does not immediately enqueues the job to delete the group' do
-                  let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
-                end
-              end
-            end
-          end
         end
 
         context 'when group is not marked for deletion' do
@@ -3687,16 +3643,6 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
       end
 
       context 'if group is not a subgroup' do
-        describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
-          before do
-            stub_application_setting(allow_immediate_namespaces_deletion: false)
-          end
-
-          it_behaves_like 'does not immediately enqueues the job to delete the group' do
-            let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
-          end
-        end
-
         it_behaves_like 'does not immediately enqueues the job to delete the group' do
           let(:error_message) { '`permanently_remove` option is only available for subgroups.' }
         end
@@ -3722,7 +3668,8 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     let_it_be(:user) { user1 }
     let_it_be(:unauthorized_user) { user2 }
     let_it_be(:group) do
-      create(:group_with_deletion_schedule, marked_for_deletion_on: 1.day.ago, deleting_user: user, owners: user)
+      create(:group_with_deletion_schedule, :deletion_scheduled, marked_for_deletion_on: 1.day.ago,
+        deleting_user: user, owners: user)
     end
 
     subject { post api("/groups/#{group.id}/restore", user) }
@@ -3879,7 +3826,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
         expect(response).to include_pagination_headers
       end
 
-      it_behaves_like 'authorizing granular token permissions', :read_transfer_location do
+      it_behaves_like 'authorizing granular token permissions', :read_group_transfer_location do
         let(:boundary_object) { source_group }
         let(:request) do
           get api("/groups/#{source_group.id}/transfer_locations", personal_access_token: pat)
@@ -3960,40 +3907,25 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
     end
 
     context 'when promoting a subgroup to a root group' do
-      shared_examples_for 'promotes the subgroup to a root group' do
-        it 'returns success', :aggregate_failures do
-          expect_log_keys(caller_id: "POST /api/:version/groups/:id/transfer",
-            route: "/api/:version/groups/:id/transfer",
-            root_namespace: group.path)
-
-          make_request(user)
-
-          expect(response).to have_gitlab_http_status(:created)
-          expect(json_response['parent_id']).to be_nil
-        end
-      end
-
       context 'when no group_id is specified' do
         let(:params) {}
 
-        it_behaves_like 'promotes the subgroup to a root group'
+        it 'schedules async transfer and returns success' do
+          make_request(user)
+
+          expect(response).to have_gitlab_http_status(:created)
+          expect(group.reload.state).to eq('transfer_scheduled')
+        end
       end
 
       context 'when group_id is specified as blank' do
         let(:params) { { group_id: '' } }
 
-        it_behaves_like 'promotes the subgroup to a root group'
-      end
-
-      context 'when the group is already a root group' do
-        let(:group) { create(:group) }
-        let(:params) { { group_id: '' } }
-
-        it 'returns error', :aggregate_failures do
+        it 'schedules async transfer and returns success' do
           make_request(user)
 
-          expect(response).to have_gitlab_http_status(:bad_request)
-          expect(json_response['message']).to eq('Transfer failed: Group is already a root group.')
+          expect(response).to have_gitlab_http_status(:created)
+          expect(group.reload.state).to eq('transfer_scheduled')
         end
       end
     end
@@ -4045,27 +3977,111 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
         end
       end
 
-      context 'when the transfer fails due to an error' do
+      it 'schedules async transfer and returns success' do
+        make_request(user)
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(group.reload.state).to eq('transfer_scheduled')
+      end
+
+      context 'when transfer cannot be scheduled' do
         before do
-          expect_next_instance_of(::Groups::TransferService) do |service|
-            expect(service).to receive(:proceed_to_transfer).and_raise(Gitlab::UpdatePathError, 'namespace directory cannot be moved')
-          end
+          group.schedule_transfer!(transition_user: user)
+          Gitlab::ExclusiveLease.new(
+            Namespaces::Groups::TransferWorker.lease_key(group.id), timeout: 30.minutes
+          ).try_obtain
         end
 
-        it 'returns error', :aggregate_failures do
+        it 'returns error when already scheduled', :aggregate_failures do
           make_request(user)
 
           expect(response).to have_gitlab_http_status(:bad_request)
-          expect(json_response['message']).to eq('Transfer failed: namespace directory cannot be moved')
+          expect(json_response['message'])
+            .to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
+        end
+      end
+    end
+
+    context 'when groups_and_projects_async_transfer is disabled' do
+      before do
+        stub_feature_flags(groups_and_projects_async_transfer: false)
+      end
+
+      context 'when promoting a subgroup to a root group' do
+        shared_examples_for 'promotes the subgroup to a root group' do
+          it 'returns success', :aggregate_failures do
+            expect_log_keys(caller_id: "POST /api/:version/groups/:id/transfer",
+              route: "/api/:version/groups/:id/transfer",
+              root_namespace: group.path)
+
+            make_request(user)
+
+            expect(response).to have_gitlab_http_status(:created)
+            expect(json_response['parent_id']).to be_nil
+            expect(group.reload.state).to eq('ancestor_inherited')
+          end
+        end
+
+        context 'when no group_id is specified' do
+          let(:params) {}
+
+          it_behaves_like 'promotes the subgroup to a root group'
+        end
+
+        context 'when group_id is specified as blank' do
+          let(:params) { { group_id: '' } }
+
+          it_behaves_like 'promotes the subgroup to a root group'
+        end
+
+        context 'when the group is already a root group' do
+          let(:group) { create(:group) }
+          let(:params) { { group_id: '' } }
+
+          it 'returns error', :aggregate_failures do
+            make_request(user)
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to eq('Transfer failed: Group is already a root group.')
+          end
         end
       end
 
-      context 'when the transfer succceds' do
-        it 'returns success', :aggregate_failures do
-          make_request(user)
+      context 'when transferring a subgroup to a different group' do
+        let(:params) { { group_id: new_parent_group.id } }
 
-          expect(response).to have_gitlab_http_status(:created)
-          expect(json_response['parent_id']).to eq(new_parent_group.id)
+        context 'when the transfer fails due to an error' do
+          before do
+            expect_next_instance_of(::Groups::TransferService) do |service|
+              expect(service).to receive(:proceed_to_transfer).and_raise(Gitlab::UpdatePathError, 'namespace directory cannot be moved')
+            end
+          end
+
+          it 'returns error', :aggregate_failures do
+            make_request(user)
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to eq('Transfer failed: namespace directory cannot be moved')
+          end
+        end
+
+        context 'when the transfer succeeds' do
+          before do
+            # Added this to https://gitlab.com/gitlab-org/gitlab/-/work_items/595305
+            # Bumped by ~6 to accommodate the secrets manager deprovision walk
+            # added in MR !236024 (snapshot capture of self_and_descendants +
+            # all_projects for the SM deprovision hook). Performance work is
+            # tracked in gitlab-org/gitlab#600129.
+            allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(112)
+          end
+
+          it 'returns success', :aggregate_failures do
+            make_request(user)
+
+            expect(response).to have_gitlab_http_status(:created)
+            expect(json_response['parent_id']).to eq(new_parent_group.id)
+            expect(group.reload.state).to eq('ancestor_inherited')
+          end
         end
       end
     end
@@ -4082,7 +4098,7 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
 
     context 'when authenticated as group owner' do
       it 'initiates the transfer' do
-        expect_next_instance_of(Organizations::Groups::TransferService) do |service|
+        expect_next_instance_of(Organizations::Transfer::GroupsService) do |service|
           expect(service).to receive(:async_execute).and_return(
             ServiceResponse.success(message: 'Group transfer to organization initiated')
           )
@@ -4103,14 +4119,14 @@ RSpec.describe API::Groups, feature_category: :groups_and_projects do
         end
 
         before do
-          allow(Organizations::Groups::TransferService).to receive_message_chain(:new, :async_execute)
+          allow(Organizations::Transfer::GroupsService).to receive_message_chain(:new, :async_execute)
             .and_return(ServiceResponse.success(message: 'Group transfer to organization initiated'))
         end
       end
 
       context 'when service returns error' do
         it 'returns bad request' do
-          expect_next_instance_of(Organizations::Groups::TransferService) do |service|
+          expect_next_instance_of(Organizations::Transfer::GroupsService) do |service|
             expect(service).to receive(:async_execute).and_return(
               ServiceResponse.error(message: 'Group must be a top-level group')
             )

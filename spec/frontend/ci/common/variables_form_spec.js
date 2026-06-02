@@ -5,7 +5,6 @@ import {
   extendedWrapper,
   mountExtended,
 } from 'helpers/vue_test_utils_helper';
-import InputsAdoptionBanner from '~/ci/common/pipeline_inputs/inputs_adoption_banner.vue';
 import Markdown from '~/vue_shared/components/markdown/non_gfm_markdown.vue';
 import VariablesForm from '~/ci/common/variables_form.vue';
 import { CI_VARIABLE_TYPE_FILE, CI_VARIABLE_TYPE_ENV_VAR } from '~/ci/pipeline_new/constants';
@@ -13,21 +12,18 @@ import { CI_VARIABLE_TYPE_FILE, CI_VARIABLE_TYPE_ENV_VAR } from '~/ci/pipeline_n
 describe('Pipeline variables form group', () => {
   let wrapper;
 
-  const schedulesCallout = 'pipeline_schedules_inputs_adoption_banner';
-
   const createComponent = ({ props = {}, mountFn = shallowMountExtended, slots = {} } = {}) => {
     const stubs =
       mountFn === shallowMountExtended ? { GlFormGroup } : { InputsAdoptionBanner: true };
 
     wrapper = mountFn(VariablesForm, {
-      propsData: { ...props, userCalloutsFeatureName: schedulesCallout },
+      propsData: { ...props },
       stubs,
       slots,
     });
   };
 
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
-  const findInputsAdoptionBanner = () => wrapper.findComponent(InputsAdoptionBanner);
   const findVariableRows = () => wrapper.findAllByTestId('ci-variable-row-container');
   const findVariableTypes = () => wrapper.findAllByTestId('pipeline-form-ci-variable-type');
   const findKeyInputs = () => wrapper.findAllByTestId('pipeline-form-ci-variable-key-field');
@@ -52,16 +48,6 @@ describe('Pipeline variables form group', () => {
     input.trigger('change');
     await nextTick();
   };
-
-  describe('Pipeline inputs banner', () => {
-    beforeEach(() => {
-      createComponent();
-    });
-
-    it('displays the inputs adoption banner with the provided featureName', () => {
-      expect(findInputsAdoptionBanner().props('featureName')).toBe(schedulesCallout);
-    });
-  });
 
   describe('loading state', () => {
     it('shows loading icon when isLoading is true', () => {
@@ -381,7 +367,7 @@ describe('Pipeline variables form group', () => {
       expect(findRemoveButtonDesktopAt(0).props('disabled')).toBe(false);
       expect(findRemoveButtonDesktopAt(0).props('category')).toBe('tertiary');
 
-      expect(findRemoveButtonDesktopAt(0).attributes('aria-label')).toBe('Remove variable');
+      expect(findRemoveButtonDesktopAt(0).attributes('aria-label')).toBe('Remove variable 1');
     });
   });
 
@@ -559,6 +545,60 @@ describe('Pipeline variables form group', () => {
 
       expect(findVariableValuesListbox().exists()).toBe(false);
       expect(findValueInputs()).toHaveLength(2); // The variable + empty row
+    });
+  });
+
+  describe('Read-only mode', () => {
+    const mockVariables = [
+      {
+        id: '1',
+        key: 'TEST_VAR_1',
+        value: 'test-value-1',
+        variableType: CI_VARIABLE_TYPE_ENV_VAR,
+        destroy: false,
+      },
+    ];
+
+    beforeEach(() => {
+      createComponent({
+        mountFn: mountExtended,
+        props: {
+          initialVariables: mockVariables,
+          editing: true,
+          readOnly: true,
+        },
+      });
+    });
+
+    it('does not append an empty trailing row', () => {
+      expect(findVariableRows()).toHaveLength(mockVariables.length);
+    });
+
+    it('disables the type, key, and value inputs', async () => {
+      findVariableSecurityBtn().vm.$emit('click');
+      await nextTick();
+
+      expect(findVariableTypes().at(0).props('disabled')).toBe(true);
+      expect(findKeyInputs().at(0).attributes('disabled')).toBeDefined();
+      expect(findValueInputs().at(0).attributes('disabled')).toBeDefined();
+    });
+
+    it('does not render remove buttons even when multiple variables exist', async () => {
+      await wrapper.setProps({
+        initialVariables: [
+          ...mockVariables,
+          {
+            id: '2',
+            key: 'TEST_VAR_2',
+            value: 'test-value-2',
+            variableType: CI_VARIABLE_TYPE_ENV_VAR,
+            destroy: false,
+          },
+        ],
+      });
+
+      expect(findRemoveButtonAt(0).exists()).toBe(false);
+      expect(findRemoveButtonDesktopAt(0).exists()).toBe(false);
     });
   });
 

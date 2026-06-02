@@ -140,6 +140,8 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
 
     it_behaves_like 'valid permissions'
 
+    it { expect_disallowed(:update_group_organization) }
+
     context 'with subgroup_creation level set to maintainer' do
       let(:permissions) { maintainer_permissions + [:create_subgroup] }
 
@@ -161,6 +163,8 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
 
     it_behaves_like 'valid permissions'
 
+    it { expect_allowed(:update_group_organization) }
+
     it_behaves_like 'deploy token does not get confused with user' do
       let(:user_id) { owner.id }
     end
@@ -170,11 +174,14 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
     let(:current_user) { admin }
 
     it { expect_disallowed(*all_permissions) }
+    it { expect_disallowed(:update_group_organization) }
 
     context 'with admin mode', :enable_admin_mode do
       let(:permissions) { admin_permissions }
 
       it_behaves_like 'valid permissions'
+
+      it { expect_allowed(:update_group_organization) }
     end
 
     it_behaves_like 'deploy token does not get confused with user' do
@@ -191,6 +198,8 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
     let(:permissions) { admin_permissions }
 
     it_behaves_like 'valid permissions'
+
+    it { expect_allowed(:update_group_organization) }
 
     context 'when user is also an admin' do
       before do
@@ -377,109 +386,21 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
 
   it_behaves_like 'group archiving abilities' do
     let(:archived_abilities) do
-      %i[
-        activate_group_member
-        add_cluster
-        admin_achievement
-        admin_ai_catalog_item
-        admin_build
-        admin_cicd_variables
-        admin_cluster
-        admin_compliance_framework
-        admin_compliance_pipeline_configuration
-        admin_custom_field
-        admin_epic
-        admin_integrations
-        admin_issue
-        admin_issue_board
-        admin_issue_board_list
-        admin_iteration
-        admin_iteration_cadence
-        admin_label
-        admin_member_access_request
-        admin_merge_request
-        admin_milestone
-        admin_namespace
-        admin_note
-        admin_package
-        admin_pipeline
-        admin_protected_environments
-        admin_push_rules
-        admin_runners
-        admin_software_license_policy
-        admin_tag
-        admin_vulnerability
-        admin_wiki
-        admin_work_item
-        award_achievement
-        award_emoji
-        change_group
-        change_new_user_signups_cap
-        change_prevent_sharing_groups_outside_hierarchy
-        change_seat_control
-        change_share_with_group_lock
-        change_visibility_level
-        create_cluster
-        create_custom_emoji
-        create_deploy_token
-        create_epic
-        create_incident
-        create_iteration
-        create_iteration_cadence
-        create_jira_connect_subscription
-        create_merge_request_from
-        create_merge_request_in
-        create_note
-        create_observability_access_request
-        create_package
-        create_projects
-        create_resource_access_tokens
-        create_runners
-        create_subgroup
-        create_test_case
-        create_wiki
-        import_projects
-        invite_group_members
-        manage_merge_request_settings
-        modify_security_policy
-        push_code
-        push_to_delete_protected_branch
-        register_group_runners
-        reopen_issue
-        request_access
-        resolve_note
-        rollover_issues
-        set_epic_created_at
-        set_epic_updated_at
-        set_issue_created_at
-        set_issue_updated_at
-        set_new_issue_metadata
-        set_new_work_item_metadata
-        set_note_created_at
-        set_show_diff_preview_in_email
-        transfer_projects
-        update_cluster
-        update_default_branch_protection
-        update_epic
-        update_git_access_protocol
-        update_issue
-        update_max_artifacts_size
-        update_o11y_settings
-        update_runners_registration_token
-        upload_file
-      ]
+      Authz::PermissionGroups::Internal.get('group:archived').permissions
     end
 
     let(:destroy_abilities) do
       %i[
-        destroy_deploy_token
-        destroy_epic
         delete_custom_emoji
         delete_o11y_settings
+        destroy_deploy_token
+        destroy_epic
         destroy_issue
         destroy_package
+        destroy_saved_replies
         destroy_upload
         destroy_user_achievement
+        destroy_wiki
       ]
     end
   end
@@ -506,7 +427,7 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
         let(:current_user) { owner }
 
         context 'when group is marked for deletion' do
-          let(:group) { create(:group_with_deletion_schedule, organization: organization) }
+          let(:group) { create(:group, :deletion_scheduled, organization: organization) }
 
           before do
             group.add_owner(owner)
@@ -836,7 +757,7 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
       context 'maintainer' do
         let(:current_user) { maintainer }
 
-        it { is_expected.to be_allowed(:import_projects) }
+        it { is_expected.to be_disallowed(:import_projects) }
       end
 
       context 'owner' do
@@ -1315,6 +1236,59 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
         subject { described_class.new(import_user, group) }
 
         it_behaves_like 'disallows all dependency proxy access'
+      end
+
+      context 'AI service account user', :request_store do
+        let_it_be(:service_account) { create(:user, :ai_service_account) }
+
+        # When the identity is not linked, the policy condition itself returns
+        # false, so be_disallowed works directly.
+        # When the identity is linked, the condition passes but the scoped
+        # user's group access is enforced by Ability#with_composite_identity_check,
+        # so those cases must go through Ability.allowed?.
+        context 'when the scoped user is a group member' do
+          before do
+            ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, guest)
+          end
+
+          it { expect(Ability.allowed?(service_account, :read_dependency_proxy, group)).to be(true) }
+          it { expect(Ability.allowed?(service_account, :admin_dependency_proxy, group)).to be(false) }
+        end
+
+        context 'when the scoped user is not a group member' do
+          before do
+            ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, non_group_member)
+          end
+
+          it { expect(Ability.allowed?(service_account, :read_dependency_proxy, group)).to be(false) }
+        end
+
+        context 'when identity is linked but scoped user is not a member of this group' do
+          let_it_be(:other_group) { create(:group) }
+          # scoped_user is a member of other_group, not of `group`
+          let_it_be(:unrelated_scoped_user) { create(:user, guest_of: other_group) }
+
+          before do
+            ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, unrelated_scoped_user)
+          end
+
+          # The condition only checks username prefix + linked identity; cross-group
+          # protection is enforced by Ability#with_composite_identity_check, not here.
+          it 'allows via direct policy check (cross-group check is Ability.allowed?\'s concern)' do
+            policy = described_class.new(service_account, group)
+            expect(policy.allowed?(:read_dependency_proxy)).to be(true)
+          end
+
+          it 'denies access via Ability.allowed?' do
+            expect(Ability.allowed?(service_account, :read_dependency_proxy, group)).to be(false)
+          end
+        end
+
+        context 'when the composite identity is not linked' do
+          subject { described_class.new(service_account, group) }
+
+          it { is_expected.to be_disallowed(:read_dependency_proxy) }
+        end
       end
 
       context 'all other user types' do
@@ -1803,6 +1777,12 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
     context 'with developer' do
       let(:current_user) { developer }
 
+      it { is_expected.to be_disallowed(:read_group_all_available_runners) }
+    end
+
+    context 'with security_manager' do
+      let(:current_user) { security_manager }
+
       it { is_expected.to be_allowed(:read_group_all_available_runners) }
     end
 
@@ -2034,27 +2014,79 @@ RSpec.describe GroupPolicy, feature_category: :system_access do
   end
 
   describe 'create_saved_view' do
-    context 'when user can read the group' do
-      let(:current_user) { create(:user) }
-
-      before do
-        group.add_guest(current_user)
+    context 'when user can create saved views' do
+      where(:role, :current_user) do
+        'planner'    | lazy { planner }
+        'reporter'   | lazy { reporter }
+        'developer'  | lazy { developer }
+        'maintainer' | lazy { maintainer }
+        'owner'      | lazy { owner }
       end
 
-      it { is_expected.to be_allowed(:create_saved_view) }
+      with_them do
+        it { is_expected.to be_allowed(:create_saved_view) }
+      end
     end
 
-    context 'when user cannot read the group' do
-      let(:group) { create(:group, :private) }
-      let(:current_user) { create(:user) }
+    context 'when user cannot create saved views' do
+      where(:role, :current_user) do
+        'guest'      | lazy { guest }
+        'non-member' | lazy { create(:user) }
+        'anonymous'  | lazy { nil }
+      end
 
-      it { is_expected.to be_disallowed(:create_saved_view) }
+      with_them do
+        it { is_expected.to be_disallowed(:create_saved_view) }
+      end
+    end
+  end
+
+  describe ':request_access' do
+    let_it_be(:public_group)   { create(:group, :public) }
+    let_it_be(:internal_group) { create(:group, :internal) }
+    let_it_be(:private_group)  { create(:group, :private) }
+    let_it_be(:logged_in_user) { create(:user) }
+    let_it_be(:external_user)  { create(:user, :external) }
+
+    subject { described_class.new(current_user, group) }
+
+    context 'when user can request access' do
+      where(:case_name, :current_user, :group) do
+        'logged-in non-member on public group'   | lazy { logged_in_user } | lazy { public_group }
+        'logged-in non-member on internal group' | lazy { logged_in_user } | lazy { internal_group }
+        'external user on public group'          | lazy { external_user }  | lazy { public_group }
+      end
+
+      with_them do
+        it { expect_allowed(:request_access) }
+      end
     end
 
-    context 'when user is anonymous' do
-      let(:current_user) { nil }
+    context 'when user cannot request access' do
+      where(:case_name, :current_user, :group) do
+        'anonymous on public group'             | lazy { nil }            | lazy { public_group }
+        'anonymous on internal group'           | lazy { nil }            | lazy { internal_group }
+        'anonymous on private group'            | lazy { nil }            | lazy { private_group }
+        'external user on internal group'       | lazy { external_user }  | lazy { internal_group }
+        'external user on private group'        | lazy { external_user }  | lazy { private_group }
+        'logged-in non-member on private group' | lazy { logged_in_user } | lazy { private_group }
+      end
 
-      it { is_expected.to be_disallowed(:create_saved_view) }
+      with_them do
+        it { expect_disallowed(:request_access) }
+      end
+    end
+
+    context 'when the group has request_access_enabled disabled' do
+      subject { described_class.new(logged_in_user, create(:group, :public, request_access_enabled: false)) }
+
+      it { expect_disallowed(:request_access) }
+    end
+
+    context 'when the user is already a member' do
+      subject { described_class.new(guest, group) }
+
+      it { expect_disallowed(:request_access) }
     end
   end
 end

@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { renderHtmlStreams } from '~/streaming/render_html_streams';
 import { toPolyfillReadable } from '~/streaming/polyfills';
 import { DiffFile } from '~/rapid_diffs/web_components/diff_file';
 import { performanceMarkAndMeasure } from '~/performance/utils';
+import { createAlert } from '~/alert';
+import { __ } from '~/locale';
+import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '~/lib/utils/http_status';
+import {
+  removeLinkedFileUrlParams,
+  withLinkedFileUrlParams,
+} from '~/rapid_diffs/utils/linked_file';
 
 export const statuses = {
   idle: 'idle',
@@ -18,6 +25,7 @@ export const useDiffsList = defineStore('diffsList', {
       status: statuses.idle,
       loadingController: undefined,
       loadedFiles: {},
+      linkedFileData: null,
     };
   },
   actions: {
@@ -43,20 +51,33 @@ export const useDiffsList = defineStore('diffsList', {
       if (this.status === statuses.fetching) return;
       this.loadedFiles = { ...this.loadedFiles, [target.id]: true };
     },
+    setLinkedFileData(data) {
+      this.linkedFileData = data;
+    },
     fillInLoadedFiles() {
       this.loadedFiles = Object.fromEntries(DiffFile.getAll().map((file) => [file.id, true]));
     },
-    async renderDiffsStream(stream, container, signal) {
+    async renderDiffsStream(requestPromise, container, signal) {
       const loadingIndicator = document.querySelector('[data-rapid-diffs] [data-list-loading]');
-      this.status = statuses.streaming;
+      this.status = statuses.fetching;
       loadingIndicator.hidden = false;
-      await renderHtmlStreams([stream], container, { signal });
+      const response = await requestPromise;
+      if (response.status >= HTTP_STATUS_INTERNAL_SERVER_ERROR) {
+        createAlert({
+          message: __('Could not fetch all changes. Try reloading the page.'),
+          parent: document.querySelector('[data-rapid-diffs]'),
+          containerSelector: '[data-diffs-list-alert]',
+        });
+        this.status = statuses.error;
+        return;
+      }
+      this.status = statuses.streaming;
+      await renderHtmlStreams([toPolyfillReadable(response.body)], container, { signal });
       loadingIndicator.hidden = true;
       this.status = statuses.idle;
     },
     streamRemainingDiffs(url, target, preload) {
       return this.withDebouncedAbortController(async ({ signal }) => {
-        this.status = statuses.fetching;
         let request;
         let streamSignal = signal;
         if (preload) {
@@ -67,8 +88,7 @@ export const useDiffsList = defineStore('diffsList', {
         } else {
           request = fetch(url, { signal });
         }
-        const { body } = await request;
-        await this.renderDiffsStream(toPolyfillReadable(body), target, streamSignal);
+        await this.renderDiffsStream(request, target, streamSignal);
         performanceMarkAndMeasure({
           mark: 'rapid-diffs-list-loaded',
           measures: [
@@ -81,17 +101,40 @@ export const useDiffsList = defineStore('diffsList', {
         });
       });
     },
+    streamInitialDiffs(url) {
+      let fetchUrl = url;
+      if (this.linkedFileData) {
+        fetchUrl = withLinkedFileUrlParams(url, {
+          oldPath: this.linkedFileData.old_path,
+          newPath: this.linkedFileData.new_path,
+        }).toString();
+      }
+      return this.reloadDiffs(fetchUrl, true);
+    },
     reloadDiffs(url, initial = false) {
       return this.withDebouncedAbortController(async ({ signal }) => {
-        const container = document.querySelector('[data-diffs-list]');
-        const overlay = document.querySelector('[data-diffs-overlay]');
-        if (!initial) overlay.dataset.loading = 'true';
         this.loadedFiles = {};
+        if (this.linkedFileData && !initial) {
+          this.setLinkedFileData(null);
+          window.history.replaceState(
+            null,
+            undefined,
+            removeLinkedFileUrlParams(new URL(window.location)),
+          );
+        }
         this.status = statuses.fetching;
-        const { body } = await fetch(url, { signal });
-        container.innerHTML = '';
-        delete overlay.dataset.loading;
-        await this.renderDiffsStream(toPolyfillReadable(body), container, signal);
+        const container = document.querySelector('[data-diffs-list]');
+        const request = fetch(url, { signal });
+        if (initial) {
+          await this.renderDiffsStream(request, container, signal);
+        } else {
+          const overlay = document.querySelector('[data-diffs-overlay]');
+          overlay.dataset.loading = 'true';
+          await request;
+          container.innerHTML = '';
+          delete overlay.dataset.loading;
+          await this.renderDiffsStream(request, container, signal);
+        }
       });
     },
   },
@@ -101,6 +144,15 @@ export const useDiffsList = defineStore('diffsList', {
     },
     isLoading() {
       return this.status !== statuses.idle && this.status !== statuses.error;
+    },
+    linkedFilePath() {
+      return this.linkedFileData?.old_path || this.linkedFileData?.new_path || null;
+    },
+    isLinkedFile() {
+      return ({ oldPath, newPath }) => {
+        if (!this.linkedFileData) return false;
+        return oldPath === this.linkedFileData.old_path && newPath === this.linkedFileData.new_path;
+      };
     },
   },
 });

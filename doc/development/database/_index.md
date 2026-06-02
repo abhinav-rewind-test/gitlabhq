@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Database development guidelines
 ---
 
@@ -12,7 +12,6 @@ title: Database development guidelines
 - If you're creating a database MR for review, check out our [Database review guidelines](../database_review.md).
 
   It provides an introduction on database-related changes, migrations, and complex SQL queries.
-
 - If you're a database reviewer or want to become one, check out our [introduction to reviewing database changes](database_reviewer_guidelines.md).
 
 ## Upgrade
@@ -69,12 +68,14 @@ title: Database development guidelines
 - [Adding database indexes](adding_database_indexes.md)
 - [Adding Foreign key constraints without downtime](foreign_keys.md#avoiding-downtime-and-migration-failures)
 - [Compatibility with Cells](../cells/_index.md)
+- [`CHECK` constraints](check_constraints.md)
 - [Check for background migrations before upgrading](../../update/background_migrations.md)
 - [Client-side connection-pool](client_side_connection_pool.md)
 - [Constraints naming conventions](constraint_naming_convention.md)
 - [Creating enums](creating_enums.md)
 - [Data layout and access patterns](layout_and_access_patterns.md)
 - [Efficient `IN` operator queries](efficient_in_operator_queries.md)
+- [Fixed items models](../fixed_items_model.md)
 - [Foreign keys & associations](foreign_keys.md)
 - [Hash indexes](hash_indexes.md)
 - [Insert into tables in batches](insert_into_tables_in_batches.md)

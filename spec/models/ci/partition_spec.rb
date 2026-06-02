@@ -42,7 +42,8 @@ RSpec.describe Ci::Partition, feature_category: :ci_scaling do
         preparing: 0,
         ready: 1,
         current: 2,
-        active: 3
+        active: 3,
+        archived: 4
       })
     end
   end
@@ -63,6 +64,16 @@ RSpec.describe Ci::Partition, feature_category: :ci_scaling do
         it 'returns the current record' do
           is_expected.to eq(ci_partition)
         end
+      end
+    end
+
+    describe '.id_before' do
+      let_it_be(:ci_next_partition) { create(:ci_partition) }
+
+      subject(:id_before) { described_class.id_before(ci_next_partition.id) }
+
+      it 'returns ci_partitions before given id' do
+        expect(id_before).to match_array(ci_partition)
       end
     end
 
@@ -180,6 +191,15 @@ RSpec.describe Ci::Partition, feature_category: :ci_scaling do
         end
       end
     end
+
+    context 'when transitioning from active to archived' do
+      let_it_be_with_reload(:active_partition) { create(:ci_partition, :active) }
+
+      it 'transitions to archived' do
+        expect { active_partition.archive! }
+          .to change { active_partition.reload.status_name }.from(:active).to(:archived)
+      end
+    end
   end
 
   describe '#switch_writes!' do
@@ -227,28 +247,6 @@ RSpec.describe Ci::Partition, feature_category: :ci_scaling do
     end
   end
 
-  describe '#above_threshold?' do
-    subject(:above_threshold) { ci_partition.above_threshold?(threshold) }
-
-    context 'when one of the partition is above the threshold' do
-      let(:threshold) { 1.byte }
-
-      it { is_expected.to eq(true) }
-    end
-
-    context 'when all partitions are below the threshold' do
-      let(:threshold) { 100.megabytes }
-
-      it { is_expected.to eq(false) }
-    end
-
-    context 'with default value' do
-      subject(:above_threshold) { ci_partition.above_threshold? }
-
-      it { is_expected.to eq(false) }
-    end
-  end
-
   describe '#all_partitions_exist?' do
     subject(:all_partitions_exist) { ci_partition.all_partitions_exist? }
 
@@ -260,6 +258,44 @@ RSpec.describe Ci::Partition, feature_category: :ci_scaling do
       let(:ci_partition) { create(:ci_partition, id: non_existing_record_id) }
 
       it { is_expected.to eq(false) }
+    end
+  end
+
+  describe '#exceed_time_window?', time_travel_to: '2026-01-31' do
+    subject(:exceeded) { ci_partition.exceed_time_window? }
+
+    before do
+      stub_application_setting(ci_partitions_in_seconds_limit: ChronicDuration.parse('30 days'))
+      ci_partition.assign_attributes(current_from: Time.current)
+    end
+
+    context 'when current_from is nil' do
+      it 'returns false' do
+        ci_partition.assign_attributes(current_from: nil)
+        expect(exceeded).to eq(false)
+      end
+    end
+
+    context 'when time_window is nil' do
+      before do
+        stub_application_setting(ci_partitions_in_seconds_limit: nil)
+      end
+
+      it { is_expected.to eq(false) }
+    end
+
+    context 'when elapsed' do
+      it 'returns true for "31 days"' do
+        ci_partition.assign_attributes(current_from: 31.days.ago)
+        expect(exceeded).to eq(true)
+      end
+    end
+
+    context 'when not elapsed' do
+      it 'returns false for "29 days"' do
+        ci_partition.assign_attributes(current_from: 29.days.ago)
+        expect(exceeded).to eq(false)
+      end
     end
   end
 end

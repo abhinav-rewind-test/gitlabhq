@@ -217,11 +217,20 @@ module AuthHelper
 
   # rubocop: disable CodeReuse/ActiveRecord
   def auth_active?(provider)
-    return current_user.atlassian_identity.present? if provider == :atlassian_oauth2
+    provider = provider.to_s
+    return current_user.atlassian_identity.present? if provider == 'atlassian_oauth2'
 
-    current_user.identities.exists?(provider: provider.to_s)
+    provider = normalize_provider(provider)
+    current_user.identities.exists?(provider: provider)
   end
   # rubocop: enable CodeReuse/ActiveRecord
+
+  def normalize_provider(provider)
+    return provider unless ::Feature.enabled?(:iam_svc_login, :instance)
+    return provider if provider.blank?
+
+    provider.delete_prefix('iam_')
+  end
 
   def unlink_provider_allowed?(provider)
     IdentityProviderPolicy.new(current_user, provider).can?(:unlink)
@@ -249,27 +258,27 @@ module AuthHelper
   end
 
   def delete_otp_authenticator_data(password_required)
-    message = if password_required
-                _('Are you sure you want to delete this one-time password authenticator? ' \
-                  'Enter your password to continue.')
-              else
-                _('Are you sure you want to delete this one-time password authenticator?')
-              end
+    messages = if password_required
+                 [_('Are you sure you want to delete this one-time password authenticator?'),
+                   _('Enter your password to continue.')]
+               else
+                 [_('Are you sure you want to delete this one-time password authenticator?')]
+               end
 
     { button_text: _('Delete one-time password authenticator'),
       icon: 'remove',
-      message: message,
+      messages: messages,
       path: destroy_otp_profile_two_factor_auth_path,
       password_required: password_required.to_s }
   end
 
   def delete_passkey_data(password_required, path, passkey_count)
-    message = if password_required
-                s_('ProfilesAuthentication|Are you sure you want to delete this passkey? ' \
-                  'Enter your password to continue.')
-              else
-                s_('ProfilesAuthentication|Are you sure you want to delete this passkey?')
-              end
+    messages = if password_required
+                 [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?'),
+                   _('Enter your password to continue.')]
+               else
+                 [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?')]
+               end
 
     if passkey_count > 1
       modal_title = s_('ProfilesAuthentication|Delete passkey')
@@ -282,50 +291,53 @@ module AuthHelper
     { modal_title: modal_title,
       button_text: button_text,
       icon: 'remove',
-      message: message,
+      messages: messages,
       path: path,
       password_required: password_required.to_s }
   end
 
   def delete_webauthn_device_data(password_required, path)
-    message = if password_required
-                _('Are you sure you want to delete this WebAuthn device? ' \
-                  'Enter your password to continue.')
-              else
-                _('Are you sure you want to delete this WebAuthn device?')
-              end
+    messages = if password_required
+                 [_('Are you sure you want to delete this WebAuthn device?'),
+                   _('Enter your password to continue.')]
+               else
+                 [_('Are you sure you want to delete this WebAuthn device?')]
+               end
 
     { button_text: _('Delete WebAuthn device'),
       icon: 'remove',
-      message: message,
+      messages: messages,
       path: path,
       password_required: password_required.to_s }
   end
 
-  def disable_two_factor_authentication_data(password_required)
-    message = if password_required
-                _('Are you sure you want to invalidate your one-time password authenticator and WebAuthn devices? ' \
-                  'Enter your password to continue. This action cannot be undone.')
-              else
-                _('Are you sure you want to invalidate your one-time password authenticator and WebAuthn devices?')
-              end
+  def disable_two_factor_authentication_data(password_required, passkeys)
+    messages = if passkeys
+                 [_('This will delete all 2FA methods from your account. We recommend keeping 2FA enabled to protect ' \
+                   'your account.'),
+                   _('Your passkey will only be eligible for passwordless sign-in.')]
+               else
+                 [_('This will delete all 2FA methods from your account. We recommend keeping 2FA enabled to protect ' \
+                   'your account.')]
+               end
 
     { button_text: _('Disable 2FA'),
-      message: message,
+      messages: messages,
+      modal_title: _('Disabled two-factor authentication (2FA)?'),
       path: profile_two_factor_auth_path,
       password_required: password_required.to_s }
   end
 
   def codes_two_factor_authentication_data(password_required)
-    message = if password_required
-                _('Are you sure you want to regenerate recovery codes? ' \
-                  'Enter your password to continue.')
-              else
-                _('Are you sure you want to regenerate recovery codes?')
-              end
+    messages = if password_required
+                 [_('Are you sure you want to regenerate recovery codes?'),
+                   _('Enter your password to continue.')]
+               else
+                 [_('Are you sure you want to regenerate recovery codes?')]
+               end
 
     { button_text: _('Regenerate recovery codes'),
-      message: message,
+      messages: messages,
       method: 'post',
       path: codes_profile_two_factor_auth_path,
       password_required: password_required.to_s,
@@ -348,29 +360,93 @@ module AuthHelper
     !current_user.password_automatically_set? && current_user.allow_password_authentication_for_web?
   end
 
-  def iam_oauth_authorize_url(provider)
-    return unless Feature.enabled?(:iam_svc_login, :instance)
+  def expires_at_for_service_access_tokens(enforce_expiration)
+    return expires_at_field_data if enforce_expiration
 
-    iam_config = Gitlab.config.authn.iam_service
-    return unless iam_config&.url
-
-    # Generate state for CSRF protection
-    state = SecureRandom.hex(32)
-    # Store state in secure HTTP-only cookie (will be validated on callback)
-    set_secure_cookie(
-      iam_auth_cookie_name,
-      state,
-      httponly: true,
-      expires: 5.minutes.from_now
-    )
-
-    "#{iam_config.url}/auth/#{provider}?state=#{state}"
+    {
+      min_date: 1.day.from_now.iso8601
+    }
   end
 
-  private
+  def admin_service_accounts_data(user = current_user)
+    sources = scope_description(:personal_access_token)
+    scopes = ::Gitlab::Auth.available_scopes_for(user)
+    {
+      base_path: admin_application_settings_service_accounts_path,
+      is_group: false.to_s,
+      service_accounts: {
+        enabled: true.to_s,
+        path: expose_path(api_v4_service_accounts_path),
+        edit_path: expose_path(api_v4_service_accounts_path),
+        docs_path: help_page_path('user/profile/service_accounts.md'),
+        delete_path: expose_path(api_v4_users_path)
+      },
+      access_token: {
+        **expires_at_for_service_access_tokens(
+          ::Gitlab::CurrentSettings.current_application_settings.service_access_tokens_expiration_enforced
+        ),
+        available_scopes: filter_sort_scopes(scopes, sources).to_json,
+        create: expose_path(api_v4_users_personal_access_tokens_path(user_id: ':id')),
+        revoke: expose_path(api_v4_personal_access_tokens_path),
+        rotate: expose_path(api_v4_personal_access_tokens_path),
+        show: "#{expose_path(api_v4_personal_access_tokens_path)}?user_id=:id"
+      }
+    }
+  end
 
-  def iam_auth_cookie_name
-    'iam_auth_state'
+  def groups_service_accounts_data(group, user = current_user)
+    sources = scope_description(:personal_access_token)
+
+    scopes = ::Gitlab::Auth.available_scopes_for(user)
+    {
+      base_path: group_settings_service_accounts_path(group),
+      is_group: true.to_s,
+      service_accounts: {
+        enabled: can?(user, :create_service_account, group).to_s,
+        path: expose_path(api_v4_groups_service_accounts_path(id: group.id)),
+        edit_path: expose_path(api_v4_groups_service_accounts_path(id: group.id)),
+        docs_path: help_page_path('user/profile/service_accounts.md'),
+        delete_path: expose_path(api_v4_groups_service_accounts_path(id: group.id))
+      },
+      access_token: {
+        **expires_at_for_service_access_tokens(group.namespace_settings.service_access_tokens_expiration_enforced),
+        available_scopes: filter_sort_scopes(scopes, sources).to_json,
+        create: expose_path(api_v4_groups_service_accounts_personal_access_tokens_path(id: group.id, user_id: ':id')),
+        revoke: expose_path(api_v4_groups_service_accounts_personal_access_tokens_path(id: group.id, user_id: ':id')),
+        rotate: expose_path(api_v4_groups_service_accounts_personal_access_tokens_path(id: group.id, user_id: ':id')),
+        show: expose_path(api_v4_groups_service_accounts_personal_access_tokens_path(id: group.id, user_id: ':id'))
+      }
+    }
+  end
+
+  def projects_service_accounts_data(project, user = current_user)
+    sources = scope_description(:personal_access_token)
+    scopes = ::Gitlab::Auth.available_scopes_for(user)
+
+    {
+      base_path: project_settings_service_accounts_path(project),
+      is_group: 'false',
+      service_accounts: {
+        enabled: can?(user, :create_service_account, project).to_s,
+        path: expose_path(api_v4_projects_service_accounts_path(id: project.id)),
+        edit_path: expose_path(api_v4_projects_service_accounts_path(id: project.id)),
+        docs_path: help_page_path('user/profile/service_accounts.md'),
+        delete_path: expose_path(api_v4_projects_service_accounts_path(id: project.id))
+      },
+      access_token: {
+        **expires_at_for_service_access_tokens(
+          project.root_namespace.namespace_settings.service_access_tokens_expiration_enforced),
+        available_scopes: filter_sort_scopes(scopes, sources).to_json,
+        create: expose_path(api_v4_projects_service_accounts_personal_access_tokens_path(id: project.id,
+          user_id: ':id')),
+        revoke: expose_path(api_v4_projects_service_accounts_personal_access_tokens_path(id: project.id,
+          user_id: ':id')),
+        rotate: expose_path(api_v4_projects_service_accounts_personal_access_tokens_path(id: project.id,
+          user_id: ':id')),
+        show: expose_path(
+          api_v4_projects_service_accounts_personal_access_tokens_path(id: project.id, user_id: ':id'))
+      }
+    }
   end
 
   extend self

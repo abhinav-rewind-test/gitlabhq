@@ -14,7 +14,14 @@ module PersonalAccessTokens
     end
 
     def execute
-      return ServiceResponse.error(message: 'Not permitted to create') unless creation_permitted?
+      return error_response('Not permitted to create') unless creation_permitted?
+
+      if granular_tokens_enforced?
+        return error_response(
+          s_('AccessTokens|Creation of legacy personal access tokens is disabled. ' \
+            'Use a fine-grained token instead.')
+        )
+      end
 
       token = target_user.personal_access_tokens.create(personal_access_token_params)
 
@@ -31,7 +38,7 @@ module PersonalAccessTokens
         message = token.errors.full_messages
         message = message.to_sentence if @concatenate_errors
 
-        ServiceResponse.error(message: message, payload: { personal_access_token: token })
+        error_response(message, { personal_access_token: token })
       end
     end
 
@@ -64,7 +71,13 @@ module PersonalAccessTokens
     end
 
     def creation_permitted?
-      Ability.allowed?(current_user, :create_user_personal_access_token, target_user)
+      Ability.allowed?(current_user, :create_personal_access_token, target_user)
+    end
+
+    def granular_tokens_enforced?
+      return false unless Feature.enabled?(:granular_personal_access_tokens, target_user)
+
+      Gitlab::CurrentSettings.granular_tokens_enforced? && !params[:granular]
     end
 
     def log_event(token)
@@ -80,8 +93,16 @@ module PersonalAccessTokens
       track_internal_event(
         'create_pat',
         user: token.user,
-        additional_properties: { type: 'legacy', scopes: scopes }
+        additional_properties: {
+          type: 'legacy',
+          scopes: scopes,
+          creation_source: params[:creation_source] || PersonalAccessToken::CREATION_SOURCE_UNKNOWN
+        }
       )
+    end
+
+    def error_response(message, payload = {})
+      ServiceResponse.error(message: message, payload: payload)
     end
   end
 end

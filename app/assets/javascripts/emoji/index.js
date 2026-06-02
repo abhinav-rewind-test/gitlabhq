@@ -1,20 +1,19 @@
-import Vue from 'vue';
-import { escape, minBy } from 'lodash';
+import { escape, minBy } from 'lodash-es';
 import emojiRegexFactory from 'emoji-regex';
 import emojiAliases from 'emojis/aliases.json';
 import createApolloClient from '~/lib/graphql';
 import { setAttributes } from '~/lib/utils/dom_utils';
 import { getEmojiScoreWithIntent } from '~/emoji/utils';
+import { observable } from '~/lib/utils/observable';
 import AccessorUtilities from '../lib/utils/accessor';
 import axios from '../lib/utils/axios_utils';
 import customEmojiQuery from './queries/custom_emoji.query.graphql';
 import { CACHE_KEY, CACHE_VERSION_KEY, CATEGORY_NAMES, FREQUENTLY_USED_KEY } from './constants';
 
-let emojiMap = null;
-let validEmojiNames = null;
-
-export const state = Vue.observable({
+export const state = observable('emoji_state', {
   loading: true,
+  emojiMap: null,
+  validEmojiNames: null,
 });
 
 export const FALLBACK_EMOJI_KEY = 'grey_question';
@@ -47,6 +46,7 @@ async function loadEmoji() {
   // because it can't be loaded from a CDN due to
   // cross domain problems with JSON
   const { data } = await axios.get(
+    // eslint-disable-next-line @gitlab/no-hardcoded-urls -- asset path defined in lib/gitlab/emoji.rb, not a Rails route
     `${gon.relative_url_root || ''}/-/emojis/${EMOJI_VERSION}/emojis.json`,
   );
 
@@ -121,11 +121,11 @@ export async function loadCustomEmojiWithNames() {
 
 async function prepareEmojiMap() {
   return Promise.all([loadEmojiWithNames(), loadCustomEmojiWithNames()]).then((values) => {
-    emojiMap = {
+    state.emojiMap = {
       ...values[0].emojis,
       ...values[1].emojis,
     };
-    validEmojiNames = [...values[0].names, ...values[1].names];
+    state.validEmojiNames = [...values[0].names, ...values[1].names];
     state.loading = false;
   });
 }
@@ -140,24 +140,24 @@ export function normalizeEmojiName(name) {
 }
 
 export function isEmojiNameValid(name) {
-  if (!emojiMap) {
+  if (!state.emojiMap) {
     // eslint-disable-next-line @gitlab/require-i18n-strings
     throw new Error('The emoji map is uninitialized or initialization has not completed');
   }
 
-  return name in emojiMap || name in emojiAliases;
+  return name in state.emojiMap || name in emojiAliases;
 }
 
 export function getEmojiMap() {
-  return emojiMap;
+  return state.emojiMap;
 }
 
 export function getAllEmoji() {
-  return validEmojiNames.map((n) => emojiMap[n]);
+  return state.validEmojiNames.map((n) => state.emojiMap[n]);
 }
 
 export function findCustomEmoji(name) {
-  return emojiMap[name];
+  return state.emojiMap[name];
 }
 
 function getAliasesMatchingQuery(query) {
@@ -231,7 +231,7 @@ export function searchEmoji(query) {
 
   const matchingAliases = getAliasesMatchingQuery(lowercaseQuery);
 
-  return Object.values(emojiMap)
+  return Object.values(state.emojiMap)
     .map((emoji) => {
       const matches = [
         getUnicodeMatch(emoji, query),
@@ -250,15 +250,15 @@ export function searchEmoji(query) {
 
 let emojiCategoryMap;
 export function getEmojiCategoryMap() {
-  if (!emojiCategoryMap && emojiMap) {
+  if (!emojiCategoryMap && state.emojiMap) {
     emojiCategoryMap = CATEGORY_NAMES.reduce((acc, category) => {
       if (category === FREQUENTLY_USED_KEY) {
         return acc;
       }
       return { ...acc, [category]: [] };
     }, {});
-    validEmojiNames.forEach((name) => {
-      const emoji = emojiMap[name];
+    state.validEmojiNames.forEach((name) => {
+      const emoji = state.emojiMap[name];
       if (emojiCategoryMap[emoji.c]) {
         emojiCategoryMap[emoji.c].push(name);
       }
@@ -276,7 +276,7 @@ export function getEmojiCategoryMap() {
  * @returns {Object} The matching emoji.
  */
 export function getEmojiInfo(query, fallback = true) {
-  if (!emojiMap) {
+  if (!state.emojiMap) {
     // eslint-disable-next-line @gitlab/require-i18n-strings
     throw new Error('The emoji map is uninitialized or initialization has not completed');
   }
@@ -284,17 +284,18 @@ export function getEmojiInfo(query, fallback = true) {
   const lowercaseQuery = query ? `${query}`.toLowerCase() : '';
   const name = normalizeEmojiName(lowercaseQuery);
 
-  if (name in emojiMap) {
-    return emojiMap[name];
+  if (name in state.emojiMap) {
+    return state.emojiMap[name];
   }
 
-  return fallback ? emojiMap[FALLBACK_EMOJI_KEY] : null;
+  return fallback ? state.emojiMap[FALLBACK_EMOJI_KEY] : null;
 }
 
 export function emojiFallbackImageSrc(inputName) {
   const { name, src } = getEmojiInfo(inputName);
   return (
     src ||
+    // eslint-disable-next-line @gitlab/no-hardcoded-urls -- no path helper exists for emoji image assets; uses gon.asset_host for CDN support
     `${gon.asset_host || ''}${gon.relative_url_root || ''}/-/emojis/${EMOJI_VERSION}/${name}.png`
   );
 }
@@ -335,7 +336,7 @@ export function glEmojiTag(inputName, options) {
 export const getEmojisForCategory = async (category) => {
   await initEmojiMap.promise;
 
-  return Object.values(emojiMap).filter((e) => e.c === category);
+  return Object.values(state.emojiMap).filter((e) => e.c === category);
 };
 
 /**

@@ -85,9 +85,9 @@ class RegistrationsController < Devise::RegistrationsController
 
   def destroy_confirmation_valid?
     if current_user.confirm_deletion_with_password?
-      current_user.valid_password?(params[:password])
+      current_user.valid_password?(params.permit(:password)[:password])
     else
-      current_user.username == params[:username]
+      current_user.username == params.permit(:username)[:username]
     end
   end
 
@@ -128,7 +128,7 @@ class RegistrationsController < Devise::RegistrationsController
     # Member#accept_invite! operates on the member record to change the association, so the user needs reloaded
     # to update the collection.
     user.reset
-    after_sign_up_path(user)
+    after_sign_up_path
   end
 
   def after_inactive_sign_up_path_for(resource)
@@ -138,7 +138,7 @@ class RegistrationsController < Devise::RegistrationsController
 
     # when email_confirmation_setting is set to `hard`, path to redirect is saved
     # after user confirms and comes back, he will be redirected
-    store_location_for(:redirect, after_sign_up_path(resource))
+    store_location_for(:redirect, after_sign_up_path)
 
     if identity_verification_enabled?
       session[:verification_user_id] = resource.id # This is needed to find the user on the identity verification page
@@ -152,6 +152,10 @@ class RegistrationsController < Devise::RegistrationsController
   end
 
   private
+
+  def registration_layout
+    'devise'
+  end
 
   def current_monotonic_time
     ::Gitlab::Metrics::System.monotonic_time
@@ -232,9 +236,11 @@ class RegistrationsController < Devise::RegistrationsController
     # To avoid duplicate form fields on the login page, the registration form
     # names fields using `new_user`, but Devise still wants the params in
     # `user`.
+    # rubocop:disable Rails/StrongParams -- dynamic resource_name requires raw params read/write for Devise compatibility
     if params["new_#{resource_name}"].present? && params[resource_name].blank?
       params[resource_name] = params.delete(:"new_#{resource_name}")
     end
+    # rubocop:enable Rails/StrongParams
   end
 
   def check_captcha
@@ -248,12 +254,17 @@ class RegistrationsController < Devise::RegistrationsController
     flash.delete :recaptcha_error
     add_gon_variables
     set_minimum_password_length
+    @captcha_failed = true
     render action: 'new'
   end
 
   def ensure_first_name_and_last_name_not_empty
-    first_name = params.dig(resource_name, :first_name) || params.dig("new_#{resource_name}", :first_name)
-    last_name = params.dig(resource_name, :last_name) || params.dig("new_#{resource_name}", :last_name)
+    name_params = params.permit(
+      resource_name => [:first_name, :last_name],
+      :"new_#{resource_name}" => [:first_name, :last_name]
+    )
+    first_name = name_params.dig(resource_name, :first_name) || name_params.dig("new_#{resource_name}", :first_name)
+    last_name = name_params.dig(resource_name, :last_name) || name_params.dig("new_#{resource_name}", :last_name)
 
     return if first_name.present? && last_name.present?
 
@@ -321,11 +332,11 @@ class RegistrationsController < Devise::RegistrationsController
   end
 
   def set_invite_params
-    resource.email = invite_email if resource.email.blank? && params[:invite_email].present?
+    resource.email = invite_email if resource.email.blank? && params.permit(:invite_email)[:invite_email].present?
   end
 
   def invite_email
-    ActionController::Base.helpers.sanitize(params[:invite_email])
+    ActionController::Base.helpers.sanitize(params.permit(:invite_email)[:invite_email])
   end
   strong_memoize_attr :invite_email
 
@@ -379,7 +390,7 @@ class RegistrationsController < Devise::RegistrationsController
     return if Gitlab::CurrentSettings.signup_enabled?
 
     redirect_to new_user_session_path,
-      alert: _('Sign-ups are currently disabled. Please contact a GitLab administrator if you need an account.')
+      alert: _('New accounts are not permitted. Please contact a GitLab administrator if you need an account.')
   end
 
   def initial_organization

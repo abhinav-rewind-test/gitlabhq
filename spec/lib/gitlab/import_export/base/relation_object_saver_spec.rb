@@ -24,7 +24,7 @@ RSpec.describe Gitlab::ImportExport::Base::RelationObjectSaver, feature_category
     end
 
     it 'saves relation object' do
-      expect { saver.execute }.to change(project.issues, :count).by(1)
+      expect { saver.execute }.to change { project.issues.count }.by(1)
     end
 
     context 'when subrelation collection is present' do
@@ -105,7 +105,7 @@ RSpec.describe Gitlab::ImportExport::Base::RelationObjectSaver, feature_category
       end
 
       describe 'ImportRecordPreparer' do
-        let_it_be(:position) do
+        let_it_be(:position, freeze: false) do
           Gitlab::Diff::Position.new(
             base_sha: "ae73cb07c9eeaf35924a10f713b364d32b2dd34f",
             head_sha: "b83d6e391c22777fca1ed3012fce84f633d7fed0",

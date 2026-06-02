@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Error Tracking API
 ---
 
@@ -18,9 +18,9 @@ Prerequisites:
 
 - You must have the Maintainer or Owner role.
 
-## Get Error Tracking settings
+## Retrieve Error Tracking settings
 
-Gets the Error Tracking settings for a specified project.
+Retrieves the Error Tracking settings for a specified project.
 
 ```plaintext
 GET /projects/:id/error_tracking/settings
@@ -75,7 +75,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/error_tracking/settings?active=true&integrated=true"
 ```
 
@@ -91,9 +92,9 @@ Example response:
 }
 ```
 
-## Activate the Error Tracking project settings
+## Update Error Tracking project settings
 
-Activates or deactivates Error Tracking settings for a specified project.
+Updates Error Tracking settings for a specified project.
 
 ```plaintext
 PATCH /projects/:id/error_tracking/settings
@@ -106,7 +107,8 @@ PATCH /projects/:id/error_tracking/settings
 | `integrated` | boolean | no       | Pass `true` to enable the integrated error tracking backend. |
 
 ```shell
-curl --request PATCH --header "PRIVATE-TOKEN: <your_access_token>" \
+curl --request PATCH \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/error_tracking/settings?active=true"
 ```
 
@@ -202,6 +204,7 @@ DELETE /projects/:id/error_tracking/client_keys/:key_id
 | `key_id`  | integer | yes | The ID of the client key. |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" \
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/5/error_tracking/client_keys/13"
 ```

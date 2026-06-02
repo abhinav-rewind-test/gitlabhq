@@ -7,7 +7,7 @@ module API
 
       expose :container_registry_url, as: :container_registry_image_prefix, documentation: { type: 'String', example: 'registry.gitlab.example.com/gitlab/gitlab-client' }, if: ->(_, _) { Gitlab.config.registry.enabled }
 
-      expose :_links do
+      expose :_links, documentation: { type: 'Hash' } do
         expose :self, documentation: { type: 'String', example: 'https://gitlab.example.com/api/v4/projects/4' } do |project|
           expose_url(api_v4_projects_path(id: project.id))
         end
@@ -41,16 +41,16 @@ module API
         end
       end
 
-      expose :marked_for_deletion_at
-      expose :marked_for_deletion_at, as: :marked_for_deletion_on
+      expose :marked_for_deletion_at, documentation: { type: 'DateTime', example: '2020-05-07T04:27:17.016Z' }
+      expose :marked_for_deletion_at, as: :marked_for_deletion_on, documentation: { type: 'DateTime', example: '2020-05-07T04:27:17.016Z' }
 
       expose :packages_enabled, documentation: { type: 'Boolean' }
       expose :empty_repo?, as: :empty_repo, documentation: { type: 'Boolean' }
       expose :self_or_ancestors_archived?, as: :archived, documentation: { type: 'Boolean' }
-      expose :owner, using: Entities::UserBasic, unless: ->(project, options) { project.group }
+      expose :owner, using: ::API::Entities::UserBasic, unless: ->(project, options) { project.group }
       expose :resolve_outdated_diff_discussions, documentation: { type: 'Boolean' }
       expose :container_expiration_policy,
-        using: Entities::ContainerExpirationPolicy,
+        using: ::API::Entities::ContainerExpirationPolicy,
         if: ->(project, _) { project.container_expiration_policy }
       expose :repository_object_format, documentation: { type: 'String', example: 'sha1' }
 
@@ -111,7 +111,9 @@ module API
         project.import_state&.last_error
       end
       expose :open_issues_count, documentation: { type: 'Integer', example: 1 }, if: ->(project, options) { project.feature_available?(:issues, options[:current_user]) }
-      expose :description_html, documentation: { type: 'String' }
+      expose :description_html, documentation: { type: 'String' } do |project|
+        MarkupHelper.markdown_field(project, :description, current_user: options[:current_user])
+      end
       expose :updated_at, documentation: { type: 'DateTime', example: '2020-05-07T04:27:17.016Z' }
 
       with_options if: ->(_, _) { Ability.allowed?(options[:current_user], :admin_project, project) } do
@@ -140,6 +142,8 @@ module API
           project.auto_devops.nil? ? 'continuous' : project.auto_devops.deploy_strategy
         end
         expose :ci_push_repository_for_job_token_allowed, documentation: { type: 'Boolean' }
+        expose :protect_merge_request_pipelines, documentation: { type: 'Boolean' }
+        expose :ci_display_pipeline_variables, documentation: { type: 'Boolean' }
       end
 
       with_options if: ->(_, _) { Ability.allowed?(options[:current_user], :read_runners_registration_token, project) } do
@@ -150,7 +154,7 @@ module API
       expose :ci_config_path, documentation: { type: 'String', example: '' }, if: ->(project, options) { Ability.allowed?(options[:current_user], :read_code, project) }
       expose :public_builds, as: :public_jobs, documentation: { type: 'Boolean' }
 
-      expose :shared_with_groups, documentation: { is_array: true } do |project, options|
+      expose :shared_with_groups, documentation: { is_array: true, type: 'Hash' } do |project, options|
         user = options[:current_user]
 
         SharedGroupWithProject.represent(project.visible_group_links(for_user: user), options)
@@ -163,13 +167,12 @@ module API
       expose :remove_source_branch_after_merge, documentation: { type: 'Boolean' }
       expose :printing_merge_request_link_enabled, documentation: { type: 'Boolean' }
       expose :merge_method, documentation: { type: 'String', example: 'merge' }
-      expose :merge_request_title_regex, documentation: { type: 'String', example: '/Title of merge request/' }
-      expose :merge_request_title_regex_description, documentation: { type: 'String', example: 'This requires the title to include a Jira label' }
       expose :squash_option, documentation: { type: 'String', example: 'default_off' }
       expose :enforce_auth_checks_on_uploads, documentation: { type: 'Boolean' }
       expose :suggestion_commit_message, documentation: { type: 'String', example: 'Suggestion message' }
       expose :merge_commit_template, documentation: { type: 'String', example: '%(title)' }
       expose :squash_commit_template, documentation: { type: 'String', example: '%(source_branch)' }
+      expose :mr_default_title_template, documentation: { type: 'String', example: '%(source_branch)' }
       expose :issue_branch_template, documentation: { type: 'String', example: '%(title)' }
       expose :statistics, using: ::API::Entities::ProjectStatistics, if: ->(project, options) {
         options[:statistics] && Ability.allowed?(options[:current_user], :read_statistics, project)

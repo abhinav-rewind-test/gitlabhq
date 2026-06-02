@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Use CI/CD configuration from other files
 description: Use the `include` keyword to extend your CI/CD configuration with content from other YAML files.
 ---
@@ -165,7 +165,7 @@ production:
 The `POSTGRES_USER` and `POSTGRES_PASSWORD` variables
 and the `environment:url` of the `production` job defined in the `.gitlab-ci.yml` file
 override the values defined in the `autodevops-template.yml` file. The other keywords
-do not change. This method is called *merging*.
+do not change. This method is called _merging_.
 
 ### Merge method for `include`
 
@@ -650,7 +650,20 @@ limit is reached. You can remove one included file at a time to try to narrow do
 which configuration file is the source of the loop or excessive included files.
 
 In [GitLab 16.0 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/207270) users on GitLab Self-Managed can
-change the [maximum includes](../../administration/settings/continuous_integration.md#set-maximum-includes) value.
+change the [maximum includes](../../administration/cicd/limits.md#maximum-number-of-includes) value.
+
+### Error: `Local file <file> does not exist!` with `include:local`
+
+You might receive a `Local file <file> does not exist!` error when using
+[`include:local`](_index.md#includelocal), even though the file exists in the
+repository.
+
+This error is a known system-level issue, not a CI/CD configuration problem.
+It has been observed intermittently in distributed Gitaly or Praefect setups.
+If you encounter this error, retry the pipeline.
+
+For more information, see
+[issue 336789](https://gitlab.com/gitlab-org/gitlab/-/issues/336789).
 
 ### `SSL_connect SYSCALL returned=5 errno=0 state=SSLv3/TLS write client hello` and other network failures
 

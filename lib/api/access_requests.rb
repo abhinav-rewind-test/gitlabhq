@@ -38,24 +38,13 @@ module API
 
         desc "Requests access for the authenticated user to a #{source_type}." do
           detail 'This feature was introduced in GitLab 8.11.'
-          success Entities::AccessRequester
-          success [
-            {
-              code: 200,
-              model: Entities::AccessRequester,
-              message: 'successful operation',
-              examples: {
-                successfull_response: {
-                  "id" => 1,
-                  "username" => "raymond_smith",
-                  "name" => "Raymond Smith",
-                  "state" => "active",
-                  "created_at" => "2012-10-22T14:13:35Z",
-                  "access_level" => 20
-                }
-              }
-            }
-          ]
+          success code: 200, model: Entities::AccessRequester, example: {
+            "id" => 1,
+            "username" => "raymond_smith",
+            "name" => "Raymond Smith",
+            "state" => "active",
+            "requested_at" => "2012-10-22T14:13:35Z"
+          }
           tags %w[access_requests]
         end
         route_setting :authorization, permissions: :create_access_request, boundary_type: :user
@@ -70,31 +59,24 @@ module API
           end
         end
 
-        desc 'Approves an access request for the given user.' do
-          detail 'This feature was introduced in GitLab 8.11.'
-          success [
-            {
-              code: 200,
-              model: Entities::AccessRequester,
-              message: 'successful operation',
-              examples: {
-                successfull_response: {
-                  "id" => 1,
-                  "username" => "raymond_smith",
-                  "name" => "Raymond Smith",
-                  "state" => "active",
-                  "created_at" => "2012-10-22T14:13:35Z",
-                  "access_level" => 20
-                }
-              }
-            }
-          ]
+        desc 'Approve an access request' do
+          detail 'Approves an access request for a specified user in a specified group or project.'
+          success code: 201, model: Entities::Member, example: {
+            "id" => 1,
+            "username" => "raymond_smith",
+            "name" => "Raymond Smith",
+            "state" => "active",
+            "created_at" => "2012-10-22T14:13:35Z",
+            "access_level" => "20"
+          }
           tags %w[access_requests]
         end
         params do
           requires :user_id, type: Integer, desc: 'The user ID of the access requester'
+          # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
           optional :access_level, type: Integer, desc: 'A valid access level (defaults: `30`, the Developer role)',
             default: 30
+          # rubocop:enable API/AccessLevelStringType
         end
         # rubocop: disable CodeReuse/ActiveRecord
         route_setting :authorization, permissions: :approve_access_request, boundary_type: source_type.to_sym
@@ -113,6 +95,7 @@ module API
 
         desc 'Denies an access request for the given user.' do
           detail 'This feature was introduced in GitLab 8.11.'
+          success code: 204, message: 'Resource deleted'
           tags %w[access_requests]
         end
         params do
@@ -120,13 +103,13 @@ module API
         end
         # rubocop: disable CodeReuse/ActiveRecord
         route_setting :authorization, permissions: :delete_access_request,
-          boundaries: [{ boundary_type: :group }, { boundary_type: :project }, { boundary_type: :user }]
+          boundaries: [{ boundary_type: source_type.to_sym }, { boundary_type: :user }]
         delete ":id/access_requests/:user_id" do
           source = find_source(source_type, params[:id])
           member = source.requesters.find_by!(user_id: params[:user_id])
 
           destroy_conditionally!(member) do
-            ::Members::DestroyService.new(current_user).execute(member)
+            ::Members::DestroyService.new(member, current_user: current_user, skip_subresources: true).execute
           end
         end
         # rubocop: enable CodeReuse/ActiveRecord

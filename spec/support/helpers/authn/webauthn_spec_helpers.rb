@@ -24,7 +24,7 @@ module Authn
       )
     end
 
-    # Mimick device response from browser to GitLab after a user completes authentication
+    # Mimic device response from browser to GitLab after a user completes authentication
     #
     def device_response_after_authentication(user, webauthn_credential)
       is_passkey = webauthn_credential.authentication_mode == :passwordless
@@ -33,7 +33,8 @@ module Authn
         challenge: challenge,
         sign_count: webauthn_credential.counter + 1,
         allow_credentials: user.get_all_webauthn_credential_ids,
-        extensions: { "credProps" => { "rk" => is_passkey } }
+        extensions: { "credProps" => { "rk" => is_passkey } },
+        user_verified: true
       )
       webauthn_authenticate_result.to_json
     end

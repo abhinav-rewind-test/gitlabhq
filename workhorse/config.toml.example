@@ -62,6 +62,22 @@ URL = "unix:/home/git/gitlab/redis/redis.socket"
   min_version = "tls1.2"
   max_version = "tls1.3"
 
+# Metrics listener configuration
+# Exposes Prometheus metrics on a dedicated endpoint.
+# Mutually exclusive with the -prometheusListenAddr CLI flag.
+[metrics_listener]
+  # Network type for the metrics listener (tcp, tcp4, tcp6, unix)
+  network = "tcp"
+  # Address to bind the Prometheus metrics server to
+  addr = "localhost:9229"
+
+  # Optional: TLS configuration for the metrics listener
+  # [metrics_listener.tls]
+  #   certificate = "/path/to/certificate"
+  #   key = "/path/to/private/key"
+  #   min_version = "tls1.2"
+  #   max_version = "tls1.3"
+
 [circuit_breaker]
   enabled = true
   timeout = 60
@@ -135,6 +151,14 @@ URL = "unix:/home/git/gitlab/redis/redis.socket"
   # time to process queued requests.
   # Default: 0 (immediate retry, recommended for Kubernetes)
   retry_after_seconds = 0
+
+  # HTTP status code to return when shedding load
+  # Use a custom code (e.g., 529) to distinguish load shedding responses
+  # from other 503 errors (database timeouts, Gitaly issues, etc.).
+  # This allows NGINX to retry load shedding responses while not retrying
+  # other 503 errors.
+  # Default: 503 (Service Unavailable)
+  # status_code = 529
 
   # Strategy for calculating effective backlog across workers
   # Options: "max" (default), "sum"

@@ -1,4 +1,4 @@
-import { orderBy } from 'lodash';
+import { orderBy } from 'lodash-es';
 import axios from '~/lib/utils/axios_utils';
 import {
   convertObjectPropsToCamelCase,
@@ -21,7 +21,6 @@ const prepareVariableForApi = ({ variable, destroy = false }) => {
     ...convertObjectPropsToSnakeCase(variable),
     id: getIdFromGraphQLId(variable?.id),
     variable_type: variable.variableType.toLowerCase(),
-    secret_value: variable.value,
     ...visibilityToAttributesMap[variable.visibility],
     _destroy: destroy,
   };

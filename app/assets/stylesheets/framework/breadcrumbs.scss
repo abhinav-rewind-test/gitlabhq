@@ -1,3 +1,4 @@
+// stylelint-disable-next-line gitlab/no-js-class
 #js-vue-page-breadcrumbs-wrapper {
   display: flex;
   flex-grow: 1;
@@ -15,6 +16,16 @@
    * their ResizeObserver.
    */
   nav.gl-breadcrumbs:only-of-type {
+    flex-grow: 1;
+  }
+
+  /* If a Vue app portals its breadcrumbs here (like `NewNamespacePage` does), hide the others! */
+  /* stylelint-disable-next-line gitlab/no-has -- scoped to direct children of breadcrumb container */
+  > :has(~ .vue-portal-target) {
+    display: none;
+  }
+  /* ... and give portaled element room to grow */
+  > .vue-portal-target {
     flex-grow: 1;
   }
 }

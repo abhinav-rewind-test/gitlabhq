@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group integrations API
 description: "Set up and manage integrations for a group with the REST API."
 ---
@@ -695,6 +695,12 @@ GET /groups/:id/integrations/external-wiki
 
 {{< /details >}}
 
+{{< history >}}
+
+- `api_url` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/599742) in GitLab 19.1.
+
+{{< /history >}}
+
 > [!flag]
 > On GitLab Self-Managed, by default this feature is available. To hide the feature, ask an administrator to [disable the feature flag](../administration/feature_flags/_index.md) named `git_guardian_integration`.
 > On GitLab.com, this feature is not available. On GitLab Dedicated, this feature is available.
@@ -721,6 +727,7 @@ Parameters:
 | Parameter | Type | Required | Description                                   |
 | --------- | ---- | -------- |-----------------------------------------------|
 | `token` | string | yes | GitGuardian API token with `scan` scope. |
+| `api_url` | string | no | GitGuardian API base URL. Defaults to `https://api.gitguardian.com`. Use `https://api.eu1.gitguardian.com` for the EU region, or the URL of your self-hosted GitGuardian instance. Must use HTTPS. |
 | `use_inherited_settings` | boolean | no | Indicates whether or not to inherit default settings. Defaults to `false`. |
 
 ### Disable GitGuardian
@@ -1763,65 +1770,6 @@ Get the Slack notifications settings for a group.
 
 ```plaintext
 GET /groups/:id/integrations/slack
-```
-
-## Slack slash commands
-
-### Set up Slack slash commands
-
-Set up Slack slash commands for a group.
-
-```plaintext
-PUT /groups/:id/integrations/slack-slash-commands
-```
-
-Parameters:
-
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `token` | string | yes | The Slack token. |
-| `use_inherited_settings` | boolean | no | Indicates whether or not to inherit default settings. Defaults to `false`. |
-
-### Disable Slack slash commands
-
-Disable Slack slash commands for a group. Integration settings are reset.
-
-```plaintext
-DELETE /groups/:id/integrations/slack-slash-commands
-```
-
-### Get Slack slash commands settings
-
-Get the Slack slash commands settings for a group.
-
-```plaintext
-GET /groups/:id/integrations/slack-slash-commands
-```
-
-Example response:
-
-```json
-{
-  "id": 4,
-  "title": "Slack slash commands",
-  "slug": "slack-slash-commands",
-  "created_at": "2017-06-27T05:51:39-07:00",
-  "updated_at": "2017-06-27T05:51:39-07:00",
-  "active": true,
-  "push_events": true,
-  "issues_events": true,
-  "confidential_issues_events": true,
-  "merge_requests_events": true,
-  "tag_push_events": true,
-  "note_events": true,
-  "job_events": true,
-  "pipeline_events": true,
-  "comment_on_event_enabled": false,
-  "inherited": false,
-  "properties": {
-    "token": "<your_access_token>"
-  }
-}
 ```
 
 ## Squash TM

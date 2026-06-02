@@ -5,15 +5,13 @@ module ActiveContext
     module Collection
       extend ActiveSupport::Concern
 
-      MODELS = {}.freeze
-
       class_methods do
-        def track!(*objects)
-          ActiveContext::Tracker.track!(objects, collection: self)
+        def track!(*objects, queue: nil)
+          ActiveContext::Tracker.track!(objects, collection: self, queue: queue)
         end
 
-        def search(user:, query:)
-          ActiveContext.adapter.search(query: query, user: user, collection: self)
+        def search(user:, query:, source_fields: nil)
+          ActiveContext.adapter.search(query: query, user: user, collection: self, source_fields: source_fields)
         end
 
         def collection_name
@@ -22,6 +20,10 @@ module ActiveContext
 
         def queue
           raise NotImplementedError
+        end
+
+        def backfill_queue
+          queue
         end
 
         def routing(_)
@@ -65,18 +67,6 @@ module ActiveContext
           Ability.allowed?(user, :"read_#{object.to_ability_name}", object)
         end
 
-        def current_search_embedding_version
-          self::MODELS[collection_record&.search_embedding_version] || {}
-        end
-
-        def current_indexing_embedding_versions
-          collection_record&.indexing_embedding_versions&.filter_map { |version| self::MODELS[version] } || []
-        end
-
-        def current_embedding_fields
-          current_indexing_embedding_versions.map { |v| v[:field].to_s }
-        end
-
         def embedding_model_selector
           raise NotImplementedError
         end
@@ -96,11 +86,15 @@ module ActiveContext
         def search_embedding_model
           return nil if collection_record&.search_embedding_model.nil?
 
-          embedding_model_selector.for(collection_record.search_embedding_model)
+          embedding_model_selector.for(collection_record.search_embedding_model, search: true)
         end
 
         def indexing_embedding_models
           [current_indexing_embedding_model, next_indexing_embedding_model].compact
+        end
+
+        def indexing_embedding_fields
+          indexing_embedding_models.map { |m| m.field.to_s }
         end
       end
 

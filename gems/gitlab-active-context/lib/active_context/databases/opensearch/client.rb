@@ -7,7 +7,7 @@ module ActiveContext
   module Databases
     module Opensearch
       class Client
-        include ActiveContext::Databases::Concerns::Client
+        include ActiveContext::Databases::Concerns::ElasticClient
 
         delegate :bulk, :delete_by_query, to: :client
 
@@ -19,11 +19,16 @@ module ActiveContext
           @options = options
         end
 
-        def search(user:, collection:, query:)
+        def search(user:, collection:, query:, source_fields: nil)
           es_query = Processor.transform(collection: collection, node: query, user: user)
-          result = client.search(index: collection.collection_name, body: es_query)
+          es_query = add_source_fields(es_query, source_fields)
 
-          QueryResult.new(result: result, collection: collection, user: user).authorized_results
+          query_result = log_search(collection: collection) do
+            result = client.search(index: collection.collection_name, body: es_query)
+            QueryResult.new(result: result, collection: collection, user: user)
+          end
+
+          query_result.authorized_results
         end
 
         def client

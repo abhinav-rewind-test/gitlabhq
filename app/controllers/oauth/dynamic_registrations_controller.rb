@@ -8,11 +8,16 @@ module Oauth
     skip_before_action :verify_authenticity_token, only: [:create]
     before_action :check_rate_limit, only: [:create]
 
+    RESOURCE_SCOPE_MAP = {
+      '/api/v4/orbit/mcp' => Gitlab::Auth::MCP_ORBIT_SCOPE.to_s,
+      '/api/v4/mcp' => Gitlab::Auth::MCP_SCOPE.to_s
+    }.freeze
+
     # POST /oauth/register
     def create
       client_metadata = Gitlab::Json.safe_parse(request.body.read).symbolize_keys
 
-      allowed_params = [:redirect_uris, :client_name]
+      allowed_params = [:redirect_uris, :client_name, :resource, :scope]
 
       client_metadata = client_metadata.slice(*allowed_params)
 
@@ -23,9 +28,11 @@ module Oauth
         return
       end
 
-      # All dynamically created OAuth applications can only
-      # create mcp scoped access tokens. Disregard any other requests.
-      scopes = "mcp"
+      # Dynamic apps are restricted to a single MCP scope derived from the
+      # resource URL or the requested scope (RFC 7591). The resource URL takes
+      # precedence; the scope field is used as a fallback when resource is absent
+      # (e.g. mcp-remote does not send the resource parameter).
+      scopes = resolve_mcp_scope(client_metadata[:resource], client_metadata[:scope])
 
       redirect_uris = client_metadata[:redirect_uris]
       redirect_uris = [redirect_uris] if redirect_uris.is_a?(String)
@@ -61,6 +68,21 @@ module Oauth
     end
 
     private
+
+    def resolve_mcp_scope(resource, requested_scope)
+      if resource.present?
+        RESOURCE_SCOPE_MAP.each do |path, scope|
+          return scope if resource.end_with?(path)
+        end
+      end
+
+      if requested_scope.present?
+        normalized = requested_scope.to_s.strip.split.first
+        return normalized if normalized.present? && RESOURCE_SCOPE_MAP.value?(normalized)
+      end
+
+      Gitlab::Auth::MCP_SCOPE.to_s
+    end
 
     def validate_dynamic_fields(client_metadata)
       return if client_metadata[:client_name].present? && (client_metadata[:client_name].length < 200)

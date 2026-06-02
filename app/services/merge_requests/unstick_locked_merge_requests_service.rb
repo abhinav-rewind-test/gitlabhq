@@ -13,6 +13,15 @@ module MergeRequests
 
         attempt_to_unstick_mrs_with_merge_jid(merge_requests_with_merge_jid)
         attempt_to_unstick_mrs_without_merge_jid(merge_requests_without_merge_jid)
+
+        unlocked_merge_requests.each do |merge_request|
+          log_info(
+            message: 'Removed already-unlocked merge request from locked set',
+            merge_request_id: merge_request.id,
+            merge_jid: merge_request.merge_jid,
+            state: merge_request.state
+          )
+        end
         remove_from_locked_set(unlocked_merge_requests)
       end
     end
@@ -25,34 +34,27 @@ module MergeRequests
       MergeRequest.id_in(ids)
     end
 
-    # The logic in this method is the same as in `StuckMergeJobsWorker`. This service
-    # is intended to replace the logic in that worker once feature flag is fully rolled out.
-    #
-    # Any changes that needs to be applied here should be applied to the worker as well.
-    #
-    # rubocop: disable CodeReuse/ActiveRecord -- TODO: Introduce new AR scopes for queries used in this method
     def attempt_to_unstick_mrs_with_merge_jid(merge_requests)
       return if merge_requests.empty?
 
       jids = merge_requests.map(&:merge_jid)
 
       # Find the jobs that aren't currently running or that exceeded the threshold.
-      completed_jids = Gitlab::SidekiqStatus.completed_jids(jids)
+      completed_jids = Gitlab::SidekiqStatus.completed_jids(jids).to_set
 
       return if completed_jids.empty?
 
-      completed_ids = merge_requests.select do |merge_request|
-        completed_jids.include?(merge_request.merge_jid)
-      end.map(&:id)
+      completed_mrs = merge_requests.select { |mr| completed_jids.include?(mr.merge_jid) }
 
-      completed_merge_requests = MergeRequest.id_in(completed_ids)
+      mrs_to_mark_as_merged, mrs_to_unlock = completed_mrs.partition do |mr|
+        mr.merge_commit_sha.present?
+      end
 
-      mark_merge_requests_as_merged(completed_merge_requests.where.not(merge_commit_sha: nil))
-      unlock_merge_requests(completed_merge_requests.where(merge_commit_sha: nil))
-
-      log_info("Updated state of locked merge jobs. JIDs: #{completed_jids.join(', ')}")
+      mark_merge_requests_as_merged(
+        mrs_to_mark_as_merged.map { |mr| { id: mr.id, merge_jid: mr.merge_jid } }
+      )
+      unlock_merge_requests(mrs_to_unlock)
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def attempt_to_unstick_mrs_without_merge_jid(merge_requests)
       return if merge_requests.empty?
@@ -61,7 +63,6 @@ module MergeRequests
       merge_request_ids_to_mark_as_merged = []
 
       merge_requests.each do |merge_request|
-        next unless Feature.enabled?(:unstick_locked_mrs_without_merge_jid, merge_request.project)
         next unless should_unstick?(merge_request)
 
         # Reset merge request record to ensure we get updated record state before
@@ -71,7 +72,7 @@ module MergeRequests
 
         # Set MR to be marked as merged if one of the following is true:
         # - it already has merged_commit_sha in the DB
-        # - it alreeady has merge_commit_sha in the DB
+        # - it already has merge_commit_sha in the DB
         # - it has no diffs where source and target branches are compared
         #
         # This means the MR changes were already merged.
@@ -94,11 +95,10 @@ module MergeRequests
         end
       end
 
-      mark_merge_requests_as_merged(MergeRequest.id_in(merge_request_ids_to_mark_as_merged))
+      mark_merge_requests_as_merged(
+        merge_request_ids_to_mark_as_merged.map { |id| { id: id, merge_jid: nil } }
+      )
       unlock_merge_requests(merge_requests_to_reopen)
-
-      updated_mr_ids = merge_request_ids_to_mark_as_merged | merge_requests_to_reopen.map(&:id)
-      log_info("Updated state of locked MRs without JIDs. IDs: #{updated_mr_ids.join(', ')}")
     end
 
     # Check if MR is still in the process of merging so we don't interrupt the process.
@@ -109,43 +109,65 @@ module MergeRequests
       !merge_request.merge_exclusive_lease.exists?
     end
 
-    def mark_merge_requests_as_merged(merge_requests)
-      return if merge_requests.empty?
+    # Accepts an array of `{ id:, merge_jid: }` hashes so callers can supply
+    # the merge_jid (which may have been cleared in-memory by the time we'd
+    # otherwise re-read it) without forcing us to re-query the relation.
+    def mark_merge_requests_as_merged(merge_request_entries)
+      return if merge_request_entries.empty?
 
-      merge_requests.update_all(state_id: MergeRequest.available_states[:merged])
-      remove_from_locked_set(merge_requests)
+      ids = merge_request_entries.map { |entry| entry[:id] } # rubocop:disable Rails/Pluck -- Array of Hash, not AR relation
+      MergeRequest.id_in(ids).update_all(state_id: MergeRequest.available_states[:merged])
+      Gitlab::MergeRequests::LockedSet.remove(ids)
+
+      merge_request_entries.each do |entry|
+        log_info(
+          message: 'Marked locked merge request as merged',
+          merge_request_id: entry[:id],
+          merge_jid: entry[:merge_jid]
+        )
+      end
     end
 
     # Do not reopen merge requests using direct queries.
     # We rely on state machine callbacks to update head_pipeline_id
     def unlock_merge_requests(merge_requests)
-      errors = Hash.new { |h, k| h[k] = [] }
+      merge_requests.each do |merge_request|
+        # Capture merge_jid before unlock_mr, which clears it via the state
+        # transition callback regardless of whether the save succeeds.
+        merge_jid = merge_request.merge_jid
 
-      merge_requests.each do |mr|
-        mjid = mr.merge_jid
+        if merge_request.unlock_mr
+          merge_request.remove_from_locked_set
 
-        if mr.unlock_mr
-          mr.remove_from_locked_set
+          log_info(
+            message: 'Reopened locked merge request',
+            merge_request_id: merge_request.id,
+            merge_jid: merge_jid
+          )
           next
         end
 
-        mr.errors.full_messages.each do |msg|
-          errors[msg] << if mjid.present?
-                           ["#{mjid}|#{mr.id}"]
-                         else
-                           [mr.id]
-                         end
-        end
+        log_error(
+          message: 'Failed to unlock locked merge request',
+          merge_request_id: merge_request.id,
+          merge_jid: merge_jid,
+          errors: merge_request.errors.full_messages
+        )
       end
-
-      built_errors = errors.map { |k, v| "#{k} - IDS: #{v.join(',')}\n" }.join
-      log_info("Errors:\n#{built_errors}")
     end
 
     def remove_from_locked_set(merge_requests)
       return if merge_requests.empty?
 
       Gitlab::MergeRequests::LockedSet.remove(merge_requests.map(&:id))
+    end
+
+    def log_info(**payload)
+      Gitlab::AppJsonLogger.info(**payload, class: self.class.name)
+    end
+
+    def log_error(**payload)
+      Gitlab::AppJsonLogger.error(**payload, class: self.class.name)
     end
   end
 end

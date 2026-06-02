@@ -91,6 +91,26 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
       end
     end
 
+    context 'for saved views' do
+      context 'when deleted user is present as both author and updated_by' do
+        include_examples 'migrating records to the ghost user',
+          WorkItems::SavedViews::SavedView, [:author, :updated_by] do
+          let(:created_record) do
+            create(:saved_view, namespace: project.project_namespace, author: user, updated_by: user)
+          end
+        end
+      end
+
+      context 'when deleted user is present only as updated_by' do
+        include_examples 'migrating records to the ghost user',
+          WorkItems::SavedViews::SavedView, [:updated_by] do
+          let(:created_record) do
+            create(:saved_view, namespace: project.project_namespace, author: create(:user), updated_by: user)
+          end
+        end
+      end
+    end
+
     context 'for label change events' do
       include_examples 'migrating records to the ghost user', ResourceLabelEvent, [:user] do
         let(:created_record) { create(:resource_label_event, issue: create(:issue), user: user) }
@@ -214,6 +234,18 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
 
       expect { User.find(user.id) }.to raise_error(ActiveRecord::RecordNotFound)
       expect { Namespace.find(namespace.id) }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+
+    context 'when the user has no personal namespace' do
+      before do
+        user.namespace.delete
+        user.association(:namespace).reset
+      end
+
+      it 'destroys the user without error' do
+        expect { service.execute }.not_to raise_error
+        expect { User.find(user.id) }.to raise_error(ActiveRecord::RecordNotFound)
+      end
     end
 
     it 'deletes user associations in batches' do

@@ -7,7 +7,7 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   context 'token authentication' do
     context 'when public group' do
-      let_it_be(:public_group) { create(:group, :public) }
+      let_it_be(:public_group, freeze: false) { create(:group, :public) }
 
       it_behaves_like 'authenticates sessionless user for the request spec', 'show atom', public_resource: true do
         let(:url) { group_path(public_group, format: :atom) }
@@ -23,7 +23,7 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
     end
 
     context 'when private group' do
-      let_it_be(:private_group) { create(:group, :private) }
+      let_it_be(:private_group, freeze: false) { create(:group, :private) }
 
       it_behaves_like 'authenticates sessionless user for the request spec', 'show atom', public_resource: false, ignore_metrics: true do
         let(:url) { group_path(private_group, format: :atom) }
@@ -52,8 +52,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
   end
 
   describe 'POST #preview_markdown' do
-    let_it_be(:group) { create(:group) }
-    let_it_be(:developer) { create(:user, developer_of: group) }
+    let_it_be(:group, freeze: false) { create(:group) }
+    let_it_be(:developer, freeze: false) { create(:user, developer_of: group) }
 
     before do
       login_as(developer)
@@ -77,8 +77,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'GET #index' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :found }
 
       subject(:make_request) { get groups_path }
@@ -131,8 +131,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
       subject(:make_request) { get group_path(group) }
 
       context 'for private group' do
-        let_it_be(:group, reload: true) { create(:group, :private) }
-        let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+        let_it_be_with_reload(:group) { create(:group, :private) }
+        let_it_be_with_reload(:user) { create(:user, owner_of: group) }
 
         context 'when user authenticated' do
           before do
@@ -144,8 +144,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
       end
 
       context 'for public group' do
-        let_it_be(:group, reload: true) { create(:group) }
-        let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+        let_it_be_with_reload(:group) { create(:group) }
+        let_it_be_with_reload(:user) { create(:user, owner_of: group) }
 
         context 'when user authenticated' do
           before do
@@ -164,8 +164,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'GET #new' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :ok }
 
       subject(:make_request) { get new_group_path }
@@ -180,8 +180,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'POST #create' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :found }
 
       subject(:make_request) do
@@ -197,9 +197,9 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
   end
 
   describe 'GET #edit' do
-    let_it_be(:group) { create(:group, :public) }
-    let_it_be(:owner) { create(:user) }
-    let_it_be(:maintainer) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group, :public) }
+    let_it_be(:owner, freeze: false) { create(:user) }
+    let_it_be(:maintainer, freeze: false) { create(:user) }
     let(:url) { edit_group_path(group) }
 
     before_all do
@@ -268,7 +268,7 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
     end
 
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
+      let_it_be_with_reload(:group) { create(:group) }
 
       subject(:make_request) { get edit_group_path(group) }
 
@@ -296,8 +296,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'GET #activity' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :ok }
 
       subject(:make_request) { get activity_group_path(group) }
@@ -312,8 +312,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'GET #issues' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
 
       let(:expected_success_status) { :redirect }
 
@@ -329,8 +329,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'GET #merge_requests' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :ok }
 
       subject(:make_request) { get merge_requests_group_path(group) }
@@ -345,7 +345,7 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'PATCH #update' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
+      let_it_be_with_reload(:group) { create(:group) }
 
       subject(:make_request) { patch group_path(group), params: { group: { name: 'Updated Name' } } }
 
@@ -377,8 +377,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'DELETE #destroy' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :found }
 
       subject(:make_request) { delete group_path(group) }
@@ -393,8 +393,8 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
 
   describe 'PUT #transfer' do
     context 'step-up authentication enforcement' do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let_it_be(:parent_group, freeze: true) { create(:group) }
       let(:expected_success_status) { :found }
 
@@ -403,18 +403,96 @@ RSpec.describe GroupsController, feature_category: :groups_and_projects do
       end
 
       before do
+        stub_feature_flags(groups_and_projects_async_transfer: false)
         sign_in(user)
         parent_group.add_owner(user)
       end
 
       it_behaves_like 'enforces step-up authentication (request spec)'
     end
+
+    context 'when groups_and_projects_async_transfer feature flag is enabled' do
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be_with_reload(:group) { create(:group, :public) }
+      let_it_be(:new_parent_group, freeze: false) { create(:group, :public) }
+
+      before_all do
+        group.add_owner(user)
+        new_parent_group.add_owner(user)
+      end
+
+      before do
+        sign_in(user)
+      end
+
+      it 'enqueues the async transfer worker' do
+        expect(Namespaces::Groups::TransferWorker).to receive(:perform_async).with(
+          group.id,
+          new_parent_group.id,
+          user.id
+        )
+
+        put transfer_group_path(group), params: { new_parent_group_id: new_parent_group.id }
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(group_path(group))
+      end
+
+      it 'transitions the group to transfer_scheduled and stores metadata' do
+        put transfer_group_path(group), params: { new_parent_group_id: new_parent_group.id }
+
+        group.reload
+        expect(group.state).to eq('transfer_scheduled')
+        expect(group.state_metadata['transfer_target_parent_id']).to eq(new_parent_group.id)
+      end
+
+      context 'when the state transition fails' do
+        before do
+          group.update_column(:state, Group.states[:creation_in_progress])
+        end
+
+        it 'does not enqueue the worker and redirects with an error' do
+          expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+          put transfer_group_path(group), params: { new_parent_group_id: new_parent_group.id }
+
+          expect(response).to redirect_to(edit_group_path(group))
+          expect(flash[:alert]).to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
+        end
+      end
+    end
+
+    context 'when groups_and_projects_async_transfer feature flag is disabled' do
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be_with_reload(:group) { create(:group, :public) }
+      let_it_be(:new_parent_group, freeze: false) { create(:group, :public) }
+
+      before_all do
+        group.add_owner(user)
+        new_parent_group.add_owner(user)
+      end
+
+      before do
+        stub_feature_flags(groups_and_projects_async_transfer: false)
+        sign_in(user)
+      end
+
+      it 'transfers the group synchronously' do
+        expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+        put transfer_group_path(group), params: { new_parent_group_id: new_parent_group.id }
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(flash[:notice]).to eq("Group '#{group.name}' was successfully transferred.")
+        expect(group.reload.parent).to eq(new_parent_group)
+      end
+    end
   end
 
   describe 'POST #export' do
     context 'step-up authentication enforcement', :clean_gitlab_redis_rate_limiting do
-      let_it_be(:group, reload: true) { create(:group) }
-      let_it_be(:user, reload: true) { create(:user, owner_of: group) }
+      let_it_be_with_reload(:group) { create(:group) }
+      let_it_be_with_reload(:user) { create(:user, owner_of: group) }
       let(:expected_success_status) { :found }
 
       subject(:make_request) { post export_group_path(group) }

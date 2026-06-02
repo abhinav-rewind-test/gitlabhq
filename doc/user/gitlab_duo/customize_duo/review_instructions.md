@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Coding
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Customize instructions for AI to use in merge request reviews.
 title: Customize review instructions for GitLab Duo
 ---
@@ -19,6 +19,7 @@ title: Customize review instructions for GitLab Duo
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/545136) in GitLab 18.2 as a [beta](../../../policy/development_stages_support.md#beta) [with a flag](../../../administration/feature_flags/_index.md) named `duo_code_review_custom_instructions`. Disabled by default.
 - Feature flag `duo_code_review_custom_instructions` [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/199802) in GitLab 18.3.
 - Feature flag `duo_code_review_custom_instructions` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/202262) in GitLab 18.4.
+- Union patterns (for example, `{rb,ts}`) in `fileFilters` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/237952) in GitLab 19.1.
 
 {{< /history >}}
 
@@ -31,9 +32,9 @@ conventions on Go files.
 GitLab Duo appends your custom review instructions to its standard review criteria,
 instead of replacing them.
 
-GitLab Duo Code Review (Classic) supports custom review instructions.
+GitLab Duo Code Review supports custom review instructions set for a specific project or for all projects within a group.
 
-## Configure custom review instructions
+## Configure custom review instructions for a project
 
 To configure custom merge request review instructions:
 
@@ -138,6 +139,33 @@ To configure custom merge request review instructions:
    - Review the feedback and refine your instructions as needed.
    - Test the patterns to ensure they match the intended files.
 
+## Configure custom review instructions for a group
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230090) in GitLab 19.0.
+
+{{< /history >}}
+
+You can define custom review instructions for a group by specifying a project to use as a template.
+The template project must contain a `.gitlab/duo/mr-review-instructions.yaml` file with review
+instructions that apply to all projects in the group and its subgroups.
+
+When GitLab Duo performs a code review, it combines instructions from the top-level group with instructions defined in the individual project.
+
+Prerequisites:
+
+- The Owner role for the top-level group.
+- A project in the group contains the custom review instructions that you want to use as a template.
+
+To configure custom review instructions for a group:
+
+1. In the top bar, select **Search or go to** and find your top-level group.
+1. In the left sidebar, select **Settings** > **GitLab Duo**.
+1. Under **Custom review instructions for groups**, select the project that contains the
+   `.gitlab/duo/mr-review-instructions.yaml` file with your group's review instructions.
+1. Select **Save changes**.
+
 ## Best practices
 
 When writing custom review instructions:
@@ -175,7 +203,7 @@ For example, for a project that contains Ruby files:
 | `!**/*.test.rb` | Exclude all Ruby test files |
 | `!spec/**/*.rb` | Exclude all Ruby files in the `spec` directory and its subdirectories |
 | `!tests/**/*`   | Exclude all files in the `tests` directory and its subdirectories |
-| `**/*.{js,jsx}` | JavaScript and JSX files in all directories |
+| `**/*.{js,jsx}` | JavaScript and JSX files in all directories (GitLab 19.1 and later) |
 
 The following example shows the difference between `**/*.rb` and `*.rb`:
 
@@ -198,7 +226,7 @@ apply to Ruby files anywhere in the project structure, not just the root directo
 ## Use case examples
 
 <!-- 2025-11-12 Use case examples are maintained by DevRel, @dnsmichi
-Inspired by the reference in https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads
+Inspired by the reference in <https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml?ref_type=heads>
 -->
 
 {{< tabs >}}
@@ -695,11 +723,11 @@ instructions:
 For more custom review instructions use cases, see the following production examples:
 
 - [GitLab development in `gitlab-org/gitlab`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/duo/mr-review-instructions.yaml)
-- [GitLab handbook](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yml)
+- [GitLab handbook](https://gitlab.com/gitlab-com/content-sites/handbook/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [GitLab website](https://gitlab.com/gitlab-com/marketing/digital-experience/about-gitlab-com/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 - [Developer Advocacy: Tanuki IoT Platform](https://gitlab.com/gitlab-da/use-cases/ai/gitlab-duo-agent-platform/demo-environments/tanuki-iot-platform/-/blob/main/.gitlab/duo/mr-review-instructions.yaml)
 
 ## Related topics
 
 - [GitLab Duo in merge requests](../../project/merge_requests/duo_in_merge_requests.md)
-- [GitLab Duo Code Review (Classic)](../../gitlab_duo/code_review_classic.md)
+- [GitLab Duo Code Review](../code_review.md)

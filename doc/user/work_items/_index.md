@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: "Organize your team's work with GitLab work items. Track tasks, epics, issues, and objectives in a unified view to connect strategy with implementation and monitor progress."
 title: Work items
 ---
@@ -10,13 +10,12 @@ title: Work items
 
 - Tier: Free, Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-- Status: Beta
 
 {{< /details >}}
 
 Work items are the core elements for planning and tracking work in GitLab.
 Planning and tracking product development often requires breaking work into smaller, manageable parts
-while maintaining connection to the bigger picture.
+while maintaining a connection to the bigger picture.
 Work items are designed around this fundamental need, providing a unified way to represent units of
 work at any level, from strategic initiatives to individual tasks.
 
@@ -26,8 +25,6 @@ down into actionable components.
 
 This structure supports various planning frameworks like Scrum, Kanban, and portfolio management
 approaches, while giving teams visibility into progress at every level.
-With work items, you can organize your team's work using common structures that support various
-planning frameworks including Scrum, Kanban, and portfolio management approaches.
 
 ## Work item types
 
@@ -39,43 +36,46 @@ GitLab supports the following work item types:
 - [Objectives and key results](../okrs.md): Track strategic goals and their measurable outcomes.
 - [Test cases](../../ci/test_cases/_index.md): Integrate test planning directly into your GitLab workflows.
 
+You can also [configure work item types](configurable_work_item_types.md)
+to create new types and control their availability across
+groups and projects.
+
 ## View all work items
 
 {{< history >}}
 
 - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/11918) in GitLab 18.7 [with a flag](../../administration/feature_flags/_index.md) named `work_item_planning_view`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/520452) in GitLab 18.10. Feature flag `work_item_planning_view` removed.
 
 {{< /history >}}
 
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
+The **Work items** list is the central place to view and manage all work item types
+(such as issues, epics, and tasks) for a project or group. Use this view to
+understand the full scope of work in your project or group and prioritize effectively.
 
-To organize work items (like issues, epics, and tasks) side-by-side, use the consolidated work items view.
-This view helps you understand the full scope of work, and prioritize effectively.
-
-When you enable this feature, it:
-
-- Removes **Plan** > **Issues** and **Plan** > **Epics** from the left sidebar in groups and projects.
-- Adds **Plan** > **Work items** to the left sidebar.
-- Pins **Work items** on the left sidebar for projects and groups, if you had previously pinned
-  **Plan** > **Issues** or **Plan** > **Epics**.
-- Removes **Settings** > **Issues** from the left sidebar in groups.
-- Adds **Settings** > **Work items** to the left sidebar in groups.
+In earlier versions of GitLab, issues and epics had separate list pages under
+**Plan** > **Issues** and **Plan** > **Epics**. In GitLab 18.10 and later, these pages
+are replaced by **Plan** > **Work items**, which consolidates all work item types in a
+single view. If you had pinned **Issues** or **Epics** in the sidebar, **Work items** is
+pinned in their place. URLs that contain `/epics/:iid` or `/issues/:iid` automatically
+redirect to `/work_items/:iid`.
 
 To view work items for a project or group:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Plan** > **Work items**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Plan** > **Work items**.
 
 ### Filter work items
 
-On the **Work items** page, you can use filters to narrow down the list:
+The **Work items** list shows all work item types by default. To view a specific type
+(for example, only issues or only epics), use the **Type** filter.
+
+To filter the work items list:
 
 1. At the top of the page, from the filter bar, select a filter, operator, and its value.
-1. Optional. Add more filters.
-1. Press <kbd>Enter</kbd> or select the search icon {{< icon name="search" >}}.
+   For example, to view only epics, select the filter **Type**, operator **is**, and value **Epic**.
+1. Optional. Add more filters to refine your search.
+1. Press <kbd>Enter</kbd> or select the search icon ({{< icon name="search" >}}).
 
 #### Available filters
 
@@ -84,9 +84,6 @@ On the **Work items** page, you can use filters to narrow down the list:
 - Filtering by description [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/536876) in GitLab 18.3.
 
 {{< /history >}}
-
-<!-- When the feature flag work_item_planning_view is removed, move more information from
-managing_issues.md#filter-the-list-of-issues here -->
 
 These filters are available for work items:
 
@@ -110,7 +107,7 @@ These filters are available for work items:
   - Operators: `is`, `is not`
 - My reaction
   - Operators: `is`, `is not`
-- Organisation
+- Organization
   - Operators: `is`
 - Parent
   - Operators: `is`, `is not`
@@ -138,9 +135,6 @@ To access filters you've used recently, on the left side of the filter bar, sele
 
 {{< /history >}}
 
-<!-- When the feature flag work_item_planning_view is removed, move information from
-sorting_issue_lists.md to this page and redirect here -->
-
 Sort the list of work items by the following:
 
 - Created date
@@ -149,6 +143,7 @@ Sort the list of work items by the following:
 - Due date
 - Title
 - Status
+- Weight
 
 To change the sorting criteria:
 
@@ -160,7 +155,7 @@ To toggle the sorting order between ascending and descending:
   or {{< icon name="sort-highest" >}}).
 
 For more information about sorting logic, see
-[Sorting and ordering issue lists](../project/issues/sorting_issue_lists.md).
+[sorting and ordering issue lists](../project/issues/sorting_issue_lists.md).
 
 ## Configure list display preferences
 
@@ -184,9 +179,9 @@ GitLab saves your display preferences at different levels:
 
 To configure display preferences:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epics** or **Plan** > **Issues**.
-1. In the upper-right corner, select **Display options** ({{< icon name="preferences" >}}).
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Work items**.
+1. On the right of the filter bar, select **Display options** ({{< icon name="preferences" >}}).
 1. Under **Fields**, turn on or turn off the metadata you want to display:
    - Status (for issues)
    - Assignee
@@ -218,6 +213,27 @@ Your preference is saved and remembered across all your sessions and devices.
 You can reference work items in GitLab Flavored Markdown fields with `[work_item:123]`.
 For more information, see [GitLab-specific references](../markdown.md#gitlab-specific-references).
 
+## Work items in merge requests
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/plan-stage/-/work_items/456) in GitLab 18.11 [with a feature flag](../../administration/feature_flags/_index.md) named `mr_related_work_items`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/233554) in GitLab 19.0. Feature flag `mr_related_work_items` removed.
+
+{{< /history >}}
+
+When you reference a work item in a merge request description, it appears automatically in
+the **Work items** widget in the merge request sidebar. The widget groups work items into two categories:
+
+- **Closing**: Work items linked with a
+  [closing pattern](../project/issues/managing_issues.md#closing-issues-automatically),
+  such as `Closes #123`. These work items close automatically when the MR merges.
+- **Mentioned**: Work items referenced in the description but not linked with a closing pattern,
+  such as `Related to #456`. These work items are not closed when the MR merges.
+
+If the widget contains more than two work items, it collapses by default. Select the widget
+header to expand it. Select any work item to open it in a drawer.
+
 ## Related topics
 
 - [Linked issues](../project/issues/related_issues.md)
@@ -227,3 +243,4 @@ For more information, see [GitLab-specific references](../markdown.md#gitlab-spe
 - [Iterations](../group/iterations/_index.md)
 - [Milestones](../project/milestones/_index.md)
 - [Custom fields](custom_fields.md)
+- [Configurable work item types](configurable_work_item_types.md)

@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Tenant Services
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Run multiple Sidekiq processes
 ---
 
@@ -22,7 +22,7 @@ process and only uses a single core.
 ## Start multiple processes
 
 When starting multiple processes, the number of processes should at most equal
-(and **not** exceed) the number of CPU cores you want to dedicate to Sidekiq.
+(and not exceed) the number of CPU cores you want to dedicate to Sidekiq.
 The Sidekiq worker process uses no more than one CPU core.
 
 To start multiple processes, use the `sidekiq['queue_groups']` array setting to
@@ -51,7 +51,7 @@ to all available queues:
 To view the Sidekiq processes in GitLab:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Background jobs**.
+1. In the left sidebar, select **Monitoring** > **Background jobs**.
 
 ## Concurrency
 

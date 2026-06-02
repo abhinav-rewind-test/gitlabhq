@@ -1,6 +1,6 @@
 <script>
 import { GlAlert, GlIcon, GlLink, GlLoadingIcon, GlSprintf, GlTooltipDirective } from '@gitlab/ui';
-import DuoWorkflowAction from 'ee_component/ai/components/duo_workflow_action.vue';
+import DuoWorkflowAction from 'ee_component/ai/shared/widgets/duo_workflow_action.vue';
 import { timeIntervalInWords } from '~/lib/utils/datetime_utility';
 import { setUrlFragment, visitUrl } from '~/lib/utils/url_utility';
 import { __, s__, n__, sprintf, formatNumber } from '~/locale';
@@ -74,7 +74,10 @@ export default {
   apollo: {
     pipeline: {
       context() {
-        return getQueryHeaders(this.graphqlResourceEtag);
+        return {
+          ...getQueryHeaders(this.graphqlResourceEtag),
+          featureCategory: 'continuous_integration',
+        };
       },
       query: getPipelineQuery,
       variables() {
@@ -82,6 +85,9 @@ export default {
           fullPath: this.paths.fullProject,
           iid: this.pipelineIid,
         };
+      },
+      skip() {
+        return !this.pipelineIid;
       },
       update(data) {
         const newFavicon = data?.project?.pipeline?.detailedStatus?.favicon;
@@ -484,7 +490,7 @@ export default {
           data-testid="pipeline-ref-text"
         ></div>
         <div>
-          <header-badges :pipeline="pipeline" />
+          <header-badges v-if="pipeline.id" :pipeline="pipeline" />
 
           <div class="gl-inline-block">
             <button
@@ -537,6 +543,7 @@ export default {
           {{ __('Fix pipeline with Duo') }}
         </duo-workflow-action>
         <header-actions
+          v-if="pipeline.id"
           class="gl-self-start"
           :pipeline="pipeline"
           :is-retrying="isRetrying"

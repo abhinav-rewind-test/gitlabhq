@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Mobile DevOps
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Secure Files administration
 ---
 
@@ -29,7 +29,7 @@ but the default locations are:
 - `/var/opt/gitlab/gitlab-rails/shared/ci_secure_files` for installations using the Linux package.
 - `/home/git/gitlab/shared/ci_secure_files` for self-compiled installations.
 
-Use [external object storage](https://docs.gitlab.com/charts/advanced/external-object-storage/#lfs-artifacts-uploads-packages-external-diffs-terraform-state-dependency-proxy)
+Use [external object storage](https://docs.gitlab.com/charts/advanced/external-object-storage/#lfs-artifacts-uploads-packages-external-diffs-terraform-state-dependency-proxy-secure-files)
 configuration for [GitLab Helm chart](https://docs.gitlab.com/charts/) installations.
 
 ## Disabling Secure Files
@@ -103,7 +103,8 @@ are stored locally, follow the steps below.
 
 {{< /details >}}
 
-Instead of storing Secure Files on disk, you should use [one of the supported object storage options](../object_storage.md#supported-object-storage-providers).
+Instead of storing Secure Files on disk, you should use
+[one of the supported object storage options](../object_storage.md#object-storage-provider-support).
 This configuration relies on valid credentials to be configured already.
 
 ### Consolidated object storage

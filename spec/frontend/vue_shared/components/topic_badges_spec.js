@@ -1,10 +1,8 @@
 import { GlBadge, GlPopover } from '@gitlab/ui';
-import uniqueId from 'lodash/uniqueId';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
+import { useConfigurePathHelpers } from 'helpers/configure_path_helpers';
 import TopicBadges from '~/vue_shared/components/topic_badges.vue';
-
-jest.mock('lodash/uniqueId');
 
 describe('Topic Badges', () => {
   let wrapper;
@@ -34,7 +32,6 @@ describe('Topic Badges', () => {
 
   describe('with more than 3 topics', () => {
     beforeEach(() => {
-      uniqueId.mockImplementation((prefix) => `${prefix}1`);
       createComponent();
     });
 
@@ -161,8 +158,9 @@ describe('Topic Badges', () => {
   });
 
   describe('with relative url', () => {
+    useConfigurePathHelpers('/gitlab/something/');
+
     beforeEach(() => {
-      gon.relative_url_root = '/gitlab/something//';
       createComponent();
     });
 

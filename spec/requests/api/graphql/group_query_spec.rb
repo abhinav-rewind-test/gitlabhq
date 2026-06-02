@@ -11,7 +11,7 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
   let_it_be(:user1)         { create(:user, can_create_group: false) }
   let_it_be(:user2)         { create(:user) }
   let_it_be(:admin)         { create(:admin) }
-  let_it_be(:private_group) { create(:group, :private) }
+  let_it_be(:private_group, freeze: false) { create(:group, :private) }
   let_it_be(:public_group)  { create(:group, :public) }
 
   # similar to the API "GET /groups/:id"
@@ -101,7 +101,7 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
         pending('See: https://gitlab.com/gitlab-org/gitlab/-/issues/245272')
 
         queries = [{ query: group_query(group1) },
-                   { query: group_query(group2) }]
+          { query: group_query(group2) }]
 
         expect { post_multiplex(queries, current_user: admin) }
           .to issue_same_number_of_queries_as { post_graphql(group_query(group1), current_user: admin) }
@@ -250,6 +250,13 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
 
         expect(graphql_data['group']).to be_nil
       end
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL', :read_group do
+        let(:user) { admin }
+        let(:boundary_object) { private_group }
+        let(:query) { graphql_query_for('group', { fullPath: private_group.full_path }, 'id') }
+        let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+      end
     end
 
     describe 'maxAccessLevel' do
@@ -360,6 +367,34 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
           expect(graphql_data_at(:group, :namespaceSettings)).to be_nil
         end
       end
+    end
+  end
+
+  context 'with namespaceGroupsForLinksWidget query' do
+    let(:query) { get_graphql_query_as_string('work_items/graphql/namespace_groups_for_links_widget.query.graphql') }
+    let(:variables) { { 'fullPath' => public_group.full_path } }
+
+    before do
+      create(:group, parent: public_group)
+    end
+
+    it 'does not execute N+1 queries', :use_sql_query_cache do
+      post_graphql(query, current_user: user1, variables: variables) # warm-up
+
+      control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+        post_graphql(query, current_user: user1, variables: variables)
+      end
+
+      expect_graphql_errors_to_be_empty
+
+      create_list(:group, 3, parent: public_group)
+      create_list(:group, 2, parent: create(:group, parent: public_group))
+
+      expect do
+        post_graphql(query, current_user: user1, variables: variables)
+      end.not_to exceed_all_query_limit(control)
+
+      expect_graphql_errors_to_be_empty
     end
   end
 end

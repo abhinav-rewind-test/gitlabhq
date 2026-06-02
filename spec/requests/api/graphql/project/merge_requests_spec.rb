@@ -6,7 +6,7 @@ RSpec.describe 'getting merge request listings nested in a project', feature_cat
   include GraphqlHelpers
 
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :repository, :public, group: group) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, :public, group: group) }
   let_it_be(:current_user) { create(:user) }
   let_it_be(:label) { create(:label, project: project) }
   let_it_be(:group_label) { create(:group_label, group: group) }
@@ -16,7 +16,7 @@ RSpec.describe 'getting merge request listings nested in a project', feature_cat
       reviewers: [current_user])
   end
 
-  let_it_be(:merge_request_b) do
+  let_it_be(:merge_request_b, freeze: false) do
     create(:merge_request, :closed, :unique_branches, source_project: project, reviewers: [current_user, create(:user)])
   end
 
@@ -59,13 +59,8 @@ RSpec.describe 'getting merge request listings nested in a project', feature_cat
     before do
       # create AI Setting singleton record to prevent N+1
       Ai::Setting.instance if Gitlab.ee?
-      # We cannot disable SQL query limiting here, since the transaction does not
-      # begin until we enter the controller.
-      headers = {
-        'X-GITLAB-DISABLE-SQL-QUERY-LIMIT' => '230,https://gitlab.com/gitlab-org/gitlab/-/issues/469250'
-      }
 
-      post_graphql(query, current_user: current_user, headers: headers)
+      post_graphql(query, current_user: current_user)
     end
   end
 

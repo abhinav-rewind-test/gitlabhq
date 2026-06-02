@@ -9,7 +9,12 @@ RSpec.describe ActiveContext::Databases::Elasticsearch::Client do
 
   describe '#search' do
     let(:elasticsearch_client) { instance_double(Elasticsearch::Client) }
-    let(:search_response) { { 'hits' => { 'total' => 5, 'hits' => [] } } }
+    let(:search_response) do
+      { 'hits' => { 'total' => 5,
+                    'hits' => [{ '_source' => { 'id' => 1 } }, { '_source' => { 'id' => 2 } },
+                      { '_source' => { 'id' => 3 } }] } }
+    end
+
     let(:query) { ActiveContext::Query.filter(project_id: 1) }
 
     before do
@@ -17,16 +22,36 @@ RSpec.describe ActiveContext::Databases::Elasticsearch::Client do
       allow(elasticsearch_client).to receive(:search).and_return(search_response)
       allow(collection).to receive_messages(
         collection_name: 'test',
-        redact_unauthorized_results!: [[], []],
-        current_embedding_fields: %w[embedding_v1 embedding_v2]
+        redact_unauthorized_results!: [[], []]
       )
     end
 
-    it 'calls search on the Elasticsearch client' do
+    it 'calls search on the Elasticsearch client without _source by default' do
       expect(elasticsearch_client).to receive(:search).with(
         index: 'test',
-        body: hash_including(_source: { includes: ['*', 'embedding_v1', 'embedding_v2'] })
+        body: hash_not_including(:_source)
       )
+      client.search(collection: collection, query: query, user: user)
+    end
+
+    context 'when source_fields is provided' do
+      it 'includes _source with the specified fields' do
+        expect(elasticsearch_client).to receive(:search).with(
+          index: 'test',
+          body: hash_including(_source: { includes: ['content'] })
+        )
+        client.search(collection: collection, query: query, user: user, source_fields: ['content'])
+      end
+    end
+
+    it 'logs search duration and result count' do
+      expect(ActiveContext::Logger).to receive(:info).with(
+        message: 'ActiveContext client search completed',
+        collection: collection,
+        duration_s: be_a(Float),
+        result_count: 3
+      )
+
       client.search(collection: collection, query: query, user: user)
     end
   end

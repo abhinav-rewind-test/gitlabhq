@@ -1,6 +1,6 @@
 <script>
 import { GlCollapsibleListbox } from '@gitlab/ui';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { __, s__ } from '~/locale';
 import ProjectAvatar from '~/vue_shared/components/project_avatar.vue';
 import namespaceGroupsForLinksWidgetQuery from '../../graphql/namespace_groups_for_links_widget.query.graphql';
@@ -65,8 +65,8 @@ export default {
 
       // group is not filtered by graphql query so we filter it here
       if (!this.searchKey || searchMatchesGroup) {
-        const { id, name, avatarUrl, path, fullPath } = this.group;
-        filteredGroups.push({ id, name, avatarUrl, path, fullPath });
+        const { id, name, avatarUrl, fullName, fullPath } = this.group;
+        filteredGroups.push({ id, name, avatarUrl, fullName, fullPath });
       }
 
       if (this.group.descendantGroups) {
@@ -80,7 +80,7 @@ export default {
     },
     dropdownToggleText() {
       if (this.selectedGroup) {
-        return this.selectedGroup.name || this.selectedGroup.path;
+        return this.selectedGroup.name || this.selectedGroup.fullPath;
       }
       return this.selectedGroupFullPath && this.currentGroupName
         ? this.currentGroupName
@@ -92,7 +92,7 @@ export default {
           id: group.id,
           text: group.name,
           value: group.fullPath,
-          namespace: group.path,
+          namespace: group.fullName,
           avatarUrl: group.avatarUrl,
         };
       });

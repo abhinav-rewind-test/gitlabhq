@@ -16,7 +16,9 @@ module Ci
       class_name: 'Ci::Build',
       partition_foreign_key: :partition_id
     belongs_to :namespace, inverse_of: :pending_builds, class_name: 'Namespace'
-    belongs_to :plan
+    belongs_to :plan, # rubocop: disable Rails/InverseOf -- Plan does not declare has_many :pending_builds
+      foreign_key: :plan_name_uid,
+      primary_key: :plan_name_uid
 
     partitionable scope: :build
 
@@ -34,7 +36,11 @@ module Ci
 
     class << self
       def upsert_from_build!(build)
-        entry = self.new(args_from_build(build))
+        upsert_from_args!(args_from_build(build))
+      end
+
+      def upsert_from_args!(args)
+        entry = self.new(args)
 
         entry.validate!
 
@@ -47,8 +53,6 @@ module Ci
           namespace_id: namespace.id
         }
       end
-
-      private
 
       def args_from_build(build)
         project = build.project
@@ -66,6 +70,8 @@ module Ci
 
         args
       end
+
+      private
 
       def build_tags_ids(build)
         build.tag_list.then do |tag_list|

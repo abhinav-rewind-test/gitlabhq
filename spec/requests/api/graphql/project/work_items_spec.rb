@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe 'getting a work item list for a project', feature_category: :team_planning do
+RSpec.describe 'getting a work item list for a project', feature_category: :portfolio_management do
   include_context 'with work items list request'
 
-  let_it_be(:label1) { create(:label, project: project) }
-  let_it_be(:label2) { create(:label, project: project) }
+  let_it_be(:label1, freeze: false) { create(:label, project: project) }
+  let_it_be(:label2, freeze: false) { create(:label, project: project) }
   let_it_be(:milestone1) { create(:milestone, project: project, due_date: 5.days.ago) }
   let_it_be(:milestone2) { create(:milestone, project: project, due_date: 3.days.from_now) }
 
@@ -35,12 +35,14 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
   let(:items_data) { graphql_data['project']['workItems']['nodes'] }
   let(:item_filter_params) { {} }
 
+  let(:variables) { {} }
+
   shared_examples 'work items resolver without N + 1 queries' do |threshold: 0|
     it 'avoids N+1 queries', :use_sql_query_cache do
-      post_graphql(query, current_user: current_user) # warm-up
+      post_graphql(query, current_user: current_user, variables: variables) # warm-up
 
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
-        post_graphql(query, current_user: current_user)
+        post_graphql(query, current_user: current_user, variables: variables)
       end
 
       expect_graphql_errors_to_be_empty
@@ -57,7 +59,7 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
       )
 
       expect do
-        post_graphql(query, current_user: current_user)
+        post_graphql(query, current_user: current_user, variables: variables)
       end.not_to exceed_all_query_limit(control).with_threshold(threshold)
 
       expect_graphql_errors_to_be_empty
@@ -79,15 +81,12 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
       it_behaves_like 'work items resolver without N + 1 queries', threshold: 3
     end
 
-    # We need a separate example since all_graphql_fields_for will not fetch fields from types
-    # that implement the widget interface. Only `type` for the widgets field.
-    context 'when querying the widget interface' do
+    context 'when querying the features field' do
       let(:fields) do
         <<~GRAPHQL
           nodes {
-            widgets {
-              type
-              ... on WorkItemWidgetDescription {
+            features {
+              description {
                 edited
                 lastEditedAt
                 lastEditedBy {
@@ -95,10 +94,10 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
                   username
                 }
               }
-              ... on WorkItemWidgetAssignees {
+              assignees {
                 assignees { nodes { id } }
               }
-              ... on WorkItemWidgetHierarchy {
+              hierarchy {
                 parent { id }
                 children {
                   nodes {
@@ -106,11 +105,11 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
                   }
                 }
               }
-              ... on WorkItemWidgetLabels {
+              labels {
                 labels { nodes { id } }
                 allowsScopedLabels
               }
-              ... on WorkItemWidgetMilestone {
+              milestone {
                 milestone {
                   id
                 }
@@ -122,12 +121,18 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
 
       it_behaves_like 'work items resolver without N + 1 queries'
     end
+
+    context 'with projectWorkItems query' do
+      let(:query) { get_graphql_query_as_string('work_items/graphql/project_work_items.query.graphql') }
+      let(:variables) { { 'fullPath' => project.full_path } }
+
+      it_behaves_like 'work items resolver without N + 1 queries'
+    end
   end
 
-  context 'when querying WorkItemWidgetAssignees' do
-    let(:work_items_data) { graphql_data['project']['workItems']['nodes'].pluck('widgets') }
-    let(:widget_data) { work_items_data.map { |data| data.find { |widget| widget['type'] == 'ASSIGNEES' } } }
-    let(:assignee_data) { widget_data.map { |data| data.dig('assignees', 'nodes') } }
+  context 'when querying features.assignees' do
+    let(:work_items_data) { graphql_data['project']['workItems']['nodes'] }
+    let(:assignee_data) { work_items_data.map { |data| data.dig('features', 'assignees', 'assignees', 'nodes') } }
     let(:assignees) do
       [
         create(:user, name: 'BBB'),
@@ -139,9 +144,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     let(:fields) do
       <<~GRAPHQL
         nodes {
-          widgets {
-            type
-            ... on WorkItemWidgetAssignees {
+          features {
+            assignees {
               assignees { nodes { id } }
             }
           }
@@ -168,18 +172,17 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     end
   end
 
-  context 'when querying WorkItemWidgetHierarchy' do
+  context 'when querying features.hierarchy' do
     let_it_be(:children) { create_list(:work_item, 4, :task, project: project) }
-    let_it_be(:child_link1) { create(:parent_link, work_item_parent: item1, work_item: children[0]) }
+    let_it_be(:child_link1, freeze: false) { create(:parent_link, work_item_parent: item1, work_item: children[0]) }
     let_it_be(:child_link2) { create(:parent_link, work_item_parent: item1, work_item: children[1]) }
 
     let(:fields) do
       <<~GRAPHQL
         nodes {
           id
-          widgets {
-            type
-            ... on WorkItemWidgetHierarchy {
+          features {
+            hierarchy {
               hasChildren
               parent { id }
               children { nodes { id } }
@@ -192,8 +195,7 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     context 'with ordered children' do
       let(:items_data) { graphql_data['project']['workItems']['nodes'] }
       let(:work_item_data) { items_data.find { |item| item['id'] == item1.to_gid.to_s } }
-      let(:work_item_widget) { work_item_data["widgets"].find { |widget| widget.key?("children") } }
-      let(:children_ids) { work_item_widget.dig("children", "nodes").pluck("id") }
+      let(:children_ids) { work_item_data.dig("features", "hierarchy", "children", "nodes").pluck("id") }
 
       let(:first_child) { children[0].to_gid.to_s }
       let(:second_child) { children[1].to_gid.to_s }
@@ -248,13 +250,12 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     end
   end
 
-  context 'when querying WorkItemWidgetStartAndDueDate' do
+  context 'when querying features.startAndDueDate' do
     let(:fields) do
       <<~GRAPHQL
         nodes {
-          widgets {
-            type
-            ... on WorkItemWidgetStartAndDueDate {
+          features {
+            startAndDueDate {
               dueDate
               startDate
             }
@@ -390,14 +391,30 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     let(:fields) do
       <<~GRAPHQL
         nodes {
-          widgets {
-            type
-            ... on WorkItemWidgetNotifications {
+          id
+          features {
+            notifications {
               subscribed
             }
           }
         }
       GRAPHQL
+    end
+
+    it 'returns correct subscription status for each work item' do
+      item_with_no_subscription = create(:work_item, project: project)
+      create(:subscription, subscribable: item1, user: current_user, project: project, subscribed: true)
+      create(:subscription, subscribable: item2, user: current_user, project: project, subscribed: false)
+
+      post_graphql(query, current_user: current_user)
+
+      expect_graphql_errors_to_be_empty
+
+      subscription_data = items_data.to_h { |item| [item['id'], item.dig('features', 'notifications', 'subscribed')] }
+
+      expect(subscription_data[item1.to_gid.to_s]).to be true
+      expect(subscription_data[item2.to_gid.to_s]).to be false
+      expect(subscription_data[item_with_no_subscription.to_gid.to_s]).to be false
     end
 
     it 'executes limited number of N+1 queries', :use_sql_query_cache do
@@ -407,9 +424,9 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
 
       create_list(:work_item, 3, project: project)
 
-      # Performs 1 extra query per item to fetch subscriptions
+      # Participant check for items without subscription records may add a constant query
       expect { post_graphql(query, current_user: current_user) }
-        .not_to exceed_all_query_limit(control).with_threshold(3)
+        .not_to exceed_all_query_limit(control).with_threshold(1)
       expect_graphql_errors_to_be_empty
     end
   end
@@ -418,9 +435,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     let(:fields) do
       <<~GRAPHQL
         nodes {
-          widgets {
-            type
-            ... on WorkItemWidgetAwardEmoji {
+          features {
+            awardEmoji {
               awardEmoji {
                 nodes {
                   name
@@ -442,8 +458,9 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
       create(:award_emoji, :downvote, awardable: item1)
     end
 
-    it 'executes limited number of N+1 queries', :use_sql_query_cache,
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/2407' do
+    it 'executes limited number of N+1 queries', :use_sql_query_cache do
+      post_graphql(query, current_user: current_user) # warm-up
+
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
         post_graphql(query, current_user: current_user)
       end
@@ -468,9 +485,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     let(:fields) do
       <<~GRAPHQL
         nodes {
-          widgets {
-            type
-            ... on WorkItemWidgetLinkedItems {
+          features {
+            linkedItems {
               linkedItems {
                 nodes {
                   linkId
@@ -479,8 +495,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
                   linkUpdatedAt
                   workItem {
                     id
-                    widgets {
-                      ... on WorkItemWidgetMilestone {
+                    features {
+                      milestone {
                         milestone {
                           id
                         }
@@ -523,17 +539,16 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
 
   context 'when fetching work item participants widget' do
     let_it_be(:other_project) { create(:project, group: group) }
-    let_it_be(:project) { other_project }
-    let_it_be(:users) { create_list(:user, 3) }
-    let_it_be(:work_items) { create_list(:work_item, 3, project: project, assignees: users) }
+    let_it_be(:project, freeze: false) { other_project }
+    let_it_be(:users, freeze: false) { create_list(:user, 3) }
+    let_it_be(:work_items, freeze: false) { create_list(:work_item, 3, project: project, assignees: users) }
 
     let(:fields) do
       <<~GRAPHQL
         nodes {
           id
-          widgets {
-            type
-            ... on WorkItemWidgetParticipants {
+          features {
+            participants {
               participants {
                 nodes {
                   id
@@ -553,12 +568,15 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     it 'returns participants' do
       post_graphql(query, current_user: current_user)
 
-      participants_usernames = graphql_dig_at(items_data, 'widgets', 'participants', 'nodes', 'username')
+      participants_usernames = graphql_dig_at(
+        items_data, 'features', 'participants', 'participants', 'nodes', 'username'
+      )
       expect(participants_usernames).to match_array(work_items.flat_map(&:participants).map(&:username))
     end
 
-    it 'executes limited number of N+1 queries', :use_sql_query_cache,
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/2428' do
+    it 'executes limited number of N+1 queries', :use_sql_query_cache do
+      post_graphql(query, current_user: current_user) # warm-up
+
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
         post_graphql(query, current_user: current_user)
       end
@@ -566,20 +584,22 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
       create_list(:work_item, 2, project: project, assignees: users)
 
       expect_graphql_errors_to_be_empty
-      expect { post_graphql(query, current_user: current_user) }.not_to exceed_all_query_limit(control)
+      # Participants are resolved per work item via Issuable#system_note_authors and
+      # Issuable#notes_for_participants, each adding one query per new item.
+      expect { post_graphql(query, current_user: current_user) }
+        .not_to exceed_all_query_limit(control).with_threshold(4)
     end
   end
 
-  context 'with development widget', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/508211' do
+  context 'with development widget' do
     context 'for closing merge requests field' do
       let(:work_items) { [item1, item2] }
       let(:fields) do
         <<~GRAPHQL
           nodes {
             id
-            widgets {
-              type
-              ... on WorkItemWidgetDevelopment {
+            features {
+              development {
                 closingMergeRequests {
                   count
                   nodes {
@@ -604,8 +624,7 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
         end
       end
 
-      it 'avoids N+1 queries',
-        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/2145' do
+      it 'avoids N+1 queries', :use_sql_query_cache do
         post_graphql(query, current_user: current_user) # warmup
 
         control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
@@ -622,7 +641,7 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
           )
         end
 
-        expect { post_graphql(query, current_user: current_user) }.to issue_same_number_of_queries_as(control)
+        expect { post_graphql(query, current_user: current_user) }.not_to exceed_all_query_limit(control)
         expect(graphql_errors).to be_blank
       end
     end
@@ -632,9 +651,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
         <<~GRAPHQL
           nodes {
             id
-            widgets {
-              type
-              ... on WorkItemWidgetDevelopment {
+            features {
+              development {
                 relatedMergeRequests {
                   nodes {
                     id
@@ -661,9 +679,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
         <<~GRAPHQL
           nodes {
             id
-            widgets {
-              type
-              ... on WorkItemWidgetDevelopment {
+            features {
+              development {
                 relatedBranches  {
                   nodes {
                     name
@@ -693,9 +710,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
         <<~QUERY
           nodes {
             id
-            widgets {
-             type
-              ... on WorkItemWidgetErrorTracking {
+            features {
+              errorTracking {
                 identifier
                 status
                 stackTrace {
@@ -725,7 +741,7 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
     end
 
     context "when we call the widget for one work item" do
-      let(:widget_data) { graphql_data['workItem']['widgets'].find { |widget| widget['type'] == 'ERROR_TRACKING' } }
+      let(:widget_data) { graphql_data['workItem']['features']['errorTracking'] }
 
       let(:latest_event) do
         instance_double(Gitlab::ErrorTracking::ErrorEvent,
@@ -769,9 +785,8 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
       let(:fields) do
         <<~QUERY
         id
-        widgets {
-          type
-          ... on WorkItemWidgetErrorTracking {
+        features {
+          errorTracking {
             identifier
             status
             stackTrace {
@@ -1074,6 +1089,90 @@ RSpec.describe 'getting a work item list for a project', feature_category: :team
 
         it 'returns items without selected types' do
           expect(item_ids).to contain_exactly(task.to_global_id.to_s)
+        end
+      end
+    end
+
+    context 'when filtering by workItemTypeIds' do
+      let_it_be(:task) { create(:work_item, :task, project: project) }
+
+      let(:item_filter_params) { { workItemTypeIds: [task.work_item_type.to_global_id.to_s] } }
+
+      before do
+        post_graphql(query, current_user: current_user)
+      end
+
+      it 'returns items with selected type GIDs' do
+        expect(item_ids).to contain_exactly(task.to_global_id.to_s)
+      end
+
+      context 'with multiple work item type ids' do
+        let(:item_filter_params) do
+          {
+            workItemTypeIds: [
+              task.work_item_type.to_global_id.to_s,
+              item1.work_item_type.to_global_id.to_s
+            ]
+          }
+        end
+
+        it 'returns items of all specified types' do
+          expect(item_ids).to contain_exactly(
+            task.to_global_id.to_s,
+            item1.to_global_id.to_s,
+            item2.to_global_id.to_s,
+            confidential_item.to_global_id.to_s
+          )
+        end
+      end
+
+      context 'when using NOT' do
+        let(:item_filter_params) { { not: { workItemTypeIds: [task.work_item_type.to_global_id.to_s] } } }
+
+        it 'returns items without selected type GIDs' do
+          expect(item_ids).not_to include(task.to_global_id.to_s)
+        end
+      end
+
+      context 'when both types and workItemTypeIds are provided' do
+        let(:item_filter_params) { { types: [:TASK], workItemTypeIds: [task.work_item_type.to_global_id.to_s] } }
+
+        it 'returns a mutual exclusion error' do
+          expect_graphql_errors_to_include(
+            'Only one of [issueTypes, workItemTypeIds] arguments is allowed at the same time.'
+          )
+        end
+      end
+
+      context 'when both types and workItemTypeIds are provided in NOT' do
+        let(:item_filter_params) do
+          { not: { types: [:TASK], workItemTypeIds: [task.work_item_type.to_global_id.to_s] } }
+        end
+
+        it 'returns a mutual exclusion error' do
+          expect_graphql_errors_to_include(
+            'Only one of [issueTypes, workItemTypeIds] arguments is allowed at the same time.'
+          )
+        end
+      end
+
+      context 'when workItemTypeIds exceeds the maximum limit' do
+        let(:item_filter_params) do
+          { workItemTypeIds: (1..101).map { |id| "gid://gitlab/WorkItems::Type/#{id}" } }
+        end
+
+        it 'returns an error' do
+          expect_graphql_errors_to_include('workItemTypeIds is too long (maximum is 100)')
+        end
+      end
+
+      context 'when NOT workItemTypeIds exceeds the maximum limit' do
+        let(:item_filter_params) do
+          { not: { workItemTypeIds: (1..101).map { |id| "gid://gitlab/WorkItems::Type/#{id}" } } }
+        end
+
+        it 'returns an error' do
+          expect_graphql_errors_to_include('workItemTypeIds is too long (maximum is 100)')
         end
       end
     end

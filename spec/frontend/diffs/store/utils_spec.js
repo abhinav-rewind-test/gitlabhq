@@ -11,6 +11,7 @@ import {
   INLINE_DIFF_LINES_KEY,
 } from '~/diffs/constants';
 import * as utils from '~/diffs/store/utils';
+import { HTTP_STATUS_SERVICE_UNAVAILABLE } from '~/lib/utils/http_status';
 import { MERGE_REQUEST_NOTEABLE_TYPE } from '~/notes/constants';
 import { noteableDataMock } from 'jest/notes/mock_data';
 import { getDiffFileMock } from '../mock_data/diff_file';
@@ -958,6 +959,140 @@ describe('DiffsStoreUtils', () => {
     });
   });
 
+  describe('parseRapidDiffsLineHash', () => {
+    const shortHash = '28a186937';
+    const fullHash = 'e334a2a10f036c00151a04cea7938a5d4213a818';
+
+    it('parses an added line hash with short file hash', () => {
+      expect(utils.parseRapidDiffsLineHash(`line_${shortHash}_A42`)).toEqual({
+        shortFileHash: shortHash,
+        isAddition: true,
+        lineNumber: 42,
+      });
+    });
+
+    it('parses an added line hash with full file hash', () => {
+      expect(utils.parseRapidDiffsLineHash(`line_${fullHash}_A42`)).toEqual({
+        shortFileHash: fullHash,
+        isAddition: true,
+        lineNumber: 42,
+      });
+    });
+
+    it('parses a hash with # prefix', () => {
+      expect(utils.parseRapidDiffsLineHash(`#line_${shortHash}_A42`)).toEqual({
+        shortFileHash: shortHash,
+        isAddition: true,
+        lineNumber: 42,
+      });
+    });
+
+    it('parses a non-added line hash', () => {
+      expect(utils.parseRapidDiffsLineHash(`line_${shortHash}_10`)).toEqual({
+        shortFileHash: shortHash,
+        isAddition: false,
+        lineNumber: 10,
+      });
+    });
+
+    it('returns null for legacy line_code format', () => {
+      expect(utils.parseRapidDiffsLineHash(`${fullHash}_10_42`)).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+      expect(utils.parseRapidDiffsLineHash('')).toBeNull();
+    });
+
+    it('returns null for non-matching hash', () => {
+      expect(utils.parseRapidDiffsLineHash('diff-content-abc')).toBeNull();
+    });
+  });
+
+  describe('findDiffFileByShortHash', () => {
+    const fullHash = 'e334a2a10f036c00151a04cea7938a5d4213a818';
+    const shortHash = fullHash.substring(0, 9);
+
+    it('finds a file by short hash prefix', () => {
+      const files = [{ file_hash: fullHash }];
+      expect(utils.findDiffFileByShortHash(files, shortHash)).toBe(files[0]);
+    });
+
+    it('returns undefined when no file matches', () => {
+      const files = [{ file_hash: fullHash }];
+      expect(utils.findDiffFileByShortHash(files, 'fffffffff')).toBeUndefined();
+    });
+  });
+
+  describe('findLineCodeFromRapidDiffsHash', () => {
+    const fullHash = 'e334a2a10f036c00151a04cea7938a5d4213a818';
+    const shortHash = fullHash.substring(0, 9);
+
+    const createDiffFile = (lines) => ({
+      highlighted_diff_lines: lines,
+    });
+
+    it('finds line_code for an added line', () => {
+      const diffFile = createDiffFile([
+        { new_line: 10, old_line: 10, type: null, line_code: `${fullHash}_10_10` },
+        { new_line: 42, old_line: null, type: 'new', line_code: `${fullHash}_0_42` },
+      ]);
+      const parsedHash = { shortFileHash: shortHash, isAddition: true, lineNumber: 42 };
+
+      expect(utils.findLineCodeFromRapidDiffsHash(diffFile, parsedHash)).toBe(`${fullHash}_0_42`);
+    });
+
+    it('finds line_code for a removed line', () => {
+      const diffFile = createDiffFile([
+        { new_line: null, old_line: 5, type: 'old', line_code: `${fullHash}_5_0` },
+        { new_line: 10, old_line: 10, type: null, line_code: `${fullHash}_10_10` },
+      ]);
+      const parsedHash = { shortFileHash: shortHash, isAddition: false, lineNumber: 5 };
+
+      expect(utils.findLineCodeFromRapidDiffsHash(diffFile, parsedHash)).toBe(`${fullHash}_5_0`);
+    });
+
+    it('finds line_code for a context line', () => {
+      const diffFile = createDiffFile([
+        { new_line: 10, old_line: 10, type: null, line_code: `${fullHash}_10_10` },
+      ]);
+      const parsedHash = { shortFileHash: shortHash, isAddition: false, lineNumber: 10 };
+
+      expect(utils.findLineCodeFromRapidDiffsHash(diffFile, parsedHash)).toBe(`${fullHash}_10_10`);
+    });
+
+    it('returns null when line is not found', () => {
+      const diffFile = createDiffFile([
+        { new_line: 10, old_line: 10, type: null, line_code: `${fullHash}_10_10` },
+      ]);
+      const parsedHash = { shortFileHash: shortHash, isAddition: true, lineNumber: 99 };
+
+      expect(utils.findLineCodeFromRapidDiffsHash(diffFile, parsedHash)).toBeNull();
+    });
+
+    it('returns null for null diffFile', () => {
+      expect(
+        utils.findLineCodeFromRapidDiffsHash(null, {
+          shortFileHash: shortHash,
+          isAddition: true,
+          lineNumber: 42,
+        }),
+      ).toBeNull();
+    });
+
+    it('returns null for null parsedHash', () => {
+      expect(utils.findLineCodeFromRapidDiffsHash(createDiffFile([]), null)).toBeNull();
+    });
+
+    it('does not match context lines when looking for added lines', () => {
+      const diffFile = createDiffFile([
+        { new_line: 42, old_line: 42, type: null, line_code: `${fullHash}_42_42` },
+      ]);
+      const parsedHash = { shortFileHash: shortHash, isAddition: true, lineNumber: 42 };
+
+      expect(utils.findLineCodeFromRapidDiffsHash(diffFile, parsedHash)).toBeNull();
+    });
+  });
+
   describe('markTreeEntriesLoaded', () => {
     it.each`
       desc                                                               | entries                                            | loaded                   | outcome
@@ -968,6 +1103,49 @@ describe('DiffsStoreUtils', () => {
       expect(utils.markTreeEntriesLoaded({ priorEntries: entries, loadedFiles: loaded })).toEqual(
         outcome,
       );
+    });
+  });
+
+  describe('extractGitalyErrorMessage', () => {
+    const gitalyErrorMessage = 'The git server, Gitaly, is not available at this time.';
+
+    it('returns error message from 503 response', () => {
+      const error = {
+        response: {
+          status: HTTP_STATUS_SERVICE_UNAVAILABLE,
+          data: { error: gitalyErrorMessage },
+        },
+      };
+
+      expect(utils.extractGitalyErrorMessage(error)).toBe(gitalyErrorMessage);
+    });
+
+    it('returns null when 503 response has no error field', () => {
+      const error = {
+        response: {
+          status: 503,
+          data: {},
+        },
+      };
+
+      expect(utils.extractGitalyErrorMessage(error)).toBeNull();
+    });
+
+    it('returns null for non-503 errors', () => {
+      const error = {
+        response: {
+          status: 500,
+          data: { error: 'Some other error' },
+        },
+      };
+
+      expect(utils.extractGitalyErrorMessage(error)).toBeNull();
+    });
+
+    it('returns null when error has no response', () => {
+      const error = new Error('Network error');
+
+      expect(utils.extractGitalyErrorMessage(error)).toBeNull();
     });
   });
 });

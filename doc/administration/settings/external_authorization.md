@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: External authorization control
 ---
@@ -57,7 +57,7 @@ Alternatively, learn where to install custom certificates by using
 The external authorization service can be enabled by an administrator:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **External authorization**.
 1. Complete the fields.
 1. Select **Save changes**.
@@ -81,7 +81,7 @@ Prerequisites:
 To allow authorization with deploy tokens and keys:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **External authorization**, and:
    - Leave the service URL field empty.
    - Select **Allow deploy tokens and deploy keys to be used with external authorization**.

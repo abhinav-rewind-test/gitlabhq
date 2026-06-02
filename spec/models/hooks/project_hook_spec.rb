@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ProjectHook, feature_category: :webhooks, quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16829' do
+RSpec.describe ProjectHook, feature_category: :webhooks do
   include_examples 'a hook that gets automatically disabled on failure' do
     let_it_be(:project) { create(:project) }
 
@@ -80,10 +80,11 @@ RSpec.describe ProjectHook, feature_category: :webhooks, quarantine: 'https://gi
   describe '#application_context' do
     let_it_be(:hook) { build(:project_hook) }
 
-    it 'includes the type and project' do
+    it 'includes the type, project, and organization' do
       expect(hook.application_context).to include(
         related_class: 'ProjectHook',
-        project: hook.project
+        project: hook.project,
+        organization: hook.project.organization
       )
     end
   end

@@ -33,12 +33,12 @@ $black-divider: #666;
 }
 
 .results {
-  .dark.highlight_search_term {
+  .dark.highlight-search-term {
     background-color: $dark-highlight-bg !important;
     color: $dark-highlight-color !important;
   }
 
-  .white.highlight_search_term {
+  .white.highlight-search-term {
     background-color: $white-highlight !important;
     color: $dark-highlight-color !important;
   }
@@ -64,7 +64,8 @@ $black-divider: #666;
   background-color: var(--gl-background-color-strong);
 }
 
-.language-filter-checkbox {
+.language-filter-checkbox,
+.type-filter-checkbox {
   .custom-control-label {
     flex-grow: 1;
   }
@@ -384,12 +385,4 @@ input[type='search'] {
 
 .description.term p:last-child {
   @apply gl-m-0;
-}
-
-
-/* Hide sidebar toggle in new "Project Studio" layout where this page has no sidebar */
-.application-chrome {
-  .super-sidebar-toggle {
-    display: none;
-  }
 }

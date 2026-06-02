@@ -3,8 +3,26 @@
 module Authn
   class OauthApplication < Doorkeeper::Application
     include Doorkeeper::Concerns::TokenFallback
+    include FeatureGate
 
-    belongs_to :organization, class_name: 'Organizations::Organization'
+    belongs_to :organization, class_name: 'Organizations::Organization', optional: false
+
+    scope :with_token_digests, ->(hashed_tokens) do
+      return none if hashed_tokens.blank?
+
+      where(secret: hashed_tokens)
+    end
+
+    # We explicitly disable device_code_enabled here because it's enabled
+    # by default in db/migrate/20260224050659_add_device_code_enabled_to_oauth_applications.rb
+    # which is so existing records have the option enabled but all new
+    # applications should have device_code_enabled set to false.
+    attribute :device_code_enabled, default: -> { false }
+
+    # Hashes raw token
+    def self.encode(raw_token_value)
+      ::Gitlab::DoorkeeperSecretStoring::Sha512Hash.transform_secret(raw_token_value)
+    end
 
     # Check whether the given plain text secret matches our stored secret
     #
@@ -28,6 +46,10 @@ module Authn
         return true if fallback_strategy.secret_matches?(input, secret)
       end
       false
+    end
+
+    def iam_routing_enabled?
+      Feature.enabled?(:proxy_oauth_requests_to_iam_service, self)
     end
   end
 end

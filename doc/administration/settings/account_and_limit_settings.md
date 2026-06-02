@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 description: Configure the maximum number of projects users can create on GitLab Self-Managed. Configure size limits for attachments, pushes, and repository size.
 title: Account and limit settings
@@ -33,7 +33,7 @@ the [project limits for existing users](#projects-limit-for-a-user).
 To configure the maximum number of projects in personal namespaces for new users:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Increase or decrease that **Default projects limit** value.
 
@@ -46,7 +46,7 @@ You can edit a specific user, and change the maximum number of projects this use
 can create in their personal namespace:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Users**.
+1. In the left sidebar, select **Overview** > **Users**.
 1. From the list of users, select a user.
 1. Select **Edit**.
 1. Increase or decrease the **Projects limit** value.
@@ -57,7 +57,7 @@ The maximum file size for attachments in GitLab comments and replies is 100 MB.
 To change the maximum attachment size:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Increase or decrease by changing the value in **Maximum attachment size (MiB)**.
 
@@ -71,7 +71,7 @@ For GitLab.com repository size limits, see [accounts and limit settings](../../u
 You can change the maximum push size for your instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Increase or decrease by changing the value in **Maximum push size (MiB)**.
 
@@ -167,7 +167,7 @@ To reduce repository size, see
 You can change how long users can remain signed in without activity.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Fill in the **Session duration (minutes)** field.
    > [!warning]
@@ -178,7 +178,7 @@ You can change how long users can remain signed in without activity.
    > [!note]
    > For GitLab Dedicated, submit a [support ticket](https://support.gitlab.com/hc/en-us/requests/new?ticket_form_id=4414917877650) to request a restart of your instance.
 
-If [Remember me](#configure-the-remember-me-option) is enabled, users' sessions can remain active for an indefinite period of time.
+If the [**Remember me** option](#configure-the-remember-me-option) is enabled, users' sessions can remain active for an indefinite period of time.
 
 For details, see [cookies used for sign-in](../../user/profile/_index.md#cookies-used-for-sign-in).
 
@@ -196,10 +196,10 @@ By default, sessions expire a set amount of time after the session becomes inact
 When the session duration is met, the session ends and the user is signed out even if:
 
 - The user is still actively using the session.
-- The user selected [remember me](#configure-the-remember-me-option) during sign in.
+- The user selected [**Remember me**](#configure-the-remember-me-option) during sign in.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Select the **Expire session from creation date** checkbox.
 
@@ -219,7 +219,7 @@ security or compliance purposes. Turning off this setting ensures users' session
 number of minutes of inactivity set when you [customize your session duration](#customize-the-default-session-duration).
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Select or clear the **Remember me** checkbox to turn this setting on or off.
 
@@ -250,7 +250,7 @@ when 2FA is enabled. The default is 15 and this can be set to a value between 1 
 To set a limit on how long these sessions are valid:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Fill in the **Session duration for Git operations when 2FA is enabled (minutes)** field.
 1. Select **Save changes**.
@@ -281,7 +281,7 @@ Prerequisites:
 To allow top-level group Owners to create service accounts:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Under **Service account creation**, select the **Allow top-level group owners to create Service accounts** checkbox.
 1. Select **Save changes**.
@@ -313,12 +313,12 @@ This setting is turned on by default and applies to:
 - Project access tokens.
 
 For personal access tokens for service accounts, use the `service_access_tokens_expiration_enforced`
-setting in the [Application Settings API](../../api/settings.md).
+setting in the [Application settings API](../../api/settings.md).
 
 To require expiration dates for new access tokens:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Select the **Personal / Project / Group access token expiration** checkbox.
 1. Select **Save changes**.
@@ -327,6 +327,35 @@ When you require expiration dates for new access tokens:
 
 - Users must set an expiration date that does not exceed the allowed lifetime for new access tokens.
 - To control the maximum access token lifetime, use the [**Limit the lifetime of access tokens** setting](#limit-the-lifetime-of-access-tokens).
+
+## Inactive project and group access token retention period
+
+{{< details >}}
+
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+By default, GitLab deletes group and project access tokens and their [token family](../../api/personal_access_tokens.md#automatic-reuse-detection)
+30 days after the last active token in the token family becomes inactive. This deletion removes all
+tokens in the token family, the associated bot user, and moves any bot contributions to a
+[ghost user](../../user/profile/account/delete_account.md#associated-records).
+
+Prerequisites:
+
+- Administrator access.
+
+To modify the retention period for inactive tokens:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings** > **General**.
+1. Expand **Account and limit**.
+1. In the **Inactive project and group access token retention period** text box, modify the retention period.
+   - If a number is defined, all group and project access tokens are deleted after they are inactive for the specified number of days.
+   - If the field is blank, inactive tokens are never deleted.
+1. Select **Save changes**.
+
+You can also use the [application settings API](../../api/settings.md) to modify the `inactive_resource_access_tokens_delete_after_days` attribute.
 
 ## Personal access token prefix
 
@@ -352,7 +381,7 @@ The default prefix for personal access tokens is `glpat-` but administrators can
 To change the default global prefix:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Fill in the **Personal access token prefix** field.
 1. Select **Save changes**.
@@ -409,7 +438,7 @@ Prerequisites:
 To set a custom token prefix:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. In the **Instance token prefix** field, enter your custom prefix.
 1. Select **Save changes**.
@@ -461,7 +490,7 @@ there are no restrictions.
 To set a lifetime on how long access tokens are valid:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Fill in the **Maximum allowable lifetime for access tokens (days)** field.
 1. Select **Save changes**.
@@ -499,7 +528,7 @@ there are no restrictions.
 To set a lifetime on how long SSH keys are valid:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Fill in the **Maximum allowable lifetime for SSH keys (days)** field.
 1. Select **Save changes**.
@@ -536,39 +565,9 @@ applications owned by groups.
 To turn the **User OAuth applications** setting on or off:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Account and limit** section.
 1. Select or clear the **User OAuth applications** checkbox.
-1. Select **Save changes**.
-
-## OAuth authorizations
-
-{{< details >}}
-
-- Tier: Free, Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/323615) in GitLab 17.8.
-
-{{< /history >}}
-
-Prerequisites:
-
-- You must be an administrator.
-
-The **OAuth authorizations** setting controls whether users can use the OAuth resource owner password
-credentials flow to authorize themselves without client credentials.
-
-To turn this setting on or off:
-
-1. In the upper-right corner, select **Admin**.
-1. Select **OAuth**.
-1. Select **OAuth authorizations**.
-1. Select or clear the **Allow user to use resource owner password credentials flow without OAuth client credentials** checkbox.
 1. Select **Save changes**.
 
 ## Disable user profile name changes
@@ -586,7 +585,7 @@ GitLab administrators can prevent users from changing their profile name.
 To do this:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Select **Prevent users from changing their profile name**.
 
@@ -616,7 +615,7 @@ When selected, GitLab administrators can still update usernames in the
 By default, users can create organizations. GitLab administrators can prevent users from creating organizations.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Clear the **Allow users to create organizations** checkbox.
 
@@ -628,7 +627,7 @@ By default, new users can create top-level groups. GitLab administrators can pre
 - With the [Application settings API](../../api/settings.md#update-application-settings).
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Clear the **Allow new users to create top-level groups** checkbox.
 
@@ -648,7 +647,7 @@ By default, users with the Guest role can create projects and groups.
 GitLab administrators can prevent this behavior:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Clear the **Allow users with up to Guest role to create groups and personal projects** checkbox.
 1. Select **Save changes**.
@@ -676,7 +675,7 @@ This setting does not affect [internal users](../internal_users.md) (sometimes r
 To prevent users from making their profiles private:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Clear the **Allow users to make their profiles private** checkbox.
 1. Select **Save changes**.
@@ -695,7 +694,7 @@ When you re-enable this setting, the user's
 By default, newly created users have a public profile. GitLab administrators can set new users to have a private profile by default:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Select the **Make new users' profiles private by default** checkbox.
 1. Select **Save changes**.
@@ -722,7 +721,7 @@ By default, users can delete their own accounts. GitLab administrators can preve
 users from deleting their own accounts:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Account and limit**.
 1. Clear the **Allows users to delete their own accounts** checkbox.
 

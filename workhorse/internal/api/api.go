@@ -148,6 +148,7 @@ type McpServerConfig struct {
 	Headers          map[string]string
 	Tools            *[]string
 	PreApprovedTools *[]string
+	Trusted          bool
 }
 
 // DuoWorkflowServiceConfig holds configuration for a Duo Workflow service endpoint.
@@ -164,7 +165,8 @@ type DuoWorkflow struct {
 	McpServers                map[string]McpServerConfig
 	LockConcurrentFlow        bool
 	// ServerCapabilities is a list of capability strings provided by Rails.
-	ServerCapabilities []string
+	ServerCapabilities  []string
+	TimeoutHTTPRequests bool
 }
 
 // Response represents a structure containing various GitLab-related environment variables.
@@ -295,6 +297,10 @@ func rebaseURL(url *url.URL, onto *url.URL, suffix string) *url.URL {
 	return &newURL
 }
 
+// newRequest creates a lightweight request to the Rails backend for
+// pre-authorization as part of Workhorse's reverse proxy flow.
+// It rebases the original request URL onto the backend (api.URL) and cleans up
+// headers that should not be forwarded.
 func (api *API) newRequest(r *http.Request, suffix string) *http.Request {
 	authReq := &http.Request{
 		Method: r.Method,
@@ -340,8 +346,11 @@ type GitAuditEventRequest struct {
 	Protocol      string                                  `json:"protocol"`
 	Repo          string                                  `json:"gl_repository"`
 	Username      string                                  `json:"username"`
+	Identifier    string                                  `json:"identifier"`
 	PackfileStats *gitalypb.PackfileNegotiationStatistics `json:"packfile_stats,omitempty"`
 	Changes       string                                  `json:"changes"`
+	WrittenBytes  int64                                   `json:"written_bytes,omitempty"`
+	ReceivedBytes int64                                   `json:"received_bytes,omitempty"`
 }
 
 // SendGitAuditEvent sends a Git audit event using the API client.

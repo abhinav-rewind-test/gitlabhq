@@ -1,6 +1,6 @@
 <script>
 import { GlAvatar, GlLoadingIcon, GlIcon, GlBadge } from '@gitlab/ui';
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 import { getAdaptiveStatusColor } from '~/lib/utils/color_utils';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { isUserBusy } from '~/set_status_modal/utils';
@@ -8,6 +8,7 @@ import { REFERENCE_TYPES } from '~/content_editor/constants/reference_types';
 import { s__ } from '~/locale';
 
 export default {
+  name: 'SuggestionsDropdown',
   components: {
     GlAvatar,
     GlLoadingIcon,
@@ -122,6 +123,10 @@ export default {
       return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.STATUS;
     },
 
+    isType() {
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.TYPE;
+    },
+
     isMergeRequest() {
       return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.MERGE_REQUEST;
     },
@@ -196,6 +201,7 @@ export default {
         case REFERENCE_TYPES.ITERATION:
           return item.title;
         case REFERENCE_TYPES.STATUS:
+        case REFERENCE_TYPES.TYPE:
           return `${this.char}${item.name}${this.char}`;
         default:
           return '';
@@ -245,7 +251,7 @@ export default {
         });
       }
 
-      if (this.isStatus) {
+      if (this.isStatus || this.isType) {
         Object.assign(props, {
           originalText: `${this.char}${item.name}${this.char}`,
         });
@@ -335,7 +341,7 @@ export default {
 
 <template>
   <div class="gl-new-dropdown-container content-editor-suggestions-dropdown">
-    <div v-if="!loading && items.length > 0" class="gl-new-dropdown-panel gl-absolute !gl-block">
+    <div v-if="!loading && items.length > 0" class="gl-new-dropdown-panel gl-relative !gl-block">
       <div class="gl-new-dropdown-inner">
         <ul
           id="content-editor-suggestions"
@@ -349,7 +355,7 @@ export default {
             :id="`suggestion-option-${index}`"
             :key="index"
             role="option"
-            class="gl-new-dropdown-item"
+            class="gl-new-dropdown-item !gl-ml-0 !gl-pl-2"
             :class="{ focused: index === selectedIndex }"
           >
             <div
@@ -422,6 +428,10 @@ export default {
                     :size="12"
                     :style="`color: ${getAdaptiveStatusColor(item.color)}`"
                   />
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.name)"></span>
+                </span>
+                <span v-if="isType">
+                  <gl-icon class="gl-mr-2" :name="item.iconName" :size="12" />
                   <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.name)"></span>
                 </span>
                 <span v-if="isMilestone">

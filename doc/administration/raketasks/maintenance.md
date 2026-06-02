@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Maintenance Rake tasks
 ---
 
@@ -382,7 +382,6 @@ status in the output of the `sudo gitlab-rake db:migrate:status` command.
    ```
 
 1. After the command completes, run `sudo gitlab-rake db:migrate:status` to check if all migrations are completed (have an `up` status).
-
 1. Hot reload `puma` and `sidekiq` services:
 
    ```shell
@@ -397,7 +396,7 @@ order that conforms to the GitLab release cadence.
 
 {{< history >}}
 
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/42705) in GitLab 13.5 [with a flag](../../administration/feature_flags/_index.md) named `database_reindexing`. Disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/42705) in GitLab 13.5 [with a flag](../feature_flags/_index.md) named `database_reindexing`. Disabled by default.
 - [Enabled on GitLab.com](https://gitlab.com/groups/gitlab-org/-/epics/3989) in GitLab 13.9.
 - [Enabled on GitLab Self-Managed and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/188548) in GitLab 18.0.
 
@@ -411,6 +410,14 @@ levels of index bloat over time. Reindexing can also be run as a
 [regular cron job](https://docs.gitlab.com/omnibus/settings/database/#automatic-database-reindexing).
 A "healthy" level of bloat is highly dependent on the specific index, but generally
 should be below 30%.
+
+Database reindexing performs these tasks:
+
+1. Reindexes PostgreSQL indexes that were manually queued: An index can be manually added to a
+   queue for reindexing. Reindexing a PostgreSQL index usually reduces [index bloat](https://wiki.postgresql.org/wiki/Index_Maintenance#Index_Bloat).
+1. Reindexes PostgreSQL indexes automatically using an [index bloat](https://wiki.postgresql.org/wiki/Index_Maintenance#Index_Bloat)
+   heuristic: PostgreSQL uses a heuristic to identify the most bloated indexes. The process chooses
+   at most 2 indexes during each run to reindex.
 
 Prerequisites:
 
@@ -427,7 +434,9 @@ The following task rebuilds only the two indexes in each database with the highe
    sudo gitlab-rake gitlab:db:reindex
    ```
 
-1. Check [application_json.log](../../administration/logs/_index.md#application_jsonlog) to verify execution or to troubleshoot.
+1. Check [`application_json.log`](../logs/_index.md#application_jsonlog) to verify execution or to troubleshoot.
+
+For Cloud Native installations of GitLab running this task using the [Toolbox chart](https://docs.gitlab.com/charts/charts/gitlab/toolbox/#configure-periodic-database-reindexing), logs are in the pod's standard output.
 
 ### Customize reindexing settings
 
@@ -634,7 +643,6 @@ Prerequisites:
    ```
 
 1. Restart PostgreSQL for the changes to take effect.
-
 1. Restart GitLab: the web (Puma) and Sidekiq services should be restarted.
 
 {{< /tab >}}

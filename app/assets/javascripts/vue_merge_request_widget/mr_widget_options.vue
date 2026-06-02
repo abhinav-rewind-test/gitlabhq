@@ -1,5 +1,5 @@
 <script>
-import { isEmpty, clamp, throttle } from 'lodash';
+import { isEmpty, clamp, throttle } from 'lodash-es';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import MrWidgetApprovals from 'ee_else_ce/vue_merge_request_widget/components/approvals/approvals.vue';
 import MRWidgetService from 'ee_else_ce/vue_merge_request_widget/services/mr_widget_service';
@@ -18,7 +18,6 @@ import Loading from './components/loading.vue';
 import MrWidgetAlertMessage from './components/mr_widget_alert_message.vue';
 import MrWidgetPipelineContainer from './components/mr_widget_pipeline_container.vue';
 import WidgetSuggestPipeline from './components/mr_widget_suggest_pipeline.vue';
-import MrWidgetMigrateJenkins from './components/mr_widget_migrate_jenkins.vue';
 import SourceBranchRemovalStatus from './components/source_branch_removal_status.vue';
 import ArchivedState from './components/states/mr_widget_archived.vue';
 import MrWidgetAutoMergeEnabled from './components/states/mr_widget_auto_merge_enabled.vue';
@@ -44,6 +43,8 @@ import {
 import eventHub from './event_hub';
 import mergeRequestQueryVariablesMixin from './mixins/merge_request_query_variables';
 import getStateSubscription from './queries/get_state.subscription.graphql';
+import mergeChecksQuery from './queries/merge_checks.query.graphql';
+import mergeChecksSubscription from './queries/merge_checks.subscription.graphql';
 import MrWidgetReadyToMerge from './components/states/new_ready_to_merge.vue';
 import MergeChecks from './components/merge_checks.vue';
 
@@ -58,7 +59,6 @@ export default {
     Loading,
     WidgetContainer,
     MrWidgetSuggestPipeline: WidgetSuggestPipeline,
-    MrWidgetMigrateJenkins,
     MrWidgetPipelineContainer,
     MrWidgetAlertMessage,
     MrWidgetMerged: MergedState,
@@ -139,6 +139,45 @@ export default {
         },
       },
     },
+    mergeChecksState: {
+      query: mergeChecksQuery,
+      fetchPolicy: 'no-cache',
+      skip() {
+        return !this.mr;
+      },
+      variables() {
+        return this.mergeRequestQueryVariables;
+      },
+      update: (data) => data?.project?.mergeRequest,
+      error() {
+        this.mergeChecksState = {};
+      },
+      subscribeToMore: {
+        document() {
+          return mergeChecksSubscription;
+        },
+        skip() {
+          return !this.mr?.id;
+        },
+        variables() {
+          return {
+            issuableId: convertToGraphQLId(TYPENAME_MERGE_REQUEST, this.mr?.id),
+          };
+        },
+        updateQuery(
+          _,
+          {
+            subscriptionData: {
+              data: { mergeRequestMergeStatusUpdated },
+            },
+          },
+        ) {
+          if (mergeRequestMergeStatusUpdated) {
+            this.mergeChecksState = mergeRequestMergeStatusUpdated;
+          }
+        },
+      },
+    },
   },
   mixins: [mergeRequestQueryVariablesMixin],
   props: {
@@ -160,9 +199,13 @@ export default {
       startingPollInterval: STATE_QUERY_POLLING_INTERVAL_DEFAULT,
       pollInterval: -1,
       initialRequest: true,
+      mergeChecksState: {},
     };
   },
   computed: {
+    isLoadingMergeChecks() {
+      return this.$apollo.queries.mergeChecksState.loading;
+    },
     shouldRenderApprovals() {
       return !['preparing', 'nothingToMerge'].includes(this.mr.state);
     },
@@ -176,14 +219,9 @@ export default {
       return this.mr.hasCI || this.hasPipelineMustSucceedConflict;
     },
     shouldSuggestPipelines() {
-      const { hasCI, mergeRequestAddCiConfigPath, isDismissedSuggestPipeline } = this.mr;
+      const { hasCI, mergeRequestAddCiConfigPath } = this.mr;
 
-      return !hasCI && mergeRequestAddCiConfigPath && !isDismissedSuggestPipeline;
-    },
-    showRenderMigrateFromJenkins() {
-      const { hasCI, isDismissedJenkinsMigration, ciIntegrationJenkins } = this.mr;
-
-      return hasCI && !isDismissedJenkinsMigration && ciIntegrationJenkins;
+      return !hasCI && mergeRequestAddCiConfigPath;
     },
     shouldRenderCollaborationStatus() {
       return this.mr.allowCollaboration && this.mr.isOpen;
@@ -505,12 +543,6 @@ export default {
       eventHub.$off('FetchDeployments', this.onFetchDeployments);
       eventHub.$off('mr.discussion.updated', this.refetchState);
     },
-    dismissSuggestPipelines() {
-      this.mr.isDismissedSuggestPipeline = true;
-    },
-    dismissMigrateFromJenkins() {
-      this.mr.isDismissedJenkinsMigration = true;
-    },
     apolloStateQueryMaxPollingInterval() {
       return (
         Math.max(this.startingPollInterval, STATE_QUERY_POLLING_INTERVAL_DEFAULT) +
@@ -544,19 +576,7 @@ export default {
     </header>
     <mr-widget-suggest-pipeline
       v-if="shouldSuggestPipelines"
-      :pipeline-path="mr.mergeRequestAddCiConfigPath"
-      :pipeline-svg-path="mr.pipelinesEmptySvgPath"
       :human-access="formattedHumanAccess"
-      :user-callouts-path="mr.userCalloutsPath"
-      :user-callout-feature-id="mr.suggestPipelineFeatureId"
-      @dismiss="dismissSuggestPipelines"
-    />
-    <mr-widget-migrate-jenkins
-      v-if="showRenderMigrateFromJenkins"
-      class="mr-widget-workflow"
-      :path="mr.userCalloutsPath"
-      :feature-id="mr.migrateJenkinsFeatureId"
-      @dismiss="dismissMigrateFromJenkins"
     />
     <mr-widget-pipeline-container
       v-if="shouldRenderPipelines"
@@ -602,7 +622,12 @@ export default {
             :service="service"
             class="gl-border-b gl-border-b-section"
           />
-          <merge-checks :mr="mr" :service="service" />
+          <merge-checks
+            :mr="mr"
+            :service="service"
+            :merge-checks-state="mergeChecksState"
+            :is-loading-merge-checks="isLoadingMergeChecks"
+          />
         </template>
         <component :is="componentName" v-else :mr="mr" :service="service" />
         <ready-to-merge v-if="mr.commitsCount" :mr="mr" :service="service" />

@@ -42,6 +42,9 @@ describe('CiResourcesPage', () => {
     searchTerm: null,
     sortValue: DEFAULT_SORT_VALUE,
     minAccessLevel: null,
+    verificationLevel: null,
+    topics: [],
+    groupIds: [],
   };
 
   const createComponent = () => {
@@ -268,7 +271,11 @@ describe('CiResourcesPage', () => {
         });
 
         it('renders the empty state and passes down the search query', async () => {
-          await findCatalogSearch().vm.$emit('update-search-term', newSearch);
+          await findCatalogSearch().vm.$emit('update-filters', {
+            searchTerm: newSearch,
+            verificationLevel: null,
+            topics: [],
+          });
           await waitForPromises();
 
           expect(findEmptyState().exists()).toBe(true);
@@ -280,7 +287,11 @@ describe('CiResourcesPage', () => {
         beforeEach(async () => {
           catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
           await createComponent();
-          await findCatalogSearch().vm.$emit('update-search-term', newSearch);
+          await findCatalogSearch().vm.$emit('update-filters', {
+            searchTerm: newSearch,
+            verificationLevel: null,
+            topics: [],
+          });
         });
 
         it('passes it to the graphql query', () => {
@@ -292,28 +303,138 @@ describe('CiResourcesPage', () => {
         });
       });
     });
+
+    describe('when search component emits a verification level filter', () => {
+      const verificationLevel = 'VERIFIED_CREATOR_SELF_MANAGED';
+
+      beforeEach(async () => {
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+        await findCatalogSearch().vm.$emit('update-filters', {
+          searchTerm: null,
+          verificationLevel: 'Verified creator',
+          topics: [],
+        });
+      });
+
+      it('passes it to the graphql query', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(2);
+        expect(catalogResourcesResponse.mock.calls[1][0]).toEqual({
+          ...defaultQueryVariables,
+          verificationLevel,
+        });
+      });
+    });
+
+    describe('when verification level is present in URL', () => {
+      beforeEach(async () => {
+        setWindowLocation('?verification_level=Verified creator');
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+      });
+
+      it('calls the query with verification level', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(1);
+        expect(catalogResourcesResponse.mock.calls[0][0]).toEqual({
+          ...defaultQueryVariables,
+          verificationLevel: 'VERIFIED_CREATOR_SELF_MANAGED',
+        });
+      });
+
+      it('passes the verification level to the search component', () => {
+        expect(findCatalogSearch().props('initialVerificationLevel')).toBe('Verified creator');
+      });
+    });
+
+    describe('when search component emits topics filter', () => {
+      const topics = ['ruby', 'ci-cd'];
+
+      beforeEach(async () => {
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+        await findCatalogSearch().vm.$emit('update-filters', {
+          searchTerm: null,
+          verificationLevel: null,
+          topics,
+        });
+      });
+
+      it('passes topics to the graphql query', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(2);
+        expect(catalogResourcesResponse.mock.calls[1][0]).toEqual({
+          ...defaultQueryVariables,
+          topics,
+        });
+      });
+    });
+
+    describe('when topics are present in URL', () => {
+      beforeEach(async () => {
+        setWindowLocation('?topics=ruby,ci-cd');
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+      });
+
+      it('calls the query with topics', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(1);
+        expect(catalogResourcesResponse.mock.calls[0][0]).toEqual({
+          ...defaultQueryVariables,
+          topics: ['ruby', 'ci-cd'],
+        });
+      });
+
+      it('passes the topics to the search component', () => {
+        expect(findCatalogSearch().props('initialTopics')).toEqual(['ruby', 'ci-cd']);
+      });
+    });
+
+    describe('when groups are present in URL', () => {
+      beforeEach(async () => {
+        setWindowLocation('?groups=1,2');
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+      });
+
+      it('converts numeric IDs to GIDs and passes them to the graphql query', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(1);
+        expect(catalogResourcesResponse.mock.calls[0][0]).toEqual({
+          ...defaultQueryVariables,
+          groupIds: ['gid://gitlab/Group/1', 'gid://gitlab/Group/2'],
+        });
+      });
+
+      it('passes the groups to the search component', () => {
+        expect(findCatalogSearch().props('initialGroups')).toEqual(['1', '2']);
+      });
+    });
+
+    describe('when search component emits a group filter', () => {
+      beforeEach(async () => {
+        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
+        await createComponent();
+        await findCatalogSearch().vm.$emit('update-filters', {
+          searchTerm: null,
+          verificationLevel: null,
+          topics: [],
+          groups: ['1', '2'],
+        });
+      });
+
+      it('passes converted group GIDs to the graphql query', () => {
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(2);
+        expect(catalogResourcesResponse.mock.calls[1][0]).toEqual({
+          ...defaultQueryVariables,
+          groupIds: ['gid://gitlab/Group/1', 'gid://gitlab/Group/2'],
+        });
+      });
+
+      it('updates the URL with the numeric group IDs', () => {
+        expect(window.location.search).toContain('groups=1%2C2');
+      });
+    });
   });
 
   describe('pages count', () => {
-    describe('when the fetchMore call succeeds', () => {
-      beforeEach(async () => {
-        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
-
-        await createComponent();
-      });
-    });
-
-    describe.each`
-      event                   | payload
-      ${'update-search-term'} | ${'cat'}
-      ${'update-sorting'}     | ${'CREATED_ASC'}
-    `('when $event event is emitted', () => {
-      beforeEach(async () => {
-        catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
-        await createComponent();
-      });
-    });
-
     describe('when the fetchMore call fails', () => {
       const errorMessage = 'there was an error';
 

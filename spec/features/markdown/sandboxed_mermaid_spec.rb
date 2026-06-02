@@ -3,7 +3,9 @@
 require 'spec_helper'
 
 RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown do
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:subgroup) { create(:group, parent: group) }
+  let_it_be(:project) { create(:project, :public, :repository, group: subgroup) }
   let_it_be(:description) do
     <<~MERMAID
     ```mermaid
@@ -16,20 +18,20 @@ RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown d
     MERMAID
   end
 
+  let_it_be(:issue) { create(:issue, project: project, description: description) }
+
   let(:expected) do
-    src = "http://#{Capybara.current_session.server.host}:#{Capybara.current_session.server.port}/-/sandbox/mermaid"
-    %(<iframe src="#{src}" sandbox="allow-scripts allow-popups" frameborder="0" scrolling="no")
+    src_prefix = "http://#{Capybara.current_session.server.host}:#{Capybara.current_session.server.port}#{organization_sandbox_mermaid_v11_path(project.organization)}"
+    %r{<iframe src="#{Regexp.escape(src_prefix)}(?:\?darkMode=true)?" sandbox="allow-scripts allow-popups"}
   end
 
   context 'in an issue' do
-    let(:issue) { create(:issue, project: project, description: description) }
-
     it 'includes mermaid frame correctly', :with_license do
       visit project_issue_path(project, issue)
 
       wait_for_requests
 
-      expect(page.html).to include(expected)
+      expect(page.html).to match(expected)
     end
   end
 
@@ -50,7 +52,7 @@ RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown d
       wait_for_requests
 
       page.within('.merge-request') do
-        expect(page.html).to include(expected)
+        expect(page.html).to match(expected)
       end
     end
   end
@@ -64,7 +66,7 @@ RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown d
 
       wait_for_requests
 
-      expect(page.html).to include(expected)
+      expect(page.html).to match(expected)
     end
   end
 
@@ -87,7 +89,7 @@ RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown d
         # it can be a flaky test, similar to
         # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/25408
         #
-        expect(page.html).to include(expected)
+        expect(page.html).to match(expected)
       end
     end
   end
@@ -100,7 +102,7 @@ RSpec.describe 'Sandboxed Mermaid rendering', :js, feature_category: :markdown d
 
       wait_for_requests
 
-      expect(page.html).to include(expected)
+      expect(page.html).to match(expected)
     end
   end
 end

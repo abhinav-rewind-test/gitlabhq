@@ -1,7 +1,8 @@
 ---
 stage: AI-powered
 group: Global Search
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: "Use exact code search to find code in a specific project or across all of GitLab."
 title: Exact code search
 ---
 
@@ -47,9 +48,9 @@ Prerequisites:
 
 To use exact code search:
 
-1. On the top bar, select **Search or go to**.
+1. In the top bar, select **Search or go to**.
 1. In the search box, enter your search term.
-1. On the left sidebar, select **Code**.
+1. In the left sidebar, select **Code**.
 
 You can also use exact code search in a project or group.
 
@@ -101,26 +102,33 @@ select **Use regular expression** ({{< icon name="regular-expression" >}}).
 
 ### Syntax
 
+{{< history >}}
+
+- `repo:` filter [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/488467) in GitLab 19.0.
+
+{{< /history >}}
+
 <!-- Remember to also update the table in `doc/drawers/exact_code_search_syntax.md` -->
 
 This table shows some example queries for exact match and regular expression modes.
 
-| Query                | Exact match mode                                        | Regular expression mode |
-| -------------------- | ------------------------------------------------------- | ----------------------- |
-| `"foo"`              | `"foo"`                                                 | `foo` |
-| `foo file:^doc/`     | `foo` in directories that start with `/doc`             | `foo` in directories that start with `/doc` |
-| `"class foo"`        | `"class foo"`                                           | `class foo` |
-| `class foo`          | `class foo`                                             | `class` and `foo` |
-| `foo or bar`         | `foo or bar`                                            | `foo` or `bar` |
-| `class Foo`          | `class Foo` (case-sensitive)                            | `class` (case-insensitive) and `Foo` (case-sensitive) |
-| `class Foo case:yes` | `class Foo` (case-sensitive)                            | `class` and `Foo` (both case-sensitive) |
-| `foo -bar`           | `foo -bar`                                              | `foo` but not `bar` |
-| `foo file:js`        | `foo` in files with names that contain `js`             | `foo` in files with names that contain `js` |
-| `foo -file:test`     | `foo` in files with names that do not contain `test`    | `foo` in files with names that do not contain `test` |
-| `foo lang:ruby`      | `foo` in Ruby source code                               | `foo` in Ruby source code |
-| `foo file:\.js$`     | `foo` in files with names that end with `.js`           | `foo` in files with names that end with `.js` |
-| `foo.*bar`           | `foo.*bar` (literal)                                    | `foo.*bar` (regular expression) |
-| `sym:foo`            | `foo` in symbols like class, method, and variable names | `foo` in symbols like class, method, and variable names |
+| Query                | Exact match mode                                                                | Regular expression mode                                                         |
+|----------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| `"foo"`              | `"foo"`                                                                         | `foo`                                                                           |
+| `foo file:^doc/`     | `foo` in directories that start with `/doc`                                     | `foo` in directories that start with `/doc`                                     |
+| `"class foo"`        | `"class foo"`                                                                   | `class foo`                                                                     |
+| `class foo`          | `class foo`                                                                     | `class` and `foo`                                                               |
+| `foo or bar`         | `foo or bar`                                                                    | `foo` or `bar`                                                                  |
+| `class Foo`          | `class Foo` (case-sensitive)                                                    | `class` (case-insensitive) and `Foo` (case-sensitive)                           |
+| `class Foo case:yes` | `class Foo` (case-sensitive)                                                    | `class` and `Foo` (both case-sensitive)                                         |
+| `foo -bar`           | `foo -bar`                                                                      | `foo` but not `bar`                                                             |
+| `foo file:js`        | `foo` in files with names that contain `js`                                     | `foo` in files with names that contain `js`                                     |
+| `foo -file:test`     | `foo` in files with names that do not contain `test`                            | `foo` in files with names that do not contain `test`                            |
+| `foo lang:ruby`      | `foo` in Ruby source code                                                       | `foo` in Ruby source code                                                       |
+| `foo file:\.js$`     | `foo` in files with names that end with `.js`                                   | `foo` in files with names that end with `.js`                                   |
+| `foo.*bar`           | `foo.*bar` (literal)                                                            | `foo.*bar` (regular expression)                                                 |
+| `sym:foo`            | `foo` in symbols like class, method, and variable names                         | `foo` in symbols like class, method, and variable names                         |
+| `test repo:(?i)foo`  | `test` in projects with `foo` in their name (case-insensitive) | `test` in projects with `foo` in their name (case-insensitive) |
 
 ## Known issues
 

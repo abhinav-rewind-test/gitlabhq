@@ -14,8 +14,10 @@ module API
     helpers ::API::Helpers::PersonalAccessTokensHelpers
 
     resources :personal_access_tokens do
-      desc 'List personal access tokens' do
-        detail 'Get all personal access tokens the authenticated user has access to.'
+      desc 'List all personal access tokens' do
+        detail 'Lists all personal access tokens accessible by the authenticated user. For administrators, returns ' \
+          'all personal access tokens in the instance. For non-administrators, returns all of their personal access ' \
+          'tokens.'
         is_array true
         success Entities::PersonalAccessTokenWithLastUsedIps
         tags %w[access_tokens]
@@ -35,8 +37,9 @@ module API
         present paginate(tokens), with: Entities::PersonalAccessTokenWithLastUsedIps
       end
 
-      desc 'Get single personal access token' do
-        detail 'Get a personal access token by using the ID of the personal access token.'
+      desc 'Retrieve a personal access token' do
+        detail 'Retrieves details for a specified personal access token. Administrators can retrieve details on any ' \
+          'token. Non-administrators can only retrieve details on their own tokens.'
         success Entities::PersonalAccessTokenWithLastUsedIps
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -48,7 +51,7 @@ module API
       get ':id' do
         token = PersonalAccessToken.find_by_id(params[:id])
 
-        allowed = Ability.allowed?(current_user, :read_user_personal_access_tokens, token&.user)
+        allowed = Ability.allowed?(current_user, :read_personal_access_token, token&.user)
 
         if allowed
           present token, with: Entities::PersonalAccessTokenWithLastUsedIps
@@ -58,8 +61,10 @@ module API
         end
       end
 
-      desc 'Rotate personal access token' do
-        detail 'Rotates a personal access token.'
+      desc 'Rotate a personal access token' do
+        detail 'Rotates a specified personal access token. This revokes the previous token and creates a token that ' \
+          'expires after one week. Administrators can revoke tokens for any user. Non-administrators can only revoke ' \
+          'their own tokens.'
         success Entities::PersonalAccessTokenWithToken
         tags %w[access_tokens]
       end
@@ -73,7 +78,7 @@ module API
       post ':id/rotate' do
         token = PersonalAccessToken.find_by_id(params[:id])
 
-        if Ability.allowed?(current_user, :manage_user_personal_access_token, token&.user)
+        if Ability.allowed?(current_user, :rotate_personal_access_token, token&.user)
           new_token = rotate_token(token, declared_params)
 
           present new_token, with: Entities::PersonalAccessTokenWithToken
@@ -84,7 +89,8 @@ module API
       end
 
       desc 'Revoke a personal access token' do
-        detail 'Revoke a personal access token by using the ID of the personal access token.'
+        detail 'Revokes a specified personal access token. Administrators can revoke tokens for any user. ' \
+          'Non-administrators can only revoke their own tokens.'
         success code: 204
         failure [
           { code: 400, message: 'Bad Request' }

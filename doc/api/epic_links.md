@@ -1,8 +1,9 @@
 ---
 stage: Plan
 group: Product Planning
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Epic Links API (deprecated)
+description: Review the GitLab API documentation for Epic Links. Discover how to programmatically manage, create, and remove parent and child epic relationships efficiently.
 ---
 
 {{< details >}}
@@ -19,7 +20,7 @@ title: Epic Links API (deprecated)
 > Work Items API instead. For more information, see [migrate epic APIs to work items](graphql/epic_work_items_api_migration_guide.md).
 > This change is a breaking change.
 
-Manages parent-child [epic relationships](../user/group/epics/manage_epics.md#multi-level-child-epics).
+Manages parent-child [epic relationships](../user/work_items/child_items.md#work-with-multi-level-hierarchies).
 
 Every API call to `epic_links` must be authenticated.
 

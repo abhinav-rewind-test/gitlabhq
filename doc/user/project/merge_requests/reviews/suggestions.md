@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Suggest improvements to the code in a merge request, and commit those improvements to the merge request directly from your browser.
 title: Suggest changes
 ---
@@ -20,7 +20,7 @@ merge request, authored by the user who suggested the changes.
 
 ## Create suggestions
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. On the secondary menu, select **Changes**.
 1. Find the lines of code you want to change.
@@ -29,10 +29,10 @@ merge request, authored by the user who suggested the changes.
    - To select more lines:
      1. Hover over the line number, and select **Add a comment to this line** ({{< icon name="comment" >}}):
 
-        ![Comment on any diff file line](img/comment_on_any_diff_line_v16_6.png)
+        ![The add comment icon displayed when hovering over a line number.](img/comment_on_any_diff_line_v16_6.png)
 
-     1. Select and drag your selection to include all desired lines. To
-        learn more, see [Multi-line suggestions](#multi-line-suggestions).
+     1. Select and drag your selection to include all desired lines.
+        For more information, see [multi-line suggestions](#multi-line-suggestions).
    - To comment on an entire file instead of specific lines, in the header for the file,
      select **Comment on this file** ({{< icon name="comment" >}}).
 1. In the comment toolbar, select **Insert suggestion** ({{< icon name="doc-code" >}}). GitLab
@@ -64,7 +64,7 @@ merge request, authored by the user who suggested the changes.
 When you review a merge request diff, you can propose changes to multiple lines (up to 200)
 in a single suggestion, by either:
 
-- Selecting and dragging, as described in [Create suggestions](#create-suggestions).
+- Selecting and dragging, as described in [create suggestions](#create-suggestions).
   GitLab creates a suggestion block for you.
 - Selecting a single line, then manually editing the range offsets in the suggestion block.
 
@@ -83,7 +83,7 @@ By default, the author of a merge request cannot approve it. To change this sett
 
 When applied, the suggestion replaces from 2 lines above to 2 lines below the commented line:
 
-![Multi-line suggestion preview](img/multi-line-suggestion-preview_v16_6.png)
+![The preview of a suggestion spanning multiple lines.](img/multi-line-suggestion-preview_v16_6.png)
 
 GitLab limits multi-line suggestions to 100 lines above and 100
 lines below the commented diff line. This allows for up to 201 changed lines per
@@ -91,7 +91,7 @@ suggestion.
 
 Multi-line comments display the comment's line numbers above the body of the comment:
 
-![Multi-line comment selection displayed above comment](img/multiline-comment-saved_v17_5.png)
+![The line numbers indicating the range of a multi-line comment.](img/multiline-comment-saved_v17_5.png)
 
 #### Using the rich text editor
 
@@ -108,17 +108,17 @@ up and down the source file's line numbers in the UI.
 
 To add or subtract changed lines, next to **From line**, select **+** or **-**.
 
-![Multi-line suggestion preview](img/suggest_changes_v16_2.png)
+![The rich text editor controls for adjusting the range of a multi-line suggestion.](img/suggest_changes_v16_2.png)
 
 ## Apply suggestions
 
 Prerequisites:
 
-- You must be the author of the merge request, or have at least the Developer role for the project.
+- You must be the author of the merge request, or have the Developer, Maintainer, or Owner role for the project.
 
 To apply suggested changes directly from the merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. Find the comment containing the suggestion you want to apply.
    - To apply suggestions individually, select **Apply suggestion**.
@@ -139,11 +139,11 @@ After you apply a suggestion, GitLab:
 
 Prerequisites:
 
-- You must be the author of the merge request, or have at least the Developer role for the project.
+- You must be the author of the merge request, or have the Developer, Maintainer, or Owner role for the project.
 
 To reject a suggested change directly from the merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. Find the comment containing the suggestion you want to reject.
 1. Optional. Add a reply stating the reason for rejecting the suggestion.
@@ -170,11 +170,10 @@ Prerequisites:
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Scroll to **Merge suggestions**, and alter the text to meet your needs.
-   See [Supported variables](#supported-variables) for a list of placeholders
-   you can use in this message.
+   For a list of placeholders you can use in this message, see [supported variables](#supported-variables).
 
 ### Supported variables
 
@@ -205,7 +204,7 @@ Prerequisites:
 To reduce the number of commits added to your branch, apply multiple
 suggestions in a single commit.
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. For each suggestion you want to apply, select **Add suggestion to batch**.
 1. Optional. To remove a suggestion, select **Remove from batch**.

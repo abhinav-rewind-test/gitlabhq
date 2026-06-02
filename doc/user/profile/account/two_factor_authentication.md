@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Two-factor authentication
 description: Enable multi-factor authentication for enhanced account protection.
@@ -35,9 +35,9 @@ or email OTP.
 
 > [!warning]
 > If you lose access to your OTP authenticator, you might be locked out of your account.
-> 
+>
 > To minimize this risk:
-> 
+>
 > - Enable cloud backup in your authenticator app.
 > - Save your backup passwords, secret keys, or recovery credentials in a secure location.
 > - Review the documentation for your specific OTP authenticator.
@@ -47,8 +47,7 @@ To register an OTP authenticator:
 1. Configure GitLab.
    1. In the upper-right corner, select your avatar.
    1. Select **Edit profile**.
-   1. On the left sidebar, select **Account**.
-   1. Select **Enable Two-factor Authentication**.
+   1. In the left sidebar, select **Access** > **Password and authentication**.
    1. In the **One-time password authenticator** section, select **Register authenticator**.
       A QR code and your OTP details are displayed.
 1. Configure your device.
@@ -103,8 +102,7 @@ To register a WebAuthn-compatible device:
 1. If using a physical device, plug it in to computer.
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Enable Two-Factor Authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. In the **WebAuthn devices** section, select **Register device**.
 1. Select **Set up new device**.
 1. Follow the directions in your browser window.
@@ -134,6 +132,7 @@ account if you lose access.
 
 - Introduced in GitLab 18.7 [with a feature flag](../../../administration/feature_flags/_index.md) named `email_based_mfa`. Disabled by default.
 - Enabled on GitLab.com in GitLab 18.7, with progressive rollout to all users throughout 2026.
+- New application setting `email_otp_enabled` [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/599948) in GitLab 19.1. Disabled by default.
 
 {{< /history >}}
 
@@ -142,19 +141,11 @@ account if you lose access.
 
 Email OTP allows you to verify your identity by sending a six-digit verification code to your email address.
 
-> [!note]
-> You might be unable to use email OTP if:
-> 
-> - Your group policy requires the use of other two-factor authentication methods.
-> - Your account uses an external identity provider.
-> - Your account is scheduled for automatic enablement at a future date.
-
 To enable email OTP for your account:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Manage two-factor authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. Select **Enable email OTP**.
 1. Enter your current password and select **Update email OTP settings**.
 
@@ -203,7 +194,7 @@ For more information, see the [Cisco Duo API documentation](https://duo.com/docs
    For Linux package installations:
 
    ```ruby
-    gitlab_rails['duo_auth_enabled'] = false
+    gitlab_rails['duo_auth_enabled'] = true
     gitlab_rails['duo_auth_integration_key'] = '<duo_integration_key_value>'
     gitlab_rails['duo_auth_secret_key'] = '<duo_secret_key_value>'
     gitlab_rails['duo_auth_hostname'] = '<duo_api_hostname>'
@@ -418,12 +409,12 @@ You can disable the OTP authenticator and WebAuthn devices individually or simul
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
-1. Select **Manage two-factor authentication**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
 1. Select **Disable 2FA**.
 1. On the dialog, enter your current password and select **Disable 2FA**.
 
-This clears all your 2FA registrations, including mobile applications and WebAuthn devices.
+Group or instance settings might require your account to use 2FA.
+On GitLab.com, password-based sign-ins must complete email OTP verification.
 
 ## OAuth credential helpers
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :model do
+RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility do
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, group: group) }
 
@@ -178,12 +178,12 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
   end
 
   describe '.ip_address_exists?' do
-    let(:existing_ip_address) { '127.0.0.1' }
+    let_it_be(:existing_ip_address) { '127.0.0.1' }
     let(:ip_address_to_find) { existing_ip_address }
 
     subject { described_class.ip_address_exists?(ip_address_to_find) }
 
-    before do
+    before_all do
       create(:ci_runner_machine, ip_address: existing_ip_address)
     end
 
@@ -283,14 +283,14 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
   end
 
   describe '.aggregate_upgrade_status_by_runner_id' do
-    let!(:runner_version1) { create(:ci_runner_version, version: '16.0.0', status: :recommended) }
-    let!(:runner_version2) { create(:ci_runner_version, version: '16.0.1', status: :available) }
+    let_it_be(:runner_version1) { create(:ci_runner_version, version: '16.0.0', status: :recommended) }
+    let_it_be(:runner_version2) { create(:ci_runner_version, version: '16.0.1', status: :available) }
 
-    let!(:runner_a) { create(:ci_runner) }
-    let!(:runner_b) { create(:ci_runner) }
-    let!(:runner_manager_a1) { create(:ci_runner_machine, runner: runner_a, version: runner_version1.version) }
-    let!(:runner_manager_a2) { create(:ci_runner_machine, runner: runner_a, version: runner_version2.version) }
-    let!(:runner_manager_b1) { create(:ci_runner_machine, runner: runner_b, version: runner_version2.version) }
+    let_it_be(:runner_a) { create(:ci_runner) }
+    let_it_be(:runner_b) { create(:ci_runner) }
+    let_it_be(:runner_manager_a1) { create(:ci_runner_machine, runner: runner_a, version: runner_version1.version) }
+    let_it_be(:runner_manager_a2) { create(:ci_runner_machine, runner: runner_a, version: runner_version2.version) }
+    let_it_be(:runner_manager_b1) { create(:ci_runner_machine, runner: runner_b, version: runner_version2.version) }
 
     subject { described_class.aggregate_upgrade_status_by_runner_id }
 
@@ -302,32 +302,39 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     end
   end
 
-  describe '.with_executing_builds' do
-    subject(:scope) { described_class.with_executing_builds }
+  describe '.ids_with_running_builds' do
+    subject(:result) { described_class.ids_with_running_builds(ids) }
 
     let_it_be(:runner) { create(:ci_runner) }
-    let_it_be(:runner_managers_by_status) do
-      Ci::HasStatus::AVAILABLE_STATUSES.index_with { |_status| create(:ci_runner_machine, runner: runner) }
+
+    let_it_be(:manager_with_running_build) do
+      create(:ci_runner_machine, runner: runner).tap do |manager|
+        create(:ci_build, :picked, runner_manager: manager)
+      end
     end
 
-    let_it_be(:busy_runner_managers) do
-      Ci::HasStatus::EXECUTING_STATUSES.map { |status| runner_managers_by_status[status] }
+    let_it_be(:manager_without_running_build) do
+      create(:ci_runner_machine, runner: runner).tap do |manager|
+        create(:ci_build, :canceling, runner_manager: manager)
+      end
     end
 
-    context 'with no builds running' do
+    context 'when ids include a manager with a running build' do
+      let(:ids) { [manager_with_running_build.id, manager_without_running_build.id] }
+
+      it { is_expected.to contain_exactly(manager_with_running_build.id) }
+    end
+
+    context 'when ids include only managers without running builds' do
+      let(:ids) { [manager_without_running_build.id] }
+
       it { is_expected.to be_empty }
     end
 
-    context 'with builds' do
-      before_all do
-        Ci::HasStatus::AVAILABLE_STATUSES.each do |status|
-          runner_manager = runner_managers_by_status[status]
-          build = create(:ci_build, status, runner: runner)
-          create(:ci_runner_machine_build, runner_manager: runner_manager, build: build)
-        end
-      end
+    context 'when ids is empty' do
+      let(:ids) { [] }
 
-      it { is_expected.to match_array(busy_runner_managers) }
+      it { is_expected.to be_empty }
     end
   end
 

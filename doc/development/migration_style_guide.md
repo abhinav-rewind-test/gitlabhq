@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Migration Style Guide
 ---
 
@@ -48,7 +48,7 @@ work it needs to perform and how long it takes to complete:
    Migrations used to add new models are also part of these regular schema migrations. The only differences are the Rails command used to generate the migrations and the additional generated files, one for the model and one for the model's spec.
 1. [**Post-deployment migrations.**](database/post_deployment_migrations.md) These are Rails migrations in `db/post_migrate` and
    are run independently from the GitLab.com deployments. Pending post migrations are executed on a daily basis at the discretion
-   of release manager through the [post-deploy migration pipeline](https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/post_deploy_migration/readme.md#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom).
+   of release manager through the [post-deploy migration pipeline](https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/database-migrations/post-deploy-migration/readme.md#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom).
    These migrations can be used for schema changes that aren't critical for the application to operate, or data migrations that take at most a few minutes.
    Common examples for schema changes that should run post-deploy include:
 
@@ -63,8 +63,8 @@ work it needs to perform and how long it takes to complete:
    - Creating a new table, example: `create_table`.
    - Adding a new column to an existing table, example: `add_column`.
 
-    > [!note]
-    > Post-deployment migration is often abbreviated as PDM.
+   > [!note]
+   > Post-deployment migration is often abbreviated as PDM.
 
 1. [**Batched background migrations.**](database/batched_background_migrations.md) These aren't regular Rails migrations, but application code that is
    executed via Sidekiq jobs, although a post-deployment migration is used to schedule them. Use them only for data migrations that
@@ -104,11 +104,19 @@ estimated to keep migration duration to a minimum.
 The result of a [database migration pipeline](database/database_migration_pipeline.md)
 includes the timing information for migrations.
 
+For query-level timing limits, including concurrent operations and background
+migrations, see the [query performance guidelines](database/query_performance.md#timing-guidelines-for-queries).
+
 | Migration Type             | Recommended Duration | Notes |
 |----------------------------|----------------------|-------|
 | Regular migrations         | `<= 3 minutes`       | A valid exception are changes without which application functionality or performance would be severely degraded and which cannot be delayed. |
-| Post-deployment migrations | `<= 10 minutes`      | A valid exception are schema changes, since they must not happen in background migrations. |
+| Post-deployment migrations | `<= 10 minutes`      | A valid exception are schema changes, since they must not happen in background migrations. Concurrent operations such as index creation have a separate [`20 minute` limit](database/query_performance.md#timing-guidelines-for-queries). |
 | Background migrations      | `> 10 minutes`       | Since these are suitable for larger tables, it's not possible to set a precise timing guideline, however, any single query must stay below [`1 second` execution time](database/query_performance.md#timing-guidelines-for-queries) with cold caches. |
+
+When the `db:gitlabcom-database-testing` pipeline reports an index creation
+taking longer than 20 minutes, [create the index asynchronously](database/adding_database_indexes.md#create-indexes-asynchronously).
+The testing pipeline runs on a database clone that can underestimate actual
+GitLab.com execution times, so this threshold is intentionally conservative.
 
 ## Large Tables Limitations
 
@@ -237,10 +245,11 @@ and explains how to perform them without requiring downtime.
 Your migration **must be** reversible. This is very important, as it should
 be possible to downgrade in case of a vulnerability or bugs.
 
-**Note**: On GitLab production environments, if a problem occurs, a roll-forward strategy is used instead of rolling back migrations using `db:rollback`.
-On GitLab Self-Managed, we advise users to restore the backup which was created before the upgrade process started.
-The `down` method is used primarily in the development environment, for example, when a developer wants to ensure
-their local copy of `structure.sql` file and database are in a consistent state when switching between commits or branches.
+> [!note]
+> On GitLab production environments, if a problem occurs, a roll-forward strategy is used instead of rolling back migrations using `db:rollback`.
+> On GitLab Self-Managed, we advise users to restore the backup which was created before the upgrade process started.
+> The `down` method is used primarily in the development environment, for example, when a developer wants to ensure
+> their local copy of `structure.sql` file and database are in a consistent state when switching between commits or branches.
 
 In your migration, add a comment describing how the reversibility of the
 migration was tested.
@@ -301,9 +310,7 @@ In all cases, remember to select the appropriate migration type
 depending on [how long a migration takes](#how-long-a-migration-should-take)
 
 - Split the migration into **multiple single-transaction migrations**.
-
 - Use **multiple transactions** by [using `disable_ddl_transaction!`](#disable-transaction-wrapped-migration).
-
 - Keep using a single-transaction migration after **adjusting statement and lock timeout settings**.
   If your heavy workload must use the guarantees of a transaction,
   you should check your migration can execute without hitting the timeout limits.
@@ -326,7 +333,6 @@ temporarily set the statement timeout to `0` per transaction or per connection.
 
 - You use the per-connection option when your statement does not support
   running inside an explicit transaction, like `CREATE INDEX CONCURRENTLY`.
-
 - If your statement does support an explicit transaction block,
   like `ALTER TABLE ... VALIDATE CONSTRAINT`,
   the per-transaction option should be used.
@@ -1261,6 +1267,10 @@ end
 
 When using a `JSONB` column, use the [JsonSchemaValidator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/validators/json_schema_validator.rb) to keep control of the data being inserted over time. You must also specify a `size_limit` to prevent performance issues from large JSONB data, with **64 KB** as the recommended maximum.
 
+If your JSON schema uses `additionalProperties: false`, see
+[Changing JSON/JSONB columns with schema validation](database/avoiding_downtime_in_migrations.md#changing-jsonjsonb-columns-with-schema-validation)
+for deployment requirements when adding or removing properties.
+
 The `JsonbSizeLimit` cop enforces this requirement for new validations, as unbounded JSONB growth can cause memory pressure and slow query performance across millions of database records. For larger datasets, use object storage and store references in the database instead.
 
 ```ruby
@@ -1560,6 +1570,47 @@ Any table which has some high read operation compared to current [high-traffic t
 As a general rule, we discourage adding columns to high-traffic tables that are purely for
 analytics or reporting of GitLab.com. This can have negative performance impacts for all
 GitLab Self-Managed instances without providing direct feature value to them.
+
+### Creating triggers
+
+Creating a trigger on high-traffic tables can lead to lock contention timeouts during deployment.
+To mitigate this, we can create the trigger in a post-deployment migration using the [`with_lock_retries`](#retry-mechanism-when-acquiring-database-locks)
+helper method. We should also ensure that the migration is idempotent so it can be retried when it fails in between and won't fail
+because a function or trigger already exists.
+
+```ruby
+class AddTriggersToHighTrafficTable < Gitlab::Database::Migration[2.3]
+  milestone '18.10'
+
+  disable_ddl_transaction!
+
+  TRIGGER_FUNCTION_NAME = 'function_name_here'
+  TRIGGER_NAME = 'trigger_name_here'
+  TABLE_NAME = :table_name
+
+  def up
+    with_lock_retries do
+      create_trigger_function(TRIGGER_FUNCTION_NAME, replace: true) do
+        # function body
+      end
+
+      create_trigger(TABLE_NAME, TRIGGER_NAME, TRIGGER_FUNCTION_NAME, fires: 'AFTER INSERT', replace: true)
+    end
+  end
+
+  def down
+    with_lock_retries do
+      drop_trigger(TABLE_NAME, TRIGGER_NAME, if_exists: true)
+    end
+
+    drop_function(TRIGGER_FUNCTION_NAME, if_exists: true)
+  end
+end
+```
+
+`disable_ddl_transaction!` is required to use `with_lock_retries`. In case `create_trigger` helper can't be used
+to create a trigger (e.g. trigger runs for each statement instead of each row), use `CREATE OR REPLACE TRIGGER`
+when creating the trigger.
 
 ## Milestone
 

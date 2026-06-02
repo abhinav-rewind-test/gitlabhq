@@ -81,7 +81,7 @@ module Gitlab
         types ::Issuable
         condition do
           current_user.can?(:"set_#{quick_action_target.to_ability_name}_metadata", quick_action_target) &&
-            find_labels.any?
+            has_labels?
         end
         command :label, :labels do |labels_param|
           run_label_command(labels: find_labels(labels_param), command: :label, updates_key: :add_label_ids)
@@ -108,7 +108,6 @@ module Gitlab
           if labels_param.present?
             labels = find_labels(labels_param)
             label_ids = labels.map(&:id)
-            label_references = labels_to_reference(labels, :name)
 
             if label_ids.any?
               @updates[:remove_label_ids] ||= []
@@ -116,12 +115,18 @@ module Gitlab
 
               @updates[:remove_label_ids].uniq!
             end
+
+            @accumulated_label_references ||= {}
+            @accumulated_label_references[:unlabel] ||= []
+            @accumulated_label_references[:unlabel] |= labels_to_reference(labels, :name)
+
+            all_references = @accumulated_label_references[:unlabel].sort!
           else
             @updates[:label_ids] = []
-            label_references = []
+            all_references = []
           end
 
-          @execution_message[:unlabel] = remove_label_message(label_references)
+          @execution_message[:unlabel] = remove_label_message(all_references)
         end
 
         desc { _('Replace all labels') }
@@ -236,11 +241,7 @@ module Gitlab
           next unless quick_action_target.supports_severity?
 
           if severity
-            if quick_action_target.persisted?
-              ::Issues::UpdateService.new(container: quick_action_target.project, current_user: current_user, params: { severity: severity }).execute(quick_action_target)
-            else
-              quick_action_target.build_issuable_severity(severity: severity)
-            end
+            @updates[:severity] = severity
 
             @execution_message[:severity] = _("Severity updated to %{severity}.") % { severity: severity.capitalize }
           else
@@ -282,19 +283,23 @@ module Gitlab
           @updates[updates_key] += labels.map(&:id)
           @updates[updates_key].uniq!
 
-          label_references = labels_to_reference(labels, :name)
+          @accumulated_label_references ||= {}
+          @accumulated_label_references[command] ||= []
+          @accumulated_label_references[command] |= labels_to_reference(labels, :name)
+
+          all_references = @accumulated_label_references[command].sort!
           @execution_message[command] = case command
                                         when :relabel
                                           _('Replaced all labels with %{label_references} %{label_text}.') %
                                             {
-                                              label_references: label_references.join(' '),
-                                              label_text: 'label'.pluralize(label_references.count)
+                                              label_references: all_references.join(' '),
+                                              label_text: 'label'.pluralize(all_references.count)
                                             }
                                         when :label
                                           _('Added %{label_references} %{label_text}.') %
                                             {
-                                              label_references: label_references.join(' '),
-                                              label_text: 'label'.pluralize(labels.count)
+                                              label_references: all_references.join(' '),
+                                              label_text: 'label'.pluralize(all_references.count)
                                             }
                                         end
         end

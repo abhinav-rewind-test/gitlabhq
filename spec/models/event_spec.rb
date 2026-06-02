@@ -90,7 +90,7 @@ RSpec.describe Event, feature_category: :user_profile do
   describe 'validations' do
     describe 'action' do
       context 'for a design' do
-        let_it_be(:author) { create(:user) }
+        let_it_be(:author, freeze: false) { create(:user) }
 
         where(:action, :valid) do
           valid = described_class::DESIGN_ACTIONS.map(&:to_s).to_set
@@ -139,21 +139,21 @@ RSpec.describe Event, feature_category: :user_profile do
       subject { described_class.for_project }
 
       context 'when target_type is Project' do
-        let_it_be(:event) { create(:event, target: project) }
+        let_it_be(:event, freeze: false) { create(:event, target: project) }
 
         it { is_expected.to contain_exactly(event) }
       end
 
       context 'when target_type is nil' do
         context 'with project actions' do
-          let_it_be(:project_action_events) do
+          let_it_be(:project_action_events, freeze: false) do
             described_class::PROJECT_ACTIONS.map do |action|
               factory = action == :pushed ? :push_event : :event
               create(factory, target: nil, action: action, project: project)
             end
           end
 
-          let_it_be(:orphaned_project_action_events) do
+          let_it_be(:orphaned_project_action_events, freeze: false) do
             described_class::PROJECT_ACTIONS
               .excluding(:pushed) # PushEvent has a presence validation requirement for Project.
               .map { |action| create(:event, target: nil, action: action, project: nil) }
@@ -166,8 +166,8 @@ RSpec.describe Event, feature_category: :user_profile do
         end
 
         context 'with non-project actions' do
-          let_it_be(:non_project_action_event) { create(:event, target: nil, action: :closed, project: project) }
-          let_it_be(:orphaned_non_project_action_event) { create(:event, target: nil, action: :closed, project: nil) }
+          let_it_be(:non_project_action_event, freeze: false) { create(:event, target: nil, action: :closed, project: project) }
+          let_it_be(:orphaned_non_project_action_event, freeze: false) { create(:event, target: nil, action: :closed, project: nil) }
 
           it 'excludes all non-project action events regardless of project presence' do
             is_expected.not_to include(non_project_action_event, orphaned_non_project_action_event)
@@ -176,7 +176,7 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'when target_type is not Project' do
-        let_it_be(:non_project_event) { create(:event, :for_issue) }
+        let_it_be(:non_project_event, freeze: false) { create(:event, :for_issue) }
 
         it { is_expected.not_to include(non_project_event) }
       end
@@ -210,8 +210,33 @@ RSpec.describe Event, feature_category: :user_profile do
       end
     end
 
+    describe '.count_by_dates_in_timezone' do
+      it 'groups event counts by date in the given timezone' do
+        create(:event, created_at: Time.utc(2026, 3, 28, 22, 30))
+        create(:event, created_at: Time.utc(2026, 3, 28, 23, 30))
+
+        result = described_class.count_by_dates_in_timezone('Europe/Berlin')
+
+        # 22:30 UTC = 23:30 CET -> March 28, 23:30 UTC = 00:30 CET -> March 29
+        expect(result[Date.new(2026, 3, 28)]).to eq(1)
+        expect(result[Date.new(2026, 3, 29)]).to eq(1)
+      end
+
+      it 'applies DST rules correctly per timestamp' do
+        # Before DST switch (CET, UTC+1): 2026-03-28 22:00 UTC = 2026-03-28 23:00 CET
+        create(:event, created_at: Time.utc(2026, 3, 28, 22, 0))
+        # After DST switch (CEST, UTC+2): 2026-03-29 10:00 UTC = 2026-03-29 12:00 CEST
+        create(:event, created_at: Time.utc(2026, 3, 29, 10, 0))
+
+        result = described_class.count_by_dates_in_timezone('Europe/Berlin')
+
+        expect(result[Date.new(2026, 3, 28)]).to eq(1)
+        expect(result[Date.new(2026, 3, 29)]).to eq(1)
+      end
+    end
+
     describe '.for_fingerprint' do
-      let_it_be(:with_fingerprint) { create(:event, fingerprint: 'aaa', project: project) }
+      let_it_be(:with_fingerprint, freeze: false) { create(:event, fingerprint: 'aaa', project: project) }
 
       before_all do
         create(:event, project: project)
@@ -452,27 +477,27 @@ RSpec.describe Event, feature_category: :user_profile do
     subject { described_class.new(project: target.project, target: target) }
 
     context 'issue note event' do
-      let(:target) { create(:note_on_issue) }
+      let(:target) { build(:note_on_issue) }
 
       it { is_expected.to be_note }
     end
 
     context 'merge request diff note event' do
-      let(:target) { create(:legacy_diff_note_on_merge_request) }
+      let(:target) { build(:legacy_diff_note_on_merge_request) }
 
       it { is_expected.to be_note }
     end
   end
 
   describe '#visible_to_user?' do
-    let_it_be(:non_member) { create(:user) }
-    let_it_be(:member) { create(:user) }
-    let_it_be(:guest) { create(:user) }
-    let_it_be(:author) { create(:author) }
-    let_it_be(:assignee) { create(:user) }
-    let_it_be(:admin) { create(:admin) }
-    let_it_be(:public_project) { create(:project, :public) }
-    let_it_be(:private_project) { create(:project, :private) }
+    let_it_be(:non_member, freeze: false) { create(:user) }
+    let_it_be(:member, freeze: false) { create(:user) }
+    let_it_be(:guest, freeze: false) { create(:user) }
+    let_it_be(:author, freeze: false) { create(:author) }
+    let_it_be(:assignee, freeze: false) { create(:user) }
+    let_it_be(:admin, freeze: false) { create(:admin) }
+    let_it_be(:public_project, freeze: false) { create(:project, :public) }
+    let_it_be(:private_project, freeze: false) { create(:project, :private) }
 
     let(:project) { public_project }
     let(:issue) { create(:issue, project: project, author: author, assignees: [assignee]) }
@@ -495,9 +520,18 @@ RSpec.describe Event, feature_category: :user_profile do
       described_class.new(project: project, target: target, author_id: author.id)
     end
 
-    before do
-      project.add_developer(member)
-      project.add_guest(guest)
+    before_all do
+      public_project.add_developer(member)
+      public_project.add_guest(guest)
+      private_project.add_developer(member)
+      private_project.add_guest(guest)
+    end
+
+    shared_context 'with member and guest added to project' do
+      before_all do
+        project.add_developer(member)
+        project.add_guest(guest)
+      end
     end
 
     def visible_to_all
@@ -548,15 +582,19 @@ RSpec.describe Event, feature_category: :user_profile do
     end
 
     context 'commit note event' do
-      let(:project) { create(:project, :public, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
       let(:target) { note_on_commit }
+
+      include_context 'with member and guest added to project'
 
       include_examples 'visibility examples' do
         let(:visibility) { visible_to_all }
       end
 
       context 'private project' do
-        let(:project) { create(:project, :private, :repository) }
+        let_it_be(:project, freeze: false) { create(:project, :private, :repository) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -707,7 +745,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'on public project with private issue tracker and merge requests' do
-        let(:project) { create(:project, :public, :issues_private, :merge_requests_private) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :issues_private, :merge_requests_private) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -723,7 +763,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'on private project' do
-        let(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -743,7 +785,9 @@ RSpec.describe Event, feature_category: :user_profile do
       let(:event) { create(:wiki_page_event, project: project) }
 
       context 'on private project', :aggregate_failures do
-        let(:project) { create(:project, :wiki_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :wiki_repo) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -759,7 +803,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'wiki-page event on public project', :aggregate_failures do
-        let(:project) { create(:project, :public, :wiki_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :wiki_repo) }
+
+        include_context 'with member and guest added to project'
 
         include_examples 'visibility examples' do
           let(:visibility) { visible_to_all }
@@ -771,7 +817,9 @@ RSpec.describe Event, feature_category: :user_profile do
       let(:event) { create(:event, :for_wiki_page_note, project: project) }
 
       context 'on private project', :aggregate_failures do
-        let(:project) { create(:project, :wiki_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :wiki_repo) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -787,7 +835,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'wiki-page event on public project', :aggregate_failures do
-        let(:project) { create(:project, :public, :wiki_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :wiki_repo) }
+
+        include_context 'with member and guest added to project'
 
         include_examples 'visibility examples' do
           let(:visibility) { visible_to_all }
@@ -803,7 +853,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'on public project with private snippets' do
-        let(:project) { create(:project, :public, :snippets_private) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :snippets_private) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -824,7 +876,9 @@ RSpec.describe Event, feature_category: :user_profile do
       end
 
       context 'on private project' do
-        let(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
+
+        include_context 'with member and guest added to project'
 
         context 'when admin mode enabled', :enable_admin_mode do
           include_examples 'visibility examples' do
@@ -935,7 +989,7 @@ RSpec.describe Event, feature_category: :user_profile do
   end
 
   describe 'wiki_page predicate scopes' do
-    let_it_be(:events) do
+    let_it_be(:events, freeze: false) do
       [
         create(:push_event),
         create(:closed_issue_event),
@@ -977,8 +1031,8 @@ RSpec.describe Event, feature_category: :user_profile do
   end
 
   describe 'categorization' do
-    let_it_be(:project) { create(:project, :repository) }
-    let_it_be(:all_valid_events) do
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
+    let_it_be(:all_valid_events, freeze: false) do
       # mapping from factory name to whether we need to supply the project
       valid_target_factories = {
         issue: true,
@@ -1066,8 +1120,8 @@ RSpec.describe Event, feature_category: :user_profile do
   end
 
   describe '.limit_recent' do
-    let!(:event1) { create(:closed_issue_event) }
-    let!(:event2) { create(:closed_issue_event) }
+    let_it_be(:event1, freeze: false) { create(:closed_issue_event) }
+    let_it_be(:event2, freeze: false) { create(:closed_issue_event) }
 
     describe 'without an explicit limit' do
       subject { described_class.limit_recent }
@@ -1241,12 +1295,14 @@ RSpec.describe Event, feature_category: :user_profile do
 
     context 'when a project was updated less than 1 hour ago' do
       it 'does not update the project' do
-        project.update!(last_activity_at: Time.current)
-
-        expect(project).not_to receive(:update_column)
-          .with(:last_activity_at, a_kind_of(Time))
+        recent_time = 45.minutes.ago
+        project.update!(last_activity_at: recent_time)
 
         create_push_event(project, project.first_owner)
+
+        project.reload
+
+        expect(project.last_activity_at).to be_like_time(recent_time)
       end
     end
 
@@ -1345,13 +1401,13 @@ RSpec.describe Event, feature_category: :user_profile do
   end
 
   context 'with snippet note' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:note_on_project_snippet) { create(:note_on_project_snippet, author: user) }
-    let_it_be(:note_on_personal_snippet) { create(:note_on_personal_snippet, author: user) }
-    let_it_be(:other_note) { create(:note_on_issue, author: user) }
-    let_it_be(:personal_snippet_event) { create(:event, :commented, project: nil, target: note_on_personal_snippet, author: user) }
-    let_it_be(:project_snippet_event) { create(:event, :commented, project: note_on_project_snippet.project, target: note_on_project_snippet, author: user) }
-    let_it_be(:other_event) { create(:event, :commented, project: other_note.project, target: other_note, author: user) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:note_on_project_snippet, freeze: false) { create(:note_on_project_snippet, author: user) }
+    let_it_be(:note_on_personal_snippet, freeze: false) { create(:note_on_personal_snippet, author: user) }
+    let_it_be(:other_note, freeze: false) { create(:note_on_issue, author: user) }
+    let_it_be(:personal_snippet_event, freeze: false) { create(:event, :commented, project: nil, target: note_on_personal_snippet, author: user) }
+    let_it_be(:project_snippet_event, freeze: false) { create(:event, :commented, project: note_on_project_snippet.project, target: note_on_project_snippet, author: user) }
+    let_it_be(:other_event, freeze: false) { create(:event, :commented, project: other_note.project, target: other_note, author: user) }
 
     describe '#snippet_note?' do
       it 'returns true for a project snippet event' do
@@ -1502,6 +1558,30 @@ RSpec.describe Event, feature_category: :user_profile do
     end
   end
 
+  describe '#target_deleted?' do
+    it 'returns false when event does not have a target_id' do
+      event = build(:event, :destroyed, target_type: 'Milestone')
+
+      expect(event.target_deleted?).to be false
+    end
+
+    context 'when target_id is set' do
+      let_it_be(:issue, freeze: false) { create(:issue, project: project) }
+
+      let(:event) { build(:event, target_type: issue.class.name, target_id: issue.id) }
+
+      it 'returns false when target is present' do
+        expect(event.target_deleted?).to be false
+      end
+
+      it 'returns true when target is no longer present' do
+        event.target_id = non_existing_record_id
+
+        expect(event.target_deleted?).to be true
+      end
+    end
+  end
+
   def create_push_event(project, user, imported_from = 0)
     event = create(:push_event, project: project, author: user, imported_from: imported_from)
 
@@ -1518,8 +1598,8 @@ RSpec.describe Event, feature_category: :user_profile do
 
   context 'with loose foreign key on events.author_id' do
     it_behaves_like 'cleanup by a loose foreign key' do
-      let_it_be(:parent) { create(:user) }
-      let_it_be(:model) { create(:event, author: parent) }
+      let_it_be(:parent, freeze: false) { create(:user) }
+      let_it_be(:model, freeze: false) { create(:event, author: parent) }
     end
   end
 end

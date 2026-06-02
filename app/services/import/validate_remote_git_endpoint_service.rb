@@ -6,6 +6,16 @@ module Import
 
     def initialize(params)
       @params = params
+
+      # Special characters (#, ?, /) in the password would otherwise cause
+      # Addressable::URI.parse to misparse the URL.
+      sanitizer = Gitlab::UrlSanitizer.new(@params[:url])
+      @uri = Gitlab::Utils.parse_url(sanitizer.sanitized_url)
+      @user = @params[:user].presence || sanitizer.credentials[:user]
+      @password = @params[:password].presence || sanitizer.credentials[:password]
+    rescue Addressable::URI::InvalidURIError
+      # Fall back to simple parsing for truly malformed URLs so that
+      # #execute can return a proper error response instead of raising.
       @uri = Gitlab::Utils.parse_url(@params[:url])
       @user = @params[:user].presence
       @password = @params[:password].presence
@@ -45,18 +55,12 @@ module Import
     def validate_url_security!
       Gitlab::HTTP_V2::UrlBlocker.validate!(
         uri.to_s,
-        schemes: Project::VALID_IMPORT_PROTOCOLS,
-        ports: Project::VALID_IMPORT_PORTS,
-        allow_localhost: allow_local_requests?,
-        allow_local_network: allow_local_requests?,
-        dns_rebind_protection: dns_rebind_protection?,
-        deny_all_requests_except_allowed: Gitlab::CurrentSettings.deny_all_requests_except_allowed?,
-        outbound_local_requests_allowlist: Gitlab::CurrentSettings.outbound_local_requests_whitelist # rubocop:disable Naming/InclusiveLanguage -- existing setting
+        **Import::Framework::UrlBlockerParams.new.to_h.merge(
+          schemes: Project::VALID_IMPORT_PROTOCOLS,
+          ports: Project::VALID_IMPORT_PORTS,
+          dns_rebind_protection: dns_rebind_protection?
+        )
       )
-    end
-
-    def allow_local_requests?
-      Gitlab::CurrentSettings.allow_local_requests_from_web_hooks_and_services?
     end
 
     def dns_rebind_protection?
@@ -68,8 +72,8 @@ module Import
     def ensure_auth_credentials!
       return unless user && password
 
-      uri.user = user
-      uri.password = password
+      uri.user = Gitlab::UrlSanitizer.encode_percent(user)
+      uri.password = Gitlab::UrlSanitizer.encode_percent(password)
     end
   end
 end

@@ -1,11 +1,12 @@
 <script>
 import { GlSprintf, GlLink } from '@gitlab/ui';
-import { pickBy } from 'lodash';
+import { pickBy } from 'lodash-es';
 import { s__ } from '~/locale';
 import { FEED_TOKEN, INCOMING_EMAIL_TOKEN, STATIC_OBJECT_TOKEN } from '../constants';
 import Token from './token.vue';
 
 export default {
+  name: 'TokensApp',
   i18n: {
     canNotAccessOtherData: s__('AccessTokens|It cannot be used to access any other data.'),
     [FEED_TOKEN]: {

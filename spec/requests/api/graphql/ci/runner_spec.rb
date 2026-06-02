@@ -76,7 +76,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
         active: runner.active,
         paused: !runner.active,
         status: runner.status.to_s.upcase,
-        job_execution_status: runner.builds.executing.any? ? 'ACTIVE' : 'IDLE',
+        job_execution_status: runner.builds.running.any? ? 'ACTIVE' : 'IDLE',
         maximum_timeout: runner.maximum_timeout,
         access_level: runner.access_level.to_s.upcase,
         run_untagged: runner.run_untagged,
@@ -116,7 +116,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
               architecture_name: runner_manager.architecture,
               platform_name: runner_manager.platform,
               status: runner_manager.status.to_s.upcase,
-              job_execution_status: runner_manager.builds.executing.any? ? 'ACTIVE' : 'IDLE'
+              job_execution_status: runner_manager.builds.running.any? ? 'ACTIVE' : 'IDLE'
             )
           end,
           "pageInfo" => anything
@@ -326,7 +326,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
 
       context 'with build running' do
         let!(:pipeline) { create(:ci_pipeline, project: project1) }
-        let!(:build) { create(:ci_build, :running, runner: runner, pipeline: pipeline) }
+        let!(:build) { create(:ci_build, :picked, runner: runner, pipeline: pipeline) }
 
         before do
           create(:ci_runner_machine_build, runner_manager: runner_manager, build: build)
@@ -522,7 +522,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
         let_it_be(:owned_project_owner) { create(:user) }
         let_it_be(:owned_project) { create(:project, owners: owned_project_owner) }
         let_it_be(:other_project) { create(:project) }
-        let_it_be(:project_runner) { create(:ci_runner, :project_type, projects: [other_project, owned_project]) }
+        let_it_be(:project_runner, freeze: false) { create(:ci_runner, :project_type, projects: [other_project, owned_project]) }
         let_it_be(:owned_project_pipeline) { create(:ci_pipeline, project: owned_project) }
         let_it_be(:other_project_pipeline) { create(:ci_pipeline, project: other_project) }
         let_it_be(:owned_build) do
@@ -808,7 +808,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
   describe 'for multiple runners' do
     let_it_be(:project2) { create(:project, :test_repo) }
     let_it_be(:project_runner1) { create(:ci_runner, :project, projects: [project1, project2], description: 'Runner 1') }
-    let_it_be(:project_runner2) { create(:ci_runner, :project, :without_projects, description: 'Runner 2') }
+    let_it_be(:project_runner2, freeze: false) { create(:ci_runner, :project, :without_projects, description: 'Runner 2') }
 
     let!(:job) { create(:ci_build, runner: project_runner1) }
 
@@ -1080,7 +1080,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
     let_it_be(:merge_request1) { create(:merge_request, source_project: project1) }
     let_it_be(:merge_request2) { create(:merge_request, source_project: project3) }
 
-    let_it_be(:project_runner2) { create(:ci_runner, :project, projects: [project1, project2]) }
+    let_it_be(:project_runner2, freeze: false) { create(:ci_runner, :project, projects: [project1, project2]) }
     let_it_be(:pipeline1) do
       create(
         :ci_pipeline,
@@ -1187,7 +1187,7 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
     context 'with project search term' do
       let_it_be(:project1) { create(:project, description: 'abc') }
       let_it_be(:project2) { create(:project, description: 'def') }
-      let_it_be(:project_runner) { create(:ci_runner, :project, projects: [project1, project2]) }
+      let_it_be(:project_runner, freeze: false) { create(:ci_runner, :project, projects: [project1, project2]) }
 
       let(:variables) { { id: project_runner.to_global_id.to_s, n: n, project_search_term: search_term } }
 
@@ -1250,6 +1250,65 @@ RSpec.describe 'Query.runner(id)', :freeze_time, feature_category: :fleet_visibi
             expect(projects_data['pageInfo']['hasNextPage']).to eq false
           end
         end
+      end
+    end
+  end
+
+  describe 'granular token authorization', :aggregate_failures do
+    context 'with a project runner' do
+      let(:query) do
+        <<~GRAPHQL
+          query {
+            runner(id: "#{active_project_runner.to_global_id}") {
+              id
+            }
+          }
+        GRAPHQL
+      end
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL', :read_runner do
+        let(:user) { create(:user, developer_of: project1) }
+        let(:boundary_object) { project1 }
+        let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+      end
+    end
+
+    context 'with a group runner' do
+      let_it_be(:group1) { create(:group) }
+      let_it_be(:active_group_runner2) { create(:ci_runner, :group, groups: [group1]) }
+
+      let(:query) do
+        <<~GRAPHQL
+          query {
+            runner(id: "#{active_group_runner2.to_global_id}") {
+              id
+            }
+          }
+        GRAPHQL
+      end
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL', :read_runner do
+        let(:user) { create(:user, developer_of: group1) }
+        let(:boundary_object) { group1 }
+        let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+      end
+    end
+
+    context 'with an instance runner' do
+      let(:query) do
+        <<~GRAPHQL
+          query {
+            runner(id: "#{active_instance_runner.to_global_id}") {
+              id
+            }
+          }
+        GRAPHQL
+      end
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL', :read_runner do
+        let(:user) { create(:user, :admin) }
+        let(:boundary_object) { :instance }
+        let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
       end
     end
   end

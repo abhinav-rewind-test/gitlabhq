@@ -1,7 +1,8 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: "Learn to use HashiCorp Vault secrets in GitLab CI/CD, including authentication, Vault configuration, policies, and secrets engines."
 title: 'Use HashiCorp Vault secrets in GitLab CI/CD'
 ---
 

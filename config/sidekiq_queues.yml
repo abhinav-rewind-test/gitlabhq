@@ -53,11 +53,27 @@
   - 1
 - - ai_catalog_flows_cascade_sync_foundational_flows
   - 1
+- - ai_catalog_flows_execute_code_conflict_ai_workflow_triggers
+  - 1
+- - ai_catalog_flows_execute_merge_request_approved_workflow_triggers
+  - 1
 - - ai_catalog_flows_sync_project_foundational_flows
+  - 1
+- - ai_catalog_item_consumers_bulk_create
+  - 1
+- - ai_duo_workflows_cancel_associated_pipelines
   - 1
 - - ai_duo_workflows_code_review_timeout
   - 1
+- - ai_duo_workflows_generate_workflow_summary
+  - 1
+- - ai_duo_workflows_generate_workflow_title
+  - 1
+- - ai_duo_workflows_sync_session_artifact
+  - 1
 - - ai_duo_workflows_update_workflow_status_event
+  - 1
+- - ai_messaging_callback
   - 1
 - - ai_repository_xray_scan_dependencies
   - 1
@@ -67,6 +83,8 @@
   - 1
 - - analytics_devops_adoption_create_snapshot
   - 1
+- - analytics_knowledge_graph_code_indexing
+  - 1
 - - analytics_usage_trends_counter_job
   - 1
 - - anti_abuse_ban_duplicate_users
@@ -74,6 +92,8 @@
 - - anti_abuse_new_abuse_report
   - 1
 - - anti_abuse_spam_abuse_events
+  - 1
+- - app_config_cascade_built_in_project_templates_enabled
   - 1
 - - app_config_cascade_duo_features_enabled
   - 1
@@ -90,6 +110,8 @@
 - - approval_rules_external_approval_rule_payload
   - 1
 - - approve_blocked_pending_approval_users
+  - 1
+- - audit_events_ai_audit_event_streaming
   - 1
 - - audit_events_audit_event_streaming
   - 1
@@ -221,6 +243,10 @@
   - 1
 - - bulk_imports_user_contributions_export
   - 1
+- - cells_bulk_claims
+  - 1
+- - cells_claims_verification
+  - 1
 - - chaos
   - 2
 - - chat_notification
@@ -239,6 +265,8 @@
   - 1
 - - ci_execute_build_hooks
   - 1
+- - ci_execute_pipeline_build_hooks
+  - 1
 - - ci_initialize_pipelines_iid_sequence
   - 1
 - - ci_job_artifacts_expire_project_build_artifacts
@@ -255,9 +283,13 @@
   - 1
 - - ci_runners_process_runner_version_update
   - 1
+- - ci_runners_transfer_organization
+  - 1
 - - ci_safe_disable_pipeline_variables
   - 1
 - - ci_slsa_publish_provenance
+  - 1
+- - ci_track_first_pipeline_succeeded
   - 1
 - - ci_track_pipeline_trigger_events
   - 1
@@ -397,6 +429,10 @@
   - 1
 - - dependencies_export
   - 1
+- - dependency_management_security_update_create_merge_request
+  - 1
+- - dependency_management_security_update_scheduler
+  - 1
 - - dependency_proxy
   - 1
 - - dependency_proxy_blob
@@ -501,6 +537,10 @@
   - 1
 - - gitlab_subscriptions_cart_abandonment
   - 1
+- - gitlab_subscriptions_cart_abandonment_credits_purchase
+  - 1
+- - gitlab_subscriptions_duo_enable_code_review_flow
+  - 1
 - - gitlab_subscriptions_gitlab_com_duo_core_todo_notification
   - 1
 - - gitlab_subscriptions_member_management_apply_pending_member_approvals
@@ -568,6 +608,10 @@
 - - import_load_placeholder_references
   - 1
 - - import_offline_configuration_purge
+  - 1
+- - import_offline_export
+  - 1
+- - import_offline_imports_schedule_import
   - 1
 - - import_reassign_placeholder_user_records
   - 1
@@ -661,6 +705,8 @@
   - 1
 - - merge_requests_audit_update_status_check_response
   - 1
+- - merge_requests_auto_assign_reviewers
+  - 1
 - - merge_requests_cleanup_ref
   - 1
 - - merge_requests_close_issue
@@ -677,7 +723,11 @@
   - 1
 - - merge_requests_execute_approval_hooks
   - 1
+- - merge_requests_execute_merge_request_ready
+  - 1
 - - merge_requests_handle_assignees_change
+  - 1
+- - merge_requests_keep_around_refs
   - 1
 - - merge_requests_mergeability_check_batch
   - 1
@@ -721,6 +771,8 @@
   - 1
 - - namespaces
   - 1
+- - namespaces_cascade_built_in_project_templates_enabled
+  - 1
 - - namespaces_cascade_duo_features_enabled
   - 1
 - - namespaces_cascade_duo_settings
@@ -728,6 +780,10 @@
 - - namespaces_cascade_web_based_commit_signing_enabled
   - 1
 - - namespaces_free_user_cap_group_over_limit_notification
+  - 1
+- - namespaces_groups_transfer
+  - 1
+- - namespaces_invalidate_descendants_cache
   - 1
 - - namespaces_process_sync_events
   - 1
@@ -758,6 +814,8 @@
 - - onboarding_create_iterable_trigger
   - 1
 - - onboarding_progress_tracking
+  - 1
+- - onboarding_self_managed_create_welcome_product_interaction
   - 1
 - - organizations_groups_transfer
   - 1
@@ -797,14 +855,6 @@
   - 5
 - - process_commit
   - 3
-- - product_analytics_initialize_snowplow_product_analytics
-  - 1
-- - product_analytics_move_funnels
-  - 1
-- - product_analytics_post_push
-  - 1
-- - product_analytics_sync_funnels
-  - 1
 - - project_cache
   - 1
 - - project_destroy
@@ -855,6 +905,8 @@
   - 1
 - - projects_schedule_bulk_repository_shard_moves
   - 1
+- - projects_transfer
+  - 1
 - - projects_update_repository_storage
   - 1
 - - propagate_integration
@@ -884,6 +936,12 @@
 - - remote_mirror_notification
   - 2
 - - repositories_cache_tag_signatures
+  - 1
+- - repositories_create_branch
+  - 1
+- - repositories_create_branches_finish
+  - 1
+- - repositories_leave_pool_repository
   - 1
 - - repositories_post_receive
   - 5
@@ -931,7 +989,11 @@
   - 1
 - - search_elastic_group_association_deletion
   - 1
+- - search_elastic_project_archived_event
+  - 1
 - - search_elastic_trigger_indexing
+  - 1
+- - search_expire_finder_cache
   - 1
 - - search_namespace_index_integrity
   - 1
@@ -947,6 +1009,8 @@
   - 1
 - - search_zoekt_group_archived_event
   - 1
+- - search_zoekt_group_path_changed_event
+  - 1
 - - search_zoekt_index_mark_as_pending_eviction_event
   - 1
 - - search_zoekt_index_marked_as_ready_event
@@ -956,6 +1020,8 @@
 - - search_zoekt_index_to_evict_event
   - 1
 - - search_zoekt_indexing_task
+  - 1
+- - search_zoekt_indexing_task_delete
   - 1
 - - search_zoekt_initial_indexing_event
   - 1
@@ -970,6 +1036,8 @@
 - - search_zoekt_project_features_changed_event
   - 1
 - - search_zoekt_project_marked_as_archived_event
+  - 1
+- - search_zoekt_project_path_changed_event
   - 1
 - - search_zoekt_project_transfer
   - 1
@@ -997,6 +1065,10 @@
   - 1
 - - secrets_management_provision_project_secrets_manager
   - 1
+- - secrets_management_provision_project_secrets_manager_task
+  - 1
+- - secrets_management_reconcile_namespace_secret_count
+  - 1
 - - security_analyzer_namespace_statuses_adjustment
   - 1
 - - security_analyzer_namespace_statuses_process_group_deleted_events
@@ -1012,6 +1084,8 @@
 - - security_analyzers_status_process_group_transfer_events
   - 1
 - - security_analyzers_status_process_project_transfer_events
+  - 1
+- - security_analyzers_status_schedule_instance_setting_changed_update
   - 1
 - - security_analyzers_status_schedule_setting_changed_update
   - 1
@@ -1039,8 +1113,6 @@
   - 1
 - - security_configuration_set_group_validity_checks
   - 1
-- - security_create_default_tracked_context
-  - 1
 - - security_create_security_policy_project
   - 1
 - - security_delete_approval_policy_rules
@@ -1067,6 +1139,8 @@
   - 1
 - - security_pipeline_execution_policies_run_schedule
   - 1
+- - security_pipeline_execution_schedule_policies_test_run_completion
+  - 1
 - - security_policies_dismissal_preserve
   - 1
 - - security_policies_failed_pipelines_audit
@@ -1081,7 +1155,11 @@
   - 1
 - - security_policies_skip_pipelines_audit
   - 1
-- - security_project_tracked_contexts_update_default_context
+- - security_process_tracked_context_project_transfer_events
+  - 1
+- - security_project_tracked_contexts_create_or_update_default_tracked_context
+  - 1
+- - security_project_tracked_contexts_reindex_vulnerabilities_on_default_branch_change
   - 1
 - - security_recreate_orchestration_configuration
   - 1
@@ -1090,6 +1168,10 @@
 - - security_scan_execution_policies_create_pipeline
   - 1
 - - security_scan_execution_policies_rule_schedule
+  - 1
+- - security_scan_execution_policies_run_schedule
+  - 1
+- - security_scan_profile_status_update
   - 1
 - - security_scan_profiles_attach
   - 1
@@ -1113,13 +1195,9 @@
   - 1
 - - security_scan_result_policies_cleanup_merge_request_violations
   - 1
-- - security_scan_result_policies_create_project_warn_mode_audit_events
-  - 1
 - - security_scan_result_policies_create_project_warn_mode_push_settings_audit_events
   - 1
 - - security_scan_result_policies_create_warn_mode_approval_audit_events
-  - 1
-- - security_scan_result_policies_create_warn_mode_audit_events
   - 1
 - - security_scan_result_policies_delete_scan_result_policy_reads
   - 1
@@ -1127,13 +1205,13 @@
   - 1
 - - security_scan_result_policies_process_pipeline_completion
   - 1
-- - security_scan_result_policies_recreate_project_warn_mode_audit_events
-  - 1
 - - security_scan_result_policies_sync_any_merge_request_approval_rules
   - 1
 - - security_scan_result_policies_sync_merge_request_approvals
   - 1
 - - security_scan_result_policies_sync_project
+  - 1
+- - security_scan_result_policies_sync_project_finding_enrichments
   - 1
 - - security_scan_result_policies_unblock_fail_open_approval_rules
   - 1
@@ -1149,7 +1227,11 @@
   - 1
 - - security_secret_detection_partner_token_verification
   - 1
+- - security_sync_finding_enrichment
+  - 1
 - - security_sync_linked_pipeline_execution_policy_configs
+  - 1
+- - security_sync_merge_requests
   - 1
 - - security_sync_pipeline_execution_policy_metadata
   - 1
@@ -1164,6 +1246,8 @@
 - - security_sync_project_policy
   - 1
 - - security_sync_scan_policies
+  - 1
+- - security_sync_tracked_context_traversal_ids
   - 1
 - - security_unassign_policy_configurations_for_expired_namespace
   - 1
@@ -1184,6 +1268,8 @@
 - - snippets_schedule_bulk_repository_shard_moves
   - 1
 - - snippets_update_repository_storage
+  - 1
+- - snowplow
   - 1
 - - ssh_keys_update_last_used_at
   - 1
@@ -1217,6 +1303,8 @@
   - 1
 - - upload_checksum
   - 1
+- - users_drop_pipelines_for_blocked_user
+  - 1
 - - users_experimental_communication_opt_in
   - 1
 - - users_track_namespace_visits
@@ -1232,6 +1320,10 @@
 - - vulnerabilities_archival_export_purge
   - 1
 - - vulnerabilities_auto_dismiss
+  - 1
+- - vulnerabilities_auto_severity_override
+  - 1
+- - vulnerabilities_consistency_check
   - 1
 - - vulnerabilities_mark_dropped_as_resolved
   - 1
@@ -1269,6 +1361,8 @@
   - 1
 - - vulnerabilities_trigger_resolution_workflow
   - 1
+- - vulnerabilities_trigger_secret_detection_false_positive_detection_workflow
+  - 1
 - - vulnerabilities_update_archived_attribute_of_vulnerability_reads
   - 1
 - - vulnerabilities_update_archived_attribute_of_vulnerability_statistics
@@ -1276,6 +1370,8 @@
 - - vulnerabilities_update_namespace_ids_of_vulnerability_reads
   - 1
 - - vulnerabilities_update_traversal_ids_of_vulnerability_statistic
+  - 1
+- - vulnerabilities_upload_remediations
   - 1
 - - vulnerability_exports_export
   - 1

@@ -13,6 +13,11 @@ module BitbucketServer
       get_collection(path, :pull_request, page_offset: page_offset, limit: limit)
     end
 
+    def last_pull_request(project_key, repo)
+      path = "/projects/#{project_key}/repos/#{repo}/pull-requests?state=ALL&order=NEWEST"
+      get_collection(path, :pull_request, limit: Paginator::PAGE_LENGTH).max_by(&:iid)
+    end
+
     def activities(project_key, repo, pull_request_id, page_offset: 0, limit: nil)
       path = "/projects/#{project_key}/repos/#{repo}/pull-requests/#{pull_request_id}/activities"
       get_collection(path, :activity, page_offset: page_offset, limit: limit)

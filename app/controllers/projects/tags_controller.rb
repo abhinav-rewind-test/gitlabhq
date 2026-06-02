@@ -2,6 +2,7 @@
 
 class Projects::TagsController < Projects::ApplicationController
   include SortingHelper
+  include HandlesGitalyErrors
 
   prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:rss) }
 
@@ -14,36 +15,32 @@ class Projects::TagsController < Projects::ApplicationController
   urgency :low, [:new, :show, :index]
 
   def index
-    begin
-      tags_params = params
-        .permit(:search, :sort, :per_page, :page_token, :page)
-        .with_defaults(sort: sort_value_recently_updated)
+    # ProjectPolicy#foundational_flows_available? reads the cascading duo_foundational_flows_enabled
+    # setting, which fires extra queries beyond the default 100 threshold.
+    Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/work_items/600660', new_threshold: 101)
 
-      @sort = tags_params[:sort]
-      @search = tags_params[:search]
+    tags_params = params
+      .permit(:search, :sort, :per_page, :page_token, :page)
+      .with_defaults(sort: sort_value_recently_updated)
 
-      @tags = TagsFinder.new(@repository, tags_params).execute
+    @sort = tags_params[:sort]
+    @search = tags_params[:search]
 
-      @tags = Kaminari.paginate_array(@tags).page(tags_params[:page])
+    @tags = TagsFinder.new(@repository, tags_params).execute
 
-      TagsFinder.batch_load_tag_signature_data(@tags)
+    @tags = Kaminari.paginate_array(@tags).page(tags_params[:page])
 
-      tag_names = @tags.map(&:name)
+    TagsFinder.batch_load_tag_signature_data(@tags)
 
-      @releases = ReleasesFinder.new(project, current_user, tag: tag_names).execute
-      @tag_pipeline_statuses =
-        Ci::CommitStatusesFinder.new(@project, @repository, current_user, @tags, ref_type: :tags).execute
-    rescue Gitlab::Git::CommandError => e
-      @tags = []
-      @releases = []
-      @tags_loading_error = e
-    end
+    tag_names = @tags.map(&:name)
+
+    @releases = ReleasesFinder.new(project, current_user, tag: tag_names).execute
+    @tag_pipeline_statuses =
+      Ci::CommitStatusesFinder.new(@project, @repository, current_user, @tags, ref_type: :tags).execute
 
     respond_to do |format|
-      status = @tags_loading_error ? :service_unavailable : :ok
-
-      format.html { render status: status }
-      format.atom { render layout: 'xml', status: status }
+      format.html
+      format.atom { render layout: 'xml' }
     end
   end
 

@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Apps for a testing environment
 ---
 
@@ -15,7 +15,7 @@ title: Apps for a testing environment
 This is the GitLab Support Team's collection of information regarding testing environments,
 for use while troubleshooting. It is listed here for transparency, and it may be useful
 for users with experience with these tools. If you are currently having an issue with
-GitLab, you may want to check your [support options](https://about.gitlab.com/support/)
+GitLab, you may want to check your [support options](https://support.gitlab.com/)
 first, before attempting to use this information.
 
 > [!note]

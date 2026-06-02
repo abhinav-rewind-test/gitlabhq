@@ -2,8 +2,8 @@
 
 require 'spec_helper'
 
-RSpec.describe SearchController, type: :request, feature_category: :global_search do
-  let_it_be(:user) { create(:user) }
+RSpec.describe SearchController, :with_current_organization, feature_category: :global_search do
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, :public, :repository, :wiki_repo, name: 'awesome project', group: group) }
   let_it_be(:projects) { create_list(:project, 5, :public, :repository, :wiki_repo) }
@@ -13,9 +13,10 @@ RSpec.describe SearchController, type: :request, feature_category: :global_searc
   end
 
   shared_examples 'an efficient database result' do
-    it 'avoids N+1 database queries',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/25421' do
+    it 'avoids N+1 database queries', :request_store, :use_sql_query_cache do
       create(object, *creation_traits, creation_args)
+
+      send_search_request(params) # warm-up
 
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) { send_search_request(params) }
       expect(response.body).to include('search-results') # Confirm there are search results to prevent false positives
@@ -44,8 +45,8 @@ RSpec.describe SearchController, type: :request, feature_category: :global_searc
       let(:creation_args) { { project: project, title: 'foo', labels: labels } }
       let(:params) { { search: 'foo', scope: 'issues' } }
       # some N+1 queries still exist
-      # each issue runs an extra query for group namespaces
-      let(:threshold) { 1 }
+      # each issue runs an extra query for project routes
+      let(:threshold) { 25 }
 
       it_behaves_like 'an efficient database result'
     end
@@ -109,8 +110,10 @@ RSpec.describe SearchController, type: :request, feature_category: :global_searc
       let(:params_for_one) { { search: 'test', project_id: project.id, scope: 'blobs', per_page: 1 } }
       let(:params_for_many) { { search: 'test', project_id: project.id, scope: 'blobs', per_page: 5 } }
 
-      it 'avoids N+1 database queries' do
-        control = ActiveRecord::QueryRecorder.new { send_search_request(params_for_one) }
+      it 'avoids N+1 database queries', :request_store, :use_sql_query_cache do
+        send_search_request(params_for_one) # warm-up
+
+        control = ActiveRecord::QueryRecorder.new(skip_cached: false) { send_search_request(params_for_one) }
         expect(response.body).to include('search-results') # Confirm search results to prevent false positives
 
         expect { send_search_request(params_for_many) }.not_to exceed_query_limit(control)
@@ -122,9 +125,10 @@ RSpec.describe SearchController, type: :request, feature_category: :global_searc
       let(:params_for_one) { { search: 'test', project_id: project.id, scope: 'commits', per_page: 1 } }
       let(:params_for_many) { { search: 'test', project_id: project.id, scope: 'commits', per_page: 5 } }
 
-      it 'avoids N+1 database queries',
-        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/25420' do
-        control = ActiveRecord::QueryRecorder.new { send_search_request(params_for_one) }
+      it 'avoids N+1 database queries', :request_store, :use_sql_query_cache do
+        send_search_request(params_for_one) # warm-up
+
+        control = ActiveRecord::QueryRecorder.new(skip_cached: false) { send_search_request(params_for_one) }
         expect(response.body).to include('search-results') # Confirm search results to prevent false positives
 
         expect { send_search_request(params_for_many) }.not_to exceed_query_limit(control)
@@ -313,6 +317,29 @@ RSpec.describe SearchController, type: :request, feature_category: :global_searc
           expect(response.body).to eq '["foo","bar"]'
         end
       end
+    end
+  end
+
+  describe 'GET /search/autocomplete' do
+    let_it_be(:work_item) { create(:work_item, project: project, title: 'autocomplete fix') }
+
+    subject(:request) { get search_autocomplete_path, params: { term: 'autocomplete fix' } }
+
+    before do
+      stub_feature_flags(work_items_autocomplete: true)
+      login_as(user)
+      allow_next_instance_of(Gitlab::Search::RecentWorkItems) do |instance|
+        allow(instance).to receive(:search).and_return([work_item])
+      end
+    end
+
+    it 'returns recent work items with a working URL' do
+      request
+
+      expect(response).to have_gitlab_http_status(:ok)
+      entry = json_response.find { |r| r['category'] == 'Recent work items' }
+      expected_url = Gitlab::UrlBuilder.build(work_item, only_path: true)
+      expect(entry['url']).to eq(expected_url)
     end
   end
 end

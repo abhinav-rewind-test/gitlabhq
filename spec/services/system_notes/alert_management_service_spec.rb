@@ -5,13 +5,15 @@ require 'spec_helper'
 RSpec.describe ::SystemNotes::AlertManagementService, feature_category: :groups_and_projects do
   let_it_be(:author)   { create(:user) }
   let_it_be(:project)  { create(:project, :repository) }
-  let_it_be(:noteable) { create(:alert_management_alert, :with_incident, :acknowledged, project: project) }
+  let_it_be(:noteable, freeze: false) do
+    create(:alert_management_alert, :with_incident, :acknowledged, project: project)
+  end
 
   describe '#create_new_alert' do
     subject { described_class.new(noteable: noteable, container: project).create_new_alert('Some Service') }
 
     it_behaves_like 'a system note' do
-      let(:author) { Users::Internal.alert_bot }
+      let(:author) { Users::Internal.in_organization(project.organization).alert_bot }
       let(:action) { 'new_alert_added' }
     end
 
@@ -62,7 +64,7 @@ RSpec.describe ::SystemNotes::AlertManagementService, feature_category: :groups_
     subject { described_class.new(noteable: noteable, container: project).log_resolving_alert('Some Service') }
 
     it_behaves_like 'a system note' do
-      let(:author) { Users::Internal.alert_bot }
+      let(:author) { Users::Internal.in_organization(project.organization).alert_bot }
       let(:action) { 'new_alert_added' }
     end
 

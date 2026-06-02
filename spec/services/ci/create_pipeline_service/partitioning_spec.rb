@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Ci::CreatePipelineService, :aggregate_failures,
   feature_category: :continuous_integration do
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
   let_it_be(:user)    { project.first_owner }
 
   let(:service) { described_class.new(project, user, { ref: 'master' }) }
@@ -65,8 +65,8 @@ RSpec.describe Ci::CreatePipelineService, :aggregate_failures,
   context 'with pipeline variables' do
     let(:variables_attributes) do
       [
-        { key: 'SOME_VARIABLE', secret_value: 'SOME_VAL' },
-        { key: 'OTHER_VARIABLE', secret_value: 'OTHER_VAL' }
+        { key: 'SOME_VARIABLE', value: 'SOME_VAL' },
+        { key: 'OTHER_VARIABLE', value: 'OTHER_VAL' }
       ]
     end
 
@@ -82,11 +82,10 @@ RSpec.describe Ci::CreatePipelineService, :aggregate_failures,
       expect(pipeline.partition_id).to eq(current_partition_id)
     end
 
-    it 'assigns partition_id to variables' do
-      variables_partition_ids = pipeline.variables.map(&:partition_id).uniq
-
+    it 'assigns partition_id to pipeline variables artifact' do
+      expect(pipeline).to be_created_successfully
+      expect(pipeline.pipeline_artifacts_pipeline_variables.partition_id).to eq(current_partition_id)
       expect(pipeline.variables.size).to eq(2)
-      expect(variables_partition_ids).to eq([current_partition_id])
     end
 
     it 'assigns partition_id to needs' do

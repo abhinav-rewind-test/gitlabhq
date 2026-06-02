@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Flavored Markdown (GLFM)
 description: Formatting, inline HTML, GitLab-specific references, diagrams, and flowcharts.
 ---
@@ -77,7 +77,7 @@ The following features are not found in standard Markdown:
 - [Emoji](#emoji)
 - [Footnotes](#footnotes)
 - [Front matter](#front-matter)
-- [GitLab-specific references](#gitlab-specific-references)
+- [GitLab-specific references](#gitlab-specific-references) (Not supported in Markdown snippet files.)
 - [Includes](#includes)
 - [Placeholders](#placeholders)
 - [Inline diffs](#inline-diff)
@@ -120,6 +120,26 @@ If there is no otherwise meaningful value for a cell, consider entering **N/A** 
 
 Describe the image or video in the `[alt text]`. Make the description accurate, succinct, and unique.
 Don't use `image of` or `video of` in the description. For more information, see [WebAim Alternative Text](https://webaim.org/techniques/alttext/).
+
+## Work item and merge request titles
+
+{{< history >}}
+
+- Full GitLab Flavored Markdown support [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/184070) in GitLab 18.0.
+- Full GitLab Flavored Markdown support [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224839) in GitLab 18.11.
+
+{{< /history >}}
+
+Titles of issues, merge requests, epics, and other work items do not support full GitLab Flavored Markdown.
+Titles support only:
+
+- Emoji (`:emoji:` shortcodes and custom emoji).
+- Auto-linked URLs.
+- [GitLab-specific references](#gitlab-specific-references) like `#123`,
+  `@user`, and `!456`.
+
+Standard Markdown syntax like bold, italic, code spans, links, headings, lists, and other block-level formatting is not processed in titles.
+For example, the title `` **Merge request title** `` is not displayed in bold and is displayed with the asterisks.
 
 ## Headings
 
@@ -420,8 +440,8 @@ Examples:
 
 <!--
 The "2." and "4." in the previous example are changed to "1." in the following example,
-to match the style standards on docs.gitlab.com.
-See https://docs.gitlab.com/development/documentation/styleguide/#lists
+to match the style standards on <https://docs.gitlab.com>.
+See <https://docs.gitlab.com/development/documentation/styleguide/#lists>.
 -->
 
 When rendered, the example looks similar to:
@@ -456,8 +476,8 @@ They can even:
 
 <!--
 The "*" and "+" in the previous example are changed to "-" in the following example,
-to match the style standards on docs.gitlab.com.
-See https://docs.gitlab.com/development/documentation/styleguide/#lists
+to match the style standards on <https://docs.gitlab.com>.
+See <https://docs.gitlab.com/development/documentation/styleguide/#lists>.
 -->
 
 When rendered, the example looks similar to:
@@ -658,7 +678,7 @@ to stay in sync with the image.
 
 ![Task list as rendered by GitLab](img/completed_tasks_v15_3.png)
 
-To include task lists in tables, [use HTML list tags or HTML tables](#task-lists-in-tables).
+You can also add task lists to [table cells](#task-lists-in-tables).
 
 ## Links
 
@@ -770,6 +790,9 @@ that reference into a link so you can navigate between them. All references to p
 
 Additionally, GitLab Flavored Markdown recognizes certain cross-project references and also has a shorthand
 version to reference other projects from the same namespace.
+
+> [!note]
+> GitLab-specific references are not supported in Markdown snippet files.
 
 GitLab Flavored Markdown recognizes the following:
 
@@ -943,8 +966,8 @@ When rendered, the example looks similar to:
 > | Cell 1       | Cell 2   | Cell 3        |
 > | Cell 4       | Cell 5   | Cell 6        |
 
-[In GitLab itself](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/user/markdown.md#tables),
-the headers are always left-aligned in Chrome and Firefox, and centered in Safari.
+In GitLab, table headers are always left-aligned in Chrome and Firefox, and centered in Safari.
+For more information, see [tables](#tables).
 
 ### Cells with multiple lines
 
@@ -967,43 +990,52 @@ When rendered, the example looks similar to:
 
 ### Task lists in tables
 
-To add [task lists](#task-lists) with checkboxes, use HTML formatting. Using either:
+{{< history >}}
 
-- **An HTML table with Markdown in the cells**. Tables formatted this way result in fully functioning
-  task lists.
+- Native Markdown syntax for task items in table cells [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/219037) in GitLab 18.9.
 
-  ```html
-  <table>
-  <thead>
-  <tr><th>header 1</th><th>header 2</th></tr>
-  </thead>
-  <tbody>
-  <tr>
-  <td>cell 1</td>
-  <td>cell 2</td>
-  </tr>
-  <tr>
-  <td>cell 3</td>
-  <td>
+{{< /history >}}
 
-  - [ ] Task one
-  - [ ] Task two
+You can add a task item checkbox in a Markdown table cell.
+The checkbox must be the only content in the cell:
 
-  </td>
-  </tr>
-  </tbody>
-  </table>
-  ```
+```markdown
+| Complete | Task                    |
+| -------- | ----------------------- |
+|   [x]    | Refactor the backend    |
+|   [ ]    | Refactor the frontend   |
+|   [~]    | Inapplicable task       |
+```
 
-- **A Markdown table with HTML list tags**. These tasks don't save their state when selected.
-  Tables formatted this way do not render properly on `docs.gitlab.com`.
+When rendered, the example looks similar to:
 
-  ```markdown
-  | header 1 | header 2 |
-  | ---      | ---      |
-  | cell 1   | cell 2   |
-  | cell 3   | <ul><li> - [ ] Task one </li><li> - [ ] Task two </li></ul> |
-  ```
+![Rendered task list in a Markdown table.](img/task_list_in_table_v18_9.png)
+
+To add multiple task items in a single cell, or task items with additional text,
+use an HTML table with Markdown in the cells:
+
+```html
+<table>
+<thead>
+<tr><th>header 1</th><th>header 2</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>cell 1</td>
+<td>cell 2</td>
+</tr>
+<tr>
+<td>cell 3</td>
+<td>
+
+- [ ] Task one
+- [ ] Task two
+
+</td>
+</tr>
+</tbody>
+</table>
+```
 
 You can also [create a table in the rich text editor](rich_text_editor.md#tables) and insert a task list then.
 
@@ -1047,7 +1079,13 @@ Watch the following video walkthrough of this feature:
 </figure>
 
 > [!note]
-> Administrators can enable rendering of iframes in Markdown and configure the allowed iframe `src` hosts at the instance level. You can manage these settings via the [Application settings API](../api/settings.md#available-settings): `iframe_rendering_enabled`, `iframe_rendering_allowlist`, and `iframe_rendering_allowlist_raw`.
+> Administrators can enable rendering of iframes in Markdown and configure the allowed iframe `src`
+> hosts for an instance.
+> You can manage these settings with the [application settings API](../api/settings.md#available-settings) using:
+>
+> - `iframe_rendering_enabled`
+> - `iframe_rendering_allowlist`
+> - `iframe_rendering_allowlist_raw`.
 
 The `items` attribute is a list of objects representing the data points.
 
@@ -1214,13 +1252,14 @@ in the rendered output.
 {{< history >}}
 
 - Opening images in an overlay [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/377398) in GitLab 18.6.
+- Transparency checkerboard toggle [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224872) in GitLab 18.10.
 
 {{< /history >}}
 
 Embed images using inline or reference [links](#links) prepended with a `!`. For example:
 
 <!--
-DO NOT change the name of markdown_logo_v17_11.png. This file is used for a test in
+DO NOT change the name of `markdown_logo_v17_11.png`. This file is used for a test in
 spec/controllers/help_controller_spec.rb.
 -->
 
@@ -1236,9 +1275,15 @@ In image links:
 - Text in double quotes after the image link path becomes the title text.
   To see title text, hover over the image.
 
-To learn about creating accessible alt text, see [Accessible images and videos](#accessible-images-and-videos).
+For more information, see [accessible images and videos](#accessible-images-and-videos).
 
 When an image is selected, it opens in an overlay.
+
+If an image has transparent areas, hover over it and select **Toggle transparency checkerboard**
+to show a checkerboard background.
+The checkerboard makes transparent areas visible against any theme.
+**Toggle transparency checkerboard** appears on PNG, WebP, and GIF images if at least 5% of their pixels have some degree of transparency (are not fully opaque).
+Images with fewer than 5% transparent pixels do not show the toggle.
 
 ### Videos
 
@@ -1484,6 +1529,12 @@ graph TD
 ```
 ````
 
+> [!note]
+> On GitLab Self-Managed, if you configured a `Cross-Origin-Resource-Policy` header with
+> `same-site` or `same-origin`, Mermaid diagrams silently fail to render. To resolve this, use
+> `cross-origin` instead. For more information, see
+> [`Cross-Origin-Resource-Policy` header and Mermaid diagrams](https://docs.gitlab.com/omnibus/settings/nginx/#cross-origin-resource-policy-header-and-mermaid-diagrams).
+
 When rendered, the example looks similar to:
 
 ```mermaid
@@ -1560,7 +1611,7 @@ Alice -> Bob : hi
 
 You can include or embed a PlantUML diagram from separate files in the repository using
 the `::include` directive.
-For more information, see [Include diagram files](../administration/integration/plantuml.md#include-diagram-files).
+For more information, see [include diagram files](../administration/integration/plantuml.md#include-diagram-files).
 
 ### Kroki
 
@@ -1631,7 +1682,7 @@ content types:
 <!--
 Tags for the table of contents are presented in a code block to work around a Markdown bug.
 Do not change the code block back to single backticks.
-For more information, see https://gitlab.com/gitlab-org/gitlab/-/issues/359077.
+For more information, see <https://gitlab.com/gitlab-org/gitlab/-/issues/359077>.
 -->
 
 ```markdown
@@ -1848,7 +1899,7 @@ When rendered, the example looks similar to:
 > You can join the emoji <img src="https://gitlab.com/gitlab-org/gitlab/-/raw/master/public/-/emojis/4/family.png" width="20px" height="20px" style="display:inline;margin:0;border:0;padding:0;" title=":family:" alt=":family:">.
 > Just look up one of the supported codes.
 
-Consult the [Emoji Cheat Sheet](https://www.webfx.com/tools/emoji-cheat-sheet/)
+For more information, see the [emoji cheat sheet](https://www.webfx.com/tools/emoji-cheat-sheet/)
 for a list of all supported emoji codes.
 
 ### Emoji and your operating system
@@ -1867,7 +1918,7 @@ this font installed by default.
 
 <!-- vale gitlab_base.Spelling = YES -->
 
-To learn more about adding custom emoji, see [Custom emoji](emoji_reactions.md#custom-emoji).
+For more information about adding custom emoji, see [custom emoji](emoji_reactions.md#custom-emoji).
 
 ## Front matter
 

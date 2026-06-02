@@ -60,31 +60,23 @@ RSpec.shared_examples 'conan search endpoint' do |scope: :project|
     end
 
     context 'returns error when search term is too long' do
+      subject { get api(url), params: params }
+
       let(:params) { { q: 'q' * 201 } }
 
-      before do
-        get api(url), params: params
-      end
-
-      it { expect(response).to have_gitlab_http_status(:bad_request) }
-
-      it 'returns an error message' do
-        expect(json_response['message']).to eq('400 Bad request - Search term length must be less than 200 characters.')
-      end
+      it_behaves_like 'conan structured error response',
+        status: :bad_request,
+        message: '400 Bad request - Search term length must be less than 200 characters.'
     end
 
     context 'returns error when search term has too many wildcards' do
+      subject { get api(url), params: params }
+
       let(:params) { { q: 'al*h*/*@*nn*/*' } }
 
-      before do
-        get api(url), params: params
-      end
-
-      it { expect(response).to have_gitlab_http_status(:bad_request) }
-
-      it 'returns an error message' do
-        expect(json_response['message']).to eq('400 Bad request - Too many wildcards in search term. Maximum is 5.')
-      end
+      it_behaves_like 'conan structured error response',
+        status: :bad_request,
+        message: '400 Bad request - Too many wildcards in search term. Maximum is 5.'
     end
 
     context 'with ignorecase' do
@@ -707,11 +699,9 @@ RSpec.shared_examples 'delete package endpoint' do
   it_behaves_like 'handling empty values for username and channel'
   it_behaves_like 'updating personal access token last used'
 
-  it 'returns unauthorized for users without valid permission' do
-    subject
-
-    expect(response).to have_gitlab_http_status(:forbidden)
-  end
+  it_behaves_like 'conan structured error response',
+    status: :forbidden,
+    message: '403 Forbidden'
 
   context 'with delete permissions' do
     before do
@@ -875,16 +865,77 @@ RSpec.shared_examples 'workhorse authorize endpoint' do |with_checksum_deploy_he
   it_behaves_like 'handling empty values for username and channel'
   it_behaves_like 'handling checksum deploy header' if with_checksum_deploy_header
   it_behaves_like 'updating personal access token last used'
+
+  context 'with package protection rule for different roles and package_name_patterns', :enable_admin_mode do
+    using RSpec::Parameterized::TableSyntax
+
+    let_it_be(:pat_project_developer, freeze: false) { personal_access_token }
+    let_it_be(:pat_project_maintainer, freeze: false) do
+      create(:personal_access_token, user: create(:user, maintainer_of: [project]))
+    end
+
+    let_it_be(:pat_project_owner, freeze: false) do
+      create(:personal_access_token, user: create(:user, owner_of: [project]))
+    end
+
+    let_it_be(:pat_admin, freeze: false) { create(:personal_access_token, :admin_mode, user: create(:admin)) }
+
+    let(:package_protection_rule) do
+      create(:package_protection_rule, package_type: :conan, project: project)
+    end
+
+    let(:conan_package_name) { recipe_path_name }
+    let(:conan_package_name_no_match) { "#{conan_package_name}_no_match" }
+
+    before do
+      package_protection_rule.update!(
+        package_name_pattern: package_name_pattern,
+        minimum_access_level_for_push: minimum_access_level_for_push
+      )
+    end
+
+    shared_examples 'authorized package' do
+      it_behaves_like 'returning response status', :ok
+    end
+
+    shared_examples 'protected package' do
+      it_behaves_like 'conan structured error response',
+        status: :forbidden,
+        message: '403 Forbidden - Package protected.'
+    end
+
+    where(:package_name_pattern, :minimum_access_level_for_push, :personal_access_token, :shared_examples_name) do
+      ref(:conan_package_name)          | :maintainer | ref(:pat_project_developer)  | 'protected package'
+      ref(:conan_package_name)          | :maintainer | ref(:pat_project_maintainer) | 'authorized package'
+      ref(:conan_package_name)          | :owner      | ref(:pat_project_developer)  | 'protected package'
+      ref(:conan_package_name)          | :owner      | ref(:pat_project_owner)      | 'authorized package'
+      ref(:conan_package_name)          | :admin      | ref(:pat_project_owner)      | 'protected package'
+      ref(:conan_package_name)          | :admin      | ref(:pat_admin)              | 'authorized package'
+      ref(:conan_package_name_no_match) | :maintainer | ref(:pat_project_developer)  | 'authorized package'
+      ref(:conan_package_name_no_match) | :maintainer | ref(:pat_project_maintainer) | 'authorized package'
+      ref(:conan_package_name_no_match) | :admin      | ref(:pat_project_owner)      | 'authorized package'
+    end
+
+    with_them do
+      it_behaves_like params[:shared_examples_name]
+    end
+  end
 end
 
 RSpec.shared_examples 'protected package main example' do
   context 'with package protection rule for different roles and package_name_patterns', :enable_admin_mode do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:pat_project_developer) { personal_access_token }
-    let_it_be(:pat_project_maintainer) { create(:personal_access_token, user: create(:user, maintainer_of: [project])) }
-    let_it_be(:pat_project_owner) { create(:personal_access_token, user: create(:user, owner_of: [project])) }
-    let_it_be(:pat_instance_admin) { create(:personal_access_token, :admin_mode, user: create(:admin)) }
+    let_it_be(:pat_project_developer, freeze: false) { personal_access_token }
+    let_it_be(:pat_project_maintainer, freeze: false) do
+      create(:personal_access_token, user: create(:user, maintainer_of: [project]))
+    end
+
+    let_it_be(:pat_project_owner, freeze: false) do
+      create(:personal_access_token, user: create(:user, owner_of: [project]))
+    end
+
+    let_it_be(:pat_instance_admin, freeze: false) { create(:personal_access_token, :admin_mode, user: create(:admin)) }
 
     let(:package_protection_rule) do
       create(:package_protection_rule, package_type: :conan, project: project)
@@ -901,7 +952,9 @@ RSpec.shared_examples 'protected package main example' do
     end
 
     shared_examples 'protected package' do
-      it_behaves_like 'returning response status', 403
+      it_behaves_like 'conan structured error response',
+        status: :forbidden,
+        message: '403 Forbidden - Package protected.'
 
       it 'does not create any conan-related package records' do
         expect { subject }
@@ -956,20 +1009,29 @@ RSpec.shared_examples 'workhorse recipe file upload endpoint' do |revision: fals
   it_behaves_like 'protected package main example'
   it_behaves_like 'updating personal access token last used'
 
-  if revision
-    it { expect { request }.to change { Packages::Conan::RecipeRevision.count }.by(1) }
+  it 'creates a recipe revision', if: revision do
+    expect { request }.to change { Packages::Conan::RecipeRevision.count }.by(1)
+  end
 
-    context 'when the file already exists' do
-      let(:recipe_revision) { package.conan_recipe_revisions.first.revision }
-      let(:recipe_path_name) { package.name }
+  context 'when the file already exists' do
+    let(:recipe_revision) { package.conan_recipe_revisions.first.revision if revision }
+    let(:recipe_path_name) { package.name }
+    let(:package_file) { package.package_files.find_by(file_name: file_name) }
 
-      it 'does not upload the file again' do
-        expect { request }.not_to change { Packages::PackageFile.count }
-        expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response).to eq({
-          'message' => '400 Bad request - Validation failed: ' \
-            'File name already exists for the given recipe revision, package reference, and package revision'
-        })
+    it 'returns existing package file' do
+      expect { request }.not_to change { Packages::PackageFile.count }
+      expect(response).to have_gitlab_http_status(:success)
+      expect(json_response).to include('id' => package_file.id)
+    end
+
+    context 'with different content', unless: revision do
+      let(:headers_with_token) do
+        super().merge('X-Checksum-Sha1' => Digest::SHA1.hexdigest(file_name)) # rubocop:disable Fips/SHA1 -- conan uses SHA-1 hash
+      end
+
+      it 'creates a new package file' do
+        expect { subject }.to change { Packages::PackageFile.count }.by(1)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
   end
@@ -1000,26 +1062,33 @@ RSpec.shared_examples 'workhorse package file upload endpoint' do |revision: fal
   it_behaves_like 'protected package main example'
   it_behaves_like 'updating personal access token last used'
 
-  if revision
-    it 'creates a recipe and package revision' do
-      expect { request }
-        .to change { Packages::Conan::RecipeRevision.count }.by(1)
-        .and change { Packages::Conan::PackageRevision.count }.by(1)
+  it 'creates a recipe and package revision', if: revision do
+    expect { request }
+      .to change { Packages::Conan::RecipeRevision.count }.by(1)
+      .and change { Packages::Conan::PackageRevision.count }.by(1)
+  end
+
+  context 'when the file already exists' do
+    let(:recipe_revision) { package.conan_recipe_revisions.first.revision if revision }
+    let(:package_revision) { package.conan_package_revisions.first.revision if revision }
+    let(:conan_package_reference) { package.conan_package_references.first.reference }
+    let(:recipe_path_name) { package.name }
+    let(:package_file) { package.package_files.find_by(file_name: file_name) }
+
+    it 'returns existing package file' do
+      expect { request }.not_to change { Packages::PackageFile.count }
+      expect(response).to have_gitlab_http_status(:success)
+      expect(json_response).to include('id' => package_file.id)
     end
 
-    context 'when the file already exists' do
-      let(:recipe_revision) { package.conan_recipe_revisions.first.revision }
-      let(:package_revision) { package.conan_package_revisions.first.revision }
-      let(:conan_package_reference) { package.conan_package_references.first.reference }
-      let(:recipe_path_name) { package.name }
+    context 'with different content', unless: revision do
+      let(:headers_with_token) do
+        super().merge('X-Checksum-Sha1' => Digest::SHA1.hexdigest(file_name)) # rubocop:disable Fips/SHA1 -- conan uses SHA-1 hash
+      end
 
-      it 'does not upload the file again' do
-        expect { request }.not_to change { Packages::PackageFile.count }
-        expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response).to eq({
-          'message' => '400 Bad request - Validation failed: ' \
-            'File name already exists for the given recipe revision, package reference, and package revision'
-        })
+      it 'creates a new package file' do
+        expect { subject }.to change { Packages::PackageFile.count }.by(1)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
   end
@@ -1287,12 +1356,24 @@ RSpec.shared_examples 'package not found' do
   context 'when package does not exist' do
     let(:recipe_path) { "missing/0.1.0/#{project.full_path.tr('/', '+')}/stable" }
 
-    it 'returns 404 not found' do
-      subject
+    it_behaves_like 'conan structured error response',
+      status: :not_found,
+      message: '404 Package Not Found'
+  end
+end
 
-      expect(response).to have_gitlab_http_status(:not_found)
-      expect(json_response['message']).to eq('404 Package Not Found')
-    end
+RSpec.shared_examples 'conan structured error response' do |status:, message:|
+  it "returns structured error format with status #{Rack::Utils.status_code(status)}" do
+    subject
+
+    status_code = Rack::Utils.status_code(status)
+    expected_errors_message = message.to_s.sub(/\A#{status_code}\s+/, '')
+
+    expect(response).to have_gitlab_http_status(status)
+    expect(json_response['message']).to eq(message)
+    expect(json_response['errors']).to match_array([
+      { 'status' => status_code, 'message' => expected_errors_message }
+    ])
   end
 end
 
@@ -1307,9 +1388,9 @@ end
 RSpec.shared_examples 'GET package references metadata endpoint' do |with_recipe_revision: false|
   subject(:request) { get api(url), headers: headers }
 
-  let_it_be(:reference1) { package.conan_package_references.first }
+  let_it_be(:reference1, freeze: false) { package.conan_package_references.first }
 
-  let_it_be(:reference2) do
+  let_it_be(:reference2, freeze: false) do
     create(:conan_package_reference, package: package, info: { 'settings' => { 'os' => 'Linux' } })
   end
 
@@ -1372,13 +1453,29 @@ RSpec.shared_examples 'GET package references metadata endpoint' do |with_recipe
     context 'when recipe revision does not exist' do
       let(:recipe_revision) { OpenSSL::Digest.hexdigest('MD5', 'nonexistent-revision') }
 
-      it_behaves_like 'returning response status with message', status: :not_found,
-        message: '404 Revision Not Found'
+      it 'returns package references metadata', :aggregate_failures do
+        subject
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to include(
+          reference1.reference => reference1.info,
+          reference2.reference => reference2.info
+        )
+      end
+
+      context 'when packages_conan_v1_revisions_backward_compatibility is disabled' do
+        before do
+          stub_feature_flags(packages_conan_v1_revisions_backward_compatibility: false)
+        end
+
+        it_behaves_like 'returning response status with message', status: :not_found,
+          message: '404 Revision Not Found'
+      end
     end
 
     context 'with different recipe revisions' do
-      let_it_be(:recipe_revision2) { create(:conan_recipe_revision, package: package) }
-      let_it_be(:reference2) do
+      let_it_be(:recipe_revision2, freeze: false) { create(:conan_recipe_revision, package: package) }
+      let_it_be(:reference2, freeze: false) do
         create(:conan_package_reference, package: package, info: { 'settings' => { 'os' => 'Linux' } },
           recipe_revision: recipe_revision2)
       end

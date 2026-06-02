@@ -69,6 +69,10 @@ module PolicyActor
     false
   end
 
+  def confirmed?
+    false
+  end
+
   def can?(action, subject = :global)
     Ability.allowed?(self, action, subject)
   end
@@ -89,11 +93,19 @@ module PolicyActor
     false
   end
 
+  def can_admin_all_resources?
+    false
+  end
+
   def password_expired_if_applicable?
     false
   end
 
   def from_ci_job_token?
+    false
+  end
+
+  def ai_service_account?
     false
   end
 end

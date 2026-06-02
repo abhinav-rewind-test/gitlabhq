@@ -7,7 +7,7 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
   include SessionHelpers
 
   describe '#destroy' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
     let(:expected_context) do
       { 'meta.caller_id' => 'SessionsController#destroy',
         'meta.user' => user.username }
@@ -30,18 +30,6 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
       get new_user_session_path
     end
 
-    it 'pushes passkeys feature flag to frontend' do
-      perform_request
-
-      expect(response.body).to have_pushed_frontend_feature_flags(passkeys: true)
-    end
-
-    it 'pushes signInFormVue feature flag to frontend' do
-      perform_request
-
-      expect(response.body).to have_pushed_frontend_feature_flags(signInFormVue: true)
-    end
-
     it 'pushes twoStepSignIn feature flag to frontend' do
       perform_request
 
@@ -52,7 +40,7 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
   end
 
   describe '#create' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
     let(:expected_context) do
       { 'meta.caller_id' => 'SessionsController#create',
         'meta.user' => user.username }
@@ -97,28 +85,18 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
       post users_passkeys_sign_in_path, params: params
     end
 
-    context 'when :passkeys feature flag is off' do
+    it_behaves_like 'calls handle_passwordless_flow'
+
+    context 'when password authentication for web is disabled' do
       before do
-        stub_feature_flags(passkeys: false)
+        stub_application_setting(password_authentication_enabled_for_web: false)
       end
 
       it_behaves_like 'does not call handle_passwordless_flow'
     end
 
-    context 'when :passkeys feature flag is on' do
-      it_behaves_like 'calls handle_passwordless_flow'
-
-      context 'when password authentication for web is disabled' do
-        before do
-          stub_application_setting(password_authentication_enabled_for_web: false)
-        end
-
-        it_behaves_like 'does not call handle_passwordless_flow'
-      end
-    end
-
     context 'for passkey authentication', :clean_gitlab_redis_sessions do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
       let_it_be(:passkey) { create_passkey(user) }
 
       let(:device_response) { device_response_after_authentication(user, passkey) }
@@ -159,6 +137,82 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
     end
   end
 
+  # FF cleanup: self_managed_welcome_onboarding
+  describe 'POST /users/sign_in (self_managed_welcome_onboarding redirect)', feature_category: :onboarding do
+    let_it_be(:admin, freeze: false) { create(:admin) }
+    let_it_be(:regular_user, freeze: false) { create(:user) }
+
+    def sign_in_as(user)
+      post user_session_path, params: { user: { login: user.username, password: user.password } }
+    end
+
+    context 'when :self_managed_welcome_onboarding flag is enabled' do
+      context 'with an admin user and no groups (fresh install)' do
+        before do
+          stub_application_setting(admin_mode: false)
+          allow(Group).to receive(:exists?).and_return(false)
+        end
+
+        it 'redirects to new_admin_registrations_group_path' do
+          sign_in_as(admin)
+
+          expect(response).to redirect_to(new_admin_registrations_group_path)
+        end
+      end
+
+      context 'with an admin user when groups exist (upgrade scenario)' do
+        before do
+          allow(Group).to receive(:exists?).and_return(true)
+        end
+
+        it 'does not return the create first project path' do
+          sign_in_as(admin)
+
+          expect(response).to redirect_to(root_path)
+        end
+      end
+
+      context 'with a non-admin user' do
+        before do
+          allow(Group).to receive(:exists?).and_return(false)
+        end
+
+        it 'redirects to root path' do
+          sign_in_as(regular_user)
+
+          expect(response).to redirect_to(root_path)
+        end
+      end
+    end
+
+    context 'when on a Dedicated instance' do
+      before do
+        stub_application_setting(gitlab_dedicated_instance: true)
+        stub_application_setting(admin_mode: false)
+        allow(Group).to receive(:exists?).and_return(false)
+      end
+
+      it 'redirects to root path' do
+        sign_in_as(admin)
+
+        expect(response).to redirect_to(root_path)
+      end
+    end
+
+    context 'when :self_managed_welcome_onboarding flag is disabled' do
+      before do
+        stub_feature_flags(self_managed_welcome_onboarding: false)
+        allow(Group).to receive(:exists?).and_return(false)
+      end
+
+      it 'redirects to root path' do
+        sign_in_as(admin)
+
+        expect(response).to redirect_to(root_path)
+      end
+    end
+  end
+
   describe 'private methods' do
     context 'with .passwordless_passkey_params' do
       before do
@@ -190,6 +244,40 @@ RSpec.describe SessionsController, type: :request, feature_category: :system_acc
           expect(sanitized_params.to_h).not_to include({
             admin: true,
             require_two_factor_authentication: false
+          })
+        end
+      end
+    end
+
+    context 'with .user_params' do
+      context 'when parameter sanitization is applied' do
+        let(:params) do
+          {
+            user: {
+              login: 'john_doe@gmail.com ',
+              password: 'password123',
+              device_response: 'valid_response',
+              remember_me: '1',
+              admin: true,
+              require_two_factor_authentication_from_group: false
+            }
+          }
+        end
+
+        let(:sanitized_params) { controller.send(:user_params) }
+
+        it 'returns a hash of only permitted scalar keys, with a stripped login' do
+          post user_session_path, params: params
+
+          expect(sanitized_params.to_h).to include({
+            login: 'john_doe@gmail.com',
+            device_response: 'valid_response',
+            remember_me: '1'
+          })
+
+          expect(sanitized_params.to_h).not_to include({
+            admin: true,
+            require_two_factor_authentication_from_group: false
           })
         end
       end

@@ -1,16 +1,18 @@
 <script>
 import { GlBadge, GlButton, GlIcon } from '@gitlab/ui';
 import { createAlert } from '~/alert';
+import { reportToSentry } from '~/ci/utils';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import { __ } from '~/locale';
 import { getQueryHeaders } from '~/ci/pipeline_details/graph/utils';
 import { graphqlEtagPipelinePath } from '~/ci/pipeline_details/utils';
-import { toggleQueryPollingByVisibility } from '~/graphql_shared/utils';
+import { setupQueryPollingByVisibility } from '~/graphql_shared/utils';
 import getPipelineFailedJobsCount from '../../graphql/queries/get_pipeline_failed_jobs_count.query.graphql';
 import FailedJobsList from './failed_jobs_list.vue';
 import { POLL_INTERVAL } from './constants';
 
 export default {
+  name: 'PipelineFailedJobsWidget',
   fetchError: __('An error occured fetching failed jobs count'),
   components: {
     GlBadge,
@@ -37,7 +39,10 @@ export default {
   apollo: {
     failedJobsCount: {
       context() {
-        return getQueryHeaders(this.graphqlResourceEtag);
+        return {
+          ...getQueryHeaders(this.graphqlResourceEtag),
+          featureCategory: 'continuous_integration',
+        };
       },
       query: getPipelineFailedJobsCount,
       variables() {
@@ -51,8 +56,9 @@ export default {
 
         return project?.pipeline?.jobs?.count || 0;
       },
-      error() {
+      error(err) {
         createAlert({ message: this.$options.fetchError });
+        reportToSentry(this.$options.name, err);
       },
     },
   },
@@ -87,11 +93,16 @@ export default {
         this.$apollo.queries.failedJobsCount.startPolling(POLL_INTERVAL);
         // ensure we only toggle polling back on tab switch
         // if the pipeline is active
-        toggleQueryPollingByVisibility(this.$apollo.queries.failedJobsCount, POLL_INTERVAL);
+        this.pollingVisibilityCleanup?.();
+        this.pollingVisibilityCleanup = setupQueryPollingByVisibility(
+          this.$apollo.queries.failedJobsCount,
+          POLL_INTERVAL,
+        );
       }
     },
   },
   beforeDestroy() {
+    this.pollingVisibilityCleanup?.();
     this.$apollo.queries.failedJobsCount.stopPolling();
   },
   methods: {
@@ -104,8 +115,9 @@ export default {
         // to avoid redundant calls
         this.$apollo.queries.failedJobsCount.stopPolling();
         await this.$apollo.queries.failedJobsCount.refetch();
-      } catch {
+      } catch (err) {
         createAlert({ message: this.$options.fetchError });
+        reportToSentry(this.$options.name, err);
       } finally {
         if (this.isPipelineActive) {
           this.$apollo.queries.failedJobsCount.startPolling(POLL_INTERVAL);
@@ -120,7 +132,7 @@ export default {
   <crud-component
     :id="$options.ariaControlsId"
     class="expandable-card"
-    :class="{ 'is-collapsed gl-border-transparent hover:gl-border-default': !isExpanded }"
+    :class="{ 'is-collapsed': !isExpanded }"
     data-testid="failed-jobs-card"
     @click="toggleWidget"
   >
@@ -143,16 +155,6 @@ export default {
       <gl-badge>
         {{ failedJobsCountBadge }}
       </gl-badge>
-    </template>
-    <template #actions>
-      <gl-button
-        v-if="isExpanded"
-        href="https://gitlab.com/gitlab-org/gitlab/-/issues/502436"
-        data-testid="feedback-button"
-        size="small"
-      >
-        {{ __('Leave feedback') }}
-      </gl-button>
     </template>
     <failed-jobs-list
       v-if="isExpanded"

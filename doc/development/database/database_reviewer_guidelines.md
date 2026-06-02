@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Database Reviewer Guidelines
 ---
 
@@ -41,7 +41,7 @@ to your profile YAML file:
 1. Create the merge request
    [using the "Database reviewer" template](https://gitlab.com/gitlab-com/www-gitlab-com/-/blob/master/.gitlab/merge_request_templates/Database%20reviewer.md).
 1. Assign to a database maintainer or the
-   [Database Team's Engineering Manager](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/data-access/database-framework/).
+   [Database Team's Engineering Manager](https://handbook.gitlab.com/handbook/engineering/data-engineering/database-excellence/database-frameworks/).
 
 After the `team.yml` update is merged, the [Reviewer roulette](../code_review.md#reviewer-roulette)
 may recommend you as a database reviewer.
@@ -88,5 +88,5 @@ We are doing reviews to help the rest of the GitLab team and, at the same time, 
 to more use cases, get a lot of insights and hone our database and data management skills.
 
 If you are feeling overwhelmed, think you are at capacity, and are unable to accept any more
-reviews until some have been completed, communicate this through your GitLab status by setting
-the `:red_circle:` emoji and mentioning that you are at capacity in the status text.
+reviews until some have been completed, notify the merge request author with a comment on the merge request and
+reassign the review to another available reviewer using [Reviewer roulette](../code_review.md#reviewer-roulette).

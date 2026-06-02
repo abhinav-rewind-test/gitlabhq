@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Sentry monitoring in the frontend development of GitLab
 ---
 
@@ -18,7 +18,7 @@ We monitor two kinds of data: **Errors** and **Performance**.
 
 ## Start using Sentry
 
-Our Sentry instance is located at [https://new-sentry.gitlab.net/](https://new-sentry.gitlab.net/).
+Our Sentry instance is located at <https://new-sentry.gitlab.net/>.
 Only GitLab team members can access Sentry.
 
 After your first sign in you can join the `#gitlab` team by selecting **Join a team**. Confirm that
@@ -91,6 +91,37 @@ We mark errors with two additional custom `tags` to help identify their source:
 - `page`: Identifier of method called in the controller to render the page. (For example, `projects:merge_requests:index` or `projects:pipelines:index`.) **Source**: [`body_data_page`](https://gitlab.com/gitlab-org/gitlab/blob/b2ea95b8b1f15228a2fd5fa3fbd316857d5676b8/app/helpers/application_helper.rb#L144).
 
 Frontend engineering team members can filter errors relevant to their group and/or page.
+
+### Override feature_category for globally-loaded code
+
+The `feature_category` tag is automatically set from `gon.feature_category`, which reflects the Rails controller's category for the current page. This works well for page-specific code, but causes problems for globally-loaded JavaScript that runs on every page.
+
+Override the `feature_category` tag when your code:
+
+- Loads on all pages (for example, super sidebar, navigation, or global search).
+- Is embedded across multiple feature areas (for example, AI features available everywhere).
+- Would otherwise inherit different categories depending on which page the user is on.
+
+Without an override, errors from globally-loaded code are reported to random feature category buckets based on the current page, making them difficult to track and assign to the correct team.
+
+To override `feature_category`, pass an explicit `feature_category` tag when calling `captureException`:
+
+```javascript
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
+
+try {
+  // Code that may fail at runtime
+} catch (error) {
+  // Override gon.feature_category as this code loads on all pages
+  Sentry.captureException(error, { tags: { feature_category: 'navigation' } });
+}
+```
+
+Use the feature category that owns the code, not the page where the error occurred. For example:
+
+- Super sidebar code → `navigation`
+- Global search → `global_search`
+- Tracking utilities → `product_analytics`
 
 ## Performance Monitoring
 

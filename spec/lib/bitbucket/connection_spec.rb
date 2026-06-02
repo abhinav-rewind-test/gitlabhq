@@ -2,7 +2,7 @@
 
 require 'fast_spec_helper'
 
-RSpec.describe Bitbucket::Connection, feature_category: :integrations do
+RSpec.describe Bitbucket::Connection, feature_category: :importers do
   subject(:bitbucket_connection) { described_class.new(options) }
 
   let(:options) do
@@ -17,26 +17,6 @@ RSpec.describe Bitbucket::Connection, feature_category: :integrations do
     context 'when oauth' do
       it 'uses OAuth connection' do
         expect(bitbucket_connection.connection).to be_an_instance_of(Bitbucket::OauthConnection)
-      end
-    end
-
-    context 'when app password' do
-      let(:options) do
-        {
-          username: 'foo',
-          app_password: 'bar'
-        }
-      end
-
-      it 'uses API connection' do
-        expect(bitbucket_connection.connection).to be_an_instance_of(Bitbucket::ApiConnection)
-      end
-
-      it 'stores username and app_password' do
-        connection = bitbucket_connection.connection
-
-        expect(connection.username).to eq('foo')
-        expect(connection.app_password).to eq('bar')
       end
     end
 
@@ -68,6 +48,16 @@ RSpec.describe Bitbucket::Connection, feature_category: :integrations do
       end
 
       bitbucket_connection.get
+    end
+  end
+
+  describe '#get_response_code' do
+    it 'delegates to underlying connection' do
+      expect_next_instance_of(Bitbucket::OauthConnection) do |connection|
+        expect(connection).to receive(:get_response_code)
+      end
+
+      bitbucket_connection.get_response_code
     end
   end
 end

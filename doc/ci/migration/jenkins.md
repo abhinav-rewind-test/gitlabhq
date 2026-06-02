@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Migrate from Jenkins
 ---
 
@@ -28,9 +28,9 @@ Additionally, there are some important differences between the two:
 - GitLab CI/CD pipelines are all configured in a YAML format configuration file.
   Jenkins uses either a Groovy format configuration file (declarative pipelines)
   or Jenkins DSL (scripted pipelines).
-- GitLab offers [GitLab.com](../../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage), a multi-tenant SaaS service,
+- GitLab offers [GitLab.com](../../subscriptions/manage_seats.md#gitlabcom-billing-and-usage), a multi-tenant SaaS service,
   and [GitLab Dedicated](../../subscriptions/gitlab_dedicated/_index.md), a fully isolated
-  single-tenant SaaS service. You can also run your own [GitLab Self-Managed](../../subscriptions/manage_subscription.md)
+  single-tenant service. You can also run your own [GitLab Self-Managed](../../subscriptions/manage_subscription.md)
   instance. Jenkins deployments must be self-hosted.
 - GitLab provides source code management (SCM) out of the box. Jenkins requires a separate
   SCM solution to store code.
@@ -715,7 +715,7 @@ Before doing any migration work, you should first:
 1. Migrate projects from your SCM solution to GitLab.
    - (Recommended) You can use the available [importers](../../user/import/_index.md)
      to automate mass imports from external SCM providers.
-   - You can [import repositories by URL](../../user/project/import/repo_by_url.md).
+   - You can [import repositories by URL](../../user/import/third_party_systems/repo_by_url.md).
 1. Create a `.gitlab-ci.yml` file in each project.
 1. Migrate Jenkins configuration to GitLab CI/CD jobs and configure them to show results directly in merge requests.
 1. Migrate deployment jobs by using [cloud deployment templates](../cloud_deployment/_index.md),

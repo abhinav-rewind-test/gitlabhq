@@ -15,11 +15,12 @@ require 'sprockets/railtie'
 
 require 'gitlab/utils/all'
 
+require_relative 'freeze_gems'
 Bundler.require(*Rails.groups)
 
 module Gitlab
   class Application < Rails::Application
-    config.load_defaults 7.1
+    config.load_defaults 7.2
 
     # This section contains configuration from Rails upgrades to override the new defaults so that we
     # keep existing behavior.
@@ -30,13 +31,17 @@ module Gitlab
     #
     # To switch a setting to the new default value, we just need to delete the specific line here.
 
+    # Rails 7.2
+    config.active_record.postgresql_adapter_decode_dates = false # New default is `true`
+    config.active_record.validate_migration_timestamps = false # New default is `true`
+    config.yjit = false # New default is `true`
+
     # Rails 7.1
     config.active_record.default_column_serializer = Psych # New default is `nil`
     config.active_record.raise_on_assign_to_attr_readonly = false # New default is `true`
     config.active_record.run_after_transaction_callbacks_in_order_defined = false # New default is `true`
     config.active_record.run_commit_callbacks_on_first_saved_instances_in_transaction = true # New default is `false`
     config.active_record.sqlite3_adapter_strict_strings_by_default = false # New default is `true`
-    config.action_controller.allow_deprecated_parameters_hash_equality = true
     config.action_view.sanitizer_vendor = Rails::HTML4::Sanitizer # New default is `Rails::HTML5::Sanitizer`
     config.add_autoload_paths_to_load_path = true # New default is `false`
     config.active_record.generate_secure_token_on = :create # New default is `:initialize`
@@ -98,6 +103,7 @@ module Gitlab
     require_dependency Rails.root.join('lib/gitlab/middleware/handle_malformed_strings')
     require_dependency Rails.root.join('lib/gitlab/middleware/json_validation')
     require_dependency Rails.root.join('lib/gitlab/middleware/path_traversal_check')
+    require_dependency Rails.root.join('lib/gitlab/middleware/path_depth_check')
     require_dependency Rails.root.join('lib/gitlab/middleware/rack_multipart_tempfile_factory')
     require_dependency Rails.root.join('lib/gitlab/middleware/rack_attack_headers')
     require_dependency Rails.root.join('lib/gitlab/middleware/secure_headers')
@@ -220,6 +226,7 @@ module Gitlab
     # - Sentry DSN (:sentry_dsn)
     # - File content from Web Editor (:content)
     # - Jira shared secret (:sharedSecret)
+    # - IAM login and consent challenges and verifiers (:login_challenge, :login_verifier, :consent_challenge, :consent_verifier)
     # - Titles, bodies, and descriptions for notes, issues, etc.
     #
     # NOTE: It is **IMPORTANT** to also update labkit's filter when
@@ -259,6 +266,10 @@ module Gitlab
       question
       SAMLResponse
       selectedText
+      login_challenge
+      login_verifier
+      consent_challenge
+      consent_verifier
     ]
 
     # Enable escaping HTML in JSON.
@@ -358,6 +369,7 @@ module Gitlab
     config.assets.precompile << "page_bundles/observability.css"
     config.assets.precompile << "page_bundles/oncall_schedules.css"
     config.assets.precompile << "page_bundles/operations.css"
+    config.assets.precompile << "page_bundles/orbit.css"
     config.assets.precompile << "page_bundles/organizations.css"
     config.assets.precompile << "page_bundles/paginated_table.css"
     config.assets.precompile << "page_bundles/personal_homepage.css"
@@ -372,6 +384,7 @@ module Gitlab
     config.assets.precompile << "page_bundles/projects_edit.css"
     config.assets.precompile << "page_bundles/promotions.css"
     config.assets.precompile << "page_bundles/rapid_diffs.css"
+    config.assets.precompile << "page_bundles/registration_two_panel.css"
     config.assets.precompile << "page_bundles/registrations.css"
     config.assets.precompile << "page_bundles/releases.css"
     config.assets.precompile << "page_bundles/remote_development.css"
@@ -395,7 +408,6 @@ module Gitlab
     config.assets.precompile << "page_bundles/xterm.css"
     config.assets.precompile << "page_bundles/zuora.css"
     config.assets.precompile << "lazy_bundles/cropper.css"
-    config.assets.precompile << "lazy_bundles/gridstack.css"
     config.assets.precompile << "performance_bar.css"
     config.assets.precompile << "disable_animations.css"
     config.assets.precompile << "test_environment.css"
@@ -425,6 +437,8 @@ module Gitlab
     config.assets.precompile << "icons.json"
     config.assets.precompile << "file_icons/file_icons.svg"
     config.assets.precompile << "file_icons/file_icons.json"
+    config.assets.precompile << "illustrations.svg"
+    config.assets.precompile << "illustrations.json"
     config.assets.precompile << "illustrations/*.svg"
     config.assets.precompile << "illustrations/*.png"
 
@@ -465,6 +479,8 @@ module Gitlab
 
     config.middleware.insert_after ::Gitlab::Middleware::HandleMalformedStrings, ::Gitlab::Middleware::PathTraversalCheck
 
+    config.middleware.insert_after ::Gitlab::Middleware::PathTraversalCheck, ::Gitlab::Middleware::PathDepthCheck
+
     config.middleware.insert_after Rack::Sendfile, ::Gitlab::Middleware::RackMultipartTempfileFactory
 
     config.middleware.insert_before Rack::Runtime, ::Gitlab::Middleware::CompressedJson
@@ -478,7 +494,7 @@ module Gitlab
 
     # Allow access to GitLab API from other domains
     config.middleware.insert_before Warden::Manager, Rack::Cors do
-      headers_to_expose = %w[Link X-Total X-Total-Pages X-Per-Page X-Page X-Next-Page X-Prev-Page X-Gitlab-Blob-Id X-Gitlab-Commit-Id X-Gitlab-Content-Sha256 X-Gitlab-Encoding X-Gitlab-File-Name X-Gitlab-File-Path X-Gitlab-Last-Commit-Id X-Gitlab-Ref X-Gitlab-Size X-Request-Id ETag]
+      headers_to_expose = %w[Link X-Total X-Total-Pages X-Per-Page X-Page X-Next-Page X-Prev-Page X-Gitlab-Blob-Id X-Gitlab-Commit-Id X-Gitlab-Content-Sha256 X-Gitlab-Encoding X-Gitlab-File-Name X-Gitlab-File-Path X-Gitlab-Last-Commit-Id X-Gitlab-Ref X-Gitlab-Size X-Request-Id ETag X-Streaming-Format]
 
       allow do
         origins Gitlab.config.gitlab.url

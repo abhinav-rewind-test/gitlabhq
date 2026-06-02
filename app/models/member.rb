@@ -16,8 +16,18 @@ class Member < ApplicationRecord
   include RestrictedSignup
   include Gitlab::Experiment::Dsl
   include Ci::PipelineScheduleOwnershipValidator
+  include Cells::Claimable
 
   ignore_column :last_activity_on, remove_with: '17.8', remove_after: '2024-12-23'
+
+  cells_claims_attribute :invite_email,
+    type: CLAIMS_BUCKET_TYPE::INVITE_EMAILS,
+    feature_flag: :cells_claims_members,
+    if: ->(record) { record.invite_email.present? }
+
+  cells_claims_scope { where.not(invite_email: nil) }
+
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::NAMESPACE, subject_key: :member_namespace_id
 
   AVATAR_SIZE = 40
   ACCESS_REQUEST_APPROVERS_TO_BE_NOTIFIED_LIMIT = 10
@@ -440,8 +450,8 @@ class Member < ApplicationRecord
       when 'oldest_sign_in' then order_oldest_sign_in
       when 'recent_created_user' then order_recent_created_user
       when 'oldest_created_user' then order_oldest_created_user
-      when 'recent_last_activity' then order_recent_last_activity
-      when 'oldest_last_activity' then order_oldest_last_activity
+      when 'last_activity_on_desc' then order_recent_last_activity
+      when 'last_activity_on_asc' then order_oldest_last_activity
       when 'last_joined' then order_created_desc
       when 'oldest_joined' then order_created_asc
       else
@@ -517,7 +527,7 @@ class Member < ApplicationRecord
       Arel::Nodes::As.new(Arel::Nodes::SqlLiteral.new('0'), Arel::Nodes::SqlLiteral.new('access_level'))
     end
 
-    # overriden in EE
+    # overridden in EE
     def member_role_id(_group)
       null_member_role_id_sql
     end
@@ -668,15 +678,12 @@ class Member < ApplicationRecord
   def prevent_role_assignement?(current_user, params)
     return false if current_user.can_admin_all_resources?
 
-    # access_level will already be set for accepting access request invites
-    assigning_access_level = params[:access_level] || access_level
-    current_access_level = params[:current_access_level]
+    assigning_access_level = params[:access_level]
+    current_access_level = params[:current_access_level] || access_level
 
-    # check if it's a valid downgrade, if the member's current access level encompasses the target level
-    return false if Gitlab::Access.level_encompasses?(
-      current_access_level: current_access_level,
-      level_to_assign: assigning_access_level
-    )
+    # Check that the current user's role encompasses the user's role being acted upon
+    # we do not want users to be able to downgrade roles that they cannot assign
+    return true unless source.can_assign_role?(current_user, current_access_level)
 
     !source.can_assign_role?(current_user, assigning_access_level)
   end
@@ -843,7 +850,7 @@ class Member < ApplicationRecord
     if access_level && highest_group_member && highest_group_member.access_level > access_level
       error_parameters = { access: highest_group_member.human_access, group_name: highest_group_member.group.name }
 
-      errors.add(:access_level, s_("should be greater than or equal to %{access} inherited membership from group %{group_name}") % error_parameters)
+      errors.add(:access_level, _("should be greater than or equal to %{access} inherited membership from group %{group_name}") % error_parameters)
     end
   end
 

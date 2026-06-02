@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Releases
 description: Releases, versioning, assets, tags, milestones, and evidence.
 ---
@@ -40,8 +40,7 @@ When you create a release, or after, you can:
 
 To view a list of releases:
 
-- On the left sidebar, select **Deploy** > **Releases**, or
-
+- In the left sidebar, select **Deploy** > **Releases**, or
 - On the project's overview page, if at least one release exists, select the number of releases.
 
   ![Number of Releases](img/releases_count_v13_2.png "Incremental counter of Releases")
@@ -110,13 +109,13 @@ You can create a release:
 
 Prerequisites:
 
-- You must have at least the Developer role for a project. For more information, read
+- You must have the Developer, Maintainer, or Owner role for a project. For more information, read
   [Release permissions](#release-permissions).
 
 To create a release in the Releases page:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Releases** and select **New release**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Deploy** > **Releases** and select **New release**.
 1. From the [**Tag name**](release_fields.md#tag-name) dropdown list, either:
    - Select an existing Git tag. Selecting an existing tag that is already associated with a release
      results in a validation error.
@@ -231,7 +230,7 @@ You can create a release ahead of time by using the [Releases API](../../../api/
 When you set a future `released_at` date, an **Upcoming Release** badge is displayed next to the
 release tag. When the `released_at` date and time has passed, the badge is automatically removed.
 
-![An upcoming release](img/upcoming_release_v12_7.png)
+![An upcoming release](img/upcoming_release_v18_8.png)
 
 ## Historical releases
 
@@ -254,11 +253,11 @@ To edit the details of a release after it's created, you can use the
 
 Prerequisites:
 
-- You must have at least the Developer role.
+- You must have the Developer, Maintainer, or Owner role.
 
 In the UI:
 
-1. On the left sidebar, select **Deploy** > **Releases**.
+1. In the left sidebar, select **Deploy** > **Releases**.
 1. In the upper-right corner of the release you want to modify, select **Edit this release** (the pencil icon).
 1. On the **Edit Release** page, change the release's details.
 1. Select **Save changes**.
@@ -277,15 +276,15 @@ Deleting a Git tag associated with a release also deletes the release.
 
 Prerequisites:
 
-- You must have at least the Developer role. Read more about [Release permissions](#release-permissions).
+- You must have the Developer, Maintainer, or Owner role. Read more about [Release permissions](#release-permissions).
 
 To delete a release, use either the
 [Delete a release API](../../../api/releases/_index.md#delete-a-release) or the UI.
 
 In the UI:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Releases**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Deploy** > **Releases**.
 1. In the upper-right corner of the release you want to delete, select **Edit this release**
    ({{< icon name="pencil" >}}).
 1. On the **Edit Release** page, select **Delete**.
@@ -302,7 +301,7 @@ the [Releases API](../../../api/releases/_index.md#create-a-release).
 
 In the user interface, to associate milestones to a release:
 
-1. On the left sidebar, select **Deploy** > **Releases**.
+1. In the left sidebar, select **Deploy** > **Releases**.
 1. In the upper-right corner of the release you want to modify, select **Edit this release** (the pencil icon).
 1. From the **Milestones** list, select each milestone you want to associate. You can select multiple milestones.
 1. Select **Save changes**.
@@ -330,7 +329,7 @@ You can be notified by email when a new release is created for your project.
 
 To subscribe to notifications for releases:
 
-1. On the left sidebar, select **Project overview**.
+1. In the left sidebar, select **Project overview**.
 1. Select **Notification setting** (the bell icon).
 1. In the list, select **Custom**.
 1. Select the **New release** checkbox.
@@ -381,8 +380,8 @@ This approach offers deployment control during critical maintenance, and ensures
 To set a deploy freeze window in the UI, complete these steps:
 
 1. Sign in to GitLab as a user with the Maintainer role.
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Scroll to **Deploy freezes**.
 1. Select **Expand** to see the deploy freeze table.
 1. Select **Add deploy freeze** to open the deploy freeze modal.
@@ -400,7 +399,7 @@ For more information, see [Deployment safety](../../../ci/environments/deploymen
 
 ### View a release and download assets
 
-- Users with at least the Reporter role
+- Users with the Reporter, Developer, Maintainer, or Owner role
   have read and download access to the project releases.
 - Users with the Guest role
   have read and download access to the project releases.
@@ -427,13 +426,13 @@ To make releases available publicly, set the following [project settings](../set
 
 ### Create, update, and delete a release and its assets
 
-- Users with at least the Developer role
+- Users with the Developer, Maintainer, or Owner role
   have write access to the project releases and assets.
 - If a release is associated with a [protected tag](../protected_tags.md),
   the user must be [allowed to create the protected tag](../protected_tags.md#configure-protected-tags) too.
 
 As an example of release permission control, you can allow only
-users with at least the Maintainer role
+users with the Maintainer or Owner role
 to create, update, and delete releases by protecting the tag with a wildcard (`*`),
 and set **Maintainer** in the **Allowed to create** column.
 

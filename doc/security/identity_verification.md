@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Identity verification
 ---
 
@@ -58,7 +58,7 @@ Some countries have limited or no support for phone number verification:
   enforcement policies.
 
 If phone verification is unavailable in your country, try [credit card verification](#credit-card-verification)
-or create a [support ticket](https://about.gitlab.com/support/).
+or create a [support ticket](https://support.gitlab.com/).
 
 | Country | Support level |
 |---------|---------------|

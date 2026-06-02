@@ -28,6 +28,9 @@ export const rawMockData = {
   canDisableMemberPromotionManagement: false,
   rolePromotionRequestsPath: '/admin/role_promotion',
   licensedUserCount: '',
+  ldapSyncConfigured: 'false',
+  samlScimConfigured: 'false',
+  contractOveragesAllowed: 'true',
 };
 
 export const mockData = {
@@ -60,4 +63,7 @@ export const mockData = {
   canDisableMemberPromotionManagement: false,
   rolePromotionRequestsPath: '/admin/role_promotion',
   licensedUserCount: '',
+  ldapSyncConfigured: false,
+  samlScimConfigured: false,
+  contractOveragesAllowed: true,
 };

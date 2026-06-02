@@ -46,6 +46,7 @@ describe('WorkItemMilestone component', () => {
     searchQueryHandler = successSearchQueryHandler,
     mutationHandler = successUpdateWorkItemMutationHandler,
     isGroup = false,
+    provide = {},
   } = {}) => {
     wrapper = mountFn(WorkItemMilestone, {
       apolloProvider: createMockApollo([
@@ -59,6 +60,9 @@ describe('WorkItemMilestone component', () => {
         workItemId,
         workItemType,
         isGroup,
+      },
+      provide: {
+        ...provide,
       },
     });
   };
@@ -157,6 +161,15 @@ describe('WorkItemMilestone component', () => {
       await nextTick();
 
       expect(findSidebarDropdownWidget().props('updateInProgress')).toBe(true);
+      expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith({
+        input: {
+          id: workItemId,
+          milestoneWidget: {
+            milestoneId: null,
+          },
+        },
+        useWorkItemFeatures: false,
+      });
 
       await waitForPromises();
       expect(findSidebarDropdownWidget().props('updateInProgress')).toBe(false);
@@ -189,8 +202,8 @@ describe('WorkItemMilestone component', () => {
   describe('Error handlers', () => {
     it.each`
       errorType          | expectedErrorMessage                                                 | mockValue                              | resolveFunction
-      ${'graphql error'} | ${'Something went wrong while updating the task. Please try again.'} | ${updateWorkItemMutationErrorResponse} | ${'mockResolvedValue'}
-      ${'network error'} | ${'Something went wrong while updating the task. Please try again.'} | ${new Error()}                         | ${'mockRejectedValue'}
+      ${'graphql error'} | ${'Something went wrong while updating the Task. Please try again.'} | ${updateWorkItemMutationErrorResponse} | ${'mockResolvedValue'}
+      ${'network error'} | ${'Something went wrong while updating the Task. Please try again.'} | ${new Error()}                         | ${'mockRejectedValue'}
     `(
       'emits an error when there is a $errorType',
       async ({ mockValue, expectedErrorMessage, resolveFunction }) => {
@@ -223,7 +236,26 @@ describe('WorkItemMilestone component', () => {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_milestone',
         property: 'type_Task',
+        extra: { viewContext: 'full_screen' },
       });
+    });
+  });
+
+  describe('when workItemFeaturesField feature flag is enabled', () => {
+    it('passes useWorkItemFeatures as true to the mutation', async () => {
+      createComponent({
+        canUpdate: true,
+        provide: { glFeatures: { workItemFeaturesField: true } },
+      });
+
+      showDropdown();
+      findSidebarDropdownWidget().vm.$emit('updateValue', null);
+
+      await waitForPromises();
+
+      expect(successUpdateWorkItemMutationHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ useWorkItemFeatures: true }),
+      );
     });
   });
 });

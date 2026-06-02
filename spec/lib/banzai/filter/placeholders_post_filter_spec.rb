@@ -40,7 +40,7 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group) }
   let_it_be(:private_group) { create(:group, :private) }
-  let_it_be(:project, reload: true) do
+  let_it_be_with_reload(:project) do
     create(:project, :small_repo, :public, group: group, create_tag: 'test', path: 'project-img')
   end
 
@@ -186,7 +186,7 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
   end
 
   context 'when private project' do
-    let_it_be(:project, reload: true) { create(:project, :small_repo, group: group, create_tag: 'test') }
+    let_it_be_with_reload(:project) { create(:project, :small_repo, group: group, create_tag: 'test') }
 
     context 'with no access' do
       it_behaves_like 'placeholders with no access'
@@ -216,7 +216,7 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
   end
 
   context 'when private group, private project' do
-    let_it_be(:project, reload: true) { create(:project, :small_repo, group: private_group, create_tag: 'test') }
+    let_it_be_with_reload(:project) { create(:project, :small_repo, group: private_group, create_tag: 'test') }
 
     context 'with no access' do
       it_behaves_like 'placeholders with no access, no group'
@@ -240,13 +240,13 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
   end
 
   context 'when project has a disabled repository' do
-    let_it_be(:project, reload: true) { create(:project, :public, :repository_disabled, group: group) }
+    let_it_be_with_reload(:project) { create(:project, :public, :repository_disabled, group: group) }
 
     it_behaves_like 'placeholders with access, no code access'
   end
 
   context 'when project has no repository' do
-    let_it_be(:project, reload: true) { create(:project, :public, group: group) }
+    let_it_be_with_reload(:project) { create(:project, :public, group: group) }
 
     it_behaves_like 'placeholders with access, no code access'
   end
@@ -388,10 +388,11 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
 
     context 'when asset proxy is enabled' do
       before do
-        stub_asset_proxy_setting(enabled: true)
-        stub_asset_proxy_setting(secret_key: 'shared-secret')
-        stub_asset_proxy_setting(url: 'https://assets.example.com')
-        stub_asset_proxy_setting(allowlist: %w[gitlab.com *.mydomain.com])
+        stub_asset_proxy_enabled(
+          url: 'https://assets.example.com',
+          secret_key: 'shared-secret',
+          allowlist: %w[gitlab.com *.mydomain.com]
+        )
       end
 
       it 'generates the correct attributes' do
@@ -408,6 +409,32 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
     end
   end
 
+  context 'when image with placeholder is inside an <a> with a non-matching href' do
+    before do
+      project.add_member(user, Gitlab::Access::GUEST)
+    end
+
+    it 'does not update the parent <a> href' do
+      markdown = '[![](https://%{gitlab_server}/foo.png)](/some/other/path)'
+
+      result = run_filter(markdown)
+      doc = Nokogiri::HTML.fragment(result)
+      link = doc.at_css('a')
+
+      expect(link['href']).to eq('/some/other/path')
+    end
+
+    it 'still replaces the image src' do
+      markdown = '[![](https://%{gitlab_server}/foo.png)](/some/other/path)'
+
+      result = run_filter(markdown)
+      doc = Nokogiri::HTML.fragment(result)
+      img = doc.at_css('img')
+
+      expect(img['data-src']).to eq("https://#{Gitlab.config.gitlab.host}/foo.png")
+    end
+  end
+
   context 'when placeholders in an unsupported node' do
     before do
       project.add_member(user, Gitlab::Access::GUEST)
@@ -416,7 +443,7 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
     it 'does not replace it' do
       markdown = '<code data-placeholder>%{gitlab-server}</code>'
 
-      expect(run_filter(markdown)).to include '<code data-placeholder>%{gitlab-server}</code>'
+      expect(run_filter(markdown)).to include_html '<code data-placeholder>%{gitlab-server}</code>'
     end
   end
 
@@ -524,7 +551,7 @@ RSpec.describe Banzai::Filter::PlaceholdersPostFilter, feature_category: :markdo
         '<span data-placeholder>%{gitlab_server}</span>'
     end
 
-    let(:ends_with) { '<span data-placeholder>%{gitlab_server}</span>' }
+    let(:ends_with) { '<span data-placeholder="">%{gitlab_server}</span>' }
 
     before do
       stub_const('Banzai::Filter::PlaceholdersPostFilter::FILTER_ITEM_LIMIT', 2)

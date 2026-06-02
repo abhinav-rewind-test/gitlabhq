@@ -1,7 +1,7 @@
 ---
-stage: Deploy
-group: Environments
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+stage: Verify
+group: Runner Core
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: リリース
 description: リリース、バージョニング、アセット、タグ、マイルストーン、エビデンス
 ---
@@ -22,13 +22,10 @@ description: リリース、バージョニング、アセット、タグ、マ�
 - 対応するアセットを含む特定のバージョンをダウンロードする機能
 - プロジェクトの経時的な進化を追跡するシンプルな方法
 
-{{< alert type="warning" >}}
+> [!warning]
+> リリースに関連付けられたGitタグを削除すると、そのリリースも削除されます。
 
-リリースに関連付けられたGitタグを削除すると、リリースも削除されます。
-
-{{< /alert >}}
-
-リリースを作成する際、または作成後は、以下を実行できます:
+リリースを作成する際、または作成後は、以下を実行できます。
 
 - リリースノートを追加する。
 - リリースに関連付けられたGitタグにメッセージを追加する。
@@ -39,18 +36,17 @@ description: リリース、バージョニング、アセット、タグ、マ�
 
 リリースのリストを表示するには:
 
-- 左側のサイドバーで**デプロイ** > **リリース**を選択するか、または
-
+- 左サイドバーで、**デプロイ** > **リリース**を選択するか、
 - プロジェクトの概要ページに少なくとも1つのリリースがある場合は、リリースの数を選択します。
 
   ![リリースの数](img/releases_count_v13_2.png "リリースの増分カウンター")
 
   - 公開プロジェクトでは、すべてのユーザーにこの数が表示されます。
-  - プライベートプロジェクトでは、この数は[レポーター](../../permissions.md#project-members-permissions)以上のロールが付与されたユーザーに表示されます。
+  - プライベートプロジェクトでは、この数は[レポーター](../../permissions.md#project-permissions)以上のロールが付与されたユーザーに表示されます。
 
 ### リリースを並べ替える {#sort-releases}
 
-**リリース日**または**作成日**でリリースを並べ替えるには、並べ替え順序ドロップダウンリストから選択します。昇順と降順を切り替えるには、**Sort order**（並べ替え順序）を選択します。
+**リリース日**または**作成日**でリリースを並べ替えるには、並べ替え順序ドロップダウンリストから選択します。昇順と降順を切り替えるには、**並べ替え順序**を選択します。
 
 ![リリースの並べ替えドロップダウンリストのオプション](img/releases_sort_v13_6.png)
 
@@ -64,13 +60,13 @@ URLの形式:
 https://gitlab.example.com/namespace/project/-/releases/permalink/latest
 ```
 
-パーマリンクURLには、サフィックスを追加することもできます。最新のリリースが`v17.7.0#release`で、`gitlab-org`のネームスペースおよび`gitlab-runner`プロジェクトにある場合の読み取り可能なリンクの例は、以下のとおりです:
+パーマリンクURLには、サフィックスを追加することもできます。最新のリリースが`v17.7.0#release`で、`gitlab-org`のネームスペースおよび`gitlab-runner`プロジェクトにある場合の読み取り可能なリンクの例は、以下のとおりです。
 
 ```plaintext
 https://gitlab.com/gitlab-org/gitlab-runner/-/releases/v17.7.0#release
 ```
 
-以下のパーマリンクを使用して、最新のリリースURLにアクセスできます:
+以下のパーマリンクを使用して、最新のリリースURLにアクセスできます。
 
 ```plaintext
 https://gitlab.com/gitlab-org/gitlab-runner/-/releases/permalink/latest#release
@@ -84,19 +80,19 @@ GitLabはデフォルトでは、`released_at`時間を使用してリリース�
 
 ### RSSフィードを使用してリリースを追跡する {#track-releases-with-an-rss-feed}
 
-GitLabは、プロジェクトのリリースに関するRSSフィードをAtom形式で提供します。フィードを表示する方法は、以下のとおりです:
+GitLabは、プロジェクトのリリースに関するRSSフィードをAtom形式で提供します。フィードを表示する方法は、以下のとおりです。
 
 1. メンバーになっているプロジェクトの場合:
-   1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+   1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
    1. **デプロイ** > **リリース**を選択します。
 1. すべてのプロジェクトについて:
-   1. **Project overview**（プロジェクトの概要）ページに移動します。
-   1. 右側のサイドバーで、**リリース**（{{< icon name="rocket-launch" >}}）を選択します。
+   1. **プロジェクトの概要**ページに移動します。
+   1. 右サイドバーで、**リリース** ({{< icon name="rocket-launch" >}}) を選択します。
 1. 右上隅のフィードシンボル（{{< icon name="rss" >}}）をクリックします。
 
 ## リリースを作成する {#create-a-release}
 
-リリースは、以下のとおり作成できます:
+リリースは、以下のとおり作成できます。
 
 - [CI/CDパイプライン](#creating-a-release-by-using-a-cicd-job)のジョブを使用する。
 - [リリースページ](#create-a-release-in-the-releases-page)で作成する。
@@ -104,21 +100,21 @@ GitLabは、プロジェクトのリリースに関するRSSフィードをAtom�
 
 ### リリースページでリリースを作成する {#create-a-release-in-the-releases-page}
 
-前提要件:
+前提条件: 
 
-- プロジェクトのデベロッパー以上のロールが付与されている必要があります。詳細については、[リリースの権限](#release-permissions)を参照してください
+- プロジェクトに対して、デベロッパー、メンテナー、またはオーナーロールが必要です。詳細については、[リリースの権限](#release-permissions)を参照してください。
 
 リリースページでリリースを作成するには:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **デプロイ** > **リリース**を選択し、**新しいリリース**を選択します。
-1. [**タグ名**](release_fields.md#tag-name)ドロップダウンリストから、以下のいずれかを選択します:
+1. [**タグ名**](release_fields.md#tag-name)ドロップダウンリストから、以下のいずれかを選択します。
    - 既存のGitタグを選択します。リリースにすでに関連付けられている既存のタグを選択すると、検証エラーが発生します。
    - 新しいGitタグ名を入力します。
      1. **タグを作成**ポップオーバーで、新しいタグを作成する際に使用するブランチまたはコミットSHAを選択します。
      1. オプション。**タグメッセージを設定**[テキストボックス](https://git-scm.com/book/en/v2/Git-Basics-Tagging#_annotated_tags)に、注釈付きタグを作成するためのメッセージを入力します。
      1. **保存**をクリックします。
-1. オプション。リリースに関する以下のような追加情報を入力します:
+1. オプション。リリースに関する以下のような追加情報を入力します。
    - [タイトル](release_fields.md#title)
    - [マイルストーン](#associate-milestones-with-a-release)
    - [リリースノート](release_fields.md#release-notes-description)
@@ -132,7 +128,7 @@ GitLabは、プロジェクトのリリースに関するRSSフィードをAtom�
 
 リリースが作成されるのは、ジョブがエラーなしで処理された場合のみです。リリース作成中にAPIがエラーを返した場合、リリースジョブは失敗します。
 
-以下のリンクは、CI/CDジョブを使用してリリースを作成するための一般的な設定例です:
+以下のリンクは、CI/CDジョブを使用してリリースを作成するための一般的な設定例です。
 
 - Gitタグの作成時に[リリース](release_cicd_examples.md#create-a-release-when-a-git-tag-is-created)を作成する。
 - [コミット](release_cicd_examples.md#create-a-release-when-a-commit-is-merged-to-the-default-branch)がデフォルトブランチにマージされる際にリリースを作成する。
@@ -140,7 +136,7 @@ GitLabは、プロジェクトのリリースに関するRSSフィードをAtom�
 
 ### カスタムSSL CA認証局を使用する {#use-a-custom-ssl-ca-certificate-authority}
 
-`ADDITIONAL_CA_CERT_BUNDLE` CI/CD変数を使用して、カスタムSSL認証局を設定できます。これは、`glab`コマンドラインインターフェースがカスタム証明書を使用してHTTPS経由でAPI経由でリリースを作成する際に、ピアを検証するために使用されます。`ADDITIONAL_CA_CERT_BUNDLE`の値には、[X.509 PEM公開キー証明書のテキスト表現](https://www.rfc-editor.org/rfc/rfc7468#section-5.1)、または公開認証局（CA）を含む`path/to/file`が含まれている必要があります。`.gitlab-ci.yml`ファイルでこの値を設定する例は、以下のとおりです:
+`ADDITIONAL_CA_CERT_BUNDLE` CI/CD変数を使用してカスタムSSL CA認証局を設定できます。これは、カスタム証明書を使用してAPI経由で`glab` CLIがリリースを作成する際に、ピアを検証するために使用されます。`ADDITIONAL_CA_CERT_BUNDLE`の値には、[X.509 PEM公開キー証明書のテキスト表現](https://www.rfc-editor.org/rfc/rfc7468#section-5.1)、または公開認証局（CA）を含む`path/to/file`が含まれている必要があります。`.gitlab-ci.yml`ファイルでこの値を設定する例は、以下のとおりです。
 
 ```yaml
 release:
@@ -162,7 +158,7 @@ release:
 
 ### 単一のパイプラインで複数のリリースを作成する {#create-multiple-releases-in-a-single-pipeline}
 
-パイプラインには、複数の`release`ジョブを含めることができます。例は以下のとおりです:
+パイプラインには、複数の`release`ジョブを含めることができます。例は以下のとおりです。
 
 ```yaml
 ios-release:
@@ -187,7 +183,7 @@ android-release:
 パッケージ化したアセットを使用してリリースを作成するには:
 
 1. CI/CDパイプラインから、パッケージファイルをビルドします。
-1. `glab`コマンドラインインターフェースジョブでリリースを作成するには、次の手順に従います:
+1. `glab` CLIジョブでリリースを作成します:
 
    ```yaml
    Create Release:
@@ -210,7 +206,7 @@ android-release:
 
 [リリースAPI](../../../api/releases/_index.md#upcoming-releases)を使用すると、事前にリリースを作成できます。`released_at`で将来の日付を指定すると、**次のリリース**バッジがリリースタグの横に表示されます。`released_at`の日時が経過すると、バッジは自動的に削除されます。
 
-![将来のリリース](img/upcoming_release_v12_7.png)
+![将来のリリース](img/upcoming_release_v18_8.png)
 
 ## 過去のリリース {#historical-releases}
 
@@ -226,39 +222,39 @@ android-release:
 
 [リリース](../../../api/releases/_index.md#update-a-release)が作成された後に詳細を編集するには、リリースの更新APIまたはUIを使用できます。
 
-前提要件:
+前提条件: 
 
-- デベロッパー以上のロールが付与されている必要があります。
+- デベロッパー、メンテナー、またはオーナーロールが必要です。
 
 UIの場合:
 
-1. 左側のサイドバーで、**デプロイ** > **リリース**を選択します。
-1. 変更する**Edit this release**の右上隅のこのリリースを編集（鉛筆アイコン）をクリックします。
-1. **リリースを編集**を編集ページで、リリースの詳細を変更します。
+1. 左サイドバーで、**デプロイ** > **リリース**を選択します。
+1. 変更する**リリース**の右上隅のこのリリースを編集（鉛筆アイコン）をクリックします。
+1. **リリース**を編集ページで、リリースの詳細を変更します。
 1. **変更を保存**を選択します。
 
 ## リリースを削除する {#delete-a-release}
 
 {{< history >}}
 
-- GitLab 15.2で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/213862)されました
+- GitLab 15.2で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/213862)されました。
 
 {{< /history >}}
 
 リリースを削除すると、リリースのアセットも削除されますが、関連付けられているGitタグは削除されません。リリースに関連付けられたGitタグを削除すると、リリースも削除されます。
 
-前提要件:
+前提条件: 
 
-- デベロッパー以上のロールが付与されている必要があります。詳細については、[リリースの権限](#release-permissions)を参照してください。
+- デベロッパー、メンテナー、またはオーナーロールが必要です。詳細については、[リリースの権限](#release-permissions)を参照してください。
 
 [リリース](../../../api/releases/_index.md#delete-a-release)を削除するには、リリースの削除APIか、UIを使用します。
 
 UIの場合:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **デプロイ** > **リリース**を選択します。
-1. 削除する**Edit this release**の右上隅のこのリリースを編集（{{< icon name="pencil" >}}）をクリックします。
-1. **リリースを編集**を編集ページで、**削除**を選択します。
+1. 削除する**リリース**の右上隅のこのリリースを編集（{{< icon name="pencil" >}}）をクリックします。
+1. **リリース**を編集ページで、**削除**を選択します。
 1. **リリースを削除**を選択します。
 
 ## マイルストーンをリリースに関連付ける {#associate-milestones-with-a-release}
@@ -267,30 +263,27 @@ UIの場合:
 
 [GitLab Premium](https://about.gitlab.com/pricing/)のお客様は、[リリース](../milestones/_index.md#project-milestones-and-group-milestones)に関連付けるグループマイルストーンを指定できます。
 
-これは、UIで実行することも、[リリースAPI](../../../api/releases/_index.md#create-a-release)へのリクエストに`milestones`配列を含めることでも実行できます。
+これは、ユーザーインターフェースで実行することも、[リリースAPI](../../../api/releases/_index.md#create-a-release)へのリクエストに`milestones`配列を含めることでも実行できます。
 
-UIで、マイルストーンをリリースに関連付けるには:
+ユーザーインターフェースで、マイルストーンをリリースに関連付けるには:
 
-1. 左側のサイドバーで、**デプロイ** > **リリース**を選択します。
-1. 変更する**Edit this release**の右上隅のこのリリースを編集（鉛筆アイコン）をクリックします。
+1. 左サイドバーで、**デプロイ** > **リリース**を選択します。
+1. 変更する**リリース**の右上隅のこのリリースを編集（鉛筆アイコン）をクリックします。
 1. **マイルストーン**リストから、関連付ける各マイルストーンを選択します。マイルストーンは複数選択できます。
 1. **変更を保存**を選択します。
 
-**デプロイ** > **リリース**ページの上部には、**マイルストーン**と、そのマイルストーンに関連するイシューの統計が表示されます。
+**デプロイ** > **リリース**ページでは、**マイルストーン**が上部に表示され、マイルストーン内のイシューに関する統計情報も表示されます。
 
 ![関連付けられたマイルストーンが1つあるリリース](img/release_with_milestone_v12_9.png)
 
-リリースは、**Plan** > **マイルストーン**ページ、およびこのページでマイルストーンを選択した場合にも表示されます。
+リリースは、**Plan** > **マイルストーン**ページ、およびこのページでマイルストーンを選択した際にも表示されます。
 
 リリースがないマイルストーン、1つのリリースがあるマイルストーン、2つのリリースがあるマイルストーンの例は以下のとおりです。
 
 ![リリースが関連付けられたマイルストーンと関連付けられていないマイルストーン](img/milestone_list_with_releases_v12_5.png)
 
-{{< alert type="note" >}}
-
-サブグループのプロジェクトリリースを親グループのマイルストーンに関連付けることはできません。詳細については、イシュー#328054[リリースをスーパーグループマイルストーンに関連付けることができない](https://gitlab.com/gitlab-org/gitlab/-/issues/328054)を参照してください。
-
-{{< /alert >}}
+> [!note]
+> サブグループのプロジェクトリリースを親グループのマイルストーンに関連付けることはできません。詳細については、イシュー#328054[リリースをスーパーグループマイルストーンに関連付けることができない](https://gitlab.com/gitlab-org/gitlab/-/issues/328054)を参照してください。
 
 ## リリース作成時に通知を受け取る {#get-notified-when-a-release-is-created}
 
@@ -298,21 +291,21 @@ UIで、マイルストーンをリリースに関連付けるには:
 
 リリースの通知にサブスクライブするには:
 
-1. 左側のサイドバーで**Project overview**（プロジェクトの概要）を選択します。
-1. **Notification setting**（ベルのアイコン）をクリックします。
+1. 左サイドバーで、**Project overview**を選択します。
+1. **通知設定**（ベルのアイコン）をクリックします。
 1. リストで、**カスタム**を選択します。
 1. **新しいリリース**チェックボックスをオンにします。
-1. ダイアログボックスを閉じて保存します。
+1. ダイアログを閉じて保存します。
 
 ## デプロイフリーズを設定して意図しないリリースを回避する {#prevent-unintentional-releases-by-setting-a-deploy-freeze}
 
 [*デプロイフリーズ*期間](../../../ci/environments/deployment_safety.md)を設定して、指定した期間中の意図しない本番環境リリースを防ぐことができます。デプロイフリーズを使用すると、デプロイを自動化する際の不確実性とリスクの軽減につながります。
 
-[メンテナー](../../../api/freeze_periods.md)は、UIでデプロイフリーズウィンドウを設定するか、[フリーズ期間API](https://crontab.guru/)を使用して、crontabエントリとして定義されている`freeze_start`と`freeze_end`を設定できます。
+[メンテナー](../../../api/freeze_periods.md)は、ユーザーインターフェースでデプロイフリーズウィンドウを設定するか、[フリーズ期間API](https://crontab.guru/)を使用して、crontabエントリとして定義されている`freeze_start`と`freeze_end`を設定できます。
 
 実行中のジョブがフリーズ期間内となる場合、GitLab CI/CDは`$CI_DEPLOY_FREEZE`という名前の環境変数を作成します。
 
-グループ内の複数のプロジェクトでデプロイジョブの実行を防ぐには、グループ全体で共有されるファイルで`.freezedeployment`ジョブを定義します。[`includes`](../../../ci/yaml/includes.md)キーワードを使用して、プロジェクトの`.gitlab-ci.yml`ファイルにテンプレートを組み込みます。以下に例を示します:
+グループ内の複数のプロジェクトでデプロイジョブの実行を防ぐには、グループ全体で共有されるファイルで`.freezedeployment`ジョブを定義します。[`includes`](../../../ci/yaml/includes.md)キーワードを使用して、プロジェクトの`.gitlab-ci.yml`ファイルにテンプレートを組み込みます。以下に例を示します。
 
 ```yaml
 .freezedeployment:
@@ -326,7 +319,7 @@ UIで、マイルストーンをリリースに関連付けるには:
     - when: on_success
 ```
 
-デプロイジョブが実行されないようにするには、`.gitlab-ci.yml`ファイルの`deploy_to_production`ジョブで[`extends`](../../../ci/yaml/_index.md#extends)キーワードを使用し、`.freezedeployment`テンプレートジョブから設定を継承します:
+デプロイジョブが実行されないようにするには、`.gitlab-ci.yml`ファイルの`deploy_to_production`ジョブで[`extends`](../../../ci/yaml/_index.md#extends)キーワードを使用し、`.freezedeployment`テンプレートジョブから設定を継承します。
 
 ```yaml
 deploy_to_production:
@@ -339,13 +332,13 @@ deploy_to_production:
 
 このアプローチは、重要なメンテナンス中のデプロイを制御し、CI/CDパイプラインが中断することなく実行されるようにします。
 
-UIでデプロイフリーズ期間を設定するには、次の手順を実行します:
+UIでデプロイフリーズ期間を設定するには、次の手順を実行します。
 
 1. メンテナーロールを持つユーザーとしてGitLabにサインインします。
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **設定** > **CI/CD**を選択します。
 1. **デプロイフリーズ**までスクロールします。
-1. **全て展開**を選択して、デプロイフリーズテーブルを表示します。
+1. **すべて展開**を選択して、デプロイフリーズテーブルを表示します。
 1. **デプロイフリーズを追加**を選択して、デプロイフリーズモーダルを開きます。
 1. 目的のデプロイフリーズ期間の開始時刻、終了時刻、およびタイムゾーンを入力します。
 1. モーダルで**デプロイフリーズを追加**を選択します。
@@ -359,7 +352,7 @@ UIでデプロイフリーズ期間を設定するには、次の手順を実行
 
 ### リリースを表示してアセットをダウンロードする {#view-a-release-and-download-assets}
 
-- レポーター以上のロールを持つユーザーは、プロジェクトのリリースに対する読み取りおよびダウンロード権限を持っています。
+- レポーター、デベロッパー、メンテナー、またはオーナーロールを持つユーザーは、プロジェクトリリースに対する読み取りおよびダウンロードアクセス権を持っています。
 - ゲストロールのユーザーは、プロジェクトのリリースへの読み取りおよびダウンロード権限を持っています。これには、関連付けられているGitタグ名、リリースの説明、リリースの作成者情報が含まれます。ただし、[ソースコード](release_fields.md#source-code)や[リリースエビデンス](release_evidence.md)などのリポジトリ関連情報は削除済みのです。
 
 ### ソースコードへのアクセス権を付与せずにリリースを公開する {#publish-releases-without-giving-access-to-source-code}
@@ -372,7 +365,7 @@ UIでデプロイフリーズ期間を設定するには、次の手順を実行
 
 プロジェクトメンバー以外のメンバーがリリースにアクセスできるようにしながら、[ソースコード](release_fields.md#source-code)や[リリースエビデンス](release_evidence.md)などのリポジトリ関連情報はプロジェクトメンバーのみが利用できるようにすることができます。これらの設定は、ソフトウェアの新しいバージョンへのアクセス権限を付与するためにリリースを使用するが、ソースコードを一般公開したくないプロジェクトに最適です。
 
-[リリース](../settings/_index.md#configure-project-features-and-permissions)を公開するには、次のプロジェクトの表示レベルを設定します:
+[リリース](../settings/_index.md#configure-project-features-and-permissions)を公開するには、次のプロジェクトの表示レベルを設定します。
 
 - **プロジェクトの表示レベル**を**公開**に設定します。
 - **リポジトリ**を有効にし、**プロジェクトメンバーのみ**に設定します。
@@ -380,10 +373,10 @@ UIでデプロイフリーズ期間を設定するには、次の手順を実行
 
 ### リリースとリリースのアセットを作成、更新、削除する {#create-update-and-delete-a-release-and-its-assets}
 
-- デベロッパー以上のロールを持つユーザーは、プロジェクトのリリースとアセットに対する書き込み権限を持っています。
-- リリースが[保護タグ](../protected_tags.md)に関連付けられている場合、ユーザーは[保護タグの作成が許可されている](../protected_tags.md#configuring-protected-tags)必要もあります。
+- デベロッパー、メンテナー、またはオーナーロールを持つユーザーは、プロジェクトリリースとアセットに対する書き込みアクセス権を持っています。
+- リリースが[保護タグ](../protected_tags.md)に関連付けられている場合、ユーザーは[保護タグの作成が許可されている](../protected_tags.md#configure-protected-tags)必要もあります。
 
-リリースの**メンテナー**制御の例として、**作成が許可されています**（`*`）を使用してタグを保護し、作成が許可されていますコラムでメンテナーを設定することで、メンテナー以上のロールを持つユーザーのみにリリースを作成、更新、および削除することを許可できます。
+リリース権限管理の例として、ワイルドカード (`*`) でタグを保護し、**メンテナー**を**作成が許可されています**列に設定することで、メンテナーまたはオーナーロールを持つユーザーのみがリリースを作成、更新、および削除できるようにすることができます。
 
 ## リリースのメトリクス {#release-metrics}
 
@@ -400,17 +393,17 @@ UIでデプロイフリーズ期間を設定するには、次の手順を実行
 
 {{< /history >}}
 
-グループレベルのリリースのメトリクスは、**グループ** > **分析** > **CI/CD**に移動すると利用できます。これらのメトリクスには以下が含まれます:
+**グループ** > **分析** > **CI/CD**に移動すると、グループレベルのリリースメトリクスが表示されます。これらのメトリクスには以下が含まれます。
 
 - グループ内のリリースの合計数
 - 少なくとも1つのリリースがあるグループ内のプロジェクトの割合
 
 ## 実際のプロジェクト例 {#working-example-project}
 
-Guided Explorationプロジェクトの[GitVersionを使用した完全に自動化されたソフトウェアとアーティファクトのバージョニング](https://gitlab.com/guided-explorations/devops-patterns/utterly-automated-versioning)では、以下の実例が示されています:
+Guided Explorationプロジェクトの[GitVersionを使用した完全に自動化されたソフトウェアとアーティファクトのバージョニング](https://gitlab.com/guided-explorations/devops-patterns/utterly-automated-versioning)では、以下の実例が示されています。
 
 - GitLabリリースの使用。
-- [GitLab CLI](../../../editor_extensions/gitlab_cli/_index.md)の使用
+- [GitLab CLI](../../../editor_extensions/gitlab_cli/_index.md)を使用する。
 - 汎用パッケージの作成。
 - パッケージをリリースにリンクする。
 - [GitVersion](https://gitversion.net/)という名前のツールを使用して、複雑なリポジトリのバージョンを自動的に決定して増分する。
@@ -421,12 +414,12 @@ Guided Explorationプロジェクトの[GitVersionを使用した完全に自動
 
 ### リリースとそのアセットの作成、更新、または削除時のエラー {#errors-when-creating-updating-or-deleting-releases-and-their-assets}
 
-[リリース](../protected_tags.md)が保護タグに関連付けられている場合、UI/APIリクエストが原因で、次の認証エラーが発生する可能性があります:
+[リリース](../protected_tags.md)が保護タグに関連付けられている場合、UI/APIリクエストが原因で、次の認証エラーが発生する可能性があります。
 
 - `403 Forbidden`
 - `Something went wrong while creating a new release`
 
-ユーザーまたはサービス/[ボット](../protected_tags.md#configuring-protected-tags)アカウントに対して保護タグの作成が許可されていることを確認してください。
+ユーザーまたはサービス/[ボット](../protected_tags.md#configure-protected-tags)アカウントに対して保護タグの作成が許可されていることを確認してください。
 
 詳細については、[リリース](#release-permissions)の権限を参照してください。
 
@@ -438,11 +431,11 @@ Guided Explorationプロジェクトの[GitVersionを使用した完全に自動
 
 [`release`キーワード](../../../ci/yaml/_index.md#release)の使い方は変更される予定です。`release-cli`ツールは[GitLab CLI](https://gitlab.com/gitlab-org/cli/)ツールに[置き換え](https://gitlab.com/groups/gitlab-org/-/epics/15437)られます。
 
-GitLab CLIツール`v1.58.0`以上を使用する必要があります。それ以外のバージョンの場合、以下のいずれかのエラーメッセージまたは警告が表示される可能性があります:
+GitLab CLIツール`v1.58.0`以上を使用する必要があります。それ以外のバージョンの場合、以下のいずれかのエラーメッセージまたは警告が表示される可能性があります。
 
 - `Error: glab command not found. Please install glab v1.58.0 or higher.`
 - `Error: Please use glab v1.58.0 or higher.`
-- `Warning: release-cli will not be supported after 19.0. Please use glab version >= 1.58.0.`
+- `Warning: release-cli will not be supported after 20.0. Please use glab version >= 1.58.0.`
 
 GitLab CLIツールを入手する2つの方法:
 

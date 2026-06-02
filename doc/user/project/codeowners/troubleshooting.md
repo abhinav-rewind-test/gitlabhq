@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use Code Owners to define experts for your codebase, and set review requirements based on file type or location.
 title: Troubleshooting Code Owners
 ---
@@ -15,7 +15,7 @@ title: Troubleshooting Code Owners
 
 When working with Code Owners, you might encounter the following issues.
 
-For more information about how the Code Owners feature handles errors, see [Error handling](advanced.md#error-handling).
+For more information about how the Code Owners feature handles errors, see [error handling](advanced.md#error-handling).
 
 ## Validate your CODEOWNERS file
 

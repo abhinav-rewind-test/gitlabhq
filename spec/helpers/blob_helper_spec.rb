@@ -59,7 +59,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe "#relative_raw_path" do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     before do
       assign(:project, project)
@@ -82,7 +82,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   context 'viewer related' do
-    let_it_be(:project) { create(:project, lfs_enabled: true) }
+    let_it_be(:project, freeze: false) { create(:project, lfs_enabled: true) }
 
     let(:viewer_class) do
       Class.new(BlobViewer::Base) do
@@ -211,7 +211,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#ide_edit_path' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:current_user) { create(:user) }
     let(:can_push_code) { true }
 
@@ -278,21 +278,35 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#ide_merge_request_path' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
     let_it_be(:merge_request) { create(:merge_request, source_project: project) }
 
     it 'returns IDE path for the given MR if MR is not merged' do
-      expect(helper.ide_merge_request_path(merge_request)).to eq("/-/ide/project/#{project.full_path}/merge_requests/#{merge_request.iid}")
+      expect(helper.ide_merge_request_path(merge_request)).to eq("/-/ide/project/#{project.full_path}?merge_request_id=#{merge_request.iid}")
+    end
+
+    it 'returns IDE path with file path for the given MR in the same project' do
+      expect(helper.ide_merge_request_path(merge_request, 'path/to/file.rb')).to eq("/-/ide/project/#{project.full_path}/-/path/to/file.rb?merge_request_id=#{merge_request.iid}")
     end
 
     context 'when the MR comes from a fork' do
       include ProjectForksHelper
 
-      let(:forked_project) { fork_project(project, nil, repository: true) }
-      let(:merge_request) { create(:merge_request, source_project: forked_project, target_project: project) }
+      let_it_be_with_reload(:forked_project) { fork_project(project, nil, repository: true) }
+      let_it_be_with_reload(:merge_request) { create(:merge_request, source_project: forked_project, target_project: project) }
 
       it 'returns IDE path for MR in the forked repo with target project included as param' do
-        expect(helper.ide_merge_request_path(merge_request)).to eq("/-/ide/project/#{forked_project.full_path}/merge_requests/#{merge_request.iid}?target_project=#{CGI.escape(project.full_path)}")
+        params = { merge_request_id: merge_request.iid, target_project: project.full_path }
+        expected_query = params.to_query
+
+        expect(helper.ide_merge_request_path(merge_request)).to eq("/-/ide/project/#{forked_project.full_path}?#{expected_query}")
+      end
+
+      it 'returns IDE path with file path for MR in the forked repo with target project included as param' do
+        params = { merge_request_id: merge_request.iid, target_project: project.full_path }
+        expected_query = params.to_query
+
+        expect(helper.ide_merge_request_path(merge_request, 'path/to/file.rb')).to eq("/-/ide/project/#{forked_project.full_path}/-/path/to/file.rb?#{expected_query}")
       end
     end
 
@@ -327,7 +341,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#ide_fork_and_edit_path' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:user) { create(:user) }
 
     let(:current_user) { user }
@@ -365,7 +379,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#fork_and_edit_path' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:user) { create(:user) }
 
     let(:current_user) { user }
@@ -398,10 +412,9 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
     let(:project) { create(:project) }
     let(:user) { build_stubbed(:user) }
     let(:ref) { 'main' }
-    let(:organization) { build_stubbed(:organization) }
 
     before do
-      Current.organization = organization
+      stub_current_organization(project.organization)
       allow(helper).to receive_messages(selected_branch: ref, current_user: user)
     end
 
@@ -484,21 +497,20 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
     end
 
     context 'when editing a blob' do
-      before do
-        project_presenter = instance_double(ProjectPresenter)
+      let(:project_presenter) { instance_double(ProjectPresenter) }
 
+      before do
         allow(helper).to receive(:can?).with(user, :push_code, project).and_return(true)
         allow(helper).to receive(:can?).with(user, :create_merge_request_in, project).and_return(true)
         allow(project).to receive(:present).and_return(project_presenter)
         allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(true)
         allow(project).to receive(:empty_repo?).and_return(false)
-      end
-
-      it 'returns data related to update action' do
         allow(blob).to receive(:stored_externally?).and_return(false)
         allow(project).to receive(:branch_allows_collaboration?).with(user, ref).and_return(false)
         assign(:last_commit_sha, '782426692977b2cedb4452ee6501a404410f9b00')
+      end
 
+      it 'returns data related to update action' do
         expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include({
           action: 'update',
           update_path: project_update_blob_path(project, id),
@@ -517,15 +529,9 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
         })
       end
 
-      it 'returns data related to update action in a forked project' do
+      it 'returns upstream project when user has push_code permission despite having a fork' do
         fork_project = build_stubbed(:project, id: 999)
         allow(user).to receive(:fork_of).with(project).and_return(fork_project)
-        allow(blob).to receive(:stored_externally?).and_return(false)
-        allow(project).to receive(:branch_allows_collaboration?).with(user, ref).and_return(false)
-        assign(:last_commit_sha, '782426692977b2cedb4452ee6501a404410f9b00')
-        # User cannot push to the original project's branch
-        project_presenter = instance_double(ProjectPresenter)
-        allow(project).to receive(:present).and_return(project_presenter)
         allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(false)
 
         app_data = helper.edit_blob_app_data(project, id, blob, ref, "update")
@@ -545,10 +551,60 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
           project_id: project.id,
           project_path: project.full_path,
           new_merge_request_path: project_new_merge_request_path(project),
+          target_project_id: project.id,
+          target_project_path: project.full_path
+        })
+
+        expect(app_data).not_to have_key(:next_fork_branch_name)
+      end
+
+      it 'returns data related to update action in a forked project when user lacks push_code' do
+        fork_project = build_stubbed(:project, id: 999)
+        fork_repository = instance_double(Repository, next_branch: 'patch-1')
+        allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+        allow(fork_project).to receive(:repository).and_return(fork_repository)
+        allow(fork_project).to receive(:full_path).and_return('user/fork-project')
+        allow(helper).to receive(:can?).with(user, :push_code, project).and_return(false)
+        allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(false)
+
+        app_data = helper.edit_blob_app_data(project, id, blob, ref, "update")
+
+        expect(app_data).to include({
+          action: 'update',
+          can_push_code: 'false',
+          can_push_to_branch: 'false',
           target_project_id: 999,
-          target_project_path: fork_project.full_path,
+          target_project_path: 'user/fork-project',
           next_fork_branch_name: 'patch-1'
         })
+      end
+
+      context 'when maintainer has fork and default branch is fully protected' do
+        let(:fork_project) { build_stubbed(:project, id: 999) }
+        let(:fork_repository) { instance_double(Repository, next_branch: 'patch-1') }
+
+        before do
+          allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+          allow(fork_project).to receive(:repository).and_return(fork_repository)
+          allow(fork_project).to receive(:full_path).and_return('user/fork-project')
+          allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(false)
+        end
+
+        it 'returns upstream project as target when maintainer has push_code permission' do
+          app_data = helper.edit_blob_app_data(project, id, blob, ref, "update")
+
+          expect(app_data).to include({
+            action: 'update',
+            can_push_code: 'true',
+            can_push_to_branch: 'false',
+            target_project_id: project.id,
+            target_project_path: project.full_path,
+            project_id: project.id,
+            project_path: project.full_path
+          })
+
+          expect(app_data).not_to have_key(:next_fork_branch_name)
+        end
       end
 
       it 'returns data related to create action' do
@@ -856,7 +912,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#edit_fork_button_tag' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:user) { create(:user) }
 
     let(:current_user) { user }
@@ -875,7 +931,7 @@ RSpec.describe BlobHelper, feature_category: :source_code_management do
   end
 
   describe '#vue_blob_header_app_data' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:blob) { fake_blob(path: 'README.md') }
     let(:ref) { 'feature' }
     let(:ref_type) { :branch }

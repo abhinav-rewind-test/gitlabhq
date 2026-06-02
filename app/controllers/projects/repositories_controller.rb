@@ -22,15 +22,27 @@ class Projects::RepositoriesController < Projects::ApplicationController
   feature_category :source_code_management
 
   def create
-    @project.create_repository unless @project.repository_exists?
+    return redirect_to project_path(@project) if @project.repository_exists?
 
-    redirect_to project_path(@project)
+    if @project.create_repository
+      @project.track_project_repository
+
+      redirect_to project_path(@project)
+    else
+      redirect_to(project_path(@project), alert: _('Failed to create repository'))
+    end
   end
 
   def archive
     set_cache_headers
 
     return if archive_not_modified?
+
+    # Return early for HEAD requests to avoid generating archives.
+    if request.head?
+      set_archive_content_headers
+      return head(:ok)
+    end
 
     send_git_archive @repository, **repo_params
   rescue StandardError => e
@@ -70,12 +82,21 @@ class Projects::RepositoriesController < Projects::ApplicationController
   end
 
   def archive_metadata
-    @archive_metadata ||= @repository.archive_metadata(
-      ref,
-      '', # Where archives are stored isn't really important for ETag purposes
-      repo_params[:format],
-      path: repo_params[:path],
-      append_sha: @append_sha
+    @archive_metadata ||= archive_header_builder.metadata
+  end
+
+  def set_archive_content_headers
+    response.headers['Content-Type'] = archive_header_builder.content_type
+    response.headers['Content-Disposition'] = archive_header_builder.content_disposition
+  end
+
+  def archive_header_builder
+    @archive_header_builder ||= Gitlab::Repositories::ArchiveHeaderBuilder.new(
+      @repository,
+      ref: repo_params[:ref],
+      format: repo_params[:format],
+      append_sha: repo_params[:append_sha],
+      path: repo_params[:path]
     )
   end
 

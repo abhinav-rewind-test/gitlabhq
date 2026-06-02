@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Projects::GitGarbageCollectWorker, feature_category: :source_code_management do
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
 
   it_behaves_like 'can collect git garbage' do
     let(:resource) { project }
@@ -24,9 +24,12 @@ RSpec.describe Projects::GitGarbageCollectWorker, feature_category: :source_code
     end
 
     context 'when the repository has joined a pool' do
-      let_it_be(:pool) { create(:pool_repository, :ready, source_project: project) }
+      let_it_be(:pool, freeze: false) { create(:pool_repository, :ready, source_project: project) }
 
       it 'ensures the repositories are linked' do
+        allow(subject).to receive(:gitaly_call)
+        allow(subject).to receive(:flush_ref_caches)
+
         expect(project.pool_repository).to receive(:link_repository).once
 
         subject.perform(*params)
@@ -48,16 +51,19 @@ RSpec.describe Projects::GitGarbageCollectWorker, feature_category: :source_code
       end
     end
 
-    context 'LFS object garbage collection' do
+    context 'when collecting LFS object garbage' do
       let_it_be(:lfs_reference) { create(:lfs_objects_project, project: project) }
 
       let(:lfs_object) { lfs_reference.lfs_object }
 
       before do
         stub_lfs_setting(enabled: true)
+        allow(subject).to receive(:gitaly_call)
+        allow(subject).to receive(:flush_ref_caches)
       end
 
-      it 'cleans up unreferenced LFS objects' do
+      it 'cleans up unreferenced LFS objects',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/37721' do
         expect_next_instance_of(Gitlab::Cleanup::OrphanLfsFileReferences) do |svc|
           expect(svc.project).to eq(project)
           expect(svc.dry_run).to be_falsy
@@ -71,6 +77,7 @@ RSpec.describe Projects::GitGarbageCollectWorker, feature_category: :source_code
 
       context 'when optimize repository call fails' do
         before do
+          allow(subject).to receive(:gitaly_call).and_call_original
           allow(project.repository.gitaly_repository_client).to receive(:optimize_repository).and_raise('Boom')
         end
 

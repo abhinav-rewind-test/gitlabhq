@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Container Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Container virtual registry API
 description: Create and manage virtual registries for the container registry, and configure upstream container registries.
 ---
@@ -10,13 +10,15 @@ description: Create and manage virtual registries for the container registry, an
 
 - Tier: Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed
-- Status: Experiment
+- Status: Beta
 
 {{< /details >}}
 
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/548794) in GitLab 18.5 [with a flag](../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 
@@ -219,6 +221,8 @@ If successful, returns a [`204 No Content`](rest/troubleshooting.md#status-codes
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/538327) in GitLab 18.7 [with a flag](../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 
@@ -294,6 +298,8 @@ Example response:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/578679) in GitLab 18.9 [with a flag](../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 
@@ -645,6 +651,8 @@ If successful, returns a [`204 No Content`](rest/troubleshooting.md#status-codes
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/538327) in GitLab 18.7 [with a flag](../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 
@@ -673,6 +681,8 @@ If successful, returns a [`204 No Content`](rest/troubleshooting.md#status-codes
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/578679) in GitLab 18.9 [with a flag](../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 

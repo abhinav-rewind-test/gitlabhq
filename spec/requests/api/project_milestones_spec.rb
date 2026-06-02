@@ -9,7 +9,7 @@ RSpec.describe API::ProjectMilestones, feature_category: :team_planning do
   let_it_be_with_reload(:project) { create(:project, namespace: user.namespace, reporters: user) }
   let_it_be(:closed_milestone) { create(:closed_milestone, project: project, title: 'version1', description: 'closed milestone') }
   let_it_be(:route) { "/projects/#{project.id}/milestones" }
-  let_it_be(:milestone) do
+  let_it_be(:milestone, freeze: false) do
     create(:milestone, project: project, title: 'version2', description: 'open milestone', updated_at: 5.days.ago)
   end
 
@@ -123,6 +123,32 @@ RSpec.describe API::ProjectMilestones, feature_category: :team_planning do
         end
       end
     end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'returns the project milestones successfully' do
+        get api(route, oauth_access_token: oauth_token), params: { per_page: 100 }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to match_response_schema('public_api/v4/milestones')
+
+        milestone_ids = json_response.map { |milestone| milestone['id'] }
+        expect(milestone_ids).to match_array([milestone.id, closed_milestone.id])
+      end
+    end
+  end
+
+  describe 'POST /projects/:id/milestones' do
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'denies write access for ai_workflows scope' do
+        post api(route, oauth_access_token: oauth_token), params: { title: 'New Milestone' }
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe 'DELETE /projects/:id/milestones/:milestone_id' do
@@ -150,6 +176,16 @@ RSpec.describe API::ProjectMilestones, feature_category: :team_planning do
 
       expect(response).to have_gitlab_http_status(:not_found)
     end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'denies delete access for ai_workflows scope' do
+        delete api("/projects/#{project.id}/milestones/#{milestone.id}", oauth_access_token: oauth_token)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe 'PUT /projects/:id/milestones/:milestone_id to test observer on close' do
@@ -158,7 +194,7 @@ RSpec.describe API::ProjectMilestones, feature_category: :team_planning do
 
       expect do
         put api(path, user), params: { state_event: 'close' }
-      end.to change(Event, :count).by(1)
+      end.to change { Event.count }.by(1)
     end
   end
 

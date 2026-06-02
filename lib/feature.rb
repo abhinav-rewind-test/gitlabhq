@@ -10,19 +10,16 @@ module Feature
     Namespace
     Ci::Runner
     Organizations::Organization
+    Authn::OauthApplication
   ].freeze
 
   class FlipperRecord < ActiveRecord::Base # rubocop:disable Rails/ApplicationRecord -- This class perfectly replaces
+    extend SkipLoadBalancer
+
     # Flipper::Adapters::ActiveRecord::Model, which inherits ActiveRecord::Base
     include DatabaseReflection
 
     self.abstract_class = true
-
-    # Bypass the load balancer by restoring the default behavior of `connection`
-    # before the load balancer patches ActiveRecord::Base
-    def self.connection
-      retrieve_connection
-    end
   end
 
   class FlipperFeature < FlipperRecord
@@ -69,6 +66,17 @@ module Feature
 
     def initialize
       @flipper_id = "FlipperGitlabInstance:#{::Gitlab.config.gitlab.host}".freeze
+    end
+  end
+
+  # Represents a code execution path as defined by the GitLab caller_id context.
+  # Generates flipper_id from caller_id (e.g., "ApplicationController#index" or "GET /api/v4/projects")
+  class Endpoint
+    attr_reader :caller_id, :flipper_id
+
+    def initialize(caller_id)
+      @caller_id = caller_id
+      @flipper_id = "Endpoint:#{caller_id}".freeze
     end
   end
 
@@ -152,6 +160,8 @@ module Feature
     def enable(key, thing = true)
       thing = sanitized_thing(thing)
 
+      check_feature_flags_definition_for_mutation!(key)
+
       log(key: key, action: __method__, thing: thing)
 
       return_value = with_feature(key) { _1.enable(thing) }
@@ -166,6 +176,8 @@ module Feature
 
     def disable(key, thing = false)
       thing = sanitized_thing(thing)
+
+      check_feature_flags_definition_for_mutation!(key)
 
       log(key: key, action: __method__, thing: thing)
 
@@ -280,6 +292,13 @@ module Feature
       @flipper_gitlab_instance ||= FlipperGitlabInstance.new
     end
 
+    def current_endpoint
+      caller_id = Gitlab::ApplicationContext.current_context_attribute(:caller_id)
+      return unless caller_id
+
+      Endpoint.new(caller_id)
+    end
+
     def logger
       @logger ||= Feature::Logger.build
     end
@@ -294,6 +313,10 @@ module Feature
 
     def logged_states
       RequestStore.fetch(:feature_flag_events) { {} }
+    end
+
+    def logged_states_for_log
+      logged_states.map { |key, state| "#{key}:#{state ? 1 : 0}" }
     end
 
     # rubocop: disable CodeReuse/ActiveRecord -- rubocop doesn't recognize Flipper::Adapters::ActiveRecord::Gate as ActiveRecord.
@@ -422,6 +445,36 @@ module Feature
       Feature::Definition.valid_usage!(key, type: type)
     end
 
+    # Validate if a feature flag YAML definition exists for the given key before allowing
+    # mutation operations (enable/disable).
+    #
+    # In development/test environment: raise InvalidFeatureFlagError.
+    # In production environment: log a warning instead to avoid
+    # breaking existing automation that may reference undefined flags.
+    def check_feature_flags_definition_for_mutation!(key)
+      return if Feature::Definition.has_definition?(key)
+
+      message = "Feature flag '#{key}' has no YAML definition."
+      suggestions = suggest_similar_flag_names(key)
+      message += "\nDid you mean: #{suggestions.first(3).join(', ')}?" if suggestions.any?
+
+      # Raise an exception in development and test environments to prevent undefined flags from being used.
+      raise InvalidFeatureFlagError, message if check_feature_flags_definition?
+
+      warn_message = "WARNING: #{message}"
+
+      # rubocop:disable Gitlab/RailsLogger -- warn when enabling/disabling undefined flags in production
+      Rails.logger.warn(warn_message)
+      # rubocop:enable Gitlab/RailsLogger
+    end
+
+    def suggest_similar_flag_names(key)
+      return [] unless defined?(DidYouMean::SpellChecker)
+
+      known_keys = Feature::Definition.definitions.keys.map(&:to_s)
+      DidYouMean::SpellChecker.new(dictionary: known_keys).correct(key.to_s)
+    end
+
     def validate_thing!(key, thing)
       return unless thing
 
@@ -471,11 +524,11 @@ module Feature
     end
 
     def gate_specified?
-      %i[user project group feature_group namespace repository runner].any? { |key| params.key?(key) }
+      %i[user project group feature_group namespace repository runner endpoint].any? { |key| params.key?(key) }
     end
 
     def targets
-      [feature_group, users, projects, groups, namespaces, repositories, runners].flatten.compact
+      [feature_group, users, projects, groups, namespaces, repositories, runners, endpoints].flatten.compact
     end
 
     private
@@ -517,6 +570,14 @@ module Feature
 
     def runners
       find_targets(:runner) { |arg| ::Ci::Runner.find_by_id(arg) }
+    end
+
+    def endpoints
+      return unless params.key?(:endpoint)
+
+      params[:endpoint].split(',').map do |arg|
+        Feature::Endpoint.new(arg.strip)
+      end
     end
 
     def find_targets(param_key)

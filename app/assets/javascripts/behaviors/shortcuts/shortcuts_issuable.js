@@ -1,6 +1,7 @@
 import ClipboardJS from 'clipboard';
 import { DEBOUNCE_DROPDOWN_DELAY } from '~/sidebar/components/labels/labels_select_widget/constants';
 import toast from '~/vue_shared/plugins/global_toast';
+import { suppressShortcutsUntilInputFocus } from '~/lib/mousetrap';
 import { s__ } from '~/locale';
 import Sidebar from '~/right_sidebar';
 import {
@@ -10,6 +11,7 @@ import {
   ISSUABLE_EDIT_DESCRIPTION,
   MR_COPY_SOURCE_BRANCH_NAME,
   ISSUABLE_COPY_REF,
+  WORK_ITEM_TOGGLE_SIDEBAR,
 } from './keybindings';
 
 export default class ShortcutsIssuable {
@@ -37,6 +39,7 @@ export default class ShortcutsIssuable {
       [ISSUE_MR_CHANGE_MILESTONE, () => ShortcutsIssuable.openSidebarDropdown('milestone')],
       [ISSUABLE_CHANGE_LABEL, () => ShortcutsIssuable.openSidebarDropdown('labels')],
       [ISSUABLE_EDIT_DESCRIPTION, ShortcutsIssuable.editIssue],
+      [WORK_ITEM_TOGGLE_SIDEBAR, ShortcutsIssuable.toggleSidebar],
       [MR_COPY_SOURCE_BRANCH_NAME, () => this.copyBranchName()],
       [ISSUABLE_COPY_REF, () => this.copyIssuableRef()],
     ]);
@@ -50,7 +53,14 @@ export default class ShortcutsIssuable {
     return false;
   }
 
+  static toggleSidebar() {
+    document.querySelector('.js-sidebar-toggle')?.click();
+
+    return false;
+  }
+
   static openSidebarDropdown(name) {
+    suppressShortcutsUntilInputFocus();
     Sidebar.instance.openDropdown(name);
     // Wait for the sidebar to trigger('click') open
     // so it doesn't cause our dropdown to close preemptively

@@ -1,7 +1,7 @@
 ---
 stage: Fulfillment
 group: Seat Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: SAML Group Sync
 description: Automate group membership with role assignment and synchronized access controls.
 ---
@@ -278,7 +278,7 @@ item in group **Settings** > **SAML Group Links**.
 To link the SAML groups:
 
 1. In **SAML Group Name**, enter the value of the relevant `saml:AttributeValue`. The value entered here must exactly match the value sent in the SAML response. For some IdPs, this may be a group ID or object ID (Azure AD) instead of a friendly group name.
-1. Choose a [default role](../../permissions.md) or [custom role](../../custom_roles/_index.md) in **Access Level**.
+1. Choose a [default role](../../permissions.md) or [custom member role](../../custom_roles/_index.md) in **Access Level**.
 1. Select **Save**.
 1. Repeat to add additional group links if required.
 
@@ -293,7 +293,8 @@ To link the SAML groups:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/480766) for GitLab.com in GitLab 17.8 [with a flag](../../../administration/feature_flags/_index.md) named `saml_groups_duo_pro_add_on_assignment`. Disabled by default.
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/512141) for Self-Managed in GitLab 18.0.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/512141) for GitLab Self-Managed in GitLab 18.0.
+
 {{< /history >}}
 
 Prerequisites:
@@ -424,7 +425,7 @@ The following table lists the GitLab settings and the corresponding Azure AD fie
 
 To configure Azure AD for a GitLab.com group:
 
-1. On the top bar, select **Search or go to** and find your group.
+1. In the top bar, select **Search or go to** and find your group.
    This group must be at the top level.
 1. Select **Settings** > **SAML SSO**.
 1. Configure [SAML SSO for the group](_index.md).
@@ -446,7 +447,7 @@ To configure for GitLab Self-Managed:
 
 1. Configure [SAML SSO for the instance](../../../integration/saml.md).
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. In the **Microsoft Azure integration** section, select the **Enable Microsoft Azure integration for this group** checkbox.
 1. Enter the **Tenant ID**, **Client ID**, and **Client secret** obtained earlier when configuring Azure Active Directory in the Azure Portal.
 1. Optional. If using Azure AD for US Government or Azure AD China, enter the appropriate **Login API endpoint** and **Graph API endpoint**. The default values work for most organizations.
@@ -492,6 +493,6 @@ Prerequisites:
 To lock memberships to SAML Group Links synchronization:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Visibility and access controls** section.
 1. Select the **Lock memberships to SAML Group Links synchronization** checkbox.

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: To speed up project creation in your group, build custom project templates and share them with your group.
 title: Custom project templates for groups
 ---
@@ -12,6 +12,14 @@ title: Custom project templates for groups
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
 {{< /details >}}
+
+{{< history >}}
+
+- Group selector for browsing group templates outside a group context [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/590012)
+  in GitLab 18.11 [with a feature flag](../../administration/feature_flags/_index.md) named `constrain_group_project_templates`. Disabled by default.
+- Group selector for browsing group templates outside a group context [generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/586332) in GitLab 19.0. Feature flag `constrain_group_project_templates` removed.
+
+{{< /history >}}
 
 When you create a project, you can [choose from a list of templates](../project/_index.md).
 These templates, for things like GitLab Pages or Ruby, populate the new project with a copy of the files contained in the
@@ -49,11 +57,8 @@ Projects in nested subgroups are not included in the template list.
   except for **GitLab Pages** and **Security and compliance** are set to **Everyone With Access**.
 - Private projects can be selected only by users who are members of the projects.
 
-A [known issue](https://gitlab.com/gitlab-org/gitlab/-/issues/480779) exists:
-[Inherited members](../project/members/_index.md#membership-types) can't select project templates,
-unless the `project_templates_without_min_access` feature flag is enabled.
-This feature flag [is disabled](https://gitlab.com/gitlab-org/gitlab/-/issues/480779)
-on GitLab.com, and so users must be granted direct membership of the template project.
+When you create a project outside of a group context, you must select a group from the dropdown list
+before you can browse its templates. Only groups you have access to are listed.
 
 ## Example structure
 
@@ -92,7 +97,7 @@ to the new project. These items include:
 - Labels, milestones, snippets, and releases.
 - CI/CD pipeline configuration.
 
-For a complete list of what is copied, see [Project items that are exported](../project/settings/import_export.md#project-items-that-are-exported).
+For a complete list of what is copied, see [project items that are exported](../project/settings/import_export.md#project-items-that-are-exported).
 
 ### Permissions and sensitive data
 

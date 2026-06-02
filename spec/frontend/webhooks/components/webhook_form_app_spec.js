@@ -1,9 +1,11 @@
 import { nextTick } from 'vue';
+import { GlFormGroup } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import WebhookFormApp from '~/webhooks/components/webhook_form_app.vue';
 import FormUrlApp from '~/webhooks/components/form_url_app.vue';
 import FormCustomHeaders from '~/webhooks/components/form_custom_headers.vue';
 import WebhookFormTriggerList from '~/webhooks/components/webhook_form_trigger_list.vue';
+import WebhookTokenInput from '~/webhooks/components/webhook_token_input.vue';
 
 describe('WebhookFormApp', () => {
   let wrapper;
@@ -47,6 +49,7 @@ describe('WebhookFormApp', () => {
   const findNameInput = () => wrapper.findByTestId('webhook-name');
   const findDescriptionInput = () => wrapper.findByTestId('webhook-description');
   const findSecretTokenInput = () => wrapper.findByTestId('webhook-secret-token');
+  const findWebhookTokenInput = () => wrapper.findComponent(WebhookTokenInput);
   const findFormUrlApp = () => wrapper.findComponent(FormUrlApp);
   const findFormCustomHeaders = () => wrapper.findComponent(FormCustomHeaders);
   const findWebhookFormTriggerList = () => wrapper.findComponent(WebhookFormTriggerList);
@@ -118,23 +121,27 @@ describe('WebhookFormApp', () => {
       expect(findFormUrlApp().props()).toMatchObject({
         initialUrl: null,
         initialUrlVariables: [],
+        initialSecretToken: '',
       });
     });
 
-    it('passes initialUrl and initialUrlVariables to FormUrlApp', () => {
+    it('passes initialUrl, initialUrlVariables, and initialSecretToken to FormUrlApp', () => {
       const initialUrl = 'https://webhook.site';
       const initialUrlVariables = [{ key: 'test', value: 'value' }];
+      const initialSecretToken = '************';
 
       createComponent({
         props: {
           initialUrl,
           initialUrlVariables,
+          initialSecretToken,
         },
       });
 
       expect(findFormUrlApp().props()).toMatchObject({
         initialUrl,
         initialUrlVariables,
+        initialSecretToken,
       });
     });
   });
@@ -158,6 +165,49 @@ describe('WebhookFormApp', () => {
       expect(findFormCustomHeaders().props()).toMatchObject({
         initialCustomHeaders,
       });
+    });
+  });
+
+  describe('signing token', () => {
+    const findSecretTokenFormGroup = () =>
+      wrapper
+        .findAllComponents(GlFormGroup)
+        .filter((c) => c.attributes('label-for') === 'webhook-secret-token')
+        .at(0);
+    const findSecretTokenAlert = () => wrapper.findByTestId('secret-token-not-recommended-alert');
+
+    it('renders WebhookTokenInput', () => {
+      expect(findWebhookTokenInput().exists()).toBe(true);
+    });
+
+    it('passes hasSigningToken as hasExistingToken to WebhookTokenInput', () => {
+      createComponent({ props: { hasSigningToken: true } });
+
+      expect(findWebhookTokenInput().props('hasExistingToken')).toBe(true);
+    });
+
+    it('passes signingTokenDocsPath as docsPath to WebhookTokenInput', () => {
+      createComponent({ props: { signingTokenDocsPath: '/help/webhooks' } });
+
+      expect(findWebhookTokenInput().props('docsPath')).toBe('/help/webhooks');
+    });
+
+    it('renders WebhookTokenInput with hook[signing_token] inputName prop', () => {
+      expect(findWebhookTokenInput().props('inputName')).toBe('hook[signing_token]');
+    });
+
+    it('renders the secret token label with "(not recommended)"', () => {
+      expect(findSecretTokenFormGroup().attributes('label')).toBe('Secret token (not recommended)');
+    });
+
+    it('does not show the secret token alert when no initial secret token', () => {
+      expect(findSecretTokenAlert().exists()).toBe(false);
+    });
+
+    it('shows the secret token not-recommended alert when initial secret token exists', () => {
+      createComponent({ props: { initialSecretToken: '************' } });
+
+      expect(findSecretTokenAlert().exists()).toBe(true);
     });
   });
 

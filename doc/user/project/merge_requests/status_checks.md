@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Policies
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: External status checks
 description: External status checks integrate with third-party tools to display pass or fail statuses in merge requests and can block merges if checks fail.
 ---
@@ -40,7 +40,7 @@ Status checks fail if they stay in the pending state for more than two minutes.
 
 External status check responses can be viewed by:
 
-- Users with at least the Reporter role in the project
+- Users with the Reporter, Developer, Maintainer, or Owner role in the project
 - Any authenticated user who can view the merge request when the project has internal visibility
 
 This means that if you have an internal project, any logged-in user who can access the merge request can view the external status check responses.
@@ -60,8 +60,8 @@ see [epic 3869](https://gitlab.com/groups/gitlab-org/-/epics/3869).
 
 By default, merge requests in projects can be merged even if external status checks fail. To block the merging of merge requests when external checks fail:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Select the **Status checks must succeed** checkbox.
 1. Select **Save changes**.
 
@@ -100,8 +100,8 @@ using the API. You don't need to wait for a merge request webhook payload to be 
 
 To view a list of status check services added to a project from the merge request settings:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Scroll down to **Status checks**. This list shows the service name, API URL, targeted branch,
    and HMAC authentication status.
 
@@ -206,7 +206,7 @@ When there are pending status checks, the widget polls for updates every few sec
 
 To retry a failed status check:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. Scroll to the merge request reports section, and expand the dropdown list to show the list of external status checks.
 1. Select **Retry** ({{< icon name="retry" >}}) on the failed external status check row. The status check is put back into a pending state.

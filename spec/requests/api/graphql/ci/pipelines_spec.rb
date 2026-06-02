@@ -13,7 +13,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'TAGS and BRANCHES scope' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
     let_it_be(:branch_pipeline) { create(:ci_pipeline, project: project, ref: 'feature') }
     let_it_be(:tag_pipeline) { create(:ci_pipeline, project: project, ref: 'v1.0.0', tag: true) }
 
@@ -56,7 +56,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'sha' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
 
     let(:pipelines_graphql_data) { graphql_data.dig(*%w[project pipelines nodes]).first }
 
@@ -85,10 +85,20 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
         'shortSha' => eq(pipeline.short_sha)
       )
     end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL',
+      [:read_project, :read_pipeline] do
+      let(:boundary_object) { project }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+
+      before_all do
+        project.add_developer(user)
+      end
+    end
   end
 
   describe 'duration fields' do
-    let_it_be(:pipeline) do
+    let_it_be(:pipeline, freeze: false) do
       create(:ci_pipeline, project: project)
     end
 
@@ -125,7 +135,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
 
   describe '.stages' do
     let_it_be(:project) { create(:project, :repository) }
-    let_it_be(:pipeline) { create(:ci_empty_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_empty_pipeline, project: project) }
     let_it_be(:stage) { create(:ci_stage, pipeline: pipeline, project: project) }
     let_it_be(:other_stage) { create(:ci_stage, pipeline: pipeline, project: project, name: 'other') }
 
@@ -290,7 +300,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe '.job_artifacts' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
     let_it_be(:pipeline_job_1) { create(:ci_build, pipeline: pipeline, name: 'Job 1') }
     let_it_be(:pipeline_job_artifact_1) { create(:ci_job_artifact, job: pipeline_job_1) }
     let_it_be(:pipeline_job_2) { create(:ci_build, pipeline: pipeline, name: 'Job 2') }
@@ -321,6 +331,16 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     end
 
     it_behaves_like 'a working graphql query'
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL',
+      [:read_project, :read_pipeline, :download_job_artifact] do
+      let(:boundary_object) { project }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+
+      before_all do
+        project.add_developer(user)
+      end
+    end
 
     it 'returns the job_artifacts of a pipeline' do
       job_artifacts_graphql_data = graphql_data_at(*path).flatten
@@ -353,7 +373,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'errorMessages' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
     let_it_be(:error_message) { create(:ci_pipeline_message, pipeline: pipeline, content: 'error', severity: :error) }
 
     let(:pipelines_graphql_data) { graphql_data.dig(*%w[project pipelines nodes]).first }
@@ -399,7 +419,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'warningMessages' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
     let_it_be(:warning_message) { create(:ci_pipeline_message, pipeline: pipeline, content: 'warning') }
 
     let(:pipelines_graphql_data) { graphql_data.dig(*%w[project pipelines nodes]).first }
@@ -484,7 +504,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'upstream' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project, user: user) }
     let_it_be(:upstream_project) { create(:project, :repository, :public) }
     let_it_be(:upstream_pipeline) { create(:ci_pipeline, project: upstream_project, user: user) }
 
@@ -544,7 +564,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
   end
 
   describe 'downstream' do
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project, user: user) }
     let(:pipeline_2) { create(:ci_pipeline, project: project, user: user) }
 
     let_it_be(:downstream_project) { create(:project, :repository, :public) }
@@ -639,10 +659,34 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     end
   end
 
+  shared_examples 'avoids N+1 queries for merge_request-dependent fields' do
+    it 'avoids N+1 queries', :clean_gitlab_redis_shared_state do
+      # Warm up caches so the control and assertion run from the same baseline.
+      post_graphql(query, current_user: user)
+
+      control_count = ActiveRecord::QueryRecorder.new do
+        post_graphql(query, current_user: user)
+      end
+
+      # Use a different merge_request to prevent Rails query cache from masking the N+1.
+      another_merge_request = create(:merge_request, source_project: project, source_branch: 'fix')
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: another_merge_request)
+
+      expect do
+        post_graphql(query, current_user: user)
+      end.not_to exceed_query_limit(control_count)
+    end
+  end
+
   describe 'ref_path' do
     let_it_be(:merge_request) { create(:merge_request, source_project: project) }
-    let_it_be(:pipeline_1) { create(:ci_pipeline, project: project, user: user, merge_request: merge_request) }
-    let_it_be(:pipeline_2) { create(:ci_pipeline, project: project, user: user, merge_request: merge_request) }
+    let_it_be(:pipeline_1) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:pipeline_2) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
 
     let(:query) do
       %(
@@ -658,22 +702,18 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
       )
     end
 
-    it 'avoids N+1 queries' do
-      control_count = ActiveRecord::QueryRecorder.new do
-        post_graphql(query, current_user: user)
-      end
-
-      create(:ci_pipeline, project: project, user: user, merge_request: merge_request)
-
-      expect do
-        post_graphql(query, current_user: user)
-      end.not_to exceed_query_limit(control_count)
-    end
+    it_behaves_like 'avoids N+1 queries for merge_request-dependent fields'
   end
 
   describe 'type' do
     let_it_be(:merge_request) { create(:merge_request, source_project: project) }
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user, merge_request: merge_request) }
+    let_it_be(:pipeline_1) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:pipeline_2) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
 
     let(:query) do
       %(
@@ -695,25 +735,11 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
       post_graphql(query, current_user: user)
 
       expect(pipelines_graphql_data).to include(
-        'type' => eq(pipeline.type)
+        'type' => eq(pipeline_1.type)
       )
     end
 
-    it 'avoids N+1 queries' do
-      first_user = create(:user)
-      second_user = create(:user)
-
-      control_count = ActiveRecord::QueryRecorder.new do
-        post_graphql(query, current_user: first_user)
-      end
-
-      create(:ci_pipeline, project: project, merge_request: merge_request)
-      create(:ci_pipeline, project: project, merge_request: merge_request)
-
-      expect do
-        post_graphql(query, current_user: second_user)
-      end.not_to exceed_query_limit(control_count)
-    end
+    it_behaves_like 'avoids N+1 queries for merge_request-dependent fields'
   end
 
   describe 'filtering' do
@@ -747,6 +773,62 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
         expect(pipeline_ids).to match_array(oldish_pipeline.to_global_id.to_s)
       end
     end
+  end
+
+  describe 'merge_request_event_type' do
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let_it_be(:pipeline_1) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:pipeline_2) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines {
+              nodes {
+                mergeRequestEventType
+              }
+            }
+          }
+        }
+      )
+    end
+
+    it_behaves_like 'avoids N+1 queries for merge_request-dependent fields'
+  end
+
+  describe 'merge_request field' do
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let_it_be(:pipeline_1) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:pipeline_2) do
+      create(:ci_pipeline, :detached_merge_request_pipeline, user: user, merge_request: merge_request)
+    end
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines {
+              nodes {
+                mergeRequest {
+                  iid
+                }
+              }
+            }
+          }
+        }
+      )
+    end
+
+    it_behaves_like 'avoids N+1 queries for merge_request-dependent fields'
   end
 
   describe 'hasManualActions and hasScheduledActions' do

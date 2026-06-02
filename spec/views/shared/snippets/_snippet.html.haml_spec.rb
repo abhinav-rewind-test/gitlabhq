@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe 'shared/snippets/_snippet.html.haml' do
-  let_it_be(:snippet) { create(:project_snippet) }
+  let_it_be(:snippet, freeze: false) { create(:project_snippet) }
 
   before do
     allow(view).to receive(:current_application_settings).and_return(Gitlab::CurrentSettings.current_application_settings)
@@ -12,8 +12,8 @@ RSpec.describe 'shared/snippets/_snippet.html.haml' do
     @noteable_meta_data = Class.new { include Gitlab::NoteableMetadata }.new.noteable_meta_data([snippet], 'Snippet')
   end
 
-  context 'snippet with statistics' do
-    let_it_be(:snippet) { create(:project_snippet) }
+  context 'for snippet with statistics' do
+    let_it_be(:snippet, freeze: false) { create(:project_snippet) }
 
     it 'renders correct file count and tooltip' do
       snippet.statistics.file_count = 3
@@ -42,7 +42,7 @@ RSpec.describe 'shared/snippets/_snippet.html.haml' do
     end
   end
 
-  context 'snippet without statistics' do
+  context 'for snippet without statistics' do
     it 'does not render file count if statistics are not present' do
       snippet.statistics = nil
 
@@ -52,7 +52,7 @@ RSpec.describe 'shared/snippets/_snippet.html.haml' do
     end
   end
 
-  context 'spam icon and tooltip', feature_category: :insider_threat do
+  context 'for snippet with spam icon and tooltip', feature_category: :insider_threat do
     context 'when the author of the snippet is not banned' do
       before do
         render 'shared/snippets/snippet', snippet: snippet
@@ -69,7 +69,7 @@ RSpec.describe 'shared/snippets/_snippet.html.haml' do
 
     context 'when the author of the snippet is banned' do
       let_it_be(:banned_user) { create(:user, :banned) }
-      let_it_be(:snippet) { create(:project_snippet, author: banned_user) }
+      let_it_be(:snippet, freeze: false) { create(:project_snippet, author: banned_user) }
 
       before do
         render 'shared/snippets/snippet', snippet: snippet

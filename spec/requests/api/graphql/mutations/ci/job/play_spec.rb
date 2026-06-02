@@ -56,6 +56,12 @@ RSpec.describe 'JobPlay', feature_category: :continuous_integration do
   context 'with a build' do
     let_it_be(:job) { create(:ci_build, :playable, pipeline: pipeline, name: 'build') }
 
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :play_job do
+      let(:boundary_object) { project }
+      let(:mutation) { graphql_mutation(:job_play, { id: job.to_global_id.to_s }, 'errors') }
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+
     include_examples 'playing a job'
 
     context 'when given variables' do
@@ -136,37 +142,6 @@ RSpec.describe 'JobPlay', feature_category: :continuous_integration do
         expect(mutation_response['errors']).to include(match(/Unknown input/))
         expect(mutation_response['job']).to be_nil
         expect(job.reload).to be_manual
-      end
-    end
-
-    context 'when inputs feature flag is disabled' do
-      let_it_be(:job) do
-        create(:ci_build, :playable, pipeline: pipeline, name: 'build', options: {
-          inputs: {
-            environment: { type: 'string' }
-          }
-        })
-      end
-
-      let(:variables) do
-        {
-          id: job.to_global_id.to_s,
-          inputs: [
-            { name: 'environment', value: 'production' }
-          ]
-        }
-      end
-
-      before do
-        stub_feature_flags(ci_job_inputs: false)
-      end
-
-      it 'returns an error' do
-        post_graphql_mutation(mutation, current_user: user)
-
-        expect(response).to have_gitlab_http_status(:success)
-        expect(mutation_response['errors']).to include('The inputs argument is not available')
-        expect(mutation_response['job']).to be_nil
       end
     end
   end

@@ -2,7 +2,7 @@ import { GlBadge } from '@gitlab/ui';
 import $ from 'jquery';
 import fuzzaldrinPlus from 'fuzzaldrin-plus';
 import '~/lib/utils/jquery_at_who';
-import { escape as lodashEscape, sortBy, template, escapeRegExp, memoize } from 'lodash';
+import { escape as lodashEscape, sortBy, template, escapeRegExp, memoize } from 'lodash-es';
 import * as Emoji from '~/emoji';
 import axios from '~/lib/utils/axios_utils';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
@@ -10,14 +10,22 @@ import { loadingIconForLegacyJS } from '~/loading_icon_for_legacy_js';
 import { s__, __, sprintf } from '~/locale';
 import { isUserBusy } from '~/set_status_modal/utils';
 import SidebarMediator from '~/sidebar/sidebar_mediator';
-import { currentAssignees, linkedItems } from '~/graphql_shared/issuable_client';
-import { sidebarState } from '~/sidebar/sidebar_state';
-import { ISSUABLE_EPIC, NAME_TO_ICON_MAP, WORK_ITEM_TYPE_NAME_EPIC } from '~/work_items/constants';
+import {
+  currentAssignees,
+  currentReviewers,
+  appliedLabels,
+  linkedItems,
+  supportedConversionTypes,
+} from '~/graphql_shared/issuable_client_state';
+import { ISSUABLE_EPIC } from '~/work_items/constants';
 import { InternalEvents } from '~/tracking';
 import {
   prioritizeCommandsWithFrequent,
   recordFrequentCommandUsage,
 } from '~/editor/quick_action_suggestions';
+import { isCurrentViewWorkItem } from '~/work_items/utils';
+import { userIsDisabled } from '~/ai/agents_utils';
+import { FLOW_TRIGGER_EVENTS } from '~/vue_shared/constants';
 import AjaxCache from './lib/utils/ajax_cache';
 import { spriteIcon } from './lib/utils/common_utils';
 import { newDate } from './lib/utils/datetime_utility';
@@ -34,13 +42,16 @@ const LABELS_ALIAS = 'labels';
 const SNIPPETS_ALIAS = 'snippets';
 const CONTACTS_ALIAS = 'contacts';
 const WIKIS_ALIAS = 'wikis';
+const QUOTED_COMPLETIONS_ALIAS = 'quotedCompletions';
 
 const CADENCE_REFERENCE_PREFIX = '[cadence:';
 const ITERATION_REFERENCE_PREFIX = '*iteration:';
 
 export const AT_WHO_ACTIVE_CLASS = 'at-who-active';
 export const CONTACT_STATE_ACTIVE = 'active';
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- quick action command strings, not navigational URLs
 export const CONTACTS_ADD_COMMAND = '/add_contacts';
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- quick action command strings, not navigational URLs
 export const CONTACTS_REMOVE_COMMAND = '/remove_contacts';
 
 const busyBadge = memoize(
@@ -91,7 +102,7 @@ export { sortCommandsAlphaSafe } from '~/editor/quick_action_suggestions';
  * @return {string} escaped user input
  */
 export function escape(string) {
-  // To prevent double (or multiple) enconding attack
+  // To prevent double (or multiple) encoding attack
   // Decode the user input repeatedly prior to escaping the final decoded string.
   let encodedString = string;
   let decodedString = decodeURIComponent(encodedString);
@@ -111,6 +122,19 @@ export function showAndHideHelper($input, alias = '') {
   $input.on(`shown${alias ? '-' : ''}${alias}.atwho`, () => {
     $input.addClass(AT_WHO_ACTIVE_CLASS);
   });
+}
+
+// Keep at.js's dropdown container in the same scroll context as the textarea
+// So the dropdown doesn't drift when an ancestor scrolls (issue #598653).
+function attachAtWhoContainerToInputParent($input) {
+  const app = $input.data('atwho');
+  const container = app?.$el?.[0];
+  const parentNode = $input[0]?.parentNode;
+  const isAlreadyAttached = container?.parentNode === parentNode;
+
+  if (container && parentNode && !isAlreadyAttached) {
+    app.$el.appendTo(parentNode);
+  }
 }
 
 // This should be kept in sync with the backend filtering in
@@ -149,7 +173,7 @@ export function membersBeforeSave(members) {
       icon: avatarIcon,
       availability: member?.availability,
       compositeIdentityEnforced: member?.composite_identity_enforced,
-      disabled: member?.disabled,
+      disabled: userIsDisabled(member, FLOW_TRIGGER_EVENTS.MENTION),
     };
   });
 }
@@ -207,20 +231,18 @@ export const defaultAutocompleteConfig = {
   contacts: true,
   wikis: true,
   statuses: true,
+  types: true,
+};
+
+const quotedCompletions = {};
+
+export const setupQuotedCompletion = (command, handler) => {
+  quotedCompletions[command] = handler;
 };
 
 class GfmAutoComplete {
   constructor(dataSources = {}) {
-    // Ensure that all possible work item paths are included
-    const page = document.body.dataset.page || '';
-    this.isWorkItemsView =
-      page.includes('groups:work_items') ||
-      page.includes('projects:work_items') ||
-      page.includes('groups:issues') ||
-      page.includes('projects:issues') ||
-      page.includes('groups:epics') ||
-      page.includes('issues:show') ||
-      page.includes('epics:show');
+    this.isWorkItemsView = isCurrentViewWorkItem();
 
     this.dataSources = dataSources;
     this.cachedData = {};
@@ -230,8 +252,11 @@ class GfmAutoComplete {
   }
 
   setup(input, enableMap = defaultAutocompleteConfig) {
+    // Accept both jQuery and DOM elements
+    const $input = input?.jquery ? input : $(input);
+
     // Add GFM auto-completion to all input fields, that accept GFM input.
-    this.input = input || $('.js-gfm-input');
+    this.input = $input || $('.js-gfm-input');
     this.enableMap = enableMap;
     this.setupLifecycle();
   }
@@ -264,6 +289,7 @@ class GfmAutoComplete {
     if (this.enableMap.snippets) this.setupSnippets($input);
     if (this.enableMap.contacts) this.setupContacts($input);
     if (this.enableMap.wikis) this.setupWikis($input);
+    if (this.enableMap.types) this.setupQuotedCompletions($input);
 
     $input.filter('[data-supports-quick-actions="true"]').atwho({
       at: '/',
@@ -354,6 +380,44 @@ class GfmAutoComplete {
             return $.fn.atwho.default.callbacks.sorter(query, prioritized, searchKey);
           }
 
+          // Custom sorting to prioritize prefix matches over substring matches
+          // This helps when typing an alias that no longer exists (e.g., /assign_reviewer)
+          // to show the aliased command (e.g., /request_review) higher in the list
+          const lowerQuery = query.toLowerCase();
+
+          // Helper function to check if an item's name starts with the query
+          const hasNamePrefix = (item) => (item.name || '').toLowerCase().startsWith(lowerQuery);
+
+          // Helper function to check if an item has an alias that starts with the query
+          const hasAliasPrefix = (item) =>
+            (item.aliases || []).some((alias) => alias.toLowerCase().startsWith(lowerQuery));
+
+          // Check if any item has an alias that matches the query as a prefix
+          const hasAliasMatch = items.some(hasAliasPrefix);
+
+          // Only apply custom sorting if the query matches an alias prefix
+          if (hasAliasMatch) {
+            const sorted = items.sort((a, b) => {
+              // Score items: name prefix (3) > alias prefix (2) > substring match (1)
+              let aScore = 1;
+              if (hasNamePrefix(a)) aScore = 3;
+              else if (hasAliasPrefix(a)) aScore = 2;
+
+              let bScore = 1;
+              if (hasNamePrefix(b)) bScore = 3;
+              else if (hasAliasPrefix(b)) bScore = 2;
+
+              if (aScore !== bScore) {
+                return bScore - aScore; // Higher score first
+              }
+
+              // Same score - preserve original order
+              return 0;
+            });
+            return sorted;
+          }
+
+          // No alias matches, use default sorter with original order
           return $.fn.atwho.default.callbacks.sorter(query, items, searchKey);
         },
         beforeSave(commands) {
@@ -412,6 +476,8 @@ class GfmAutoComplete {
     };
     $input.off('keyup.frequentCommands', frequentCommandsHandler);
     $input.on('keyup.frequentCommands', frequentCommandsHandler);
+
+    attachAtWhoContainerToInputParent($input);
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -487,6 +553,7 @@ class GfmAutoComplete {
   setupMembers($input) {
     const instance = this;
     const fetchData = this.fetchData.bind(this);
+    /* eslint-disable @gitlab/no-hardcoded-urls -- quick action command strings, not navigational URLs */
     const MEMBER_COMMAND = {
       ASSIGN: '/assign',
       UNASSIGN: '/unassign',
@@ -495,6 +562,7 @@ class GfmAutoComplete {
       REASSIGN: '/reassign',
       REQUEST_REVIEW: '/request_review',
     };
+    /* eslint-enable @gitlab/no-hardcoded-urls */
     let assignees = [];
     let reviewers = [];
     let command = '';
@@ -550,23 +618,42 @@ class GfmAutoComplete {
             return null;
           });
 
-          // Cache assignees & reviewers list for easier filtering later
-          if (instance.isWorkItemsView) {
-            const element = this.$inputor.get(0).closest('.js-gfm-wrapper');
-            if (element) {
-              const { workItemId } = element.dataset;
-              assignees = (currentAssignees()[`${workItemId}`] || []).map(createMemberSearchString);
-            }
-          } else {
-            assignees =
-              SidebarMediator.singleton?.store?.assignees?.map(createMemberSearchString) || [];
-          }
-          reviewers = sidebarState.issuable?.reviewers?.nodes?.map(createMemberSearchString) || [];
+          assignees =
+            SidebarMediator.singleton?.store?.assignees?.map(createMemberSearchString) || [];
+          reviewers = currentReviewers().map(createMemberSearchString);
 
           const match = GfmAutoComplete.defaultMatcher(flag, subtext, this.app.controllers);
           return match && match.length ? match[1] : null;
         },
         filter(query, data) {
+          // For work items, read from its cache to handle both /assign and /unassign
+          if (instance.isWorkItemsView) {
+            const gfmWrapper = this.$inputor.get(0).closest('.js-gfm-wrapper');
+            if (gfmWrapper?.dataset.workItemId) {
+              const { workItemId } = gfmWrapper.dataset;
+              const workItemCurrentAssignees = currentAssignees()[`${workItemId}`] || [];
+              const cachedAssignees = workItemCurrentAssignees.map(createMemberSearchString);
+
+              // Return assigned users as present in work item cache
+              if (command === MEMBER_COMMAND.UNASSIGN) {
+                return membersBeforeSave(workItemCurrentAssignees);
+              }
+
+              if (command === MEMBER_COMMAND.ASSIGN) {
+                if (GfmAutoComplete.isLoading(data) || instance.previousQuery !== query) {
+                  instance.previousQuery = query;
+                  fetchData(this.$inputor, this.at, query);
+                  return data.filter((member) => !member.disabled);
+                }
+
+                // For /assign, filter out already-assigned users from network results
+                return data
+                  .filter((member) => !member.disabled)
+                  .filter((member) => !cachedAssignees.includes(member.search));
+              }
+            }
+          }
+
           if (GfmAutoComplete.isLoading(data) || instance.previousQuery !== query) {
             instance.previousQuery = query;
 
@@ -621,6 +708,7 @@ class GfmAutoComplete {
     const instance = this;
     const fetchData = this.fetchData.bind(this);
     const MEMBER_COMMAND = {
+      // eslint-disable-next-line @gitlab/no-hardcoded-urls -- quick action command string, not a navigational URL
       UNLINK: '/unlink',
     };
     let command = '';
@@ -875,12 +963,14 @@ class GfmAutoComplete {
   setupLabels($input) {
     const instance = this;
     const fetchData = this.fetchData.bind(this);
+    /* eslint-disable @gitlab/no-hardcoded-urls -- quick action command strings, not navigational URLs */
     const LABEL_COMMAND = {
       LABEL: '/label',
       LABELS: '/labels',
       UNLABEL: '/unlabel',
       RELABEL: '/relabel',
     };
+    /* eslint-enable @gitlab/no-hardcoded-urls */
     let command = '';
 
     $input.atwho({
@@ -944,6 +1034,14 @@ class GfmAutoComplete {
           return match && match.length ? match[1] : null;
         },
         filter(query, data, searchKey) {
+          if (instance.isWorkItemsView && command === LABEL_COMMAND.UNLABEL) {
+            const gfmWrapper = this.$inputor.get(0).closest('.js-gfm-wrapper');
+            if (gfmWrapper?.dataset.workItemId) {
+              const { workItemId } = gfmWrapper.dataset;
+              return appliedLabels()[`${workItemId}`] || [];
+            }
+          }
+
           if (GfmAutoComplete.isLoading(data)) {
             fetchData(this.$inputor, this.at);
             return data;
@@ -1136,6 +1234,106 @@ class GfmAutoComplete {
       },
     });
     showAndHideHelper($input, CONTACTS_ALIAS);
+  }
+
+  setupQuotedCompletions($input) {
+    const instance = this;
+    let command = '';
+
+    $input.atwho({
+      at: '"',
+      alias: QUOTED_COMPLETIONS_ALIAS,
+      alwaysHighlightFirst: true,
+      searchKey: 'search',
+      limit: 100,
+      displayTpl(value) {
+        if (GfmAutoComplete.isLoading(value)) {
+          return GfmAutoComplete.Loading.template;
+        }
+        const handler = quotedCompletions[command];
+        if (handler && typeof handler.templateFunction === 'function') {
+          return handler.templateFunction(value);
+        }
+        return GfmAutoComplete.Loading.template;
+      },
+      data: GfmAutoComplete.defaultLoadingData,
+      // eslint-disable-next-line no-template-curly-in-string
+      insertTpl: '${atwho-at}${name}${atwho-at}',
+      skipSpecialCharacterTest: true,
+      callbacks: {
+        ...this.getDefaultCallbacks(),
+        beforeSave(items) {
+          const handler = quotedCompletions[command];
+          if (handler && typeof handler.beforeSave === 'function') {
+            return handler.beforeSave(items);
+          }
+          return items;
+        },
+        matcher(flag, subtext) {
+          const subtextNodes = subtext.split(/\n+/g).pop().split(GfmAutoComplete.regexSubtext);
+          const registeredCommands = Object.keys(quotedCompletions).filter(
+            (cmd) => instance.enableMap[quotedCompletions[cmd].enableMapKey],
+          );
+
+          command = subtextNodes.find((node) => registeredCommands.includes(node)) || '';
+
+          const cachedItems = instance.cachedData[flag]?.[command];
+          if (cachedItems?.length) {
+            if (!subtext.includes(flag)) {
+              return null;
+            }
+
+            const lastCandidate = subtext.split(flag).pop().toLowerCase();
+            if (cachedItems.find((item) => item.name?.toLowerCase().startsWith(lastCandidate))) {
+              return lastCandidate;
+            }
+          }
+
+          const match = GfmAutoComplete.defaultMatcher(flag, subtext, this.app.controllers);
+          return match && match.length ? match[1] : null;
+        },
+        filter() {
+          const handler = quotedCompletions[command];
+          if (!handler || !instance.enableMap[handler.enableMapKey]) {
+            return [];
+          }
+
+          const { $inputor } = this;
+          const wrapper = $inputor.get(0).closest('.js-gfm-wrapper');
+          const { workItemFullPath, workItemTypeId, workItemId, workItemIid } =
+            wrapper?.dataset || {};
+
+          const items = handler.getItems({
+            $inputor,
+            workItemFullPath,
+            workItemTypeId,
+            workItemId,
+            workItemIid,
+          });
+
+          if (instance.cachedData[this.at] == null) {
+            instance.cachedData[this.at] = {};
+          }
+          instance.cachedData[this.at][command] = items;
+
+          return items;
+        },
+        sorter(query, items) {
+          this.setting.highlightFirst = this.setting.alwaysHighlightFirst;
+          if (GfmAutoComplete.isLoading(items)) {
+            this.setting.highlightFirst = false;
+            return items;
+          }
+
+          if (query.trim()) {
+            return fuzzaldrinPlus.filter(items, query, { key: 'name' });
+          }
+
+          return items;
+        },
+      },
+    });
+    showAndHideHelper($input, QUOTED_COMPLETIONS_ALIAS);
   }
 
   getDefaultCallbacks() {
@@ -1348,6 +1546,41 @@ class GfmAutoComplete {
   }
 }
 
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- not a navigational URL
+setupQuotedCompletion('/type', {
+  enableMapKey: 'types',
+  templateFunction({ id, name, iconName }) {
+    const icon = spriteIcon(iconName, 's12 gl-mr-2 gl-fill-current');
+    return `<li data-id="${id}">${icon}<span>${escape(name)}</span></li>`;
+  },
+  beforeSave(items) {
+    return items.map((m) => {
+      if (m.name == null) {
+        return m;
+      }
+      return {
+        id: m.id,
+        name: m.name,
+        search: `${m.id} ${m.name}`,
+      };
+    });
+  },
+  getItems({ workItemFullPath, workItemTypeId }) {
+    const supportedConversionTypesForNamespace = supportedConversionTypes()[workItemFullPath];
+    let conversionTypes = [];
+    if (
+      supportedConversionTypesForNamespace &&
+      Object.keys(supportedConversionTypesForNamespace).length > 0
+    ) {
+      conversionTypes = supportedConversionTypesForNamespace[workItemTypeId] || [];
+    }
+
+    return conversionTypes;
+  },
+});
+
+GfmAutoComplete.quotedCompletions = quotedCompletions;
+
 GfmAutoComplete.regexSubtext = /\s+/g;
 
 GfmAutoComplete.defaultLoadingData = ['loading'];
@@ -1472,8 +1705,7 @@ GfmAutoComplete.Issues = {
     return value.reference || '#${id}';
   },
   templateFunction({ id, title, reference, iconName }) {
-    const mappedIconName =
-      iconName === ISSUABLE_EPIC ? NAME_TO_ICON_MAP[WORK_ITEM_TYPE_NAME_EPIC] : iconName;
+    const mappedIconName = iconName === ISSUABLE_EPIC ? 'work-item-epic' : iconName;
     const icon = mappedIconName
       ? spriteIcon(mappedIconName, 'gl-fill-icon-subtle s16 gl-mr-2')
       : '';

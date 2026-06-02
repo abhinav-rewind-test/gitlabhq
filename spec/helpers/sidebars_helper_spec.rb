@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe SidebarsHelper, feature_category: :navigation do
   include Devise::Test::ControllerHelpers
 
-  let_it_be(:current_organization) { build_stubbed(:common_organization) }
+  let_it_be(:current_organization, freeze: false) { build_stubbed(:common_organization) }
 
   before do
     Current.organization = current_organization
@@ -15,10 +15,10 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
     include_context 'custom session'
 
     let(:user) { build(:user) }
-    let_it_be(:group) { build(:group) }
-    let_it_be(:group_with_id) { build_stubbed(:group) }
-    let_it_be(:panel) { {} }
-    let_it_be(:panel_type) { 'project' }
+    let_it_be(:group, freeze: false) { build(:group) }
+    let_it_be(:group_with_id, freeze: false) { build_stubbed(:group) }
+    let_it_be(:panel, freeze: false) { {} }
+    let_it_be(:panel_type, freeze: false) { 'project' }
     let(:project) { nil }
     let(:current_user_mode) { Gitlab::Auth::CurrentUserMode.new(user) }
     let(:context_with_group_id) do
@@ -137,7 +137,8 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
         },
         can_sign_out: helper.current_user_menu?(:sign_out),
         sign_out_link: destroy_user_session_path,
-        issues_dashboard_path: issues_dashboard_path(assignee_username: user.username),
+        issues_dashboard_path: work_items_dashboard_path(assignee_username: user.username),
+        explore_analytics_dashboards_path: explore_analytics_dashboards_path,
         todos_dashboard_path: dashboard_todos_path,
         projects_path: dashboard_projects_path,
         groups_path: dashboard_groups_path,
@@ -153,6 +154,10 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
       })
     end
 
+    it 'sets issues_dashboard_path to work_items dashboard', :use_clean_rails_memory_store_caching do
+      expect(subject[:issues_dashboard_path]).to eq(work_items_dashboard_path(assignee_username: user.username))
+    end
+
     it 'returns sidebar values for work item context with group id', :use_clean_rails_memory_store_caching do
       expect(context_with_group_id).to include({
         work_items: {
@@ -161,8 +166,7 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
           has_issue_weights_feature: "false",
           issues_list_path: issues_group_path(group_with_id),
           labels_manage_path: group_labels_path(group_with_id),
-          can_admin_label: "true",
-          work_item_planning_view_enabled: "true"
+          can_admin_label: "true"
         }
       })
     end
@@ -231,7 +235,7 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
 
     describe "shortcut links" do
       describe "as the anonymous user" do
-        let_it_be(:user) { nil }
+        let_it_be(:user, freeze: false) { nil }
         let(:global_shortcut_links) do
           [
             {
@@ -257,7 +261,7 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
         end
 
         context 'in a project' do
-          let_it_be(:project) { build_stubbed(:project) }
+          let_it_be(:project, freeze: false) { build_stubbed(:project) }
 
           it 'returns project-specific shortcut links' do
             expect(subject[:shortcut_links]).to eq(global_shortcut_links)
@@ -271,7 +275,7 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
         end
 
         context 'in a project' do
-          let_it_be(:project) { build_stubbed(:project) }
+          let_it_be(:project, freeze: false) { build_stubbed(:project) }
 
           it 'returns project-specific shortcut links' do
             expect(subject[:shortcut_links]).to eq([
@@ -403,11 +407,46 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
           )
         end
       end
+
+      context 'with wiki menu item internal events tracking' do
+        context 'in a project context' do
+          let(:project) { build_stubbed(:project) }
+
+          before do
+            allow(project).to receive(:persisted?).and_return(true)
+            allow(helper).to receive(:can?).and_return(true)
+          end
+
+          it 'includes data-event-tracking attributes with project label' do
+            wiki_item = subject[:create_new_menu_groups].flat_map { |g| g[:items] }.find do |item|
+              item[:extraAttrs][:'data-qa-create-menu-item'] == 'new_wiki_page'
+            end
+
+            expect(wiki_item).to be_present
+            expect(wiki_item[:extraAttrs]).to include(
+              'data-event-tracking': 'click_new_wiki_page_in_create_menu',
+              'data-event-label': 'project'
+            )
+          end
+
+          it 'does not include data-event-tracking on non-wiki menu items' do
+            non_wiki_items = subject[:create_new_menu_groups].flat_map { |g| g[:items] }.reject do |item|
+              item[:extraAttrs][:'data-qa-create-menu-item'] == 'new_wiki_page'
+            end
+
+            expect(non_wiki_items).not_to be_empty
+            non_wiki_items.each do |item|
+              expect(item[:extraAttrs]).not_to have_key(:'data-event-tracking')
+              expect(item[:extraAttrs]).not_to have_key(:'data-event-label')
+            end
+          end
+        end
+      end
     end
 
     describe 'current context' do
       context 'when current context is a project' do
-        let_it_be(:project) { build(:project) }
+        let_it_be(:project, freeze: false) { build(:project) }
 
         subject do
           helper.super_sidebar_context(user, group: nil, project: project, panel: panel, panel_type: panel_type)
@@ -781,7 +820,7 @@ RSpec.describe SidebarsHelper, feature_category: :navigation do
     # Testing this private method because:
     # 1. This helper is just so complex that it isn't feasible to test everything through the few public methods.
     # 2. private really isn't a thing in Rails helpers so the current private segregation is merely communicating use.
-    # 3. EE override of this method is making it public anyway due to how it is overriden in the public space.
+    # 3. EE override of this method is making it public anyway due to how it is overridden in the public space.
 
     let(:project) { build(:project) }
 

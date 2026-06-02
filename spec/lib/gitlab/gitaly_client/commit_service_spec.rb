@@ -452,6 +452,29 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
       end
     end
 
+    context 'when SHA strings are passed directly' do
+      let(:merge_commit_diff_mode) { nil }
+      let(:sha_strings) { commits }
+
+      subject { described_class.new(repository).find_changed_paths(sha_strings, merge_commit_diff_mode: merge_commit_diff_mode).as_json }
+
+      include_examples 'includes paths different in any parent'
+
+      include_examples 'uses requests format'
+
+      context 'when commit has an empty SHA' do
+        let(:sha_strings) { ['0000000000000000000000000000000000000000'] }
+
+        it 'does not send RPC request' do
+          expect_any_instance_of(Gitaly::DiffService::Stub).not_to receive(:find_changed_paths)
+
+          returned_value = described_class.new(repository).find_changed_paths(sha_strings)
+
+          expect(returned_value).to eq([])
+        end
+      end
+    end
+
     context 'when commit sha is not set' do
       let(:empty_commit) { build(:commit, project: project, sha: nil) }
 
@@ -513,6 +536,44 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
           .find_changed_paths([tree_object])
 
         expect(result.first.commit_id).to be_blank
+      end
+    end
+  end
+
+  describe '#tree_entry', feature_category: :pipeline_composition do
+    let(:path) { 'README.md' }
+
+    subject { client.tree_entry(revision, path) }
+
+    it 'uses medium_timeout by default' do
+      expect(Gitlab::GitalyClient).to receive(:call).with(
+        storage_name,
+        :commit_service,
+        :tree_entry,
+        kind_of(Gitaly::TreeEntryRequest),
+        timeout: Gitlab::GitalyClient.medium_timeout
+      ).and_raise(GRPC::NotFound)
+
+      expect(subject).to be_nil
+    end
+
+    context 'when GitalyTimeout is set' do
+      around do |example|
+        Gitlab::Ci::Config::GitalyTimeout.with_timeout(10) do
+          example.run
+        end
+      end
+
+      it 'uses the custom timeout' do
+        expect(Gitlab::GitalyClient).to receive(:call).with(
+          storage_name,
+          :commit_service,
+          :tree_entry,
+          kind_of(Gitaly::TreeEntryRequest),
+          timeout: 10
+        ).and_raise(GRPC::NotFound)
+
+        expect(subject).to be_nil
       end
     end
   end
@@ -709,7 +770,7 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
   describe '#commit_count' do
     let(:response) { double(count: 42) }
 
-    it 'converts ref parameter to revisions' do
+    it 'counts commits for single revision string' do
       expect_any_instance_of(Gitaly::CommitService::Stub)
         .to receive(:count_commits)
         .with(gitaly_request_with_params(
@@ -722,7 +783,20 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
       expect(client.commit_count(revision)).to eq(42)
     end
 
-    it 'converts all: true to revisions with --all' do
+    it 'counts commits for single revision in array' do
+      expect_any_instance_of(Gitaly::CommitService::Stub)
+        .to receive(:count_commits)
+        .with(gitaly_request_with_params(
+          repository: repository_message,
+          revisions: ['master'.b],
+          first_parent: false
+        ), kind_of(Hash))
+        .and_return(response)
+
+      expect(client.commit_count(['master'])).to eq(42)
+    end
+
+    it 'counts commits with --all string' do
       expect_any_instance_of(Gitaly::CommitService::Stub)
         .to receive(:count_commits)
         .with(gitaly_request_with_params(
@@ -732,10 +806,10 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
         ), kind_of(Hash))
         .and_return(response)
 
-      expect(client.commit_count(nil, all: true)).to eq(42)
+      expect(client.commit_count('--all')).to eq(42)
     end
 
-    it 'passes through revisions parameter unchanged' do
+    it 'counts commits for multiple revisions' do
       expect_any_instance_of(Gitaly::CommitService::Stub)
         .to receive(:count_commits)
         .with(gitaly_request_with_params(
@@ -745,75 +819,60 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
         ), kind_of(Hash))
         .and_return(response)
 
-      expect(client.commit_count(nil, revisions: %w[master feature])).to eq(42)
+      expect(client.commit_count(%w[master feature])).to eq(42)
     end
 
-    it 'does not set revisions when nothing is provided' do
+    it 'counts commits with git range syntax' do
       expect_any_instance_of(Gitaly::CommitService::Stub)
         .to receive(:count_commits)
         .with(gitaly_request_with_params(
           repository: repository_message,
+          revisions: ['master..feature'.b],
           first_parent: false
         ), kind_of(Hash))
         .and_return(response)
 
-      expect(client.commit_count(nil)).to eq(42)
+      expect(client.commit_count('master..feature')).to eq(42)
     end
 
-    context 'with revisions parameter' do
-      let(:response) { double(count: 42) }
+    it 'counts commits with exclusion syntax' do
+      expect_any_instance_of(Gitaly::CommitService::Stub)
+        .to receive(:count_commits)
+        .with(gitaly_request_with_params(
+          repository: repository_message,
+          revisions: ['branch-2'.b, '--not'.b, 'branch-1'.b],
+          first_parent: false
+        ), kind_of(Hash))
+        .and_return(response)
 
-      it 'sends revisions field for single revision' do
-        expect_any_instance_of(Gitaly::CommitService::Stub)
-          .to receive(:count_commits)
-          .with(gitaly_request_with_params(
-            repository: repository_message,
-            revisions: ['master'.b],
-            first_parent: false
-          ), kind_of(Hash))
-          .and_return(response)
+      expect(client.commit_count(['branch-2', '--not', 'branch-1'])).to eq(42)
+    end
 
-        expect(client.commit_count(nil, revisions: ['master'])).to eq(42)
-      end
+    it 'counts commits with filters' do
+      after_time = Time.current - 1.week
+      before_time = Time.current
 
-      it 'sends revisions field for multiple revisions' do
-        expect_any_instance_of(Gitaly::CommitService::Stub)
-          .to receive(:count_commits)
-          .with(gitaly_request_with_params(
-            repository: repository_message,
-            revisions: ['branch-1'.b, 'branch-2'.b],
-            first_parent: false
-          ), kind_of(Hash))
-          .and_return(response)
+      expect_any_instance_of(Gitaly::CommitService::Stub)
+        .to receive(:count_commits)
+        .with(gitaly_request_with_params(
+          repository: repository_message,
+          revisions: ['master'.b],
+          first_parent: false,
+          after: Google::Protobuf::Timestamp.new(seconds: after_time.to_i),
+          before: Google::Protobuf::Timestamp.new(seconds: before_time.to_i),
+          path: 'app/'.b
+        ), kind_of(Hash))
+        .and_return(response)
 
-        expect(client.commit_count(nil, revisions: %w[branch-1 branch-2])).to eq(42)
-      end
+      expect(client.commit_count('master', path: 'app/', after: after_time, before: before_time)).to eq(42)
+    end
 
-      it 'takes precedence over revision parameter' do
-        expect_any_instance_of(Gitaly::CommitService::Stub)
-          .to receive(:count_commits)
-          .with(gitaly_request_with_params(
-            repository: repository_message,
-            revisions: ['branch-2'.b],
-            first_parent: false
-          ), kind_of(Hash))
-          .and_return(response)
+    it 'raises error when revisions is nil' do
+      expect { client.commit_count(nil) }.to raise_error(ArgumentError, 'revisions is required')
+    end
 
-        expect(client.commit_count('branch-1', revisions: ['branch-2'])).to eq(42)
-      end
-
-      it 'takes precedence over all parameter' do
-        expect_any_instance_of(Gitaly::CommitService::Stub)
-          .to receive(:count_commits)
-          .with(gitaly_request_with_params(
-            repository: repository_message,
-            revisions: ['branch-1'.b],
-            first_parent: false
-          ), kind_of(Hash))
-          .and_return(response)
-
-        expect(client.commit_count(nil, all: true, revisions: ['branch-1'])).to eq(42)
-      end
+    it 'raises error when revisions is empty array' do
+      expect { client.commit_count([]) }.to raise_error(ArgumentError, 'revisions is required')
     end
 
     context 'with UTF-8 params strings' do
@@ -823,10 +882,31 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
       it 'handles string encodings correctly' do
         expect_any_instance_of(Gitaly::CommitService::Stub)
           .to receive(:count_commits)
-          .with(gitaly_request_with_path(storage_name, relative_path), kind_of(Hash))
+          .with(gitaly_request_with_params(
+            repository: repository_message,
+            revisions: [revision.b],
+            first_parent: false,
+            path: path.b
+          ), kind_of(Hash))
           .and_return(double(count: 0))
 
         client.commit_count(revision, path: path)
+      end
+    end
+
+    context 'with whitespace-only path' do
+      it 'includes the path in the request' do
+        expect_any_instance_of(Gitaly::CommitService::Stub)
+          .to receive(:count_commits)
+          .with(gitaly_request_with_params(
+            repository: repository_message,
+            revisions: [revision.b],
+            first_parent: false,
+            path: ' '.b
+          ), kind_of(Hash))
+          .and_return(double(count: 1))
+
+        expect(client.commit_count(revision, path: ' ')).to eq(1)
       end
     end
   end
@@ -928,6 +1008,7 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
             before: before,
             after: after,
             pagination_params: pagination_params,
+            global_options: Gitaly::GlobalOptions.new(literal_pathspecs: false),
             order: order,
             skip: 100
           )
@@ -962,6 +1043,48 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
       let(:pagination_params) { { limit: 1, page_token: 'foo' } }
 
       it_behaves_like 'a ListCommits request'
+    end
+
+    context 'with path filter' do
+      before do
+        ::Gitlab::GitalyClient.clear_stubs!
+      end
+
+      it 'includes path in the request' do
+        expect_next_instance_of(Gitaly::CommitService::Stub) do |service|
+          expect(service).to receive(:list_commits) do |request, _options|
+            expect(request.paths).to eq([Gitlab::EncodingHelper.encode_binary('files/ruby/popen.rb')])
+          end.and_return([])
+        end
+
+        client.list_commits('master', { path: 'files/ruby/popen.rb' })
+      end
+
+      it 'does not include path when it is an empty string' do
+        expect_next_instance_of(Gitaly::CommitService::Stub) do |service|
+          expect(service).to receive(:list_commits) do |request, _options|
+            expect(request.paths).to be_empty
+          end.and_return([])
+        end
+
+        client.list_commits('master', { path: '' })
+      end
+    end
+
+    context 'with literal_pathspec' do
+      before do
+        ::Gitlab::GitalyClient.clear_stubs!
+      end
+
+      it 'sets global_options with literal_pathspecs true' do
+        expect_next_instance_of(Gitaly::CommitService::Stub) do |service|
+          expect(service).to receive(:list_commits) do |request, _options|
+            expect(request.global_options).to eq(Gitaly::GlobalOptions.new(literal_pathspecs: true))
+          end.and_return([])
+        end
+
+        client.list_commits('master', { literal_pathspec: true })
+      end
     end
 
     describe 'pagination' do
@@ -1191,6 +1314,21 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
         .and_return([])
 
       client.find_commits(message_regex: '^foo')
+    end
+
+    it 'sends an RPC request with a whitespace-only path' do
+      request = Gitaly::FindCommitsRequest.new(
+        repository: repository_message,
+        disable_walk: true,
+        order: 'NONE',
+        paths: [' '.b],
+        global_options: Gitaly::GlobalOptions.new(literal_pathspecs: false)
+      )
+
+      expect_any_instance_of(Gitaly::CommitService::Stub).to receive(:find_commits)
+        .with(request, kind_of(Hash)).and_return([])
+
+      client.find_commits(order: 'default', path: ' ')
     end
   end
 
@@ -1550,6 +1688,43 @@ RSpec.describe Gitlab::GitalyClient::CommitService, feature_category: :gitaly do
 
           expect(signatures[signed_by_user.first][:committer_email]).to eq(''.b)
         end
+      end
+    end
+  end
+
+  describe '#languages' do
+    let(:response) do
+      Gitaly::CommitLanguagesResponse.new(
+        languages: [
+          Gitaly::CommitLanguagesResponse::Language.new(
+            name: 'Ruby', share: 50.0, color: '#701516', language_id: language_id
+          )
+        ]
+      )
+    end
+
+    subject(:languages) { client.languages }
+
+    before do
+      expect_any_instance_of(Gitaly::CommitService::Stub)
+        .to receive(:commit_languages)
+        .with(kind_of(Gitaly::CommitLanguagesRequest), kind_of(Hash))
+        .and_return(response)
+    end
+
+    context 'when language_id is zero' do
+      let(:language_id) { 0 }
+
+      it 'returns zero for language_id' do
+        is_expected.to eq([{ value: 50.0, label: 'Ruby', color: '#701516', highlight: '#701516', language_id: 0 }])
+      end
+    end
+
+    context 'when language_id is present' do
+      let(:language_id) { 326 }
+
+      it 'returns the language_id' do
+        is_expected.to eq([{ value: 50.0, label: 'Ruby', color: '#701516', highlight: '#701516', language_id: 326 }])
       end
     end
   end

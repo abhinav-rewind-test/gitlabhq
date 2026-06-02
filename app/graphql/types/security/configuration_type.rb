@@ -29,13 +29,22 @@ module Types
 
       field :can_enable_spp,
         GraphQL::Types::Boolean,
-        null: false,
-        description: 'Whether the current user can enable secret push protection.'
+        null: true,
+        description: 'Whether the current user can enable secret push protection.',
+        deprecated: {
+          reason: 'Automatic enablement of Secret Push Protection for public GitLab.com projects has been discontinued',
+          milestone: '18.11'
+        }
 
       field :container_scanning_for_registry_enabled,
         GraphQL::Types::Boolean,
         null: true,
         description: 'Whether container scanning for registry is enabled.'
+
+      field :license_scanning_for_cyclonedx_enabled,
+        GraphQL::Types::Boolean,
+        null: true,
+        description: 'Whether license scanning for CycloneDX SBOM files is enabled.'
 
       field :features,
         [Types::Security::ScanFeatureType],
@@ -60,7 +69,11 @@ module Types
       field :is_gitlab_com,
         GraphQL::Types::Boolean,
         null: true,
-        description: 'Whether the instance is GitLab.com.'
+        description: 'Whether the instance is GitLab.com.',
+        deprecated: {
+          reason: 'Automatic enablement of Secret Push Protection for public GitLab.com projects has been discontinued',
+          milestone: '18.11'
+        }
 
       field :latest_pipeline_path,
         GraphQL::Types::String,
@@ -80,17 +93,26 @@ module Types
       field :secret_push_protection_available,
         GraphQL::Types::Boolean,
         null: false,
-        description: 'Whether secret push protection is available at the instance level.'
+        description: 'Whether secret push protection is available for projects in the instance.'
 
       field :secret_push_protection_enabled,
         GraphQL::Types::Boolean,
         null: true,
         description: 'Whether secret push protection is enabled for the project.'
 
+      field :secret_push_protection_enforced,
+        GraphQL::Types::Boolean,
+        null: true,
+        description: 'Whether secret push protection is automatically enforced for all projects in the instance.'
+
       field :secret_push_protection_licensed,
         GraphQL::Types::Boolean,
-        null: false,
-        description: 'Whether the project has a license for secret push protection.'
+        null: true,
+        description: 'Whether the project has a license for secret push protection.',
+        deprecated: {
+          reason: 'Automatic enablement of Secret Push Protection for public GitLab.com projects has been discontinued',
+          milestone: '18.11'
+        }
 
       field :security_training_enabled,
         GraphQL::Types::Boolean,

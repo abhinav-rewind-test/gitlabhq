@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe API::AccessRequests, feature_category: :system_access do
-  let_it_be(:maintainer) { create(:user) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:access_requester) { create(:user) }
-  let_it_be(:stranger) { create(:user) }
+  let_it_be(:maintainer, freeze: false) { create(:user) }
+  let_it_be(:developer, freeze: false) { create(:user) }
+  let_it_be(:access_requester, freeze: false) { create(:user) }
+  let_it_be(:stranger, freeze: false) { create(:user) }
 
-  let_it_be(:project) do
+  let_it_be(:project, freeze: false) do
     create(:project, :public, creator_id: maintainer.id, namespace: maintainer.namespace) do |project|
       project.add_developer(developer)
       project.add_maintainer(maintainer)
@@ -16,7 +16,7 @@ RSpec.describe API::AccessRequests, feature_category: :system_access do
     end
   end
 
-  let_it_be(:group) do
+  let_it_be(:group, freeze: false) do
     create(:group, :public) do |group|
       group.add_developer(developer)
       group.add_owner(maintainer)
@@ -225,6 +225,7 @@ RSpec.describe API::AccessRequests, feature_category: :system_access do
         it_behaves_like 'authorizing granular token permissions', :delete_access_request do
           let(:user) { access_requester }
           let(:boundary_object) { :user }
+          let(:error_boundary_object) { source }
           let(:request) { delete api("/#{source_type.pluralize}/#{source.id}/access_requests/#{access_requester.id}", personal_access_token: pat) }
         end
       end
@@ -236,6 +237,17 @@ RSpec.describe API::AccessRequests, feature_category: :system_access do
 
             expect(response).to have_gitlab_http_status(:no_content)
           end.to change { source.requesters.count }.by(-1)
+        end
+
+        it 'calls Members::DestroyService with skip_subresources' do
+          expect(Members::DestroyService).to receive(:new).with(
+            anything,
+            hash_including(current_user: maintainer, skip_subresources: true)
+          ).and_call_original
+
+          delete api("/#{source_type.pluralize}/#{source.id}/access_requests/#{access_requester.id}", maintainer)
+
+          expect(response).to have_gitlab_http_status(:no_content)
         end
 
         it_behaves_like 'authorizing granular token permissions', :delete_access_request do
@@ -297,5 +309,24 @@ RSpec.describe API::AccessRequests, feature_category: :system_access do
 
   it_behaves_like 'DELETE /:sources/:id/access_requests/:user_id', 'group' do
     let(:source) { group }
+  end
+
+  describe 'DELETE /groups/:id/access_requests/:user_id' do
+    context 'when user has existing project memberships in the group' do
+      let_it_be_with_reload(:project_in_group) { create(:project, group: group) }
+
+      before_all do
+        project_in_group.add_developer(access_requester)
+      end
+
+      it 'preserves project memberships when withdrawing group access request' do
+        expect(project_in_group.members.find_by(user_id: access_requester.id)).to be_present
+
+        delete api("/groups/#{group.id}/access_requests/#{access_requester.id}", access_requester)
+
+        expect(response).to have_gitlab_http_status(:no_content)
+        expect(project_in_group.members.find_by(user_id: access_requester.id)).to be_present
+      end
+    end
   end
 end

@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe SearchService, feature_category: :global_search do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   let_it_be(:accessible_group) { create(:group, :private) }
   let_it_be(:inaccessible_group) { create(:group, :private) }
@@ -178,9 +178,9 @@ RSpec.describe SearchService, feature_category: :global_search do
     context 'with no project_id, no snippets' do
       context 'and allowed scope' do
         it 'returns the specified scope' do
-          scope = described_class.new(user, scope: 'issues').scope
+          scope = described_class.new(user, scope: 'work_items').scope
 
-          expect(scope).to eq 'issues'
+          expect(scope).to eq 'work_items'
         end
       end
 
@@ -417,12 +417,12 @@ RSpec.describe SearchService, feature_category: :global_search do
   end
 
   describe '#abuse_messages' do
-    let(:scope) { 'issues' }
+    let(:scope) { 'work_items' }
     let(:search) { 'foobar' }
-    let(:params) { instance_double(Gitlab::Search::Params) }
+    let(:params) { instance_double(Search::Params) }
 
     before do
-      allow(Gitlab::Search::Params).to receive(:new).and_return(params)
+      allow(Search::Params).to receive(:new).and_return(params)
     end
 
     it 'returns an empty array when not abusive' do
@@ -447,7 +447,7 @@ RSpec.describe SearchService, feature_category: :global_search do
     before do
       allow(search_service).to receive_messages(search_service: search_service_double, search_type: 'basic')
 
-      allow(Gitlab::Search::Params).to receive(:new)
+      allow(Search::Params).to receive(:new)
         .with(raw_params, detect_abuse: true).and_call_original
     end
 
@@ -461,7 +461,7 @@ RSpec.describe SearchService, feature_category: :global_search do
     end
 
     context 'when a search is NOT abusive' do
-      let(:scope) { 'issues' }
+      let(:scope) { 'work_items' }
 
       it 'executes search service' do
         expect(search_service_double).to receive(:execute)
@@ -475,8 +475,10 @@ RSpec.describe SearchService, feature_category: :global_search do
     let(:search) { 'foobar' }
 
     where(:scope, :admin_setting, :setting_enabled, :expected) do
-      'issues'         | :global_search_issues_enabled         | false | false
-      'issues'         | :global_search_issues_enabled         | true  | true
+      'work_items'     | :global_search_work_items_enabled     | false | false
+      'work_items'     | :global_search_work_items_enabled     | true  | true
+      'issues'         | :global_search_work_items_enabled     | false | false
+      'issues'         | :global_search_work_items_enabled     | true  | true
       'merge_requests' | :global_search_merge_requests_enabled | false | false
       'merge_requests' | :global_search_merge_requests_enabled | true  | true
       'snippet_titles' | :global_search_snippet_titles_enabled | false | false
@@ -510,6 +512,20 @@ RSpec.describe SearchService, feature_category: :global_search do
         stub_application_setting(global_search_snippet_titles_enabled: true)
 
         expect(search_service.global_search_enabled_for_scope?).to be true
+      end
+    end
+
+    context 'with API backward compatibility (skip_legacy_scope_conversion)' do
+      let(:search) { 'foobar' }
+
+      it 'checks work_items setting when scope is "issues"' do
+        service = described_class.new(user, search: search, scope: 'issues', skip_legacy_scope_conversion: true)
+
+        stub_application_setting(global_search_work_items_enabled: false)
+        expect(service.global_search_enabled_for_scope?).to be false
+
+        stub_application_setting(global_search_work_items_enabled: true)
+        expect(service.global_search_enabled_for_scope?).to be true
       end
     end
   end
@@ -548,6 +564,89 @@ RSpec.describe SearchService, feature_category: :global_search do
           allow(instance.params.abuse_detection).to receive(:abusive_pipes?).and_return(false)
           expect(instance.abuse_detected?).to be false
         end
+      end
+    end
+  end
+
+  describe 'user search redaction' do
+    let_it_be(:unauthorized_user) { create(:user, username: 'unauthorized_user') }
+    let(:search_results) { instance_double(Gitlab::SearchResults) }
+    let(:mock_results) do
+      [unauthorized_user].tap { |r| allow(r).to receive_messages(total_count: 1, limit_value: 20, offset_value: 0) }
+    end
+
+    before do
+      allow(search_service).to receive(:search_results).and_return(search_results)
+      allow(search_results).to receive(:objects).and_return(mock_results)
+      allow(Ability).to receive(:allowed?).and_call_original
+    end
+
+    context 'when searching users at global level' do
+      let(:search_service) { described_class.new(user, search: 'user', scope: 'users') }
+
+      context 'when read_users_list permission is denied' do
+        before do
+          allow(Ability).to receive(:allowed?).with(user, :read_users_list).and_return(false)
+        end
+
+        it 'redacts users' do
+          results = search_service.search_objects
+
+          expect(results).to be_empty
+        end
+      end
+
+      context 'when read_users_list permission is granted' do
+        before do
+          allow(Ability).to receive(:allowed?).with(user, :read_users_list).and_return(true)
+        end
+
+        it 'includes users' do
+          results = search_service.search_objects
+
+          expect(results).to include(unauthorized_user)
+        end
+      end
+    end
+
+    context 'when searching users at group level' do
+      let(:search_service) { described_class.new(user, search: 'user', scope: 'users', group_id: accessible_group.id) }
+
+      context 'when read_group_member permission is denied' do
+        before do
+          allow(Ability).to receive(:allowed?).with(user, :read_group_member, accessible_group).and_return(false)
+        end
+
+        it 'redacts users' do
+          results = search_service.search_objects
+
+          expect(results).to be_empty
+        end
+      end
+
+      context 'when read_group_member permission is granted' do
+        before do
+          allow(Ability).to receive(:allowed?).with(user, :read_group_member, accessible_group).and_return(true)
+        end
+
+        it 'includes users' do
+          results = search_service.search_objects
+
+          expect(results).to include(unauthorized_user)
+        end
+      end
+    end
+
+    context 'when searching users at project level' do
+      let(:search_service) do
+        described_class.new(user, search: 'user', scope: 'users', project_id: accessible_project.id)
+      end
+
+      it 'always allows users since :read_project implies :read_project_member' do
+        # No need to stub permissions - if user can access the project, they can see members
+        results = search_service.search_objects
+
+        expect(results).to include(unauthorized_user)
       end
     end
   end

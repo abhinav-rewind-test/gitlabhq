@@ -1,7 +1,7 @@
 ---
-stage: Deploy
-group: Environments
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+stage: Verify
+group: Runner Core
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Auto DevOpsのステージ
 ---
 
@@ -16,11 +16,8 @@ title: Auto DevOpsのステージ
 
 ## Auto Build {#auto-build}
 
-{{< alert type="note" >}}
-
-OpenShiftクラスターのように、GitLab RunnerでDocker in Dockerが利用できない場合、Auto Buildはサポートされません。GitLabのOpenShiftサポートは、[専用のエピック](https://gitlab.com/groups/gitlab-org/-/epics/2068)で追跡されています。
-
-{{< /alert >}}
+> [!note]
+> OpenShiftクラスターのように、Docker-in-DockerがGitLab Runnerで利用できない場合、自動ビルドはサポートされていません。GitLabのOpenShiftサポートは、[専用のエピック](https://gitlab.com/groups/gitlab-org/-/epics/2068)で追跡されています。
 
 Auto Buildは、既存の`Dockerfile`またはHeroku Buildpackを使用して、アプリケーションのビルドを作成します。結果として得られるDockerイメージは、[コンテナレジストリ](../../user/packages/container_registry/_index.md)にプッシュされ、コミットSHAまたはタグでタグ付けされます。
 
@@ -28,7 +25,7 @@ Auto Buildは、既存の`Dockerfile`またはHeroku Buildpackを使用して、
 
 プロジェクトのリポジトリのルートに`Dockerfile`が含まれている場合、Auto Buildは`docker build`を使用してDockerイメージを作成します。
 
-Auto Review AppsとAuto Deployも使用していて、独自の`Dockerfile`を提供する場合、次のいずれかを行う必要があります。
+Auto Review AppsとAuto Deployも使用していて、独自の`Dockerfile`を提供する場合、次のいずれかを行う必要があります:
 
 - アプリケーションをポート`5000`に公開する。[デフォルトのHelmチャート](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/tree/master/assets/auto-deploy-app)はこのポートが利用可能であることを前提としているためです。
 - [Auto Deploy Helmチャートをカスタマイズ](customize.md#custom-helm-chart)して、デフォルト値をオーバーライドする。
@@ -44,11 +41,8 @@ Auto Buildは、プロジェクトの`Dockerfile`が存在する場合、それ�
 
 他の言語およびフレームワークの要件については、[Heroku Buildpackドキュメント](https://devcenter.heroku.com/articles/buildpacks#officially-supported-buildpacks)をお読みください。
 
-{{< alert type="note" >}}
-
-テストスイートの検出はCloud Native Buildpack仕様に含まれていないため、Auto Testは引き続きHerokuishを使用します。詳細については、[イシュー212689](https://gitlab.com/gitlab-org/gitlab/-/issues/212689)を参照してください。
-
-{{< /alert >}}
+> [!note]
+> Cloud Native Buildpackの仕様にはまだテストスイートの検出機能が含まれていないため、Auto Testは引き続きHerokuishを使用します。詳細については、[イシュー212689](https://gitlab.com/gitlab-org/gitlab/-/issues/212689)を参照してください。
 
 #### ビルドコンテナにボリュームをマウントする {#mount-volumes-into-the-build-container}
 
@@ -56,7 +50,7 @@ Auto Buildは、プロジェクトの`Dockerfile`が存在する場合、それ�
 
 複数のボリュームを渡す場合は、パイプ`|`文字を使用します。リストの各項目は、個別の`--volume`引数を使用して`build back`に渡されます。
 
-次の例では、3つのボリュームがコンテナに`/etc/foo`、`/opt/foo`、`/var/opt/foo`としてマウントされています。:
+次の例では、3つのボリュームがコンテナに`/etc/foo`、`/opt/foo`、`/var/opt/foo`としてマウントされています。
 
 ```yaml
 buildjob:
@@ -68,7 +62,7 @@ buildjob:
 
 ### HerokuishからCloud Native Buildpacksに移行する {#moving-from-herokuish-to-cloud-native-buildpacks}
 
-Cloud Native Buildpacksを使用したビルドは、Herokuishを使用したビルドと同じオプションをサポートしていますが、次の注意事項があります。:
+Cloud Native Buildpacksを使用したビルドは、Herokuishを使用したビルドと同じオプションをサポートしていますが、次の注意事項があります。
 
 - BuildpackはCloud Native Buildpackである必要があります。Heroku Buildpackは、Herokuの[`cnb-shim`](https://github.com/heroku/cnb-shim)を使用してCloud Native Buildpackに変換できます。
 - `BUILDPACK_URL`は、[`pack`でサポートされている](https://buildpacks.io/docs/app-developer-guide/specify-buildpacks/)形式である必要があります。
@@ -82,11 +76,8 @@ Auto Testは、アプリケーションにすでに用意されているテス�
 
 <!-- vale gitlab_base.Spelling = NO -->
 
-{{< alert type="note" >}}
-
-[Auto Build](#auto-build)でサポートされているすべてのBuildpackがAuto Testでサポートされているわけではありません。Auto Testは、Cloud Native Buildpacks*ではなく*[Herokuish](https://gitlab.com/gitlab-org/gitlab/-/issues/212689)を使用し、[Testpack API](https://devcenter.heroku.com/articles/testpack-api)を実装するBuildpackのみがサポートされます。
-
-{{< /alert >}}
+> [!note]
+> [Auto Build](#auto-build)でサポートされているすべてのビルドパックがAuto Testでサポートされているわけではありません。Auto Testは、Cloud Native Buildpacks*ではなく*[Herokuish](https://gitlab.com/gitlab-org/gitlab/-/issues/212689)を使用し、[Testpack API](https://devcenter.heroku.com/articles/testpack-api)を実装するBuildpackのみがサポートされます。
 
 <!-- vale gitlab_base.Spelling = YES -->
 
@@ -94,7 +85,7 @@ Auto Testは、アプリケーションにすでに用意されているテス�
 
 Auto Testは比較的新しい機能強化であるため、まだすべてのBuildpackがサポートしているわけではありません。ただし、Herokuが[公式にサポートしている言語](https://devcenter.heroku.com/articles/heroku-ci#supported-languages)はすべて、Auto Testをサポートしています。HerokuのHerokuish Buildpackがサポートする言語はすべてAuto Testをサポートしていますが、特にマルチBuildpackはサポートしていません。
 
-サポートされているBuildpackは次のとおりです。:
+サポートされているBuildpackは次のとおりです。
 
 ```plaintext
 - heroku-buildpack-multi
@@ -132,21 +123,21 @@ Auto Code Qualityは、[Code Qualityイメージ](https://gitlab.com/gitlab-org/
 
 {{< /history >}}
 
-静的アプリケーションセキュリティテスト（SAST）は、現在のコードに対して静的な解析を実行し、潜在的なセキュリティ問題をチェックします。Auto SASTステージには、[GitLab Runner](https://docs.gitlab.com/runner/) 11.5以降が必要です。
+静的アプリケーションセキュリティテスト（SAST）は、現在のcodeコードに対して静的な解析を実行し、潜在的なセキュリティイシューをチェックします。Auto SASTステージには、[GitLab Runner](https://docs.gitlab.com/runner/) 11.5以降が必要です。
 
 レポートは作成後、アーティファクトとしてアップロードされるため、後でダウンロードして確認できます。[Ultimate](https://about.gitlab.com/pricing/)ライセンスの場合、マージリクエストウィジェットにはセキュリティ警告も表示されます。
 
 詳細については、[SAST](../../user/application_security/sast/_index.md)を参照してください。
 
-## Auto Secret Detection {#auto-secret-detection}
+## 自動シークレット検出 {#auto-secret-detection}
 
-シークレット検出は、[シークレット検出Dockerイメージ](https://gitlab.com/gitlab-org/security-products/analyzers/secrets)を使用して現在のコードに対してシークレット検出を実行し、流出したシークレットをチェックします。
+シークレット検出は、[シークレット検出Dockerイメージ](https://gitlab.com/gitlab-org/security-products/analyzers/secrets)を使用して、現在のcodeコードをスキャンし、流出したシークレットをチェックします。
 
 レポートは作成後、アーティファクトとしてアップロードされ、後でダウンロードして評価できます。[Ultimate](https://about.gitlab.com/pricing/)ライセンスの場合、マージリクエストウィジェットにはセキュリティ警告も表示されます。
 
 詳細については、[シークレット検出](../../user/application_security/secret_detection/_index.md)を参照してください。
 
-## Auto Dependency Scanning {#auto-dependency-scanning}
+## 自動依存関係スキャン {#auto-dependency-scanning}
 
 {{< details >}}
 
@@ -155,15 +146,15 @@ Auto Code Qualityは、[Code Qualityイメージ](https://gitlab.com/gitlab-org/
 
 {{< /details >}}
 
-依存関係スキャンは、プロジェクトの依存関係に対して解析を実行し、潜在的なセキュリティ問題をチェックします。Auto Dependency Scanningステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
+依存関係スキャンは、プロジェクトの依存関係を分析し、潜在的なセキュリティイシューをチェックします。自動依存関係スキャンのパイプラインステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
 
 レポートは作成後、アーティファクトとしてアップロードされるため、後でダウンロードして確認できます。マージリクエストウィジェットには、検出されたセキュリティ警告が表示されます。
 
 詳細については、[依存関係スキャン](../../user/application_security/dependency_scanning/_index.md)を参照してください。
 
-## Auto Container Scanning {#auto-container-scanning}
+## 自動コンテナスキャン {#auto-container-scanning}
 
-コンテナに対する脆弱性の静的な解析では、[Trivy](https://aquasecurity.github.io/trivy/latest/)を使用して、Dockerイメージの潜在的なセキュリティ問題をチェックします。Auto Container Scanningステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
+コンテナに対する脆弱性の静的な解析では、[Trivy](https://aquasecurity.github.io/trivy/latest/)を使用して、Dockerイメージの潜在的なセキュリティ問題をチェックします。自動コンテナスキャンのパイプラインステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
 
 レポートは作成後、アーティファクトとしてアップロードされるため、後でダウンロードして確認できます。マージリクエストには、検出されたセキュリティ問題が表示されます。
 
@@ -183,11 +174,8 @@ Auto Review Appsは、アプリケーションをKubernetesクラスターにの
 
 [ローカルのTiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036)が使用されます。以前のバージョンのGitLabでは、プロジェクトのネームスペースにTillerがインストールされていました。
 
-{{< alert type="warning" >}}
-
-Helmの外部で（Kubernetesを直接使用して）アプリを操作しないでください。これにより、Helmが変更を検出できず混乱を招き、Auto DevOpsを使用した後続のデプロイで変更が取り消される可能性があるためです。また、何かを変更し、再度デプロイして元に戻そうとしても、Helmがそもそも変更内容自体を検出できず、古い設定を再適用する必要があることを認識しない可能性があります。
-
-{{< /alert >}}
+> [!warning]
+> アプリケーションはHelmの外部（Kubernetesを直接使用）で操作しないでください。これにより、Helmが変更を検出できず混乱を招き、Auto DevOpsを使用した後続のデプロイで変更が取り消される可能性があるためです。また、何かを変更し、再度デプロイして元に戻そうとしても、Helmがそもそも変更内容自体を検出できず、古い設定を再適用する必要があることを認識しない可能性があります。
 
 ## Auto DAST {#auto-dast}
 
@@ -198,28 +186,25 @@ Helmの外部で（Kubernetesを直接使用して）アプリを操作しない
 
 {{< /details >}}
 
-動的アプリケーションセキュリティテスト（DAST）では、一般的なオープンソースツールである[OWASP ZAProxy](https://github.com/zaproxy/zaproxy)を使用して現在のコードを解析し、潜在的なセキュリティ問題をチェックします。Auto DASTステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
+動的アプリケーションセキュリティテスト（DAST）は、人気のあるオープンソースツール[OWASP ZAProxy](https://github.com/zaproxy/zaproxy)を使用して、現在のcodeコードを分析し、潜在的なセキュリティイシューをチェックします。Auto DASTステージは、[Ultimate](https://about.gitlab.com/pricing/)以外のライセンスではスキップされます。
 
 - [ターゲットブランチをオーバーライド](#overriding-the-dast-target)しない限り、DASTはデフォルトブランチで、その目的専用にデプロイされたアプリケーションをスキャンします。DASTの実行後、そのアプリは削除されます。
 - フィーチャーブランチでは、DASTは[レビューアプリ](#auto-review-apps)をスキャンします。
 
 DASTスキャンが完了すると、[セキュリティダッシュボード](../../user/application_security/security_dashboard/_index.md)とマージリクエストウィジェットにセキュリティ警告が表示されます。
 
-詳細については、[動的アプリケーションセキュリティテスト（DAST）](../../user/application_security/dast/_index.md)を参照してください。
+詳細については、[DAST](../../user/application_security/dast/_index.md)を参照してください。
 
 ### DASTターゲットをオーバーライドする {#overriding-the-dast-target}
 
 自動デプロイされたレビューアプリの代わりにカスタムターゲットを使用するには、DASTでスキャンするURLに`DAST_WEBSITE` CI/CD変数を設定します。
 
-{{< alert type="warning" >}}
-
-GitLabでは、[DAST Full Scan](../../user/application_security/dast/browser/_index.md)が有効になっている場合、`DAST_WEBSITE`をステージングまたは本番環境に設定**しない**ことを強く推奨しています。DAST Full Scanはターゲットに対して積極的に攻撃を行うため、アプリケーションが停止したり、データが損失または破損したりする可能性があります。
-
-{{< /alert >}}
+> [!warning]
+> [DAST Fullスキャン](../../user/application_security/dast/browser/_index.md)が有効な場合、GitLabは、`DAST_WEBSITE`をステージングまたは本番環境に設定**not**することを強く推奨します。DAST Full Scanはターゲットに対して積極的に攻撃を行うため、アプリケーションが停止したり、データが損失または破損したりする可能性があります。
 
 ### Auto DASTをスキップする {#skipping-auto-dast}
 
-DASTジョブをスキップできます。:
+DASTジョブをスキップできます。
 
 - `DAST_DISABLED` CI/CD変数を`"true"`に設定して、すべてのブランチでスキップします。
 - `DAST_DISABLED_FOR_DEFAULT_BRANCH`変数を`"true"`に設定して、デフォルトブランチでのみスキップします。
@@ -234,7 +219,7 @@ DASTジョブをスキップできます。:
 
 {{< /details >}}
 
-Auto [Browser Performance Testing](../../ci/testing/browser_performance_testing.md)は、[Sitespeed.ioコンテナ](https://hub.docker.com/r/sitespeedio/sitespeed.io/)を使用してWebページのブラウザパフォーマンスを測定し、各ページの全体的なパフォーマンススコアを含むJSONレポートを作成し、レポートをアーティファクトとしてアップロードします。デフォルトでは、レビュー環境と本番環境のルートページをテストします。追加のURLをテストする場合は、ルートディレクトリに`.gitlab-urls.txt`という名前のファイルを作成し、1行に1つずつパスを追加します。次に例を示します。:
+Auto [Browser Performance Testing](../../ci/testing/browser_performance_testing.md)は、[Sitespeed.ioコンテナ](https://hub.docker.com/r/sitespeedio/sitespeed.io/)を使用してWebページのブラウザパフォーマンスを測定し、各ページの全体的なパフォーマンススコアを含むJSONレポートを作成し、レポートをアーティファクトとしてアップロードします。デフォルトでは、レビュー環境と本番環境のルートページをテストします。追加のURLをテストする場合は、ルートディレクトリに`.gitlab-urls.txt`という名前のファイルを作成し、1行に1つずつパスを追加します。例: 
 
 ```plaintext
 /
@@ -275,11 +260,8 @@ Helmは、[auto-deploy-app](https://gitlab.com/gitlab-org/cluster-integration/au
 
 [ローカルのTiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036)が使用されます。以前のバージョンのGitLabでは、プロジェクトのネームスペースにTillerがインストールされていました。
 
-{{< alert type="warning" >}}
-
-Helmの外部で（Kubernetesを直接使用して）アプリを操作しないでください。これにより、Helmが変更を検出できず混乱を招き、Auto DevOpsを使用した後続のデプロイで変更が取り消される可能性があるためです。また、何かを変更し、再度デプロイして元に戻そうとしても、Helmがそもそも変更内容自体を検出できず、古い設定を再適用する必要があることを認識しない可能性があります。
-
-{{< /alert >}}
+> [!warning]
+> アプリケーションはHelmの外部（Kubernetesを直接使用）で操作しないでください。これにより、Helmが変更を検出できず混乱を招き、Auto DevOpsを使用した後続のデプロイで変更が取り消される可能性があるためです。また、何かを変更し、再度デプロイして元に戻そうとしても、Helmがそもそも変更内容自体を検出できず、古い設定を再適用する必要があることを認識しない可能性があります。
 
 ### GitLabデプロイトークン {#gitlab-deploy-tokens}
 
@@ -287,33 +269,24 @@ Auto DevOpsが有効になっており、Auto DevOps設定が保存されてい�
 
 GitLabデプロイトークンが見つからない場合、`CI_REGISTRY_PASSWORD`が使用されます。
 
-{{< alert type="note" >}}
-
-`CI_REGISTRY_PASSWORD`は、デプロイ中のみ有効です。Kubernetesはデプロイ中にコンテナイメージを正常にプルできますが、ポッドの削除後など、イメージを再度プルする必要がある場合、Kubernetesは`CI_REGISTRY_PASSWORD`を使用してイメージをフェッチしようとするため、プルできません。
-
-{{< /alert >}}
+> [!note]
+> `CI_REGISTRY_PASSWORD`はデプロイ中にのみ有効です。Kubernetesはデプロイ中にコンテナイメージを正常にプルできますが、ポッドの削除後など、イメージを再度プルする必要がある場合、Kubernetesは`CI_REGISTRY_PASSWORD`を使用してイメージをフェッチしようとするため、プルできません。
 
 ### Kubernetes 1.16以降 {#kubernetes-116}
 
-{{< alert type="warning" >}}
-
-`deploymentApiVersion`設定のデフォルト値が、`extensions/v1beta`から`apps/v1`に変更されました。
-
-{{< /alert >}}
+> [!warning]
+> `deploymentApiVersion`設定のデフォルト値は、`extensions/v1beta`から`apps/v1`に変更されました。
 
 Kubernetes 1.16以降では、`extensions/v1beta1`バージョンの`Deployment`のサポートを含む、多くの[APIが削除](https://kubernetes.io/blog/2019/07/18/api-deprecations-in-1-16/)されています。
 
-Kubernetes 1.16以降のクラスターでAuto Deployを使用するには、次の手順に従います。:
+Kubernetes 1.16以降のクラスターでAuto Deployを使用するには、次の手順に従います。
 
 1. GitLab 13.0以降で初めてアプリケーションをデプロイする場合は、設定は必要ありません。
 
 1. `AUTO_DEVOPS_POSTGRES_CHANNEL`が`1`に設定された状態でクラスター内にPostgreSQLデータベースをインストールしている場合は、[PostgreSQLのアップグレードガイド](upgrading_postgresql.md)に従ってください。
 
-{{< alert type="warning" >}}
-
-バージョン`2`を選択する前に、[PostgreSQLのアップグレードガイド](upgrading_postgresql.md)に従って、データベースをバックアップおよび復元してください。
-
-{{< /alert >}}
+> [!warning]
+> [PostgreSQLのアップグレードガイド](upgrading_postgresql.md)に従って、バージョン`2`を選択する前にデータベースをバックアップし、復元するしてください。
 
 ### 移行 {#migrations}
 
@@ -325,7 +298,7 @@ PostgreSQLのデータベースの初期化と移行をアプリケーション�
 
 `DB_MIGRATE`が存在する場合、これはHelmのアップグレード前フックとして、アプリケーションポッド内でShellコマンドとして実行されます。
 
-たとえば、[Cloud Native Buildpacks](#auto-build-using-cloud-native-buildpacks)でビルドされたイメージ内のRailsアプリケーションでは、次のようになります。:
+たとえば、[Cloud Native Buildpacks](#auto-build-using-cloud-native-buildpacks)でビルドされたイメージ内のRailsアプリケーションでは、次のようになります。
 
 - `DB_INITIALIZE`は次のように設定できます。`RAILS_ENV=production /cnb/lifecycle/launcher bin/rails db:setup`
 - `DB_MIGRATE`は次のように設定できます。`RAILS_ENV=production /cnb/lifecycle/launcher bin/rails db:migrate`
@@ -344,12 +317,12 @@ Auto Deployに使用される[デフォルトのHelmチャート](https://gitlab
 
 ワーカーを実行するには、ワーカーが標準ヘルスチェックに応答できるようにする必要があります。このヘルスチェックは、ポート`5000`でのHTTP応答が成功することを想定しています。[Sidekiq](https://github.com/mperham/sidekiq)の場合、[`sidekiq_alive` gemを使用できます。](https://rubygems.org/gems/sidekiq_alive)
 
-Sidekiqを操作するには、デプロイでRedisインスタンスにアクセスできることも確認する必要があります。Auto DevOpsはこのインスタンスをデプロイしないため、次の対応が必要になります。:
+Sidekiqを操作するには、デプロイでRedisインスタンスにアクセスできることも確認する必要があります。Auto DevOpsはこのインスタンスをデプロイしないため、次の対応が必要になります。
 
 - 独自のRedisインスタンスを管理する。
 - CI/CD変数`K8S_SECRET_REDIS_URL`にこのインスタンスのURLを設定し、デプロイに確実に渡されるようにする。
 
-ヘルスチェックに応答するようにワーカーを設定した後、Railsアプリケーション用にSidekiqワーカーを実行します。[`.gitlab/auto-deploy-values.yaml`ファイル](customize.md#customize-helm-chart-values)に以下を設定すると、ワーカーを有効にできます。:
+ヘルスチェックに応答するようにワーカーを設定した後、Railsアプリケーション用にSidekiqワーカーを実行します。[`.gitlab/auto-deploy-values.yaml`ファイル](customize.md#customize-helm-chart-values)に以下を設定すると、ワーカーを有効にできます。
 
 ```yaml
 workers:
@@ -367,18 +340,18 @@ workers:
 
 ### コンテナ内でコマンドを実行する {#running-commands-in-the-container}
 
-リポジトリに[カスタムDockerfile](#auto-build-using-a-dockerfile)が含まれていない限り、[Auto Build](#auto-build)されたアプリケーションでは、コマンドを次のようにラップする必要がある場合があります。:
+リポジトリに[カスタムDockerfile](#auto-build-using-a-dockerfile)が含まれていない限り、[Auto Build](#auto-build)されたアプリケーションでは、コマンドを次のようにラップする必要がある場合があります。
 
 ```shell
 /cnb/lifecycle/launcher $COMMAND
 ```
 
-コマンドをラップする必要がある理由の一部を次に示します。:
+コマンドをラップする必要がある理由の一部を次に示します。
 
 - `kubectl exec`を使用してアタッチするため。
 - GitLab [Webターミナル](../../ci/environments/_index.md#web-terminals-deprecated)を使用するため。
 
-たとえば、アプリケーションのルートディレクトリからRailsコンソールを起動するには、次を実行します。:
+たとえば、アプリケーションのルートディレクトリからRailsコンソールを起動するには、次を実行します:
 
 ```shell
 /cnb/lifecycle/launcher procfile exec bin/rails c

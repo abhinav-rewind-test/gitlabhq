@@ -42,7 +42,7 @@ class User < ApplicationRecord
   cells_claims_attribute :id, type: CLAIMS_BUCKET_TYPE::USER_IDS, feature_flag: :cells_claims_users
   cells_claims_attribute :username, type: CLAIMS_BUCKET_TYPE::USERNAMES, feature_flag: :cells_claims_users
 
-  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::USER, subject_key: :id
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::ORGANIZATION, subject_key: :organization_id
 
   ignore_column :skype, remove_after: '2025-09-18', remove_with: '18.4'
 
@@ -54,7 +54,12 @@ class User < ApplicationRecord
 
   COUNT_CACHE_VALIDITY_PERIOD = 24.hours
 
-  OTP_SECRET_LENGTH = 32
+  # Number of random bytes used to generate the OTP secret via ROTP::Base32.random.
+  # 20 bytes produces a 32-character Base32 string (160-bit key), matching the
+  # devise-two-factor v6+ default and RFC 4226 recommended key length.
+  # NOTE: In devise-two-factor < 6.0, this value was a character count; from v6.0
+  # it is a byte count. 20 bytes -> 32 Base32 chars (same output as the old 32-char default).
+  OTP_SECRET_LENGTH = 20
   OTP_SECRET_TTL = 2.minutes
 
   MAX_USERNAME_LENGTH = 255
@@ -254,6 +259,7 @@ class User < ApplicationRecord
   has_many :releases,                 dependent: :nullify, foreign_key: :author_id
   has_many :subscriptions,            dependent: :destroy
   has_many :oauth_applications, class_name: 'Authn::OauthApplication', as: :owner, dependent: :destroy
+  has_many :oauth_consents, class_name: 'Authn::OauthConsent', inverse_of: :user, dependent: :destroy
   has_many :abuse_reports, dependent: :nullify, foreign_key: :user_id, inverse_of: :user
   has_many :reported_abuse_reports,   dependent: :nullify, foreign_key: :reporter_id, class_name: "AbuseReport", inverse_of: :reporter
   has_many :resolved_abuse_reports,   foreign_key: :resolved_by_id, class_name: "AbuseReport", inverse_of: :resolved_by
@@ -328,6 +334,13 @@ class User < ApplicationRecord
   has_many :revoked_user_achievements, class_name: 'Achievements::UserAchievement', foreign_key: 'revoked_by_user_id', inverse_of: :revoked_by_user
   has_many :achievements, through: :user_achievements, class_name: 'Achievements::Achievement', inverse_of: :users
   has_many :vscode_settings, class_name: 'VsCode::Settings::VsCodeSetting', inverse_of: :user
+  has_many :cluster_agent_activity_events, class_name: 'Clusters::Agents::ActivityEvent', foreign_key: :user_id, inverse_of: :user, dependent: :nullify
+  has_many :clusters, class_name: 'Clusters::Cluster', inverse_of: :user, dependent: :nullify
+  has_many :cluster_agents, class_name: 'Clusters::Agent', foreign_key: :created_by_user_id, inverse_of: :created_by_user, dependent: :nullify
+  has_many :cluster_agent_tokens, class_name: 'Clusters::AgentToken', foreign_key: :created_by_user_id, inverse_of: :created_by_user, dependent: :nullify
+  has_many :deploy_tokens, class_name: 'DeployToken', foreign_key: :creator_id, inverse_of: :user, dependent: :nullify
+  has_many :terraform_states, class_name: 'Terraform::State', foreign_key: :locked_by_user_id, inverse_of: :locked_by_user, dependent: :nullify
+  has_many :terraform_state_versions, class_name: 'Terraform::StateVersion', foreign_key: :created_by_user_id, inverse_of: :created_by_user, dependent: :nullify
 
   has_many :broadcast_message_dismissals, class_name: 'Users::BroadcastMessageDismissal'
 
@@ -376,6 +389,7 @@ class User < ApplicationRecord
   validates :notified_of_own_activity, allow_nil: false, inclusion: { in: [true, false] }
   validates :project_view, presence: true
   validates :composite_identity_enforced, inclusion: { in: [false] }, unless: -> { service_account? }
+  validate :immutable_username_with_enforced_composite_identity, if: :username_changed?, on: :update
 
   after_initialize :set_projects_limit
   # Ensures we get a user_detail on all new user records.
@@ -517,6 +531,11 @@ class User < ApplicationRecord
     :use_work_items_view, :use_work_items_view=,
     :text_editor, :text_editor=,
     :default_text_editor_enabled, :default_text_editor_enabled=,
+    :orbit_enabled, :orbit_enabled=,
+    :orbit_agent_enabled, :orbit_agent_enabled=,
+    :orbit_agentic_chat_enabled, :orbit_agentic_chat_enabled=,
+    :orbit_other_foundational_agents_enabled, :orbit_other_foundational_agents_enabled=,
+    :orbit_custom_agents_enabled, :orbit_custom_agents_enabled=,
     :merge_request_dashboard_list_type, :merge_request_dashboard_list_type=,
     :merge_request_dashboard_show_drafts, :merge_request_dashboard_show_drafts=,
     to: :user_preference
@@ -534,9 +553,15 @@ class User < ApplicationRecord
   delegate :twitter, :twitter=, to: :user_detail, allow_nil: true
   delegate :website_url, :website_url=, to: :user_detail, allow_nil: true
   delegate :location, :location=, to: :user_detail, allow_nil: true
-  delegate :organization, :organization=, to: :user_detail, prefix: true, allow_nil: true
+  delegate :company, :company=, to: :user_detail, allow_nil: true
   delegate :discord, :discord=, to: :user_detail, allow_nil: true
   delegate :github, :github=, to: :user_detail, allow_nil: true
+  delegate :provisioned_by_group, :provisioned_by_group=,
+    :provisioned_by_group_id, :provisioned_by_group_id=,
+    to: :user_detail, allow_nil: true
+  delegate :provisioned_by_project, :provisioned_by_project=,
+    :provisioned_by_project_id, :provisioned_by_project_id=,
+    to: :user_detail, allow_nil: true
   delegate :project_authorizations_recalculated_at, :project_authorizations_recalculated_at=, to: :user_detail, allow_nil: true
   delegate :bot_namespace, :bot_namespace=, to: :user_detail, allow_nil: true
   delegate :email_otp, :email_otp=, to: :user_detail, allow_nil: true
@@ -618,11 +643,7 @@ class User < ApplicationRecord
     # rubocop: disable CodeReuse/ServiceClass
     after_transition any => :blocked do |user|
       user.run_after_commit do
-        Ci::DropPipelinesAndDisableSchedulesForUserService.new.execute(
-          user,
-          reason: :user_blocked,
-          include_owned_projects_and_groups: false
-        )
+        Users::DropPipelinesForBlockedUserWorker.perform_async(user.id)
       end
     end
 
@@ -694,7 +715,9 @@ class User < ApplicationRecord
   scope :by_login, ->(login) do
     return none if login.blank?
 
-    login.include?('@') ? iwhere(email: login) : iwhere(username: login)
+    stripped_login = login.strip
+
+    login.include?('@') ? iwhere(email: stripped_login) : iwhere(username: stripped_login)
   end
   scope :by_user_email, ->(emails) { iwhere(email: Array(emails)) }
   scope :by_emails, ->(emails) { joins(:emails).where(emails: { email: Array(emails).map(&:downcase) }) }
@@ -732,6 +755,7 @@ class User < ApplicationRecord
   scope :order_oldest_last_activity, -> { reorder(arel_table[:last_activity_on].asc.nulls_first, arel_table[:id].desc) }
   scope :ordered_by_id_desc, -> { reorder(arel_table[:id].desc) }
   scope :ordered_by_name_asc_id_desc, -> { order(name: :asc, id: :desc) }
+  scope :order_random, -> { order(Arel.sql('random()')) }
 
   scope :dormant, -> { with_state(:active).human_or_service_user.where('last_activity_on <= ?', Gitlab::CurrentSettings.deactivate_dormant_users_period.day.ago.to_date) }
   scope :with_no_activity, -> { with_state(:active).human_or_service_user.where(last_activity_on: nil).where('created_at <= ?', MINIMUM_DAYS_CREATED.day.ago.to_date) }
@@ -776,6 +800,15 @@ class User < ApplicationRecord
 
   scope :member_of_organization, ->(organization) do
     joins(:organization_users).where(organization_users: { organization: organization })
+  end
+  scope :with_provisioning_group, ->(group) do
+    joins(:user_detail).where(user_detail: { provisioned_by_group: group })
+  end
+  scope :with_provisioning_project, ->(project) do
+    joins(:user_detail).where(user_detail: { provisioned_by_project: project })
+  end
+  scope :with_provisioning_project_in, ->(namespaces) do
+    joins(user_detail: :provisioned_by_project).where(projects: { namespace_id: namespaces })
   end
 
   def self.supported_keyset_orderings
@@ -1342,9 +1375,21 @@ class User < ApplicationRecord
     end
   end
 
+  # Overrides Devise::Models::TwoFactorBackupable#invalidate_otp_backup_code! to
+  # return false on read-only replicas, and to dispatch to the FIPS-compliant
+  # PBKDF2 implementation when applicable.
+  #
+  # Backup code authentication requires a DB write to consume the code. On a
+  # read-only replica we cannot perform that write, so we treat the attempt as
+  # failed. This preserves the pre-existing behaviour: backup code auth was
+  # always denied on replicas because the external save! would raise.
   def invalidate_otp_backup_code!(code)
+    return false if Gitlab::Database.read_only?
+
     if Gitlab::FIPS.enabled? && pbkdf2?
-      invalidate_otp_backup_code_pdkdf2!(code)
+      result = invalidate_otp_backup_code_pdkdf2!(code)
+      save!(validate: false) if result
+      result
     else
       super(code)
     end
@@ -1451,7 +1496,6 @@ class User < ApplicationRecord
   end
 
   def allow_passkey_authentication?
-    return false if Feature.disabled?(:passkeys, self)
     return false if disable_password_authentication_for_sso_users?
 
     Gitlab::CurrentSettings.password_authentication_enabled_for_web?
@@ -1488,9 +1532,19 @@ class User < ApplicationRecord
     otp_secret_expires_at.past?
   end
 
+  # Centralised location while transitioning from Feature Flag to
+  # Application Setting.
+  # TODO: Remove after https://gitlab.com/gitlab-org/gitlab/-/work_items/599948
+  def email_otp_available?
+    ::Feature.enabled?(:email_based_mfa, self) || ::Gitlab::CurrentSettings.email_otp_enabled?
+  end
+
   def email_based_otp_required?
-    Feature.enabled?(:email_based_mfa, self) &&
-      !!email_otp_required_after&.past?
+    # Ensure that `email_otp_required_after` is set to a valid state.
+    set_email_otp_required_after_based_on_restrictions(save: true)
+
+    email_otp_available? &&
+      email_otp_required_after.present? && email_otp_required_after <= Time.zone.now
   end
 
   def update_otp_secret!
@@ -1608,6 +1662,7 @@ class User < ApplicationRecord
   # Returns a relation of groups the user has access to, including their parent
   # and child groups (recursively).
   def all_expanded_groups
+    groups = groups_with_at_least_minimal_access
     return groups if groups.empty?
 
     Gitlab::ObjectHierarchy.new(groups).all_objects
@@ -1620,7 +1675,7 @@ class User < ApplicationRecord
   def source_groups_of_two_factor_authentication_requirement
     Gitlab::ObjectHierarchy.new(expanded_groups_requiring_two_factor_authentication)
       .all_objects
-      .where(id: groups)
+      .where(id: groups_with_at_least_minimal_access)
   end
 
   def direct_groups_with_route
@@ -2278,9 +2333,15 @@ class User < ApplicationRecord
   end
 
   def authorized_project_mirrors(level)
-    projects = Ci::ProjectMirror.by_project_id(ci_project_ids_for_project_members(level))
+    projects = Ci::ProjectMirror.by_project_id(
+      with_project_feature_enabled(:project, ci_project_ids_for_project_members(level))
+      .pluck(:source_id)
+    )
 
-    namespace_projects = Ci::ProjectMirror.by_namespace_id(ci_namespace_mirrors_for_group_members(level).select(:namespace_id))
+    namespace_projects = Ci::ProjectMirror.by_namespace_id(
+      ci_namespace_mirrors_for_group_members(level) { |scope| with_project_feature_enabled(:projects, scope) }
+      .select(:namespace_id)
+    )
 
     Ci::ProjectMirror.from_union([projects, namespace_projects])
   end
@@ -2389,7 +2450,7 @@ class User < ApplicationRecord
         include_assigned: true,
         author_id: id,
         review_states: %w[reviewed requested_changes],
-        ignored_reviewer_username: ::Users::Internal.duo_code_review_bot.username
+        ignored_reviewer_username: ::Users::Internal.in_organization(organization_id).duo_code_review_bot.username
       }
 
       begin
@@ -2412,6 +2473,8 @@ class User < ApplicationRecord
     Rails.cache.fetch(['users', id, 'assigned_open_merge_requests_count', user_preference.role_based?, merge_request_dashboard_show_drafts?], force: force, expires_in: COUNT_CACHE_VALIDITY_PERIOD, skip_nil: true) do
       return if cached_only # rubocop:disable Cop/AvoidReturnFromBlocks -- return from method to prevent caching nil when only reading cache
 
+      duo_code_review_bot_username = ::Users::Internal.in_organization(organization_id).duo_code_review_bot.username
+
       params = {
         state: 'opened',
         non_archived: true,
@@ -2420,12 +2483,19 @@ class User < ApplicationRecord
       }
 
       unless user_preference.role_based?
-        params[:or] = { reviewer_wildcard: 'none', review_states: %w[reviewed requested_changes], only_reviewer_username: 'GitLabDuo' }
+        params[:or] = {
+          reviewer_wildcard: 'none',
+          review_states: %w[reviewed requested_changes],
+          only_reviewer_username: duo_code_review_bot_username
+        }
       end
 
       unless merge_request_dashboard_show_drafts?
         params[:draft] = false
-        params[:or] = { reviewer_wildcard: 'NONE', only_reviewer_username: ::Users::Internal.duo_code_review_bot.username }
+        params[:or] = {
+          reviewer_wildcard: 'NONE',
+          only_reviewer_username: duo_code_review_bot_username
+        }
       end
 
       begin
@@ -2527,6 +2597,7 @@ class User < ApplicationRecord
   #
   # rubocop: disable CodeReuse/ServiceClass
   def increment_failed_attempts!
+    return if service_account?
     return if ::Gitlab::Database.read_only?
 
     increment_failed_attempts
@@ -2627,6 +2698,8 @@ class User < ApplicationRecord
 
   # override, from Devise
   def lock_access!(opts = {})
+    return if service_account?
+
     Gitlab::AppLogger.info("Account Locked: username=#{username}")
     audit_lock_access(reason: opts.delete(:reason))
     super
@@ -2697,10 +2770,6 @@ class User < ApplicationRecord
   # Avoid migrations only building user preference object when needed.
   def user_preference
     super.presence || build_user_preference
-  end
-
-  def pending_todo_for(target)
-    todos.find_by(target: target, state: :pending)
   end
 
   def password_expired?
@@ -2891,6 +2960,24 @@ class User < ApplicationRecord
     @free_or_trial_owned_group_ids ||= owned_groups.free_or_trial.ids
   end
 
+  def ai_service_account?
+    service_account? && composite_identity_enforced?
+  end
+
+  def sa_provisioned_by_project?
+    return false unless service_account?
+
+    provisioned_by_project_id.present?
+  end
+
+  def sa_provisioned_by_subgroup?
+    return false unless service_account?
+
+    return false if provisioned_by_group_id.blank?
+
+    !!provisioned_by_group&.has_parent?
+  end
+
   def composite_identity_enforced?
     return !!@composite_identity_enforced_override if defined?(@composite_identity_enforced_override)
 
@@ -2901,11 +2988,17 @@ class User < ApplicationRecord
     @composite_identity_enforced_override = true
   end
 
+  def immutable_username_with_enforced_composite_identity
+    if composite_identity_enforced?
+      errors.add(:base, _('You cannot update the username of a service account associated with a composite identity.'))
+    end
+  end
+
   protected
 
   # override, from Devise::Validatable
   def password_required?
-    return false if internal? || project_bot? || security_policy_bot? || placeholder?
+    return false if internal? || project_bot? || security_policy_bot? || placeholder? || service_account?
 
     super
   end
@@ -2920,24 +3013,37 @@ class User < ApplicationRecord
   end
   alias_method :in_confirmation_period?, :confirmation_period_valid?
 
-  # This is copied from Devise::Models::TwoFactorAuthenticatable#consume_otp!
+  # Overrides Devise::Models::TwoFactorAuthenticatable#consume_otp! to skip
+  # the database write on read-only replicas while still returning true so that
+  # OTP validation succeeds.
   #
-  # An OTP cannot be used more than once in a given timestep
-  # Storing timestep of last valid OTP is sufficient to satisfy this requirement
+  # An OTP cannot be used more than once in a given timestep.
+  # Storing the timestep of the last valid OTP is sufficient to satisfy this
+  # requirement.
   #
   # See:
-  #   <https://github.com/tinfoil/devise-two-factor/blob/master/lib/devise_two_factor/models/two_factor_authenticatable.rb#L66>
+  #   https://github.com/devise-two-factor/devise-two-factor/blob/main/lib/devise_two_factor/models/two_factor_authenticatable.rb
   #
-  def consume_otp!
-    if self.consumed_timestep != current_otp_timestep
-      self.consumed_timestep = current_otp_timestep
-      return Gitlab::Database.read_only? ? true : save(validate: false)
+  def consume_otp!(otp, timestamp)
+    timestep = timestamp / otp.interval
+
+    if self.consumed_timestep != timestep
+      self.consumed_timestep = timestep
+      return true if Gitlab::Database.read_only?
+
+      save!(validate: false)
+      return true
     end
 
     false
   end
 
   private
+
+  # method overridden in EE
+  def groups_with_at_least_minimal_access
+    groups
+  end
 
   def self_managed_admin?
     can_admin_all_resources?
@@ -3021,7 +3127,7 @@ class User < ApplicationRecord
   # rubocop: enable CodeReuse/ServiceClass
 
   def ci_project_ids_for_project_members(level)
-    project_members.where('access_level >= ?', level).pluck(:source_id)
+    project_members.where('access_level >= ?', level)
   end
 
   def notification_email_verified
@@ -3096,7 +3202,7 @@ class User < ApplicationRecord
   end
 
   def signup_email_invalid_message
-    self.new_record? ? _('is not allowed for sign-up. Please use your regular email address.') : _('is not allowed. Please use your regular email address.')
+    _('is not allowed. Please use your regular email address.')
   end
 
   def check_username_format
@@ -3179,11 +3285,19 @@ class User < ApplicationRecord
   def ci_namespace_mirrors_for_group_members(level)
     search_members = group_members.where('access_level >= ?', level)
 
-    traversal_ids = Group.joins(:all_group_members)
-      .merge(search_members)
-      .shortest_traversal_ids_prefixes
+    traversal_ids = Group.joins(:all_group_members).merge(search_members)
+    traversal_ids = yield(traversal_ids) if block_given?
+    traversal_ids = traversal_ids.shortest_traversal_ids_prefixes
 
     Ci::NamespaceMirror.contains_traversal_ids(traversal_ids)
+  end
+
+  def with_project_feature_enabled(relation, scope)
+    scope
+      .joins(relation)
+      .merge(Project.with_project_feature)
+      .merge(ProjectFeature.with_feature_enabled(:repository))
+      .merge(ProjectFeature.with_feature_enabled(:builds))
   end
 
   def prefix_for_feed_token

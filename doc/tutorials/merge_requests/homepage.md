@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: How the GitLab UI helps you track merge requests from creation to merging.
 title: 'Tutorial: Understand your merge requests on the Merge requests homepage'
 ---
@@ -47,7 +47,7 @@ To see your merge request homepage on GitLab.com, either:
 It's organized into three tabs, to help you focus on what needs your attention right now, while
 still giving you access to other recent work:
 
-![The three homepage tabs are shown at the top of the screen.](img/homepage_tabs_v18_1.png)
+![The navigation tabs on the merge request homepage.](img/homepage_tabs_v18_1.png)
 
 - **Active**: These merge requests need attention from you, or a member of your team.
 - **Merged**: These merge requests merged in the last 14 days, and you were an assignee or a reviewer.
@@ -56,7 +56,7 @@ still giving you access to other recent work:
 GitLab shows the total number of **Active** merge requests in the upper-right corner on all pages.
 For example, this user has:
 
-![The upper-right corner showing the number of active merge requests.](img/homepage_totals_v18_7.png)
+![The navigation bar displaying the active merge requests count.](img/homepage_totals_v18_7.png)
 
 - 8 open issues ({{< icon name="work-item-issue" >}})
 - 3 active merge requests ({{< icon name="merge-request-open" >}})
@@ -64,7 +64,7 @@ For example, this user has:
 
 Each table row groups related information about a merge request together into columns:
 
-![The 'Returned to you' section of the Active tab, showing a table with information about three merge requests.](img/homepage_rows_v17_9.png)
+![The table row layout grouping a merge request's status, title, assignee, reviewer, and checks.](img/homepage_rows_v17_9.png)
 
 - **Status** - The current status of the merge request.
 - **Title** - Important metadata about the issue, including:
@@ -129,7 +129,7 @@ The **Role** view groups merge requests you are an assignee or reviewer for:
 - **Your merge requests (Active)**
 - **Your merge requests (Inactive)**
 
-Merge requests in the **Active** lists count toward the total shown on the left sidebar.
+Merge requests in the **Active** lists count toward the total shown in the left sidebar.
 
 ## Understand the Workflow view
 
@@ -161,7 +161,7 @@ This review flow assumes:
 1. Reviewers use the [**Start a review**](../../user/project/merge_requests/reviews/_index.md#start-a-review) and
    [**Submit a review**](../../user/project/merge_requests/reviews/_index.md#submit-a-review) features.
 
-Merge requests in one of the **Active** statuses count toward the total shown on the left sidebar:
+Merge requests in one of the **Active** statuses count toward the total shown in the left sidebar:
 
 - Active statuses: **Returned to you**, **Review requested**, **Your merge requests**
 - Inactive statuses: **Waiting for assignee**, **Waiting for approvals**, **Approved by you**, **Approved by others**

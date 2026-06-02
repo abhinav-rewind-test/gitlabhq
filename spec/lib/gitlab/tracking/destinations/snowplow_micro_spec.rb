@@ -21,8 +21,6 @@ RSpec.describe Gitlab::Tracking::Destinations::SnowplowMicro, feature_category: 
   it { is_expected.to delegate_method(:flush).to(:tracker) }
 
   describe '#snowplow_options' do
-    let_it_be(:group) { create :group }
-
     before do
       stub_config(snowplow_micro: snowplow_micro_settings)
     end
@@ -38,17 +36,23 @@ RSpec.describe Gitlab::Tracking::Destinations::SnowplowMicro, feature_category: 
       }
 
       allow_next_instance_of(Gitlab::Tracking::Destinations::Snowplow) do |snowplow_instance|
-        allow(snowplow_instance).to receive(:snowplow_options).with(group).and_return(base_options)
+        allow(snowplow_instance).to receive(:snowplow_options).and_return(base_options)
       end
 
-      options = subject.snowplow_options(group)
+      options = subject.snowplow_options
 
       expect(options).to include(
+        hostname: subject.hostname,
         protocol: 'http',
-        port: 9091,
         forceSecureTracker: false
       )
       expect(options).to include(base_options)
+    end
+
+    it 'does not pass a separate port option to avoid double-port URLs in the JS tracker' do
+      options = subject.snowplow_options
+
+      expect(options).not_to have_key(:port)
     end
   end
 end

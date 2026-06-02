@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Gitlab::ImportExport::Project::TreeSaver, :with_license, feature_category: :importers do
   let_it_be(:export_path) { "#{Dir.tmpdir}/project_tree_saver_spec" }
   let_it_be(:exportable_path) { 'project' }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:group) { create(:group) }
   let_it_be(:private_project) { create(:project, :private, group: group) }
   let_it_be(:private_mr) { create(:merge_request, source_project: private_project, project: private_project) }
@@ -17,11 +17,11 @@ RSpec.describe Gitlab::ImportExport::Project::TreeSaver, :with_license, feature_
     subject { get_json(full_path, exportable_path, relation_name) }
 
     describe 'saves project tree attributes' do
-      let_it_be(:shared) { project.import_export_shared }
+      let_it_be(:shared, freeze: false) { project.import_export_shared }
 
       let(:relation_name) { :projects }
 
-      let_it_be(:full_path) { File.join(shared.export_path, 'tree') }
+      let_it_be(:full_path, freeze: false) { File.join(shared.export_path, 'tree') }
 
       before_all do
         RSpec::Mocks.with_temporary_scope do
@@ -183,10 +183,10 @@ RSpec.describe Gitlab::ImportExport::Project::TreeSaver, :with_license, feature_
 
         it { is_expected.not_to be_empty }
 
-        it 'has a work_item_type' do
-          issue = subject.first
+        it 'exports work_item_type for system-defined types' do
+          issue = subject.find { |i| i['title'] == 'task issue' }
 
-          expect(issue['work_item_type']).to eq('base_type' => 'task')
+          expect(issue['work_item_type']).to eq('name' => 'Task')
         end
 
         it 'has issue comments' do
@@ -337,7 +337,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeSaver, :with_license, feature_
     end
 
     describe '#saves project tree' do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
       let_it_be(:group) { create(:group) }
 
       let(:project) { setup_project }
@@ -522,7 +522,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeSaver, :with_license, feature_
       merge_commit_template: 'merge commit message template',
       squash_commit_template: 'squash commit message template')
 
-    issue = create(:issue, :task, assignees: [user], project: project)
+    issue = create(:issue, :task, assignees: [user], project: project, title: 'task issue')
     snippet = create(:project_snippet, project: project)
     project_label = create(:label, project: project)
     group_label = create(:group_label, group: group)

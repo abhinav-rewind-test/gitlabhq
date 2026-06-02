@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Duo Chat
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting GitLab Duo Chat
 ---
 
@@ -20,7 +20,7 @@ button to appear.
 
 If this does not work, you can also check the following troubleshooting documentation:
 
-- [GitLab Duo Code Suggestions](../duo_agent_platform/code_suggestions/troubleshooting.md).
+- [GitLab Duo Code Suggestions](../project/repository/code_suggestions/troubleshooting.md).
 - [VS Code](../../editor_extensions/visual_studio_code/troubleshooting.md).
 - [Microsoft Visual Studio](../../editor_extensions/visual_studio/visual_studio_troubleshooting.md).
 - [JetBrains IDEs](../../editor_extensions/jetbrains_ide/jetbrains_troubleshooting.md).
@@ -303,7 +303,7 @@ You might get an error that states
 
 This error occurs when an unknown error occurs in ReAct agent. Try your request again.
 
-If the problem persists, [report the issue to the GitLab support team](https://about.gitlab.com/support/).
+If the problem persists, [report the issue to the GitLab support team](https://support.gitlab.com/).
 
 ## `Error G3001`
 
@@ -318,9 +318,10 @@ Try a different request and contact your administrator.
 You might get an error that states
 `I'm sorry, you have not selected a default GitLab Duo namespace. Please select a default GitLab Duo namespace in your user preferences.`.
 
-This error occurs when you belong to multiple GitLab Duo namespaces, and have not selected a default namespace.
+This error occurs when you belong to multiple GitLab Duo namespaces or work on a project locally
+that does not have a GitLab remote configured.
 
-To resolve this, [set a default GitLab Duo namespace](../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace).
+To resolve this, [set a default GitLab Duo namespace](../profile/preferences.md#set-a-default-gitlab-duo-namespace).
 
 ## Links in Chat responses are not selectable
 
@@ -339,29 +340,29 @@ Chat displays the following types of links as selectable in responses:
 - Links to `gitlab.com`, including but not limited to GitLab projects, issues, and merge requests.
 - Relative URLs in your GitLab instance.
 
-## Agentic Chat-specific issues
+## Issues specific to GitLab Duo Agentic Chat
 
 ### Not enough GitLab Credits
 
-You might lose access to Agentic Chat because you have run out of GitLab Credits.
+You might lose access to Chat because you have run out of GitLab Credits.
 
 To resolve this issue, you can do either of the following:
 
 - [Buy more GitLab Credits](../../subscriptions/gitlab_credits.md#buy-gitlab-credits).
-- Switch to Classic Chat. When you switch, a new conversation starts.
-  You can still view your previous Agentic Chat conversation, but it is read-only.
+- Switch to non-agentic Chat. When you switch, a new conversation starts.
+  You can still view your previous agentic Chat conversation, but it is read-only.
 
 ### Slow response times
 
-Agentic Chat can be slower than Classic Chat in processing and responding to requests.
+Agentic Chat can be slower than non-agentic Chat in processing and responding to requests.
 
-This issue occurs because Agentic Chat makes multiple API calls to gather information,
+This issue occurs because agentic Chat makes multiple API calls to gather information,
 so responses can take much longer.
 
 ### Limited permissions
 
 Agentic Chat can access the same resources that your GitLab user has permission to
-access. If you find that Agentic Chat cannot access the resources needed to answer
+access. If you find that agentic Chat cannot access the resources needed to answer
 your request, check your [user permissions](../permissions.md).
 
 ### Search limitations

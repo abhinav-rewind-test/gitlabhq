@@ -1,5 +1,5 @@
 <script>
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import { GlTab, GlAlert } from '@gitlab/ui';
 import { s__ } from '~/locale';
 import { fluxSyncStatus } from '~/environments/helpers/k8s_integration_helper';
@@ -9,6 +9,7 @@ import k8sDeploymentsQuery from '~/environments/graphql/queries/k8s_deployments.
 import KubernetesTreeItem from './kubernetes_tree_item.vue';
 
 export default {
+  name: 'KubernetesSummary',
   components: {
     GlTab,
     GlAlert,

@@ -3,6 +3,7 @@ import fuzzaldrinPlus from 'fuzzaldrin-plus';
 import axios from '~/lib/utils/axios_utils';
 import AutocompleteHelper, {
   defaultSorter,
+  commandSorter,
   customSorter,
   createDataSource,
 } from '~/content_editor/services/autocomplete_helper';
@@ -30,7 +31,7 @@ jest.mock('~/emoji', () => ({
   getAllEmoji: () => [{ name: 'thumbsup' }],
 }));
 
-jest.mock('~/graphql_shared/issuable_client', () => ({
+jest.mock('~/graphql_shared/issuable_client_state', () => ({
   currentAssignees: jest.fn().mockReturnValue({
     1: [
       {
@@ -77,6 +78,22 @@ jest.mock('~/graphql_shared/issuable_client', () => ({
       },
     ],
   }),
+  appliedLabels: jest.fn().mockReturnValue({
+    1: [
+      {
+        id: 'gid://gitlab/Label/1',
+        title: 'bug',
+        color: '#d9534f',
+        textColor: '#FFFFFF',
+      },
+      {
+        id: 'gid://gitlab/Label/2',
+        title: 'feature',
+        color: '#428bca',
+        textColor: '#FFFFFF',
+      },
+    ],
+  }),
   availableStatuses: jest.fn().mockReturnValue({
     'gitlab-org/gitlab-test': {
       'gid://gitlab/WorkItems::Type/1': [
@@ -119,6 +136,27 @@ jest.mock('~/graphql_shared/issuable_client', () => ({
       ],
     },
   }),
+  supportedConversionTypes: jest.fn().mockReturnValue({
+    'gitlab-org/gitlab-test': {
+      'gid://gitlab/WorkItems::Type/1': [
+        {
+          id: 'gid://gitlab/WorkItems::Type/2',
+          name: 'Task',
+          iconName: 'issue-type-task',
+        },
+        {
+          id: 'gid://gitlab/WorkItems::Type/3',
+          name: 'Incident',
+          iconName: 'issue-type-incident',
+        },
+        {
+          id: 'gid://gitlab/WorkItems::Type/4',
+          name: 'Issue',
+          iconName: 'issue-type-issue',
+        },
+      ],
+    },
+  }),
 }));
 
 describe('defaultSorter', () => {
@@ -145,6 +183,36 @@ describe('defaultSorter', () => {
       { name: 'wabc', description: 'xyz' },
       { name: 'bcd', description: 'wxy' },
       { name: 'cde', description: 'vwx' },
+    ]);
+  });
+});
+
+describe('commandSorter', () => {
+  const sorter = commandSorter(['name', 'search']);
+  it('returns items as is if query is empty', () => {
+    const items = [
+      { name: 'assign', aliases: [] },
+      { name: 'close', aliases: [] },
+    ];
+    expect(sorter(items, '')).toBe(items);
+  });
+  it('falls back to default sorter when no aliases match', () => {
+    const items = [
+      { name: 'abc', aliases: [], search: 'abc' },
+      { name: 'bcd', aliases: [], search: 'bcd' },
+    ];
+    expect(sorter(items, 'b')[0].name).toBe('bcd');
+  });
+  it('ranks name prefix above alias prefix above substring', () => {
+    const items = [
+      { name: 'close', aliases: [] },
+      { name: 'request_review', aliases: ['assign_reviewer', 'reviewer'] },
+      { name: 'assign', aliases: [] },
+    ];
+    expect(sorter(items, 'assign').map((i) => i.name)).toEqual([
+      'assign', // name starts with 'assign'
+      'request_review', // alias 'assign_reviewer' starts with 'assign'
+      'close', // no match
     ]);
   });
 });
@@ -186,7 +254,7 @@ describe('createDataSource', () => {
     it('fetches data from source and filters based on query', async () => {
       const dataSource = createDataSource(dataSourceParams);
 
-      const results = await dataSource.search('b');
+      const results = await dataSource.search('', 'b');
       expect(results).toEqual([
         { name: 'bcd', description: 'wxy' },
         { name: 'abc', description: 'xyz' },
@@ -203,8 +271,23 @@ describe('createDataSource', () => {
       sorter: (items) => items,
     });
 
-    const results = await dataSource.search('b');
+    const results = await dataSource.search('', 'b');
     expect(results).toEqual([]);
+  });
+
+  it('memoizes fetch across different prefixCommand and query values', async () => {
+    mock.onGet('/source').reply(HTTP_STATUS_OK, [{ name: 'rebase' }]);
+
+    const dataSource = createDataSource({
+      source: '/source',
+      searchFields: ['name'],
+    });
+
+    await dataSource.search('/r', 'r');
+    await dataSource.search('/re', 're');
+    await dataSource.search('/rel', 'rel');
+
+    expect(mock.history.get).toHaveLength(1);
   });
 });
 
@@ -286,7 +369,7 @@ describe('AutocompleteHelper', () => {
     'for reference type "$referenceType", searches for "$query" correctly',
     async ({ referenceType, query }) => {
       const dataSource = autocompleteHelper.getDataSource(referenceType);
-      const results = await dataSource.search(query);
+      const results = await dataSource.search('', query);
 
       expect(
         results.map(({ title, name, username }) => username || name || title),
@@ -319,6 +402,8 @@ describe('AutocompleteHelper', () => {
 
   describe('for work items', () => {
     beforeEach(() => {
+      document.body.dataset.page = 'projects:work_items:show';
+
       autocompleteHelper = new AutocompleteHelper({
         dataSourceUrls,
         sidebarMediator: {
@@ -333,8 +418,8 @@ describe('AutocompleteHelper', () => {
               dataset: {
                 workItemFullPath: 'gitlab-org/gitlab-test',
                 workItemTypeId: 'gid://gitlab/WorkItems::Type/1',
-                workItemId: 1,
-                workItemIid: 1,
+                workItemId: '1',
+                workItemIid: '1',
               },
             }),
           },
@@ -342,13 +427,20 @@ describe('AutocompleteHelper', () => {
       };
     });
 
-    it.each`
-      command
-      ${'/assign'}
-      ${'/unassign'}
-    `('filters users using apollo cache for command "$command"', async ({ command }) => {
-      const dataSource = autocompleteHelper.getDataSource('user', { command });
-      const results = await dataSource.search();
+    afterEach(() => {
+      delete document.body.dataset.page;
+    });
+
+    it('for /unassign, returns only assigned users from apollo cache', async () => {
+      const dataSource = autocompleteHelper.getDataSource('user', { command: '/unassign' });
+      const results = await dataSource.search('/unassign');
+
+      expect(results.map(({ username }) => username)).toMatchSnapshot();
+    });
+
+    it('for /assign, filters out assigned users using apollo cache', async () => {
+      const dataSource = autocompleteHelper.getDataSource('user', { command: '/assign' });
+      const results = await dataSource.search('/assign');
 
       expect(results.map(({ username }) => username)).toMatchSnapshot();
     });
@@ -358,9 +450,19 @@ describe('AutocompleteHelper', () => {
       ${'/unlink'}
     `('filters work items using apollo cache for command "$command"', async ({ command }) => {
       const dataSource = autocompleteHelper.getDataSource('issue', { command });
-      const results = await dataSource.search();
+      const results = await dataSource.search(command);
 
       expect(results.map(({ iid }) => iid)).toMatchSnapshot();
+    });
+
+    it.each`
+      command
+      ${'/unlabel'}
+    `('filters labels using apollo cache for command "$command"', async ({ command }) => {
+      const dataSource = autocompleteHelper.getDataSource('label', { command });
+      const results = await dataSource.search(command);
+
+      expect(results.map(({ title }) => title)).toMatchSnapshot();
     });
 
     it.each`
@@ -371,7 +473,20 @@ describe('AutocompleteHelper', () => {
       'filters statuses using apollo cache for command "$command "$query"',
       async ({ command, query }) => {
         const dataSource = autocompleteHelper.getDataSource('status', { command });
-        const results = await dataSource.search(query);
+        const results = await dataSource.search(command, query);
+        expect(results.map(({ name }) => name)).toMatchSnapshot();
+      },
+    );
+
+    it.each`
+      command    | query
+      ${'/type'} | ${''}
+      ${'/type'} | ${'ta'}
+    `(
+      'filters types using apollo cache for command "$command "$query"',
+      async ({ command, query }) => {
+        const dataSource = autocompleteHelper.getDataSource('type', { command });
+        const results = await dataSource.search(command, query);
         expect(results.map(({ name }) => name)).toMatchSnapshot();
       },
     );
@@ -380,7 +495,7 @@ describe('AutocompleteHelper', () => {
   it('filters labels using fuzzy search', async () => {
     const filterSpy = jest.spyOn(fuzzaldrinPlus, 'filter');
     const dataSource = autocompleteHelper.getDataSource('label', { command: '/label' });
-    await dataSource.search('bc');
+    await dataSource.search('', 'bc');
 
     expect(filterSpy).toHaveBeenCalledWith(
       expect.any(Array),
@@ -438,7 +553,7 @@ describe('AutocompleteHelper', () => {
     autocompleteHelper = new AutocompleteHelper({});
 
     const dataSource = autocompleteHelper.getDataSource('emoji');
-    const results = await dataSource.search('');
+    const results = await dataSource.search('', '');
 
     expect(results).toEqual([{ emoji: { name: EMOJI_THUMBS_UP }, fieldValue: EMOJI_THUMBS_UP }]);
   });
@@ -465,7 +580,7 @@ describe('AutocompleteHelper', () => {
   it('returns expected results before and after updating data sources', async () => {
     // Retrieve the initial data source and search for 'user'
     let dataSource = autocompleteHelper.getDataSource('user');
-    let results = await dataSource.search('');
+    let results = await dataSource.search('', '');
 
     expect(results.map(({ username }) => username)).toMatchSnapshot();
 
@@ -477,7 +592,7 @@ describe('AutocompleteHelper', () => {
 
     // Retrieve the updated data source and search for 'user'
     dataSource = autocompleteHelper.getDataSource('user');
-    results = await dataSource.search('');
+    results = await dataSource.search('', '');
 
     expect(results.map(({ username }) => username)).toMatchSnapshot();
   });
@@ -486,7 +601,7 @@ describe('AutocompleteHelper', () => {
     it('fetches data passing a `search` param', async () => {
       const dataSource = autocompleteHelper.getDataSource('user', { filterOnBackend: true });
 
-      await dataSource.search('bcd');
+      await dataSource.search('', 'bcd');
 
       expect(mock.history.get[0].params).toEqual({ search: 'bcd' });
     });

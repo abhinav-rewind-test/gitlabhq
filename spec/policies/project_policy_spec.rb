@@ -25,14 +25,6 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     project_with_runner_registration_token.add_owner(owner)
   end
 
-  def expect_allowed(*permissions)
-    permissions.each { |p| is_expected.to be_allowed(p) }
-  end
-
-  def expect_disallowed(*permissions)
-    permissions.each { |p| is_expected.not_to be_allowed(p) }
-  end
-
   context 'with no project feature' do
     let(:current_user) { owner }
 
@@ -68,6 +60,9 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
 
   context 'issues feature' do
     let(:current_user) { owner }
+    let(:work_items_disabled_permissions) do
+      Authz::PermissionGroups::Internal.get('project:features:work_items').permissions
+    end
 
     context 'when the feature is disabled' do
       before do
@@ -75,20 +70,15 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         project.save!
       end
 
-      it 'does not include the issues permissions' do
-        expect_disallowed :read_issue, :read_issue_iid, :create_issue, :update_issue, :admin_issue, :create_incident, :create_work_item, :create_task, :read_work_item
-      end
-
-      it 'disables boards and lists permissions' do
-        expect_disallowed :read_issue_board, :create_board, :update_board
-        expect_disallowed :read_issue_board_list, :create_list, :update_list, :admin_issue_board_list
+      it 'does not include the work item permissions' do
+        expect_disallowed(*work_items_disabled_permissions)
       end
 
       context 'when external tracker configured' do
-        it 'does not include the issues permissions' do
+        it 'does not include the work item permissions' do
           create(:jira_integration, project: project)
 
-          expect_disallowed :read_issue, :read_issue_iid, :create_issue, :update_issue, :admin_issue, :create_incident, :create_work_item, :create_task, :read_work_item
+          expect_disallowed(*work_items_disabled_permissions)
         end
       end
     end
@@ -98,7 +88,7 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     let(:current_user) { owner }
     let(:mr_permissions) do
       [:create_merge_request_from, :read_merge_request, :update_merge_request,
-       :admin_merge_request, :create_merge_request_in]
+        :admin_merge_request, :create_merge_request_in]
     end
 
     it 'disallows all permissions when the feature is disabled' do
@@ -222,93 +212,43 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
   end
 
   context 'creating_merge_request_in' do
-    context 'when the current_user can download code' do
-      before do
-        expect(subject).to receive(:allowed?).with(:download_code).and_return(true)
-        allow(subject).to receive(:allowed?).with(any_args).and_call_original
-      end
+    context 'when project is public' do
+      let(:project) { public_project }
 
-      context 'when project is public' do
-        let(:project) { public_project }
-
-        %w[guest planner].each do |role|
-          context "when the current_user is #{role}" do
-            let(:current_user) { send(role) }
-
-            it { is_expected.to be_allowed(:create_merge_request_in) }
-          end
-        end
-      end
-
-      context 'when project is internal' do
-        let(:project) { internal_project }
-
-        %w[guest planner].each do |role|
-          context "when the current_user is #{role}" do
-            let(:current_user) { send(role) }
-
-            it { is_expected.to be_allowed(:create_merge_request_in) }
-          end
-        end
-      end
-
-      context 'when project is private' do
-        let(:project) { private_project }
-
-        context "when the current_user is guest" do
-          let(:current_user) { guest }
-
-          it { is_expected.not_to be_allowed(:create_merge_request_in) }
-        end
-
-        context 'when the current_user is reporter or above' do
-          let(:current_user) { reporter }
+      %w[guest planner].each do |role|
+        context "when the current_user is #{role}" do
+          let(:current_user) { send(role) }
 
           it { is_expected.to be_allowed(:create_merge_request_in) }
         end
       end
     end
 
-    context 'when the current_user can not download code' do
-      before do
-        expect(subject).to receive(:allowed?).with(:download_code).and_return(false)
-        allow(subject).to receive(:allowed?).with(any_args).and_call_original
-      end
+    context 'when project is internal' do
+      let(:project) { internal_project }
 
-      context 'when project is public' do
-        let(:project) { public_project }
+      %w[guest planner].each do |role|
+        context "when the current_user is #{role}" do
+          let(:current_user) { send(role) }
 
-        context 'when the current_user is guest' do
-          let(:current_user) { guest }
-
-          it { is_expected.not_to be_allowed(:create_merge_request_in) }
+          it { is_expected.to be_allowed(:create_merge_request_in) }
         end
       end
+    end
 
-      context 'when project is internal' do
-        let(:project) { internal_project }
+    context 'when project is private' do
+      let(:project) { private_project }
 
-        context 'when the current_user is guest' do
-          let(:current_user) { guest }
+      context "when the current_user is guest" do
+        let(:current_user) { guest }
 
-          it { is_expected.not_to be_allowed(:create_merge_request_in) }
-        end
+        it { is_expected.not_to be_allowed(:create_merge_request_in) }
       end
 
-      context 'when project is private' do
-        let(:project) { private_project }
+      context 'when the current_user is reporter or above' do
+        let(:current_user) { reporter }
 
-        context 'when the current_user is guest' do
-          let(:current_user) { guest }
-
-          it { is_expected.not_to be_allowed(:create_merge_request_in) }
-        end
-
-        context 'when the current_user is reporter or above' do
-          let(:current_user) { reporter }
-
-          it { is_expected.not_to be_allowed(:create_merge_request_in) }
-        end
+        it { is_expected.to be_allowed(:create_merge_request_in) }
       end
     end
 
@@ -507,6 +447,82 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     end
   end
 
+  context 'when project is scheduled for deletion' do
+    let_it_be_with_reload(:group) { create(:group) }
+    let_it_be_with_reload(:group_project) { create(:project, :repository, group: group) }
+    let_it_be(:project_owner) { create(:user) }
+
+    let(:current_user) { maintainer }
+
+    before_all do
+      group_project.add_developer(developer)
+      group_project.add_maintainer(maintainer)
+      group_project.add_owner(project_owner)
+    end
+
+    shared_examples 'deletion scheduled project behavior' do
+      it 'disallows write operations' do
+        expect_disallowed(*%i[
+          create_issue create_merge_request_in create_merge_request_from
+          push_code create_wiki create_deployment create_pipeline
+          update_pipeline create_pipeline_schedule create_environment
+          create_release update_release create_package destroy_package
+        ])
+      end
+
+      it 'allows read operations' do
+        expect_allowed(*%i[
+          read_project download_code read_issue read_merge_request
+          read_wiki read_deployment read_pipeline read_environment
+          read_release read_package
+        ])
+      end
+    end
+
+    context 'when project is marked for deletion' do
+      before do
+        group_project.update!(marked_for_deletion_at: Time.current)
+      end
+
+      let(:project) { group_project }
+
+      subject(:policy) { described_class.new(current_user, project) }
+
+      it_behaves_like 'deletion scheduled project behavior'
+
+      context 'with owner' do
+        let(:current_user) { project_owner }
+
+        it { is_expected.not_to be_allowed(:destroy_pipeline) }
+      end
+    end
+
+    context 'when project is marked for deletion and pending_delete' do
+      before do
+        group_project.update!(marked_for_deletion_at: Time.current, pending_delete: true)
+      end
+
+      let(:project) { group_project }
+      let(:current_user) { project_owner }
+
+      subject(:policy) { described_class.new(current_user, project) }
+
+      it 'allows destroy operations' do
+        expect_allowed(:destroy_pipeline)
+      end
+    end
+
+    context 'when project is not marked for deletion' do
+      let(:project) { group_project }
+
+      subject(:policy) { described_class.new(current_user, project) }
+
+      it 'allows read and write operations' do
+        expect_allowed(:create_issue, :push_code, :create_merge_request_in, :create_wiki)
+      end
+    end
+  end
+
   context 'manage_trigger' do
     using RSpec::Parameterized::TableSyntax
 
@@ -581,7 +597,14 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         :create_cluster, :read_cluster, :update_cluster, :admin_cluster,
         :create_deployment, :read_deployment, :update_deployment, :admin_deployment, :destroy_deployment,
         :download_code, :build_download_code, :read_code,
-        :read_resource_group, :update_resource_group
+        :read_resource_group, :update_resource_group,
+        :read_branch, :read_protected_branch, :read_protected_tag,
+        :read_commit, :read_commit_comment, :read_commit_diff, :read_commit_merge_request,
+        :read_commit_ref, :read_commit_sequence, :read_commit_signature,
+        :read_repository_archive, :read_repository_blob, :read_repository_changelog,
+        :read_repository_comparison, :read_repository_contributor, :read_repository_file,
+        :read_repository_file_blame, :read_repository_health, :read_repository_merge_base,
+        :read_repository_tag, :read_repository_tag_signature, :read_repository_tree
       ]
     end
 
@@ -669,6 +692,16 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
       merge_request.close!
 
       expect_disallowed(*maintainer_abilities)
+    end
+
+    context 'when the user is not a User (e.g. deploy token)' do
+      let(:current_user) { create(:deploy_token, projects: [target_project]) }
+
+      it 'does not allow create_build or create_pipeline' do
+        target_project.add_developer(current_user)
+
+        expect_disallowed(*maintainer_abilities)
+      end
     end
   end
 
@@ -773,65 +806,6 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     end
   end
 
-  context 'owner access' do
-    let_it_be(:owner_user) { owner }
-    let_it_be(:owner_of_different_thing) { create(:user) }
-
-    context 'personal project' do
-      let_it_be(:project) { private_project }
-      let_it_be(:project2) { create(:project) }
-
-      before_all do
-        project.add_guest(guest)
-        project.add_planner(planner)
-        project.add_reporter(reporter)
-        project.add_developer(developer)
-        project.add_maintainer(maintainer)
-        project2.add_owner(owner_of_different_thing)
-      end
-
-      it 'allows owner access', :aggregate_failures do
-        expect(described_class.new(owner_of_different_thing, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(non_member, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(guest, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(planner, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(reporter, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(developer, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(maintainer, project)).to be_disallowed(:owner_access)
-        expect(described_class.new(project.owner, project)).to be_allowed(:owner_access)
-      end
-    end
-
-    context 'group project' do
-      let_it_be(:project) { private_project_in_group }
-      let_it_be(:group2) { create(:group) }
-      let_it_be(:group) { project.group }
-
-      context 'group members' do
-        before_all do
-          group.add_guest(guest)
-          group.add_planner(planner)
-          group.add_reporter(reporter)
-          group.add_developer(developer)
-          group.add_maintainer(maintainer)
-          group.add_owner(owner_user)
-          group2.add_owner(owner_of_different_thing)
-        end
-
-        it 'allows owner access', :aggregate_failures do
-          expect(described_class.new(owner_of_different_thing, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(non_member, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(guest, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(planner, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(reporter, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(developer, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(maintainer, project)).to be_disallowed(:owner_access)
-          expect(described_class.new(owner_user, project)).to be_allowed(:owner_access)
-        end
-      end
-    end
-  end
-
   context 'with timeline event tags' do
     context 'when user is member of the project' do
       it 'allows access to timeline event tags' do
@@ -927,14 +901,21 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         end
       end
 
-      it 'prevents all but seeing a public project in a list when access is denied' do
-        [developer, owner, build(:user), nil].each do |user|
+      context 'when denied by the external authorization service' do
+        before do
           external_service_deny_access(user, project)
-          policy = described_class.new(user, project)
+        end
 
-          expect(policy).not_to be_allowed(:read_project)
-          expect(policy).not_to be_allowed(:owner_access)
-          expect(policy).not_to be_allowed(:change_namespace)
+        subject { described_class.new(user, project) }
+
+        let(:allowed_permissions) { %i[read_issue_iid read_project_for_iids read_merge_request_iid] }
+
+        where(:user) do
+          [developer, owner, build(:user), nil]
+        end
+
+        with_them do
+          it_behaves_like 'prevent all except'
         end
       end
 
@@ -1117,9 +1098,11 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
   end
 
   context 'alert bot' do
-    let(:current_user) { Users::Internal.alert_bot }
+    let(:current_user) { Users::Internal.in_organization(project.organization).alert_bot }
 
-    it { is_expected.to be_allowed(:reporter_access) }
+    it 'has the reporter role' do
+      expect(subject.role).to eq(Authz::Role.get(:reporter))
+    end
 
     context 'within a private project' do
       let(:project) { private_project }
@@ -1128,7 +1111,7 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     end
   end
 
-  describe 'change_restrict_user_defined_variables' do
+  describe 'update_pipeline_variable_override_setting' do
     using RSpec::Parameterized::TableSyntax
 
     where(:user_role, :minimum_role, :allowed) do
@@ -1138,7 +1121,8 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
       :developer  | :developer      | false
       :maintainer | :developer      | true
       :maintainer | :maintainer     | true
-      :maintainer | :no_one_allowed | true
+      :maintainer | :no_one_allowed | false
+      :owner      | :no_one_allowed | true
       :owner      | :owner          | true
       :developer  | :owner          | false
       :maintainer | :owner          | false
@@ -1153,11 +1137,11 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         ci_cd_settings.save!
       end
 
-      it 'allows/disallows change_restrict_user_defined_variables variables based on project defined minimum role' do
+      it 'allows/disallows update_pipeline_variable_override_setting based on project defined minimum role' do
         if allowed
-          is_expected.to be_allowed(:change_restrict_user_defined_variables)
+          is_expected.to be_allowed(:update_pipeline_variable_override_setting)
         else
-          is_expected.to be_disallowed(:change_restrict_user_defined_variables)
+          is_expected.to be_disallowed(:update_pipeline_variable_override_setting)
         end
       end
     end
@@ -1274,24 +1258,29 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
   context 'support bot' do
     let(:current_user) { create(:support_bot) }
 
+    it 'has the reporter role' do
+      expect(subject.role).to eq(Authz::Role.get(:reporter))
+    end
+
     context 'with service desk disabled' do
-      it { expect_allowed(:public_access) }
-      it { expect_disallowed(:guest_access, :create_note, :read_project, :create_ticket) }
+      it_behaves_like 'prevent all'
     end
 
     context 'with service desk enabled' do
+      let(:permissions) { %i[create_note read_issue read_work_item create_ticket] }
+
       before do
         allow(::ServiceDesk).to receive(:enabled?).with(project).and_return(true)
       end
 
-      it { expect_allowed(:reporter_access, :create_note, :read_issue, :read_work_item, :create_ticket) }
+      it { expect_allowed(*permissions) }
 
       context 'when issues are protected members only' do
         before do
           project.project_feature.update!(issues_access_level: ProjectFeature::PRIVATE)
         end
 
-        it { expect_allowed(:reporter_access, :create_note, :read_issue, :read_work_item) }
+        it { expect_allowed(*permissions) }
       end
     end
   end
@@ -1605,6 +1594,19 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
 
         it { is_expected.to be_disallowed(:read_container_image) }
         it { is_expected.to be_disallowed(:create_container_image) }
+      end
+
+      context 'a deploy token with read_repository scope' do
+        let(:deploy_token) { create(:deploy_token, read_repository: true, read_registry: false, projects: [project]) }
+
+        it { is_expected.to be_allowed(:download_code) }
+        it { is_expected.to be_allowed(:download_wiki_code) }
+      end
+
+      context 'a deploy token without read_repository scope' do
+        let(:deploy_token) { create(:deploy_token, read_repository: false, read_registry: true, projects: [project]) }
+
+        it { is_expected.to be_disallowed(:download_code) }
       end
 
       context 'a deploy token with read_package_registry scope' do
@@ -2929,7 +2931,13 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
   describe 'when user is authenticated via CI_JOB_TOKEN', :request_store do
     using RSpec::Parameterized::TableSyntax
 
-    RSpec.shared_examples 'CI_JOB_TOKEN enforces the expected permissions' do
+    let(:disallowed_permissions) { Set.new(described_class.ability_map.map.keys) - allowed_permissions }
+    let(:allowed_permissions) do
+      ::Authz::Role.get(:public_anonymous).direct_permissions(:project) +
+        %i[build_download_code build_read_container_image read_build]
+    end
+
+    shared_examples 'CI_JOB_TOKEN enforces the expected permissions' do
       with_them do
         let(:current_user) { public_send(user_role) }
         let(:project) { public_project }
@@ -2944,6 +2952,7 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         end
 
         before do
+          stub_licensed_features(code_review_analytics: true)
           allow(::Gitlab::CurrentSettings).to receive(:enforce_ci_inbound_job_token_scope_enabled?).and_return(instance_level_token_scope_enabled)
           current_user.set_ci_job_token_scope!(job)
           current_user.external = external_user
@@ -2959,9 +2968,9 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
 
         it "enforces the expected permissions" do
           if result
-            is_expected.to be_allowed(:"#{user_role}_access")
+            expect_allowed(*allowed_permissions)
           else
-            is_expected.to be_disallowed(:"#{user_role}_access")
+            expect_disallowed(*disallowed_permissions)
           end
         end
       end
@@ -2997,183 +3006,193 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
     include_examples "CI_JOB_TOKEN enforces the expected permissions"
 
     context "when the project is public or internal and not on the allowlist" do
-      where(:feature, :permissions) do
-        :container_registry | [:build_read_container_image, :read_container_image]
-        :package_registry   | [:read_package, :read_project]
-        :builds             | [:read_commit_status]
-        :releases           | [:read_release]
-        :environments       | [:read_environment]
-        :repository         | [:read_project]
+      let_it_be(:current_user) { create(:user) }
+      let_it_be(:project) { public_project }
+      let_it_be(:scope_project, freeze: false) { create(:project, :private) }
+      let(:job) { build_stubbed(:ci_build, project: scope_project, user: current_user) }
+
+      context 'with all features enabled' do
+        before do
+          stub_licensed_features(code_review_analytics: true)
+        end
+
+        it { expect_allowed(*::Authz::Role.get(:public_anonymous).permissions(:project)) }
+      end
+
+      context 'with selective feature enablement' do
+        where(:feature, :permissions) do
+          :container_registry | [:build_read_container_image, :read_container_image]
+          :package_registry   | [:read_package]
+          :builds             | [:read_commit_status]
+          :releases           | [:read_release]
+          :environments       | [:read_environment]
+          :repository         | [:build_download_code]
+        end
+
+        with_them do
+          before do
+            current_user.set_ci_job_token_scope!(job)
+
+            scope_project.update!(ci_inbound_job_token_scope_enabled: true)
+
+            # disable all features so that they don't interfere with each other:
+            ProjectFeature::FEATURES.each do |feature|
+              project.project_feature.update!("#{feature}_access_level": ProjectFeature::DISABLED)
+            end
+          end
+
+          it 'allows the permissions based on the feature access level' do
+            update_access_level(project, feature, ProjectFeature::ENABLED)
+
+            expect_allowed(*permissions)
+          end
+
+          it 'disallows the permissions if feature access level is restricted' do
+            update_access_level(project, feature, ProjectFeature::PRIVATE)
+
+            expect_disallowed(*permissions)
+          end
+
+          it 'disallows the permissions if feature access level is disabled' do
+            update_access_level(project, feature, ProjectFeature::DISABLED)
+
+            expect_disallowed(*permissions)
+          end
+
+          def update_access_level(project, feature, state)
+            # builds require repository access level to the same level:
+            project.project_feature.update!(repository_access_level: state) if feature == :builds
+
+            # environments require repository and builds to be set to the same state if enabled:
+            if feature == :environments
+              project.project_feature.update!(repository_access_level: state)
+              project.project_feature.update!(builds_access_level: state)
+            end
+
+            project.project_feature.update!("#{feature}_access_level": state)
+          end
+        end
+      end
+    end
+
+    describe 'public_user_access for internal project' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:project_visibility, :external_user, :token_scope_enabled, :role, :allowed) do
+        :private  | false | false | :anonymous | false
+        :private  | false | false | :planner   | true
+        :private  | false | false | :guest     | true
+        :private  | false | false | :reporter  | true
+        :private  | false | false | :developer | true
+        :private  | false | false | :maintainer | true
+        :private  | false | false | :owner | true
+        :public   | false | false | :anonymous | false
+        :public   | false | false | :planner   | true
+        :public   | false | false | :guest     | true
+        :public   | false | false | :reporter  | true
+        :public   | false | false | :developer | true
+        :public   | false | false | :maintainer | true
+        :public   | false | false | :owner | true
+        :internal | false | false | :anonymous | false
+        :internal | false | false | :planner   | true
+        :internal | false | false | :guest     | true
+        :internal | false | false | :reporter  | true
+        :internal | false | false | :developer | true
+        :internal | false | false | :maintainer | true
+        :internal | false | false | :owner | true
+        :private  | true | false | :anonymous | false
+        :private  | true | false | :planner   | false
+        :private  | true | false | :guest     | false
+        :private  | true | false | :reporter  | false
+        :private  | true | false | :developer | false
+        :private  | true | false | :maintainer | false
+        :private  | true | false | :owner | false
+        :public   | true | false | :anonymous | false
+        :public   | true | false | :planner   | false
+        :public   | true | false | :guest     | false
+        :public   | true | false | :reporter  | false
+        :public   | true | false | :developer | false
+        :public   | true | false | :maintainer | false
+        :public   | true | false | :owner | false
+        :internal | true | false | :anonymous | false
+        :internal | true | false | :planner   | false
+        :internal | true | false | :guest     | false
+        :internal | true | false | :reporter  | false
+        :internal | true | false | :developer | false
+        :internal | true | false | :maintainer | false
+        :internal | true | false | :owner | false
+        :private  | false | true | :anonymous | false
+        :private  | false | true | :planner   | true
+        :private  | false | true | :guest     | true
+        :private  | false | true | :reporter  | true
+        :private  | false | true | :developer | true
+        :private  | false | true | :maintainer | true
+        :private  | false | true | :owner | true
+        :public   | false | true | :anonymous | false
+        :public   | false | true | :planner   | true
+        :public   | false | true | :guest     | true
+        :public   | false | true | :reporter  | true
+        :public   | false | true | :developer | true
+        :public   | false | true | :maintainer | true
+        :public   | false | true | :owner | true
+        :internal | false | true | :anonymous | false
+        :internal | false | true | :planner   | true
+        :internal | false | true | :guest     | true
+        :internal | false | true | :reporter  | true
+        :internal | false | true | :developer | true
+        :internal | false | true | :maintainer | true
+        :internal | false | true | :owner | true
+        :private  | true | true | :anonymous | false
+        :private  | true | true | :planner | false
+        :private  | true | true | :guest     | false
+        :private  | true | true | :reporter  | false
+        :private  | true | true | :developer | false
+        :private  | true | true | :maintainer | false
+        :private  | true | true | :owner | false
+        :public   | true | true | :anonymous | false
+        :public   | true | true | :planner   | false
+        :public   | true | true | :guest     | false
+        :public   | true | true | :reporter  | false
+        :public   | true | true | :developer | false
+        :public   | true | true | :maintainer | false
+        :public   | true | true | :owner | false
+        :internal | true | true | :anonymous | false
+        :internal | true | true | :planner   | false
+        :internal | true | true | :guest     | false
+        :internal | true | true | :reporter  | false
+        :internal | true | true | :developer | false
+        :internal | true | true | :maintainer | false
+        :internal | true | true | :owner | false
       end
 
       with_them do
-        let(:current_user) { developer }
-        let(:project) { public_project }
+        let(:current_user) do
+          if role == :anonymous
+            anonymous
+          else
+            public_send(role)
+          end
+        end
+
+        let(:project) { create(:project, :internal, ci_inbound_job_token_scope_enabled: token_scope_enabled) }
         let(:job) { build_stubbed(:ci_build, project: scope_project, user: current_user) }
-        let(:scope_project) { create(:project, :private) }
+        let(:scope_project) { public_send("#{project_visibility}_project") }
 
         before do
-          current_user.set_ci_job_token_scope!(job)
-
-          scope_project.update!(ci_inbound_job_token_scope_enabled: true)
-
-          # disable all features so that they don't interfere with each other:
-          ProjectFeature::FEATURES.each do |feature|
-            project.project_feature.update!("#{feature}_access_level": ProjectFeature::DISABLED)
+          if role != :anonymous
+            # The below two allow statements are to make sure the CI_JOB_TOKEN is used to access the project and the internal project is not in scope
+            allow(current_user).to receive(:ci_job_token_scope).and_return(current_user.set_ci_job_token_scope!(job))
+            allow(Ci::JobToken::Scope).to receive(:accessible?).with(project).and_return(false)
+            current_user.external = external_user
           end
         end
 
-        it 'allows the permissions based on the feature access level' do
-          update_access_level(project, feature, ProjectFeature::ENABLED)
-          permissions.each { |p| expect_allowed(p) }
-        end
-
-        it 'disallows the permissions if feature access level is restricted' do
-          update_access_level(project, feature, ProjectFeature::PRIVATE)
-          permissions.each { |p| expect_disallowed(p) }
-        end
-
-        it 'disallows the permissions if feature access level is disabled' do
-          update_access_level(project, feature, ProjectFeature::DISABLED)
-
-          permissions.each { |p| expect_disallowed(p) }
-        end
-
-        def update_access_level(project, feature, state)
-          # builds require repository access level to the same level:
-          project.project_feature.update!(repository_access_level: state) if feature == :builds
-
-          # environments require repository and builds to be set to the same state if enabled:
-          if feature == :environments
-            project.project_feature.update!(repository_access_level: state)
-            project.project_feature.update!(builds_access_level: state)
+        it "enforces the expected permissions" do
+          if allowed
+            expect_allowed(:read_project)
+          else
+            expect_disallowed(*disallowed_permissions)
           end
-
-          project.project_feature.update!("#{feature}_access_level": state)
-        end
-      end
-    end
-  end
-
-  describe 'public_user_access for internal project' do
-    using RSpec::Parameterized::TableSyntax
-
-    let(:policy) { :public_user_access }
-
-    where(:project_visibility, :external_user, :token_scope_enabled, :role, :allowed) do
-      :private  | false | false | :anonymous | false
-      :private  | false | false | :planner   | true
-      :private  | false | false | :guest     | true
-      :private  | false | false | :reporter  | true
-      :private  | false | false | :developer | true
-      :private  | false | false | :maintainer | true
-      :private  | false | false | :owner | true
-      :public   | false | false | :anonymous | false
-      :public   | false | false | :planner   | true
-      :public   | false | false | :guest     | true
-      :public   | false | false | :reporter  | true
-      :public   | false | false | :developer | true
-      :public   | false | false | :maintainer | true
-      :public   | false | false | :owner | true
-      :internal | false | false | :anonymous | false
-      :internal | false | false | :planner   | true
-      :internal | false | false | :guest     | true
-      :internal | false | false | :reporter  | true
-      :internal | false | false | :developer | true
-      :internal | false | false | :maintainer | true
-      :internal | false | false | :owner | true
-      :private  | true | false | :anonymous | false
-      :private  | true | false | :planner   | false
-      :private  | true | false | :guest     | false
-      :private  | true | false | :reporter  | false
-      :private  | true | false | :developer | false
-      :private  | true | false | :maintainer | false
-      :private  | true | false | :owner | false
-      :public   | true | false | :anonymous | false
-      :public   | true | false | :planner   | false
-      :public   | true | false | :guest     | false
-      :public   | true | false | :reporter  | false
-      :public   | true | false | :developer | false
-      :public   | true | false | :maintainer | false
-      :public   | true | false | :owner | false
-      :internal | true | false | :anonymous | false
-      :internal | true | false | :planner   | false
-      :internal | true | false | :guest     | false
-      :internal | true | false | :reporter  | false
-      :internal | true | false | :developer | false
-      :internal | true | false | :maintainer | false
-      :internal | true | false | :owner | false
-      :private  | false | true | :anonymous | false
-      :private  | false | true | :planner   | true
-      :private  | false | true | :guest     | true
-      :private  | false | true | :reporter  | true
-      :private  | false | true | :developer | true
-      :private  | false | true | :maintainer | true
-      :private  | false | true | :owner | true
-      :public   | false | true | :anonymous | false
-      :public   | false | true | :planner   | true
-      :public   | false | true | :guest     | true
-      :public   | false | true | :reporter  | true
-      :public   | false | true | :developer | true
-      :public   | false | true | :maintainer | true
-      :public   | false | true | :owner | true
-      :internal | false | true | :anonymous | false
-      :internal | false | true | :planner   | true
-      :internal | false | true | :guest     | true
-      :internal | false | true | :reporter  | true
-      :internal | false | true | :developer | true
-      :internal | false | true | :maintainer | true
-      :internal | false | true | :owner | true
-      :private  | true | true | :anonymous | false
-      :private  | true | true | :planner | false
-      :private  | true | true | :guest     | false
-      :private  | true | true | :reporter  | false
-      :private  | true | true | :developer | false
-      :private  | true | true | :maintainer | false
-      :private  | true | true | :owner | false
-      :public   | true | true | :anonymous | false
-      :public   | true | true | :planner   | false
-      :public   | true | true | :guest     | false
-      :public   | true | true | :reporter  | false
-      :public   | true | true | :developer | false
-      :public   | true | true | :maintainer | false
-      :public   | true | true | :owner | false
-      :internal | true | true | :anonymous | false
-      :internal | true | true | :planner   | false
-      :internal | true | true | :guest     | false
-      :internal | true | true | :reporter  | false
-      :internal | true | true | :developer | false
-      :internal | true | true | :maintainer | false
-      :internal | true | true | :owner | false
-    end
-
-    with_them do
-      let(:current_user) do
-        if role == :anonymous
-          anonymous
-        else
-          public_send(role)
-        end
-      end
-
-      let(:project) { create(:project, :internal, ci_inbound_job_token_scope_enabled: token_scope_enabled) }
-      let(:job) { build_stubbed(:ci_build, project: scope_project, user: current_user) }
-      let(:scope_project) { public_send("#{project_visibility}_project") }
-
-      before do
-        if role != :anonymous
-          # The below two allow statements are to make sure the CI_JOB_TOKEN is used to access the project and the internal project is not in scope
-          allow(current_user).to receive(:ci_job_token_scope).and_return(current_user.set_ci_job_token_scope!(job))
-          allow(Ci::JobToken::Scope).to receive(:accessible?).with(project).and_return(false)
-          current_user.external = external_user
-        end
-      end
-
-      it "enforces the expected permissions" do
-        if allowed
-          is_expected.to be_allowed(policy)
-        else
-          is_expected.to be_disallowed(policy)
         end
       end
     end
@@ -4199,30 +4218,152 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
         end
       end
     end
+
+    context 'with cross-project push via allowlisted project' do
+      let(:current_user) { developer }
+      let_it_be(:source_project) { create(:project, :private) }
+      let(:project) { public_project }
+      let(:job) { build_stubbed(:ci_build, project: source_project, user: current_user) }
+
+      def enable_cross_project_push_gates!(
+        feature_flag: project,
+        push_repository: true,
+        cross_project_push: true,
+        inbound_scope: true,
+        link: { default_permissions: false, job_token_policies: %w[admin_repositories] }
+      )
+        stub_feature_flags(allow_push_to_allowlisted_projects: feature_flag)
+
+        project.ci_cd_settings.update!(
+          push_repository_for_job_token_allowed: push_repository,
+          cross_project_push_for_job_token_allowed: cross_project_push
+        )
+        project.update!(ci_inbound_job_token_scope_enabled: inbound_scope)
+
+        return unless link
+
+        create(:ci_job_token_project_scope_link,
+          source_project: project,
+          target_project: source_project,
+          direction: :inbound,
+          **link)
+      end
+
+      before_all do
+        source_project.add_developer(developer)
+        source_project.add_reporter(reporter)
+      end
+
+      before do
+        allow(current_user).to receive(:ci_job_token_scope)
+          .and_return(current_user.set_ci_job_token_scope!(job))
+      end
+
+      context 'when all four gates are satisfied' do
+        before do
+          enable_cross_project_push_gates!
+        end
+
+        it { is_expected.to be_allowed(:build_push_code) }
+      end
+
+      context 'when feature flag is disabled' do
+        before do
+          enable_cross_project_push_gates!(feature_flag: false)
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when cross_project_push setting is disabled' do
+        before do
+          enable_cross_project_push_gates!(cross_project_push: false)
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when push_repository setting is disabled' do
+        before do
+          enable_cross_project_push_gates!(push_repository: false)
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when inbound scope is disabled (legacy open mode)' do
+        before do
+          enable_cross_project_push_gates!(inbound_scope: false, link: nil)
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when source project is not on allowlist' do
+        before do
+          enable_cross_project_push_gates!(link: nil)
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when allowlist entry lacks admin_repositories policy' do
+        before do
+          enable_cross_project_push_gates!(
+            link: { default_permissions: false, job_token_policies: %w[read_repositories] }
+          )
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+
+      context 'when allowlist entry has default_permissions' do
+        before do
+          enable_cross_project_push_gates!(link: { default_permissions: true })
+        end
+
+        it { is_expected.to be_allowed(:build_push_code) }
+      end
+
+      context 'when user has reporter role (below developer)' do
+        let(:current_user) { reporter }
+
+        before do
+          enable_cross_project_push_gates!
+        end
+
+        it { is_expected.to be_disallowed(:build_push_code) }
+      end
+    end
   end
 
   describe 'create_saved_view' do
-    context 'when user can read the project' do
-      let(:current_user) { create(:user) }
+    using RSpec::Parameterized::TableSyntax
 
-      before do
-        project.add_guest(current_user)
+    context 'when user can create saved views' do
+      where(:role, :current_user) do
+        'planner'    | lazy { planner }
+        'reporter'   | lazy { reporter }
+        'developer'  | lazy { developer }
+        'maintainer' | lazy { maintainer }
+        'owner'      | lazy { owner }
       end
 
-      it { is_expected.to be_allowed(:create_saved_view) }
+      with_them do
+        it { is_expected.to be_allowed(:create_saved_view) }
+      end
     end
 
-    context 'when user cannot read the project' do
-      let(:project) { private_project }
-      let(:current_user) { create(:user) }
+    context 'when user cannot create saved views' do
+      where(:role, :current_user) do
+        'guest'      | lazy { guest }
+        'non-member' | lazy { create(:user) }
+        'anonymous'  | lazy { nil }
+      end
 
-      it { is_expected.to be_disallowed(:create_saved_view) }
-    end
-
-    context 'when user is anonymous' do
-      let(:current_user) { anonymous }
-
-      it { is_expected.to be_disallowed(:create_saved_view) }
+      with_them do
+        it { is_expected.to be_disallowed(:create_saved_view) }
+      end
     end
   end
 
@@ -4259,6 +4400,72 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
       context 'when admin mode disabled' do
         it 'disallows setting metadata for new issues and work items' do
           expect_disallowed :set_new_issue_metadata, :set_new_work_item_metadata
+        end
+      end
+    end
+  end
+
+  describe 'link_forked_project' do
+    using RSpec::Parameterized::TableSyntax
+
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:top_level_group) { create(:group) }
+    let_it_be(:subgroup) { create(:group, parent: top_level_group) }
+    let_it_be(:personal_project) { create(:project, namespace: user.namespace) }
+    let_it_be(:top_level_group_project) { create(:project, group: top_level_group) }
+    let_it_be(:subgroup_project) { create(:project, group: subgroup) }
+
+    let(:current_user) { user }
+
+    where(:project_type, :project_role, :project_group_role, :top_level_group_role, :allowed) do
+      :personal           | nil         | nil          | nil          | true
+      :top_level_project  | :owner      | :reporter    | nil          | false
+      :top_level_project  | :owner      | :developer   | nil          | false
+      :top_level_project  | :owner      | :maintainer  | nil          | true
+      :top_level_project  | :owner      | :owner       | nil          | true
+      :top_level_project  | :developer  | :developer   | nil          | false
+      :top_level_project  | :maintainer | :maintainer  | nil          | false
+      :subgroup_project   | :owner      | :developer   | :developer   | false
+      :subgroup_project   | :owner      | :owner       | :maintainer  | true
+      :subgroup_project   | :owner      | :owner       | :owner       | true
+    end
+
+    with_them do
+      let(:project) do
+        case project_type
+        when :personal then personal_project
+        when :top_level_project then top_level_group_project
+        when :subgroup_project then subgroup_project
+        end
+      end
+
+      before do
+        case project_type
+        when :personal
+          # Personal project owner is implicit via namespace
+          nil
+        when :top_level_project
+          top_level_group_project.public_send("add_#{project_role}", user)
+          top_level_group.public_send("add_#{project_group_role}", user) if project_group_role
+        when :subgroup_project
+          subgroup_project.public_send("add_#{project_role}", user)
+          top_level_group.public_send("add_#{top_level_group_role}", user) if top_level_group_role
+          subgroup.public_send("add_#{project_group_role}", user) if project_group_role
+        end
+      end
+
+      after do
+        top_level_group_project.members.find_by(user: user)&.destroy!
+        subgroup_project.members.find_by(user: user)&.destroy!
+        top_level_group.members.find_by(user: user)&.destroy!
+        subgroup.members.find_by(user: user)&.destroy!
+      end
+
+      it "#{params[:allowed] ? 'allows' : 'denies'} link_forked_project", :aggregate_failures do
+        if allowed
+          expect_allowed(:link_forked_project)
+        else
+          expect_disallowed(:link_forked_project)
         end
       end
     end
@@ -4302,6 +4509,16 @@ RSpec.describe ProjectPolicy, feature_category: :system_access do
 
       it { is_expected.not_to be_allowed(:update_custom_attribute) }
     end
+  end
+
+  describe 'subgroup/project-provisioned service account restrictions' do
+    let_it_be(:service_account) { create(:user, :service_account, maintainer_of: public_project_in_group) }
+
+    let(:project) { public_project_in_group }
+
+    subject { described_class.new(service_account, project) }
+
+    it_behaves_like 'subgroup/project-provisioned service account restriction', :create_service_account
   end
 
   private

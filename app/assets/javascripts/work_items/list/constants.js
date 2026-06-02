@@ -98,9 +98,7 @@ export const NORMAL_FILTER = 'normalFilter';
 export const WILDCARD_FILTER = 'wildcardFilter';
 export const ALTERNATIVE_FILTER = 'alternativeFilter';
 
-export const ISSUES_VIEW_TYPE_KEY = 'issuesViewType';
-export const ISSUES_LIST_VIEW_KEY = 'List';
-export const ISSUES_GRID_VIEW_KEY = 'Grid';
+export const HIERARCHY_FILTERS = 'hierarchyFilters';
 
 export const CLOSED = __('Closed');
 export const CLOSED_MOVED = __('Closed (moved)');
@@ -737,6 +735,10 @@ export const savedViewFilters = {
     type: FILTERED_SEARCH_TERM,
     operator: undefined,
   },
+  in: {
+    type: TOKEN_TYPE_SEARCH_WITHIN,
+    operator: OPERATOR_IS,
+  },
   state: {
     type: TOKEN_TYPE_STATE,
     operator: OPERATOR_IS,
@@ -746,6 +748,10 @@ export const savedViewFilters = {
     operator: OPERATOR_IS,
   },
   types: {
+    type: TOKEN_TYPE_TYPE,
+    operator: OPERATOR_IS,
+  },
+  workItemTypeIds: {
     type: TOKEN_TYPE_TYPE,
     operator: OPERATOR_IS,
   },
@@ -787,4 +793,11 @@ export const savedViewFilters = {
   },
 };
 
+export const SAVED_VIEW_SEARCH_DELIMITER = '__SV__';
+
 export const NEW_SAVED_VIEWS_GID = 'gid://gitlab/WorkItems::SavedViews::SavedView/new';
+
+export const SAVED_VIEW_SORT_RELATIVE_POSITION = 'RELATIVE_POSITION';
+export const SAVED_VIEW_SORT_NAME_ASC = 'NAME_ASC';
+
+export const BROWSE_SAVED_VIEWS_PAGE_SIZE = 100;

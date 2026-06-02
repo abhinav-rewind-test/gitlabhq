@@ -45,12 +45,12 @@ module Issues
       ::Gitlab::AppLogger.info(build_structured_payload(**log_info))
     end
 
-    # overriden in EE
+    # overridden in EE
     def handle_closing_issue!(issue, current_user)
       issue.close(current_user)
     end
 
-    # overriden in EE
+    # overridden in EE
     def after_close(issue, _status, closed_via: nil, notifications: true, system_note: true)
       event_service.close_issue(issue, current_user)
       create_note(issue, closed_via) if system_note
@@ -116,7 +116,7 @@ module Issues
       issue = alert.issue
 
       if alert.resolve
-        SystemNoteService.change_alert_status(alert, Users::Internal.alert_bot, " because #{current_user.to_reference} closed incident #{issue.to_reference(project)}")
+        SystemNoteService.change_alert_status(alert, Users::Internal.in_organization(project.organization_id).alert_bot, " because #{current_user.to_reference} closed incident #{issue.to_reference(project)}")
       else
         Gitlab::AppLogger.warn(
           message: 'Cannot resolve an associated Alert Management alert',

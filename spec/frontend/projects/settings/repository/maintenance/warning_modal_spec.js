@@ -4,7 +4,10 @@ import { mountExtended } from 'helpers/vue_test_utils_helper';
 import WarningModal from '~/projects/settings/repository/maintenance/warning_modal.vue';
 import { stubComponent } from 'helpers/stub_component';
 
-jest.mock('lodash/uniqueId', () => () => 'fake-id');
+jest.mock('lodash-es', () => ({
+  ...jest.requireActual('lodash-es'),
+  uniqueId: () => 'fake-id',
+}));
 
 describe('WarningModal', () => {
   let wrapper;

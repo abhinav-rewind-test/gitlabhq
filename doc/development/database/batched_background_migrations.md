@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: 'See the Technical Writers assigned to Development Guidelines: https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-development-guidelines'
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Batched background migrations
 ---
 
@@ -186,7 +186,7 @@ Succeeded --> [*]
 ### Failed batched background migrations
 
 The whole batched background migration is marked as `failed`
-(`/chatops run batched_background_migrations status MIGRATION_ID` shows
+(`/chatops gitlab run batched_background_migrations status MIGRATION_ID` shows
 the migration as `failed`) if any of the following is true:
 
 - There are no more jobs to consume, and there are failed jobs.
@@ -265,14 +265,6 @@ Cursor-based iteration is now the default and recommended strategy for batched b
 It provides support for composite primary key and maintainability simplicity compared to the legacy primary key-based approach.
 
 The `queue_batched_background_migration` helper automatically detects whether your migration job uses cursor strategy and configures the migration accordingly.
-
-#### When to use cursor strategy
-
-Cursor strategy should be used in most cases. It is especially recommended for:
-
-- Tables with single-column primary keys
-- Tables with composite primary keys
-- Any table where you want more reliable and efficient iteration
 
 #### How to use cursor strategy
 
@@ -422,7 +414,27 @@ Here is an example scenario:
 - In 17.4 the migration may be finalized, provided that it's completed in GitLab.com.
 - In 17.6 the code related to the migration may be deleted.
 
-Batched background migration code is routinely deleted when [migrations are squashed](migration_squashing.md).
+There are two strategies for deleting batched background migration code:
+
+1. Wait for [migration squashing](migration_squashing.md) to delete the migration-related files automatically.
+1. Delete the migration-related files manually.
+
+#### Let migration squashing clean up your batched background migration
+
+GitLab has a [migration squashing](migration_squashing.md) process that deletes batched background migrations which have been finalized. For GitLab.com, the script is run after every required stop. If your batched background migration has been finalized, you can simply wait for the next required stop. All files related to your batched background migration will be deleted at that time.
+
+#### Delete your batched background migration code manually
+
+In some cases, you might want to delete batched background migration code after it is finalized but before migration squashing is run. For example, maybe your batched background migration targeted GitLab.com only, and you want to remove some code that is referenced by the migration.
+
+In this case you can manually delete the following files:
+
+1. The batched background migration class file in `lib/`.
+1. The corresponding `spec/` file for the batched background migration class.
+1. The YAML file for the batched background migration in `db/docs/batched_background_migrations/`.
+1. Any migration files in `db/post_migrate/` which enqueued or finalized the batched background migration.
+1. Any corresponding `spec/` files for the enqueue or finalization migrations.
+1. Any files in `schema_migrations/` corresponding to a deleted `db/post_migrate/` migration.
 
 ### Re-queue batched background migrations
 
@@ -837,6 +849,197 @@ end
 > [!note]
 > [Additional filters](#perform-migration-for-a-subset-of-the-table) defined with `scope_to` are ignored by `LooseIndexScanBatchingStrategy` and `distinct_each_batch`.
 
+### Partitioned tables
+
+When working with partitioned tables, you can parallelize migrations to improve performance. Multiple migrations can run simultaneously (up to 4 on GitLab.com), allowing you to process different partitions or partition ranges in parallel.
+
+> [!warning]
+> The patterns described in this section have so far been used only on GitLab.com,
+> and only for a specific type of partitioned tables (CI sliding list partitions that
+> are manually managed). They are **not recommended for self-managed instances** because:
+>
+> - The set of queued migrations depends on the data (number and identity of partitions),
+>   so different self-managed instances would see different sets of migrations. This can
+>   be confusing for self-managed administrators, who already deal with frustration around
+>   background migrations.
+> - View-based parallelization requires pre-calculating ID ranges based on production data,
+>   which is impractical to do generically for self-managed.
+>
+> Before using these patterns, consult with the Database team and make sure the trade-offs
+> are acceptable for your use case.
+
+#### Pattern 1: Per-partition parallelization
+
+Queue one BBM per partition so they run in parallel.
+
+**When to use**: Your table has multiple partitions and each can be migrated independently.
+Prefer this pattern only on GitLab.com or on tables with a stable, well-known set of partitions.
+
+**Enqueue migration example**:
+
+```ruby
+class QueueMyMigration < Gitlab::Database::Migration[2.3]
+  MIGRATION = 'MyBatchedMigration'
+  TABLE_NAME = :my_partitioned_table
+
+  def up
+    Gitlab::Database::PostgresPartitionedTable.each_partition(TABLE_NAME) do |partition|
+      next if empty_partition?(partition)
+
+      queue_batched_background_migration(MIGRATION, partition.identifier, :id)
+    end
+  end
+
+  def down
+    Gitlab::Database::PostgresPartitionedTable.each_partition(TABLE_NAME) do |partition|
+      delete_batched_background_migration(MIGRATION, partition.identifier, :id, [])
+    end
+  end
+
+  private
+
+  def empty_partition?(partition)
+    !connection.select_value("SELECT true FROM #{partition.identifier} LIMIT 1")
+  end
+
+  # Workaround to allow a single migration to enqueue multiple background migrations
+  def assign_attributes_safely(migration, max_batch_size, batch_table_name, gitlab_schema, _queued_migration_version)
+    super(migration, max_batch_size, batch_table_name, gitlab_schema, nil)
+  end
+end
+```
+
+**Finalization**: See [MR !223822](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/223822) for an example of finalizing per-partition migrations.
+
+**Key considerations**:
+
+- Empty partitions are skipped to avoid unnecessary migrations
+- New partitions created after queueing are not automatically included
+- Each partition's migration runs independently and can be monitored separately
+- The set of queued migrations depends on which partitions exist at queue time, so it
+  varies between instances. This is a poor fit for self-managed releases.
+- If a partition is detached and dropped (for example, daily or monthly partitions that
+  age out) before its migration starts or finishes, the migration fails or never completes.
+  Only use this pattern for partitions that are guaranteed to exist for the entire
+  duration of the migration.
+
+#### Pattern 2: View-Based Parallelization
+
+Create database views to slice a partition into multiple ranges, then queue separate BBMs for each view. This pattern is useful when a single partition is too large or to work around the "one migration per table" framework limitation.
+
+**When to use**:
+
+- A single partition would take too many months/years to migrate
+- You need to work around the framework limitation of "one active migration per table"
+- The migration runs on GitLab.com, where view boundaries can be calculated in advance
+  from production data
+
+> [!warning]
+> This pattern is **not suitable for self-managed instances**. View boundaries must be
+> calculated in advance from the actual data distribution, which is not possible to do
+> generically across self-managed installations.
+
+**View creation example**:
+
+Create views with ID ranges to split the partition. Calculate view boundaries in advance to find the actual ID values at specific row positions. Finding the correct ID ranges is expensive and can timeout if computed during migration.
+
+```ruby
+class CreatePartitionViews < Gitlab::Database::Migration[2.3]
+  # Pre-calculate view boundaries using COUNT and OFFSET queries
+  # For 4 views, divide total row count by 4 and find the ID at each boundary:
+  # SELECT id FROM p_ci_builds WHERE partition_id = 100 ORDER BY id LIMIT 1 OFFSET 0;
+  # SELECT id FROM p_ci_builds WHERE partition_id = 100 ORDER BY id LIMIT 1 OFFSET <total_rows/4>;
+  # SELECT id FROM p_ci_builds WHERE partition_id = 100 ORDER BY id LIMIT 1 OFFSET <total_rows/2>;
+  # etc.
+  VIEW_BOUNDARIES = [1, 1500384395, 2951960143, 4355055910, 12168556334].freeze
+  VIEW_PREFIX = 'gitlab_partitions_dynamic.ci_builds_views_100'
+
+  def up
+    view_ranges.each_with_index do |range, index|
+      create_view(index + 1, range)
+    end
+  end
+
+  def down
+    view_ranges.each_with_index do |_, index|
+      execute("DROP VIEW IF EXISTS #{VIEW_PREFIX}_#{index + 1};")
+    end
+  end
+
+  private
+
+  def view_ranges
+    VIEW_BOUNDARIES.each_cons(2).map { |lower, upper| (lower..upper) }
+  end
+
+  def create_view(view_number, range)
+    execute(<<~SQL.squish)
+      CREATE OR REPLACE VIEW #{VIEW_PREFIX}_#{view_number} AS
+      SELECT id, partition_id
+      FROM p_ci_builds
+      WHERE id >= #{range.min} AND id < #{range.max} AND partition_id = 100
+    SQL
+  end
+end
+```
+
+**Enqueue migration example**:
+
+```ruby
+class SplitMigration < Gitlab::Database::Migration[2.3]
+  MIGRATION = 'MyBatchedMigration'
+  VIEW_PREFIX = 'gitlab_partitions_dynamic.ci_builds_views_100'
+  VIEW_BOUNDARIES = [1, 1500384395, 2951960143, 4355055910, 12168556334].freeze
+  TOTAL_TUPLE_COUNT = 4774979600
+
+  def up
+    VIEW_BOUNDARIES.each_cons(2).map.with_index(1) do |range, view_number|
+      queue_batched_background_migration(
+        MIGRATION,
+        "#{VIEW_PREFIX}_#{view_number}",
+        :id,
+        batch_min_value: range.first,
+        batch_max_value: range.last
+      )
+    end
+
+    # Update tuple count statistics for accurate progress reporting
+    Gitlab::Database::BackgroundMigration::BatchedMigration
+      .where(job_class_name: MIGRATION)
+      .update_all(total_tuple_count: TOTAL_TUPLE_COUNT / (VIEW_BOUNDARIES.size - 1))
+  end
+
+  def down
+    1.upto(VIEW_BOUNDARIES.size - 1) do |view_number|
+      delete_batched_background_migration(MIGRATION, "#{VIEW_PREFIX}_#{view_number}", :id, [])
+    end
+  end
+
+  private
+
+  def assign_attributes_safely(migration, max_batch_size, batch_table_name, gitlab_schema, _queued_migration_version)
+    super(migration, max_batch_size, batch_table_name, gitlab_schema, nil)
+  end
+end
+```
+
+See [MR !221430](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221430) for a complete example of handling an existing migration that's already running.
+
+**Trade-offs**:
+
+- Views bypass autovacuum throttling (could cause table bloat), but WAL throttling still applies
+- Only use when necessary (e.g., migration would take 7+ months)
+- Reduces migration time from months to weeks by utilizing all available workers
+- Saturates worker slots for one table, which may delay other migrations queued for the
+  same database during the same period
+- Requires pre-calculated view boundaries from production data, making it impractical for
+  self-managed deployments
+
+**Real-world example**: [MR !221430](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221430) - MoveCiBuildsMetadata
+
+- Original: 1 migration on partition 100 (4.7B rows, ~7 months)
+- After: 4 migrations on views (parallelized, ~2 months total)
+
 ### Calculate overall time estimation of a batched background migration
 
 It's possible to estimate how long a BBM takes to complete. GitLab already provides an estimation through the `db:gitlabcom-database-testing` pipeline.
@@ -1075,7 +1278,7 @@ and prepare for the migration:
 
 To list the batched background migrations in the system, run this command:
 
-`/chatops run batched_background_migrations list`
+`/chatops gitlab run batched_background_migrations list`
 
 This command supports the following options:
 
@@ -1104,7 +1307,7 @@ Output example:
 
 To see the status and progress of a specific batched background migration, run this command:
 
-`/chatops run batched_background_migrations status MIGRATION_ID`
+`/chatops gitlab run batched_background_migrations status MIGRATION_ID`
 
 This command supports the following options:
 
@@ -1143,7 +1346,7 @@ Definitions of the batched background migration states:
 
 If you want to pause a batched background migration, you need to run the following command:
 
-`/chatops run batched_background_migrations pause MIGRATION_ID`
+`/chatops gitlab run batched_background_migrations pause MIGRATION_ID`
 
 This command supports the following options:
 
@@ -1168,7 +1371,7 @@ Output example:
 
 If you want to resume a batched background migration, you need to run the following command:
 
-`/chatops run batched_background_migrations resume MIGRATION_ID`
+`/chatops gitlab run batched_background_migrations resume MIGRATION_ID`
 
 This command supports the following options:
 
@@ -1238,7 +1441,6 @@ You can view failures in two ways:
 
   1. Remember the retry mechanism. Having a failure does not mean the job failed.
      Always check the last status of the job.
-
 - Via database:
 
   1. Get the batched background migration `CLASS_NAME`.
@@ -1313,20 +1515,34 @@ for more details.
    end
    ```
 
-1. If possible update the entire sub-batch in a single query
-   instead of updating each model separately.
+1. If possible, update the entire sub-batch in a single query instead of updating each model separately. When doing so, always include a limit guard and extract it in a materialized CTE to eliminate any chance for query plan flips.
    This can be achieve in different ways, depending on the scenario.
 
-   - Generate an `UPDATE` query, and use `FROM` to join the tables
-   that provide the necessary values
-   ([example](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/184051)).
-   - Generate an `UPDATE` query, and use `FROM(VALUES( ...))` to
-   pass values calculated beforehand
-   ([example](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/177993)).
+   - Generate an `UPDATE` query, and use `FROM` to join the tables that provide the necessary values
+     ([example](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/184051)).
+   - Generate an `UPDATE` query, and use `FROM(VALUES( ...))` to pass values calculated beforehand
+     ([example](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/177993)).
    - Pass all keys and values to `ActiveRelation#update`.
 
    ```ruby
    # good
+   def perform
+     each_sub_batch do |sub_batch|
+       connection.execute <<~SQL
+         WITH sub_batch_ids AS MATERIALIZED (
+           #{sub_batch.select(:id).limit(sub_batch_size).to_sql}
+         )
+         UPDATE fork_networks
+         SET organization_id = projects.organization_id
+         FROM projects
+         WHERE fork_networks.id IN (SELECT id FROM sub_batch_ids)
+         AND fork_networks.root_project_id = projects.id
+         AND fork_networks.organization_id IS NULL
+       SQL
+     end
+   end
+
+   # bad - uses pluck and does not use a limit
    def perform
      each_sub_batch do |sub_batch|
        connection.execute <<~SQL
@@ -1394,7 +1610,6 @@ background migration.
    > correctly handled by the batched migration framework. Any subclass of
    > `BatchedMigrationJob` is initialized with the necessary arguments to
    > execute the batch, and a connection to the tracking database.
-
 1. Create a database migration that adds a new trigger to the database. Example:
 
    ```ruby
@@ -1521,7 +1736,6 @@ background migration.
    If the application does not depend on the data being 100% migrated (for
    instance, the data is advisory, and not mission-critical), then you can skip this
    final step. This step confirms that the migration is completed, and all of the rows were migrated.
-
 1. Add a database migration to remove the trigger.
 
    ```ruby

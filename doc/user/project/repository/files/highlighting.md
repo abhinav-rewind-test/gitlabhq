@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Syntax highlighting helps you read files in your GitLab project and identify what files contain.
 title: Syntax highlighting
 ---
@@ -28,14 +28,16 @@ GitLab provides syntax highlighting for files through two complementary systems:
 The paths here use the [`.gitattributes` interface](https://git-scm.com/docs/gitattributes) in Git.
 
 > [!note]
-> The [Web IDE](../../web_ide/_index.md) and [Snippets](../../../snippets.md) use [Monaco Editor](https://microsoft.github.io/monaco-editor/)
-> for text editing, which internally uses the [Monarch](https://microsoft.github.io/monaco-editor/monarch.html)
-> library for syntax highlighting.
+> The [Web IDE](../../web_ide/_index.md) and [snippets](../../../snippets.md) use
+> the [Monaco Editor](https://microsoft.github.io/monaco-editor/) for text editing,
+> which internally uses the [Monarch library](https://microsoft.github.io/monaco-editor/monarch.html)
+> for syntax highlighting.
 
 ## Override syntax highlighting for a file type
 
 > [!note]
-> The Web IDE [does not support `.gitattribute` files](https://gitlab.com/gitlab-org/gitlab/-/issues/22014).
+> The Web IDE does not support `.gitattributes` files.
+> For more information, see [epic 18651](https://gitlab.com/groups/gitlab-org/-/work_items/18651).
 
 To override syntax highlighting for a file type:
 
@@ -81,7 +83,6 @@ The following file size limits apply to the syntax highlighters:
 
 - Rouge (server-side): 512 KB by default (configurable)
   - Files larger than this limit render in plain text without syntax highlighting.
-
 - Highlight.js (client-side): 2 MB (not configurable)
   - Falls back to Rouge highlighting if a language is not supported.
   - Files larger than this limit cannot be highlighted in the frontend and must be viewed as raw content.

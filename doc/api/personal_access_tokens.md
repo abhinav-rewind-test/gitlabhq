@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Personal access tokens API
 ---
 
@@ -321,7 +321,7 @@ Supported attributes:
 
 | Attribute           | Type     | Required | Description                                                              |
 |---------------------|----------|----------|--------------------------------------------------------------------------|
-| `min_access_level`  | integer  | No       | Limit to groups and projects where the token has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `min_access_level`  | integer  | No       | Limit to groups and projects where the token has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
 | `page`              | integer  | No       | Page to retrieve. Defaults to `1`.                                       |
 | `per_page`          | integer  | No       | Number of records to return per page. Defaults to `20`.                  |
 

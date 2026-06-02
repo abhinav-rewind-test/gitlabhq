@@ -55,8 +55,12 @@ module Ci
       inverse_of: :job,
       partition_foreign_key: :partition_id
 
+    has_one :supply_chain_attestation, class_name: 'SupplyChain::Attestation', foreign_key: :build_id, inverse_of:
+      :build
+
     accepts_nested_attributes_for :needs
     accepts_nested_attributes_for :job_definition_instance
+    accepts_nested_attributes_for :job_source
 
     scope :preload_needs, -> { preload(:needs) }
     scope :preload_job_definition_instances, -> { preload(:job_definition_instance) }
@@ -156,10 +160,10 @@ module Ci
       end
     end
 
-    def self.fabricate(attrs)
-      attrs = attrs.dup
+    def self.fabricate(partition_id:, **attrs)
       definition_attrs = attrs.extract!(*Ci::JobDefinition::CONFIG_ATTRIBUTES)
       attrs[:tag_list] = definition_attrs[:tag_list] if definition_attrs.key?(:tag_list)
+      attrs[:partition_id] = partition_id
 
       new(attrs).tap do |job|
         job_definition = ::Ci::JobDefinition.fabricate(
@@ -167,7 +171,6 @@ module Ci
           project_id: job.project_id,
           partition_id: job.partition_id
         )
-
         job.temp_job_definition = job_definition
       end
     end
@@ -175,7 +178,7 @@ module Ci
     def self.select_with_aggregated_needs(project)
       aggregated_needs_names = Ci::BuildNeed
         .scoped_build
-        .select("ARRAY_AGG(name)")
+        .select("ARRAY_AGG(name)::text[]")
         .to_sql
 
       all.select(
@@ -236,7 +239,8 @@ module Ci
     end
 
     def aggregated_needs_names
-      read_attribute(:aggregated_needs_names)
+      value = read_attribute(:aggregated_needs_names)
+      value.is_a?(String) ? PG::TextDecoder::Array.new.decode(value) : value
     end
 
     def schedulable?
@@ -304,19 +308,24 @@ module Ci
     end
 
     def dependency_variables
-      return [] if all_dependencies.empty?
+      variables = Gitlab::Ci::Variables::Collection.new
+      return variables if all_dependencies.empty?
 
       dependencies_with_accessible_artifacts = job_dependencies_with_accessible_artifacts(all_dependencies)
 
-      Gitlab::Ci::Variables::Collection.new.concat(
+      variables.concat(
         Ci::JobVariable.where(job: dependencies_with_accessible_artifacts).dotenv_source
       )
     end
 
     def job_dependencies_with_accessible_artifacts(all_dependencies)
       build_ids = all_dependencies.collect(&:id)
+      partition_ids = all_dependencies.collect(&:partition_id).uniq
 
-      Ci::Build.id_in(build_ids).builds_with_accessible_artifacts(self.project_id)
+      Ci::Build
+        .id_in(build_ids)
+        .in_partition(partition_ids)
+        .builds_with_accessible_artifacts(self.project_id)
     end
 
     def all_dependencies
@@ -352,6 +361,10 @@ module Ci
     end
     strong_memoize_attr :source
 
+    def run_steps
+      []
+    end
+
     private
 
     def dependencies
@@ -361,3 +374,5 @@ module Ci
     end
   end
 end
+
+Ci::Processable.prepend_mod_with('Ci::Processable')

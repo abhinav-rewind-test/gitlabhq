@@ -3,10 +3,10 @@
 require "spec_helper"
 
 RSpec.describe Projects::RepositoriesController, feature_category: :source_code_management do
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
 
   describe 'POST create' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
 
     let(:request) { post :create, params: { namespace_id: project.namespace, project_id: project } }
 
@@ -23,6 +23,42 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
 
         expect(response).to be_redirect
       end
+
+      it 'tracks the project_repository' do
+        expect { request }.to change { project.reload.project_repository }.from(nil).to(be_present)
+      end
+
+      it 'redirects to project path without an alert' do
+        request
+
+        expect(response).to redirect_to(project_path(project))
+        expect(flash[:alert]).to be_nil
+      end
+
+      context 'when repository creation fails' do
+        before do
+          allow_next_found_instance_of(Project) do |instance|
+            allow(instance).to receive(:create_repository).and_return(false)
+          end
+        end
+
+        it 'redirects to project path with an alert' do
+          request
+
+          expect(response).to redirect_to(project_path(project))
+          expect(flash[:alert]).to eq(_('Failed to create repository'))
+        end
+
+        it 'does not call track_project_repository' do
+          expect(project).not_to receive(:track_project_repository)
+
+          request
+        end
+
+        it 'does not create project_repository records' do
+          expect { request }.not_to change { project.reload.project_repository }.from(nil)
+        end
+      end
     end
 
     context 'when repository already exists' do
@@ -31,6 +67,24 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
         request
 
         expect(response).to be_redirect
+      end
+
+      it 'redirects to project path' do
+        request
+
+        expect(response).to redirect_to(project_path(project))
+      end
+
+      it 'does not call create_repository' do
+        expect(project).not_to receive(:create_repository)
+
+        request
+      end
+
+      it 'does not call track_project_repository' do
+        expect(project).not_to receive(:track_project_repository)
+
+        request
       end
     end
   end
@@ -208,7 +262,7 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
           end
 
           context 'when user with expired password' do
-            let_it_be(:user) { create(:user, password_expires_at: 2.minutes.ago) }
+            let_it_be(:user, freeze: false) { create(:user, password_expires_at: 2.minutes.ago) }
 
             it 'redirects to sign in page' do
               get :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master', token: user.static_object_token }, format: 'zip'
@@ -220,7 +274,7 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
 
           context 'when password expiration is not applicable' do
             context 'when ldap user' do
-              let_it_be(:user) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
+              let_it_be(:user, freeze: false) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
 
               it 'calls the action normally' do
                 get :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master', token: user.static_object_token }, format: 'zip'
@@ -269,7 +323,7 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
           end
 
           context 'when user with expired password' do
-            let_it_be(:user) { create(:user, password_expires_at: 2.minutes.ago) }
+            let_it_be(:user, freeze: false) { create(:user, password_expires_at: 2.minutes.ago) }
 
             it 'redirects to sign in page' do
               request.headers['X-Gitlab-Static-Object-Token'] = user.static_object_token
@@ -282,7 +336,7 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
 
           context 'when password expiration is not applicable' do
             context 'when ldap user' do
-              let_it_be(:user) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
+              let_it_be(:user, freeze: false) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
 
               it 'calls the action normally' do
                 request.headers['X-Gitlab-Static-Object-Token'] = user.static_object_token
@@ -303,6 +357,75 @@ RSpec.describe Projects::RepositoriesController, feature_category: :source_code_
           end
         end
       end
+
+      context 'with bot_users' do
+        context 'when blocked' do
+          [:project_bot, :service_account].each do |user_type|
+            context "when #{user_type}" do
+              let(:user) { create(:user, user_type, :blocked) }
+
+              context 'when a token param is present' do
+                it 'redirects to sign in page' do
+                  get :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master', token: user.static_object_token }, format: 'zip'
+
+                  expect(response).to have_gitlab_http_status(:found)
+                  expect(response.location).to end_with('/users/sign_in')
+                end
+              end
+
+              context 'when a token header is present' do
+                it 'redirects to sign in page' do
+                  request.headers['X-Gitlab-Static-Object-Token'] = user.static_object_token
+                  get :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master' }, format: 'zip'
+
+                  expect(response).to have_gitlab_http_status(:found)
+                  expect(response.location).to end_with('/users/sign_in')
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  describe 'HEAD archive' do
+    let_it_be(:user, freeze: false) { create(:user) }
+
+    before do
+      project.add_developer(user)
+      sign_in(user)
+    end
+
+    it 'returns 200 OK with correct headers for authenticated user' do
+      expect(controller).not_to receive(:send_git_archive)
+
+      head :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master' }, format: 'zip'
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(response.headers['ETag']).to be_present
+      expect(response.headers['Cache-Control']).to include('must-revalidate')
+      expect(response.headers['Content-Type']).to include('application/zip')
+      expect(response.headers['Content-Disposition']).to include('attachment')
+      expect(response.headers['Content-Disposition']).to include('.zip')
+    end
+
+    it 'returns correct Content-Type for tar.gz format' do
+      head :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master' }, format: 'tar.gz'
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(response.headers['Content-Type']).to include('application/octet-stream')
+      expect(response.headers['Content-Disposition']).to include('.tar.gz')
+    end
+
+    it 'returns 304 Not Modified when ETag matches' do
+      head :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master' }, format: 'zip'
+      etag = response.headers['ETag']
+
+      request.headers['If-None-Match'] = etag
+      head :archive, params: { namespace_id: project.namespace, project_id: project, id: 'master' }, format: 'zip'
+
+      expect(response).to have_gitlab_http_status(:not_modified)
     end
   end
 end

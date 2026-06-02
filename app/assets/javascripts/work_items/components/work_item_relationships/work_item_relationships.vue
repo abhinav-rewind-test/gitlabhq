@@ -1,7 +1,7 @@
 <script>
 import { produce } from 'immer';
-import { GlAlert, GlButton, GlBadge } from '@gitlab/ui';
-import { cloneDeep } from 'lodash';
+import { GlAlert, GlButton, GlBadge, GlTooltipDirective } from '@gitlab/ui';
+import { cloneDeep } from 'lodash-es';
 
 import { s__, n__, sprintf } from '~/locale';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
@@ -14,13 +14,13 @@ import {
   getToggleFromLocalStorage,
   isItemDisplayable,
   trackCrudCollapse,
+  getHiddenMetadataKeysFromLocalStorage,
 } from '../../utils';
 import {
   LINKED_CATEGORIES_MAP,
   LINKED_ITEMS_ANCHOR,
-  NAME_TO_TEXT_MAP,
-  WORKITEM_RELATIONSHIPS_SHOWLABELS_LOCALSTORAGEKEY,
   WORKITEM_RELATIONSHIPS_SHOWCLOSED_LOCALSTORAGEKEY,
+  WORKITEM_RELATIONSHIPS_METADATA_LOCALSTORAGEKEY,
   WORK_ITEM_RELATIONSHIPS_COLLAPSE_TRACKING_ACTION_COLLAPSED,
   WORK_ITEM_RELATIONSHIPS_COLLAPSE_TRACKING_ACTION_EXPANDED,
 } from '../../constants';
@@ -32,6 +32,7 @@ import WorkItemAddRelationshipForm from './work_item_add_relationship_form.vue';
 
 export default {
   linkedCategories: LINKED_CATEGORIES_MAP,
+  WORKITEM_RELATIONSHIPS_METADATA_LOCALSTORAGEKEY,
   components: {
     GlAlert,
     GlButton,
@@ -41,6 +42,9 @@ export default {
     WorkItemAddRelationshipForm,
     WorkItemMoreActions,
     WorkItemToggleClosedItems,
+  },
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   provide() {
     return {
@@ -76,6 +80,11 @@ export default {
       default: null,
     },
     activeChildItemId: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    activePanel: {
       type: String,
       required: false,
       default: null,
@@ -138,11 +147,14 @@ export default {
       linksIsBlockedBy: [],
       linksBlocks: [],
       widgetName: LINKED_ITEMS_ANCHOR,
-      showLabels: true,
       showClosed: true,
       linkedWorkItems: [],
-      showLabelsLocalStorageKey: WORKITEM_RELATIONSHIPS_SHOWLABELS_LOCALSTORAGEKEY,
       showClosedLocalStorageKey: WORKITEM_RELATIONSHIPS_SHOWCLOSED_LOCALSTORAGEKEY,
+      hiddenMetadataKeys: getHiddenMetadataKeysFromLocalStorage(
+        WORKITEM_RELATIONSHIPS_METADATA_LOCALSTORAGEKEY,
+        [],
+      ),
+      isFormVisible: false,
     };
   },
   computed: {
@@ -186,7 +198,7 @@ export default {
         ),
         { itemCount: this.linkedWorkItemsCount },
       );
-      return sprintf(message, { workItemType: NAME_TO_TEXT_MAP[this.workItemType] });
+      return sprintf(message, { workItemType: this.workItemType });
     },
     openRelatesToLinks() {
       return this.displayableLinks(this.linksRelatesTo);
@@ -203,25 +215,28 @@ export default {
     shouldShowRelationshipsWidget() {
       return this.linkedWorkItems.length > 0 || this.canAdminWorkItemLink;
     },
+    addButtonTooltipText() {
+      return !this.isFormVisible ? this.$options.i18n.addItem : '';
+    },
   },
   mounted() {
-    this.showLabels = getToggleFromLocalStorage(this.showLabelsLocalStorageKey);
     this.showClosed = getToggleFromLocalStorage(this.showClosedLocalStorageKey);
   },
   methods: {
     showLinkItemForm() {
+      this.isFormVisible = true;
       this.$refs.widget.showForm();
     },
     hideLinkItemForm() {
+      this.isFormVisible = false;
       this.$refs.widget.hideForm();
-    },
-    toggleShowLabels() {
-      this.showLabels = !this.showLabels;
-      saveToggleToLocalStorage(this.showLabelsLocalStorageKey, this.showLabels);
     },
     toggleShowClosed() {
       this.showClosed = !this.showClosed;
       saveToggleToLocalStorage(this.showClosedLocalStorageKey, this.showClosed);
+    },
+    handleUpdateHiddenMetadataKeys(hiddenKeys) {
+      this.hiddenMetadataKeys = [...hiddenKeys];
     },
     /**
      * We are relying on calling two mutations sequentially to achieve drag and drop
@@ -344,7 +359,7 @@ export default {
     relatedToTitle: s__('WorkItem|Related to'),
     blockingTitle: s__('WorkItem|Blocking'),
     blockedByTitle: s__('WorkItem|Blocked by'),
-    addLinkedWorkItemButtonLabel: s__('WorkItem|Add'),
+    addItem: s__('WorkItem|Add item'),
   },
 };
 </script>
@@ -372,23 +387,27 @@ export default {
     </template>
 
     <template #actions>
-      <gl-button
-        v-if="canAdminWorkItemLink"
-        data-testid="link-item-add-button"
-        size="small"
-        @click="showLinkItemForm"
-      >
-        <slot name="add-button-text">{{ $options.i18n.addLinkedWorkItemButtonLabel }}</slot>
-      </gl-button>
       <work-item-more-actions
         :work-item-iid="workItemIid"
         :full-path="workItemFullPath"
         :work-item-type="workItemType"
-        :show-labels="showLabels"
         :show-closed="showClosed"
+        :hidden-metadata-keys="hiddenMetadataKeys"
         :show-view-roadmap-action="false"
-        @toggle-show-labels="toggleShowLabels"
+        widget-type="relationships"
+        :metadata-local-storage-key="$options.WORKITEM_RELATIONSHIPS_METADATA_LOCALSTORAGEKEY"
         @toggle-show-closed="toggleShowClosed"
+        @update-hidden-metadata-keys="handleUpdateHiddenMetadataKeys"
+      />
+      <gl-button
+        v-if="canAdminWorkItemLink"
+        v-gl-tooltip="addButtonTooltipText"
+        :aria-label="$options.i18n.addItem"
+        data-testid="link-item-add-button"
+        icon="plus"
+        size="small"
+        category="tertiary"
+        @click="showLinkItemForm"
       />
     </template>
 
@@ -399,7 +418,6 @@ export default {
         :work-item-iid="workItemIid"
         :work-item-full-path="workItemFullPath"
         :children-ids="childrenIds"
-        :work-item-type="workItemType"
         :has-blocked-work-items-feature="hasBlockedWorkItemsFeature"
         @submitted="hideLinkItemForm"
         @cancel="hideLinkItemForm"
@@ -423,9 +441,10 @@ export default {
         :heading="$options.i18n.blockingTitle"
         :can-update="canAdminWorkItemLink"
         :is-group="isGroup"
-        :show-labels="showLabels"
+        :hidden-metadata-keys="hiddenMetadataKeys"
         :work-item-full-path="workItemFullPath"
         :active-child-item-id="activeChildItemId"
+        :active-panel="activePanel"
         :contextual-view-enabled="contextualViewEnabled"
         @showModal="
           $emit('showModal', {
@@ -445,9 +464,10 @@ export default {
         :heading="$options.i18n.blockedByTitle"
         :can-update="canAdminWorkItemLink"
         :is-group="isGroup"
-        :show-labels="showLabels"
+        :hidden-metadata-keys="hiddenMetadataKeys"
         :work-item-full-path="workItemFullPath"
         :active-child-item-id="activeChildItemId"
+        :active-panel="activePanel"
         :contextual-view-enabled="contextualViewEnabled"
         @showModal="
           $emit('showModal', {
@@ -467,9 +487,10 @@ export default {
         :heading="$options.i18n.relatedToTitle"
         :can-update="canAdminWorkItemLink"
         :is-group="isGroup"
-        :show-labels="showLabels"
+        :hidden-metadata-keys="hiddenMetadataKeys"
         :work-item-full-path="workItemFullPath"
         :active-child-item-id="activeChildItemId"
+        :active-panel="activePanel"
         :contextual-view-enabled="contextualViewEnabled"
         @showModal="
           $emit('showModal', {

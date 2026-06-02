@@ -26,8 +26,8 @@ RSpec.shared_examples 'graphql work item list request spec' do
     end
 
     context 'when filtering by state' do
-      let_it_be(:opened_work_item) { create(:work_item, :opened, **container_build_params) }
-      let_it_be(:closed_work_item) { create(:work_item, :closed, **container_build_params) }
+      let_it_be(:opened_work_item, freeze: false) { create(:work_item, :opened, **container_build_params) }
+      let_it_be(:closed_work_item, freeze: false) { create(:work_item, :closed, **container_build_params) }
 
       context 'when filtering by state opened' do
         let(:item_filter_params) { { state: :opened } }
@@ -57,8 +57,8 @@ RSpec.shared_examples 'graphql work item list request spec' do
     end
 
     context 'when filtering by type' do
-      let_it_be(:issue_work_item) { create(:work_item, :issue, **container_build_params) }
-      let_it_be(:task_work_item) { create(:work_item, :task, **container_build_params) }
+      let_it_be(:issue_work_item, freeze: false) { create(:work_item, :issue, **container_build_params) }
+      let_it_be(:task_work_item, freeze: false) { create(:work_item, :task, **container_build_params) }
 
       context 'when filtering by issue type' do
         let(:item_filter_params) { { types: [:ISSUE] } }
@@ -77,10 +77,49 @@ RSpec.shared_examples 'graphql work item list request spec' do
           expect(work_item_ids).to include(task_work_item.to_global_id.to_s)
         end
       end
+
+      context 'when filtering by work item type GID' do
+        let(:item_filter_params) { { workItemTypeIds: [issue_work_item.work_item_type.to_global_id.to_s] } }
+
+        it 'filters by work item type GID' do
+          expect(work_item_ids).to include(issue_work_item.to_global_id.to_s)
+          expect(work_item_ids).not_to include(task_work_item.to_global_id.to_s)
+        end
+      end
+
+      context 'when filtering by multiple work item type GIDs' do
+        let(:item_filter_params) do
+          {
+            workItemTypeIds: [
+              issue_work_item.work_item_type.to_global_id.to_s,
+              task_work_item.work_item_type.to_global_id.to_s
+            ]
+          }
+        end
+
+        it 'returns items matching any of the type GIDs' do
+          expect(work_item_ids).to include(issue_work_item.to_global_id.to_s)
+          expect(work_item_ids).to include(task_work_item.to_global_id.to_s)
+        end
+      end
+
+      context 'when both types and workItemTypeIds are provided' do
+        let(:item_filter_params) do
+          { types: [:TASK], workItemTypeIds: [issue_work_item.work_item_type.to_global_id.to_s] }
+        end
+
+        it 'returns a mutual exclusion error' do
+          expect(graphql_errors).to include(
+            a_hash_including('message' => a_string_including(
+              'Only one of [issueTypes, workItemTypeIds] arguments is allowed at the same time.'
+            ))
+          )
+        end
+      end
     end
 
     context 'when filtering by iid' do
-      let_it_be(:work_item_by_iid) { create(:work_item, **container_build_params) }
+      let_it_be(:work_item_by_iid, freeze: false) { create(:work_item, **container_build_params) }
 
       context 'when using the iid filter' do
         let(:item_filter_params) { { iid: work_item_by_iid.iid.to_s } }

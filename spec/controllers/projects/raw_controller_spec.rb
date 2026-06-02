@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Projects::RawController, feature_category: :source_code_management do
   include RepoHelpers
 
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
 
   let(:inline) { nil }
   let(:params) { {} }
@@ -119,10 +119,47 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
       end
     end
 
+    context 'when the unauthenticated project-level rate limit is exceeded' do
+      let(:file_path) { 'master/README.md' }
+      let(:path_without_ref) { 'README.md' }
+
+      before do
+        allow(::Gitlab::ApplicationRateLimiter).to(
+          receive(:throttled?).with(:raw_blob, scope: [project, path_without_ref]).and_return(false)
+        )
+        allow(::Gitlab::ApplicationRateLimiter).to(
+          receive(:throttled?).with(:raw_blob_unauthenticated, scope: project).and_return(true)
+        )
+      end
+
+      it 'prevents from accessing the raw file' do
+        expect { get_show }.not_to change { Gitlab::GitalyClient.get_request_count }
+
+        message = _('You cannot access the raw file. Please wait a minute or authenticate and try again.')
+        expect(response.body).to eq(message)
+        expect(response).to have_gitlab_http_status(:too_many_requests)
+      end
+
+      context 'when the user is authenticated' do
+        let_it_be(:user, freeze: false) { create(:user) }
+
+        before do
+          sign_in(user)
+        end
+
+        it 'does not apply the unauthenticated rate limit' do
+          expect(::Gitlab::ApplicationRateLimiter).not_to receive(:throttled?).with(:raw_blob_unauthenticated,
+            scope: project)
+
+          get_show
+        end
+      end
+    end
+
     context 'as a sessionless user' do
-      let_it_be(:project) { create(:project, :private, :repository) }
-      let_it_be(:user) { create(:user, static_object_token: 'very-secure-token') }
-      let_it_be(:file_path) { 'master/README.md' }
+      let_it_be(:project, freeze: false) { create(:project, :private, :repository) }
+      let_it_be(:user, freeze: false) { create(:user, static_object_token: 'very-secure-token') }
+      let_it_be(:file_path, freeze: false) { 'master/README.md' }
 
       let(:token) { user.static_object_token }
 
@@ -150,7 +187,7 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
           end
 
           context 'when user with expired password' do
-            let_it_be(:user) { create(:user, password_expires_at: 2.minutes.ago) }
+            let_it_be(:user, freeze: false) { create(:user, password_expires_at: 2.minutes.ago) }
 
             it 'redirects to sign in page' do
               get_show
@@ -162,7 +199,9 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
           context 'when password expiration is not applicable' do
             context 'when ldap user' do
-              let_it_be(:user) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
+              let_it_be(:user, freeze: false) do
+                create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago)
+              end
 
               it 'calls the action normally' do
                 get_show
@@ -198,7 +237,7 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
           end
 
           context 'when user with expired password' do
-            let_it_be(:user) { create(:user, password_expires_at: 2.minutes.ago) }
+            let_it_be(:user, freeze: false) { create(:user, password_expires_at: 2.minutes.ago) }
 
             it 'redirects to sign in page' do
               get_show
@@ -210,7 +249,9 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
           context 'when password expiration is not applicable' do
             context 'when ldap user' do
-              let_it_be(:user) { create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago) }
+              let_it_be(:user, freeze: false) do
+                create(:omniauth_user, provider: 'ldap', password_expires_at: 2.minutes.ago)
+              end
 
               it 'calls the action normally' do
                 get_show
@@ -333,6 +374,23 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
           expect(response).to have_gitlab_http_status(:not_modified)
         end
+      end
+    end
+
+    context 'when gitaly is unavailable' do
+      let(:file_path) { 'master/README.md' }
+
+      before do
+        allow_next_instance_of(Gitlab::Git::Repository) do |repository|
+          allow(repository).to receive(:blob_at)
+            .and_raise(Gitlab::Git::CommandError, 'Gitaly unavailable')
+        end
+      end
+
+      it 'returns 503' do
+        get_show
+
+        expect(response).to have_gitlab_http_status(:service_unavailable)
       end
     end
   end

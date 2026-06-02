@@ -1,7 +1,7 @@
 <script>
 import { GlFormGroup, GlFormCheckbox, GlFormInput } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapGetters } from 'vuex';
+import { mapState } from 'pinia';
+import { useIntegrationForm } from '../store';
 
 export default {
   name: 'JiraIssuesFields',
@@ -64,6 +64,7 @@ export default {
       default: false,
     },
   },
+  emits: ['request-jira-issue-types'],
   data() {
     return {
       enableJiraIssues: this.initialEnableJiraIssues,
@@ -71,7 +72,7 @@ export default {
     };
   },
   computed: {
-    ...mapGetters(['isInheriting']),
+    ...mapState(useIntegrationForm, ['isInheriting']),
 
     checkboxDisabled() {
       return !this.showJiraIssuesIntegration || this.isInheriting;
@@ -93,7 +94,7 @@ export default {
         <template #help>
           {{
             s__(
-              'JiraService|Warning: All users with access to this GitLab project can view all issues from the Jira project you specify.',
+              'JiraService|Warning: All users with access to this GitLab project can view any Jira issue the API token used to authenticate can access, including issues outside the Jira project keys specified below.',
             )
           }}
         </template>
@@ -107,7 +108,7 @@ export default {
         label-for="service_project_keys"
         :description="
           s__(
-            'JiraService|Comma-separated list of Jira project keys. Leave blank to include all available keys.',
+            'JiraService|Comma-separated list of Jira project keys to display. This filter does not restrict the API token\'s access. Leave blank to display all keys the token can access.',
           )
         "
         data-testid="jira-project-keys"

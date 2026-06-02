@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Rate limits on issue and epic creation
 ---
 
@@ -26,7 +26,7 @@ Prerequisites:
 To limit the number of requests made to the issue and epic creation endpoints:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Issues Rate Limits**.
 1. Under **Max requests per minute**, enter the new value.
 1. Select **Save changes**.

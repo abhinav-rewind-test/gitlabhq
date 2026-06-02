@@ -1,7 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Use typed, validated input parameters to customize reusable CI/CD templates and components.
 title: CI/CD inputs
 ---
 
@@ -79,6 +80,10 @@ scan-website:
 
 In this example, the inputs are `job-stage` and `environment`.
 
+You can only use inputs values in the file with the `spec` section.
+To use an input value from a different file added with `include`,
+[pass it to the included file explicitly](#for-configuration-added-with-include).
+
 With `spec:inputs`:
 
 - Inputs are mandatory if `default` is not specified.
@@ -91,7 +96,7 @@ With `spec:inputs`:
 
 Then you set the values for the inputs when you:
 
-- [Trigger a new pipeline](#for-a-pipeline) using this configuration file.
+- [Run a new pipeline](#for-a-pipeline) using this configuration file.
   You should always set default values when using inputs to configure new pipelines
   with any method other than `include`. Otherwise the pipeline could fail to start
   if a new pipeline triggers automatically, including in:
@@ -242,11 +247,113 @@ test_job:
 Array inputs must be formatted as JSON, for example `["array-input-1", "array-input-2"]`,
 when manually passing inputs for:
 
-- [Manually triggered pipelines](../pipelines/_index.md#run-a-pipeline-manually).
+- [Manually run pipelines](../pipelines/_index.md#run-a-pipeline-manually).
 - The [pipeline triggers API](../../api/pipeline_triggers.md#trigger-a-pipeline-with-a-token).
 - The [pipelines API](../../api/pipelines.md#create-a-new-pipeline).
 - Git [push options](../../topics/git/commit.md#push-options-for-gitlab-cicd)
 - [Pipeline schedules](../pipelines/schedules.md#create-a-pipeline-schedule)
+
+##### Array inputs with options
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/566155) in GitLab 19.0.
+
+{{< /history >}}
+
+You can define a list of options to restrict the allowed values for array inputs.
+When you run a pipeline manually, the UI displays a multi-select dropdown
+instead of a text field. For example:
+
+```yaml
+spec:
+  inputs:
+    runner_tags:
+      type: array
+      default: ["docker"]
+      options:
+        - docker
+        - linux
+        - gpu
+        - macos
+---
+
+test:
+  script:
+    - run_tests.sh
+  tags: $[[ inputs.runner_tags ]]
+```
+
+The pipeline fails to start if any value in the array input does not match a listed option.
+
+##### Access individual array elements
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/587657) in GitLab 18.10 [with a flag](../../administration/feature_flags/_index.md) named `ci_inputs_array_index_operator`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/587657) in GitLab 18.11. Feature flag `ci_inputs_array_index_operator` removed.
+
+{{< /history >}}
+
+Use bracket notation with an index number to access individual elements of an array input.
+Array items are indexed in the order they are defined in the YAML array,
+with positive numbers, and the `[0]` index item is the first item in the array.
+
+For example:
+
+```yaml
+spec:
+  inputs:
+    supported_versions:
+      type: array
+      default:
+        - '2.0'
+        - '1.0'
+        - '0.1'
+---
+
+job:
+  script:
+    # Outputs: 'Latest version is 2.0'
+    - echo 'Latest version is $[[ inputs.supported_versions[0] ]]'
+```
+
+You can chain array indexing with dot notation to access nested values:
+
+```yaml
+spec:
+  inputs:
+    servers:
+      type: array
+      default:
+        - host: server1.example.com
+          port: 8080
+---
+
+job:
+  script:
+    - curl "https://$[[ inputs.servers[0].host ]]:$[[ inputs.servers[0].port ]]"
+```
+
+For multi-dimensional arrays, use multiple indices in a row. For example, you can use `[0][1]` for a 2-dimensional array:
+
+```yaml
+spec:
+  inputs:
+    matrix:
+      type: array
+      default:
+        - ['a', 'b']
+        - ['c', 'd']
+---
+
+job:
+  script:
+    # Outputs: 'b'
+    - echo $[[ inputs.matrix[0][1] ]]
+```
+
+You can chain together a maximum of 5 indices per segment, for example `arr[0][1][2][3][4]`.
 
 #### Multi-line input string values
 
@@ -428,6 +535,11 @@ it defaults to `test`.
 
 ## Set input values
 
+You can set input values in your pipeline configuration or when you trigger a pipeline.
+
+After the pipeline starts, you cannot fetch any used input values. If a value is safe to expose,
+you can output the value in a job log for future reference, or save it in an artifact.
+
 ### For configuration added with `include`
 
 {{< history >}}
@@ -440,7 +552,6 @@ Use [`include:inputs`](../yaml/_index.md#includeinputs) to set the values for in
 when the included configuration is added to the pipeline, including for:
 
 - [CI/CD components](../components/_index.md)
-- [Custom CI/CD templates](../examples/_index.md#adding-templates-to-your-gitlab-installation)
 - Any other configuration added with `include`.
 
 For example, to include and set the input values for `scan-website-job.yml` from the
@@ -467,6 +578,10 @@ In this example, the inputs for the included configuration are:
 | `concurrency`    | `2`             | Must be a numeric value to match the `spec:inputs:type` set to `number` in the included configuration. Overrides the default value. |
 | `version`        | `v1.3.2`        | Must be explicitly defined, and must match the regular expression in the `spec:inputs:regex` in the included configuration. |
 | `export_results` | `false`         | Must be either `true` or `false` to match the `spec:inputs:type` set to `boolean` in the included configuration. Overrides the default value. |
+
+Input values are only available in the same file as the `spec` section defining them.
+A file added with `include` cannot access inputs defined in other files, or the including file.
+To use a value from an included file, pass it explicitly with `include:inputs`.
 
 #### With multiple `include` entries
 
@@ -501,16 +616,16 @@ of the main `.gitlab-ci.yml` file. You cannot use inputs defined in included fil
 > For enhanced security, you should [disable pipeline variables](../variables/_index.md#restrict-pipeline-variables) when using inputs.
 
 You should always set default values when defining inputs for pipelines.
-Otherwise the pipeline could fail to start if a new pipeline triggers automatically.
+If any input is missing a default, the pipeline fails when it triggers automatically.
 For example, merge request pipelines can trigger for changes to a merge request's source branch.
 You cannot manually set inputs for merge request pipelines, so if any input is missing a default,
-the pipeline fails to create. This can also happen for branch pipelines, tag pipelines,
+the pipeline fails. This can also happen for branch pipelines, tag pipelines,
 and other automatically triggered pipelines.
 
 You can set input values with:
 
 - [Downstream pipelines](../pipelines/downstream_pipelines.md#pass-inputs-to-a-downstream-pipeline)
-- [Manually triggered pipelines](../pipelines/_index.md#run-a-pipeline-manually).
+- [Manually run pipelines](../pipelines/_index.md#run-a-pipeline-manually).
 - The [pipeline triggers API](../../api/pipeline_triggers.md#trigger-a-pipeline-with-a-token)
 - The [pipelines API](../../api/pipelines.md#create-a-new-pipeline)
 - Git [push options](../../topics/git/commit.md#push-options-for-gitlab-cicd)
@@ -689,7 +804,7 @@ In this example, assuming the input uses the default value and `$MY_VAR` is an u
 Use `expand_vars` to expand [CI/CD variables](../variables/_index.md) in the input value.
 
 Only variables you can [use with the `include` keyword](../yaml/includes.md#use-variables-with-include) and which are
-**not** [masked](../variables/_index.md#mask-a-cicd-variable) can be expanded.
+not [masked](../variables/_index.md#mask-a-cicd-variable) can be expanded.
 [Nested variable expansion](../variables/where_variables_can_be_used.md#nested-variable-expansion) is not supported.
 
 Example:
@@ -796,37 +911,61 @@ test-job:
 
 ## Troubleshooting
 
-### YAML syntax errors when using `inputs`
+### YAML syntax errors when using `inputs` in `rules`
 
-[CI/CD variable expressions](../jobs/job_rules.md#cicd-variable-expressions)
-in `rules:if` expect a comparison of a CI/CD variable with a string, otherwise
-[a variety of syntax errors could be returned](../jobs/job_troubleshooting.md#this-gitlab-ci-configuration-is-invalid-for-variable-expressions).
+When you use input to modify `rules:if` expressions, you might get one of
+[a variety of syntax errors](../jobs/job_troubleshooting.md#this-gitlab-ci-configuration-is-invalid-for-variable-expressions).
 
-You must ensure that expressions remain properly formatted after input values are
-inserted into the configuration, which might require the use of additional quote characters.
+These errors are often related to how strings are handled in [CI/CD variable expressions](../jobs/job_rules.md#cicd-variable-expressions).
+Expressions in `rules:if` expect a CI/CD variable compared to a quoted string (`'` or `"`) or another variable.
+When input values are inserted into the `rules` configuration at pipeline runtime,
+the resulting value might not be a quoted string or variable, which causes the error.
 
-For example:
+For example, in the configuration to include:
 
 ```yaml
 spec:
   inputs:
     branch:
       default: $CI_DEFAULT_BRANCH
+    branch2:
+      default: $CI_DEFAULT_BRANCH
 ---
 
 job-name:
   rules:
     - if: $CI_COMMIT_REF_NAME == $[[ inputs.branch ]]
+    - if: $CI_COMMIT_REF_NAME == $[[ inputs.branch2 ]]
+```
+
+Then, in the main configuration file:
+
+```yaml
+include:
+  inputs:
+    branch: $CI_DEFAULT_BRANCH  # Valid
+    branch2: main               # Invalid
 ```
 
 In this example:
 
-- Using `include: inputs: branch: $CI_DEFAULT_BRANCH` is valid. The `if:` clause evaluates to
+- Using `branch: $CI_DEFAULT_BRANCH` is valid. The `if:` clause evaluates to
   `if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH`, which is a valid variable expression.
-- Using `include: inputs: branch: main` is **invalid**. The `if:` clause evaluates to
+  The variable does not need to be quoted.
+- Using `branch2: main` is invalid. The `if:` clause evaluates to
   `if: $CI_COMMIT_REF_NAME == main`, which is invalid because `main` is a string but is not quoted.
 
-Alternatively, add quotes to resolve some variable expression issues. For example:
+To resolve this issue, make sure expressions remain properly formatted after input values
+are inserted into the configuration. This might require additional quote characters.
+For example, add quotes to the rules that use string values:
+
+```yaml
+rules:
+  if: $CI_COMMIT_REF_NAME == "$[[ inputs.branch2 ]]"
+```
+
+For interpolation functions like [`expand_vars`](#expand_vars),
+you might also need to quote the entire `if:` expression. For example:
 
 ```yaml
 spec:
@@ -841,8 +980,8 @@ $[[ inputs.environment | expand_vars ]] job:
     - if: '"$[[ inputs.environment | expand_vars ]]" == "production"'
 ```
 
-In this example, quoting the input block and also the entire variable expression
-ensures valid `if:` syntax after the input is evaluated. The internal and external quotes
-in the expression must not be the same character. You can use `"` for the internal quotes
-and `'` for the external quotes, or the inverse. On the other hand, the job name does
-not require any quoting.
+In this example, quoting both the input and the entire `if:` expression ensures valid
+syntax after the input is evaluated. When quotes are nested, use `"` for the inner
+quotes and `'` for the outer quotes, or the inverse.
+
+Jobs names do not need to be quoted.

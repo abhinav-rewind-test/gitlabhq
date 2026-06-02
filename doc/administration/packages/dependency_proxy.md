@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Container Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Dependency Proxy administration
 description: Administrator's guide to managing a GitLab dependency proxy for frequently-accessed upstream artifacts, including container images and packages.
 ---
@@ -240,7 +240,7 @@ to remote storage. The processing is done in a background worker and requires no
   ```
 
 You can optionally track progress and verify that all Dependency Proxy blobs and manifests migrated successfully using the
-[PostgreSQL console](https://docs.gitlab.com/omnibus/settings/database/#connecting-to-the-bundled-postgresql-database):
+[PostgreSQL console](https://docs.gitlab.com/omnibus/settings/database/#connecting-to-the-postgresql-database):
 
 - `sudo gitlab-rails dbconsole` for Linux package installations running version 14.1 and earlier.
 - `sudo gitlab-rails dbconsole --database main` for Linux package installations running version 14.2 and later.

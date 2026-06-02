@@ -12,7 +12,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
   let_it_be(:reporter) { create(:user, reporter_of: group) }
   let_it_be(:guest) { create(:user, guest_of: group) }
   let_it_be(:planner) { create(:user, planner_of: group) }
-  let_it_be(:work_item, refind: true) { create(:work_item, project: project, author: author) }
+  let_it_be_with_refind(:work_item) { create(:work_item, project: project, author: author) }
 
   let(:input) { { 'stateEvent' => 'CLOSE', 'title' => 'updated title' } }
   let(:fields) do
@@ -73,8 +73,8 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         expect do
           post_graphql_mutation(mutation, current_user: current_user)
           work_item.reload
-        end.to change(work_item, :state).from('opened').to('closed').and(
-          change(work_item, :title).from(work_item.title).to('updated title')
+        end.to change { work_item.state }.from('opened').to('closed').and(
+          change { work_item.title }.from(work_item.title).to('updated title')
         )
 
         expect(response).to have_gitlab_http_status(:success)
@@ -96,7 +96,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         expect do
           post_graphql_mutation(mutation, current_user: current_user)
           work_item.reload
-        end.to change(work_item, :state).from('closed').to('opened')
+        end.to change { work_item.state }.from('closed').to('opened')
 
         expect(response).to have_gitlab_http_status(:success)
         expect(mutation_response['workItem']).to include(
@@ -120,7 +120,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
-          end.to change(work_item, :confidential).from(values[:old]).to(values[:new])
+          end.to change { work_item.confidential }.from(values[:old]).to(values[:new])
 
           expect(response).to have_gitlab_http_status(:success)
           expect(mutation_response['workItem']).to include(
@@ -227,7 +227,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
 
       let(:add_label_ids) { [] }
       let(:remove_label_ids) { [] }
-      let_it_be(:group_work_item) { create(:work_item, :task, :group_level, namespace: group) }
+      let_it_be(:group_work_item, freeze: false) { create(:work_item, :task, :group_level, namespace: group) }
 
       before_all do
         work_item.update!(labels: [existing_label])
@@ -379,7 +379,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       context 'when the work item type does not support labels widget' do
-        let_it_be(:work_item) { create(:work_item, :task, project: project) }
+        let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
 
         let(:input) { { 'descriptionWidget' => { 'description' => "Updating labels.\n/labels ~\"#{label1.name}\"" } } }
 
@@ -391,7 +391,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
-          end.not_to change(work_item.labels, :count)
+          end.not_to change { work_item.labels.count }
 
           expect(work_item.labels).to be_empty
           expect(mutation_response['workItem']['widgets']).to include(
@@ -435,8 +435,8 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         expect do
           post_graphql_mutation(mutation, current_user: current_user)
           work_item.reload
-        end.to change(work_item, :start_date).from(nil).to(start_date).and(
-          change(work_item, :due_date).from(nil).to(due_date)
+        end.to change { work_item.start_date }.from(nil).to(start_date).and(
+          change { work_item.due_date }.from(nil).to(due_date)
         )
 
         expect(response).to have_gitlab_http_status(:success)
@@ -483,8 +483,8 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.to not_change(work_item, :start_date).and(
-              change(work_item, :due_date).from(nil).to(due_date)
+            end.to not_change { work_item.start_date }.and(
+              change { work_item.due_date }.from(nil).to(due_date)
             )
 
             expect(response).to have_gitlab_http_status(:success)
@@ -497,7 +497,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         end
 
         context 'when the work item type does not support start and due date widget' do
-          let_it_be(:work_item) { create(:work_item, :task, project: project) }
+          let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
 
           let(:input) { { 'descriptionWidget' => { 'description' => "Updating due date.\n/due today" } } }
 
@@ -509,7 +509,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.not_to change(work_item, :due_date)
+            end.not_to change { work_item.due_date }
 
             expect(mutation_response['workItem']['widgets']).to include(
               'description' => "Updating due date.",
@@ -604,11 +604,11 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       let(:relative_range) { [valid_child1, valid_child2].map(&:parent_link).map(&:relative_position) }
 
       shared_examples 'updates work item parent and sets the relative position' do
-        it do
+        it 'updates the parent and sets the relative position' do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
-          end.to change(work_item, :work_item_parent).from(nil).to(valid_parent)
+          end.to change { work_item.work_item_parent }.from(nil).to(valid_parent)
 
           expect(response).to have_gitlab_http_status(:success)
           expect(widgets_response).to include({ 'type' => 'HIERARCHY', 'children' => { 'edges' => [] },
@@ -619,7 +619,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       shared_examples 'sets the relative position and does not update work item parent' do
-        it do
+        it 'sets the relative position without updating the parent' do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
@@ -634,7 +634,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       shared_examples 'returns "relative position is not valid" error message' do
-        it do
+        it 'returns the invalid relative position error message' do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
@@ -647,7 +647,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       context 'when updating parent' do
-        let_it_be(:work_item, reload: true) { create(:work_item, :task, project: project) }
+        let_it_be_with_reload(:work_item) { create(:work_item, :task, project: project) }
         let_it_be(:invalid_parent) { create(:work_item, :task, project: project) }
 
         context 'when parent work item type is invalid' do
@@ -677,7 +677,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.to change(work_item, :work_item_parent).from(nil).to(valid_parent)
+            end.to change { work_item.work_item_parent }.from(nil).to(valid_parent)
 
             expect(response).to have_gitlab_http_status(:success)
             expect(widgets_response).to include({ 'type' => 'HIERARCHY', 'children' => { 'edges' => [] },
@@ -695,7 +695,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
               expect do
                 post_graphql_mutation(mutation, current_user: current_user)
                 work_item.reload
-              end.to change(work_item, :work_item_parent).from(existing_parent).to(valid_parent)
+              end.to change { work_item.work_item_parent }.from(existing_parent).to(valid_parent)
             end
           end
 
@@ -737,7 +737,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
               expect do
                 post_graphql_mutation(mutation, current_user: current_user)
                 work_item.reload
-              end.to change(work_item, :work_item_parent).from(valid_parent).to(nil)
+              end.to change { work_item.work_item_parent }.from(valid_parent).to(nil)
 
               expect(response).to have_gitlab_http_status(:success)
               expect(widgets_response)
@@ -760,7 +760,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
               expect do
                 post_graphql_mutation(mutation, current_user: current_user)
                 work_item.reload
-              end.not_to change(work_item, :work_item_parent)
+              end.not_to change { work_item.work_item_parent }
 
               expect(response).to have_gitlab_http_status(:success)
             end
@@ -779,7 +779,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       context 'when reordering existing child' do
-        let_it_be(:work_item, reload: true) { create(:work_item, :task, project: project) }
+        let_it_be_with_reload(:work_item) { create(:work_item, :task, project: project) }
 
         context "when parent is already assigned" do
           before_all do
@@ -834,7 +834,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.not_to change(work_item.work_item_children, :count)
+            end.not_to change { work_item.work_item_children.count }
 
             expect(graphql_errors.first['message']).to include('No object found for `childrenIds')
           end
@@ -847,7 +847,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.to change(work_item.work_item_children, :count).by(2)
+            end.to change { work_item.work_item_children.count }.by(2)
 
             expect(response).to have_gitlab_http_status(:success)
             expect(widgets_response).to include(
@@ -958,7 +958,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         expect do
           post_graphql_mutation(mutation, current_user: current_user)
           work_item.reload
-        end.to change(work_item, :assignee_ids).from([]).to([developer.id])
+        end.to change { work_item.assignee_ids }.from([]).to([developer.id])
 
         expect(response).to have_gitlab_http_status(:success)
         expect(mutation_response['workItem']['widgets']).to include(
@@ -981,7 +981,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.to change(work_item, :assignee_ids).from([]).to([developer.id])
+            end.to change { work_item.assignee_ids }.from([]).to([developer.id])
 
             expect(response).to have_gitlab_http_status(:success)
             expect(mutation_response['workItem']['widgets']).to include(
@@ -1008,7 +1008,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             expect do
               post_graphql_mutation(mutation, current_user: current_user)
               work_item.reload
-            end.to change(work_item, :assignee_ids).from([developer.id]).to([])
+            end.to change { work_item.assignee_ids }.from([developer.id]).to([])
 
             expect(response).to have_gitlab_http_status(:success)
             expect(mutation_response['workItem']['widgets']).to include(
@@ -1021,13 +1021,13 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         end
 
         context 'when changing work item type' do
-          let_it_be(:work_item) { create(:work_item, :task, project: project) }
+          let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
           let(:description) { "/type issue" }
 
           let(:input) { { 'descriptionWidget' => { 'description' => description } } }
 
           context 'with multiple commands' do
-            let_it_be(:work_item) { create(:work_item, :task, project: project) }
+            let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
 
             let(:description) { "Updating work item\n/type issue\n/due tomorrow\n/title Foo" }
 
@@ -1051,7 +1051,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           end
 
           context 'when conversion is not permitted' do
-            let_it_be(:work_item) { create(:work_item, :task, project: project) }
+            let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
             let_it_be(:issue) { create(:work_item, project: project) }
             let_it_be(:link) { create(:parent_link, work_item_parent: issue, work_item: work_item) }
 
@@ -1067,12 +1067,18 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           end
 
           context 'when new type does not support a widget' do
+            let(:issue_type) { build(:work_item_system_defined_type, :issue) }
+
             before do
               (work_item.dates_source || work_item.build_dates_source)
                 .update!(start_date: Date.current, due_date: Date.tomorrow)
 
-              WorkItems::Type.default_by_type(:issue).widget_definitions
-                .find_by_widget_type(:start_and_due_date).update!(disabled: true)
+              # As we want to stub the widgets of issue type and work item is a type of task, we can not use the
+              # # stub_all_work_item_widgets method.
+              widget_definitions = issue_type.widget_classes(work_item.namespace).reject do |widget|
+                widget == WorkItems::Widgets::StartAndDueDate
+              end
+              allow(issue_type).to receive(:widget_classes).with(project).and_return(widget_definitions)
             end
 
             it 'updates the work item type and clear widget attributes' do
@@ -1098,7 +1104,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
       end
 
       context 'when the work item type does not support the assignees widget' do
-        let_it_be(:work_item) { create(:work_item, :task, project: project) }
+        let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
 
         let(:input) do
           { 'descriptionWidget' => { 'description' => "Updating assignee.\n/assign @#{developer.username}" } }
@@ -1112,7 +1118,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           expect do
             post_graphql_mutation(mutation, current_user: current_user)
             work_item.reload
-          end.not_to change(work_item, :assignee_ids)
+          end.not_to change { work_item.assignee_ids }
 
           expect(mutation_response['workItem']['widgets']).to include({
             'description' => "Updating assignee.",
@@ -1152,7 +1158,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             post_graphql_mutation(mutation, current_user: current_user)
 
             work_item.reload
-          end.to change(work_item, :milestone).from(old_milestone).to(new_milestone)
+          end.to change { work_item.milestone }.from(old_milestone).to(new_milestone)
 
           expect(response).to have_gitlab_http_status(:success)
         end
@@ -1243,7 +1249,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           expect do
             update_work_item
             subscription.reload
-          end.to change(subscription, :subscribed).to(desired_state)
+          end.to change { subscription.subscribed }.to(desired_state)
             .and(change { work_item.reload.subscribed?(guest, project) }.to(desired_state))
 
           expect(response).to have_gitlab_http_status(:success)
@@ -1327,7 +1333,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
             let_it_be(:current_user) { author }
 
             it 'creates a subscription with desired state' do
-              expect { update_work_item }.to change(Subscription, :count).by(1)
+              expect { update_work_item }.to change { Subscription.count }.by(1)
                 .and(change { work_item.reload.subscribed?(author, project) }.to(desired_state))
 
               expect(response).to have_gitlab_http_status(:success)
@@ -1550,7 +1556,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           it "updates work item's award emoji" do
             expect do
               update_work_item
-            end.to change(AwardEmoji, :count).by(-1)
+            end.to change { AwardEmoji.count }.by(-1)
 
             expect(response).to have_gitlab_http_status(:success)
             expect(mutation_response['workItem']['widgets']).to include(
@@ -1568,7 +1574,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
           it "updates work item's award emoji" do
             expect do
               update_work_item
-            end.to change(AwardEmoji, :count).by(1)
+            end.to change { AwardEmoji.count }.by(1)
 
             expect(response).to have_gitlab_http_status(:success)
             expect(mutation_response['workItem']['widgets']).to include(
@@ -1913,7 +1919,7 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
 
       context 'when the work item type does not support time tracking widget' do
         context 'with quick action' do
-          let_it_be(:work_item) { create(:work_item, :task, project: project) }
+          let_it_be(:work_item, freeze: false) { create(:work_item, :task, project: project) }
 
           let(:spent_at) { Date.current }
           let(:input) { { 'descriptionWidget' => { 'description' => "some description\n\n/estimate 12h\n/spend 2h" } } }
@@ -2032,7 +2038,8 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
     end
 
     context 'when unsupported widget input is sent' do
-      let_it_be(:work_item) { create(:work_item, :test_case, project: project) }
+      let_it_be(:issue_type, freeze: false) { build(:work_item_system_defined_type, :issue) }
+      let_it_be(:work_item, freeze: false) { create(:work_item, work_item_type: issue_type, project: project) }
 
       let(:input) do
         {
@@ -2040,8 +2047,18 @@ RSpec.describe 'Update a work item', feature_category: :team_planning do
         }
       end
 
+      before do
+        # the stub_all_work_item_widget does not work here as it not uses the get_widget method.
+        # it uses the work_item.supported_quick_action_commands method that used the work_item_type.widget_classes
+        widgets = issue_type.widget_classes(project).reject do |widget|
+          widget == WorkItems::Widgets::Assignees
+        end
+
+        allow(issue_type).to receive(:widget_classes).with(project).and_return(widgets)
+      end
+
       it_behaves_like 'a mutation that returns top-level errors',
-        errors: ["Following widget keys are not supported by Test Case type: [:assignees_widget]"]
+        errors: ["Following widget keys are not supported by Issue type: [:assignees_widget]"]
     end
   end
 end

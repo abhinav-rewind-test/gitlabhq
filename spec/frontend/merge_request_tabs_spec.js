@@ -7,10 +7,15 @@ import { stubPerformanceWebAPI } from 'helpers/performance';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { scrollTo } from '~/lib/utils/scroll_utils';
 import axios from '~/lib/utils/axios_utils';
-import MergeRequestTabs, { getActionFromHref } from '~/merge_request_tabs';
+import MergeRequestTabs, { getActionFromHref, pageBundles } from '~/merge_request_tabs';
+import * as domUtils from '~/lib/utils/dom_utils';
 import Diff from '~/diff';
 import { visitUrl } from '~/lib/utils/url_utility';
 import { NO_SCROLL_TO_HASH_CLASS } from '~/lib/utils/constants';
+import { useMergeRequestVersions } from '~/merge_request/stores/merge_request_versions';
+import { useDiffsList } from '~/rapid_diffs/stores/diffs_list';
+import InternalEvents from '~/tracking/internal_events';
+import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 
 jest.mock('~/lib/utils/webpack', () => ({
   resetServiceWorkersPublicPath: jest.fn(),
@@ -306,7 +311,7 @@ describe('MergeRequestTabs', () => {
       ${'/group/project/-/merge_requests/1/diffs'}            | ${'commits'} | ${'/group/project/-/merge_requests/1/commits'}
       ${'/group/project/-/merge_requests/1/commits'}          | ${'diffs'}   | ${'/group/project/-/merge_requests/1/diffs'}
       ${'/group/project/-/merge_requests/1/reports/security'} | ${'show'}    | ${'/group/project/-/merge_requests/1'}
-      ${'/group/project/-/merge_requests/1/reports/security'} | ${'reports'} | ${'/group/project/-/merge_requests/1/reports'}
+      ${'/group/project/-/merge_requests/1/reports/security'} | ${'reports'} | ${'/group/project/-/merge_requests/1/reports/security'}
       ${'/group/project/-/merge_requests/1/commits'}          | ${'commits'} | ${'/group/project/-/merge_requests/1/commits'}
       ${'/group/project/-/merge_requests/1/diffs/'}           | ${'show'}    | ${'/group/project/-/merge_requests/1'}
       ${'/group/project/-/merge_requests/1/commits.html'}     | ${'show'}    | ${'/group/project/-/merge_requests/1'}
@@ -417,6 +422,22 @@ describe('MergeRequestTabs', () => {
       });
     });
 
+    it.each`
+      tab          | hidden
+      ${'show'}    | ${true}
+      ${'diffs'}   | ${false}
+      ${'commits'} | ${true}
+    `('rapid diffs toggle hidden=$hidden on $tab tab', ({ tab, hidden }) => {
+      const toggle = document.createElement('div');
+      toggle.id = 'js-rapid-diffs-toggle';
+      document.body.appendChild(toggle);
+
+      testContext.class = new MergeRequestTabs({ stubLocation });
+      testContext.class.tabShown(tab, 'foobar');
+
+      expect(toggle.classList.contains('!gl-hidden')).toBe(hidden);
+    });
+
     describe('when switching tabs', () => {
       const SCROLL_TOP = 100;
 
@@ -449,6 +470,8 @@ describe('MergeRequestTabs', () => {
     });
 
     describe('switching to the diffs tab', () => {
+      useMockInternalEventsTracking();
+
       describe('Rapid Diffs', () => {
         let createRapidDiffsApp;
         let init;
@@ -456,7 +479,20 @@ describe('MergeRequestTabs', () => {
         let show;
 
         beforeEach(() => {
-          setWindowLocation('https://example.com?rapid_diffs=true');
+          setWindowLocation('https://example.com');
+          const rdApp = document.createElement('article');
+          rdApp.dataset.rapidDiffs = 'true';
+          rdApp.dataset.appData = JSON.stringify({
+            versions: {
+              source_versions: [{ selected: true, base_sha: 'abc', head_sha: 'def' }],
+              target_versions: [{ selected: true, start_sha: 'ghi' }],
+            },
+          });
+          document.querySelector.mockImplementation((selector) => {
+            if (selector === '[data-rapid-diffs]') return rdApp;
+            if (selector === '.content-wrapper') return mainContent;
+            return tabContent;
+          });
           init = jest.fn();
           hide = jest.fn();
           show = jest.fn();
@@ -467,48 +503,207 @@ describe('MergeRequestTabs', () => {
           }));
         });
 
-        it('stats Rapid Diffs app', () => {
+        it('starts Rapid Diffs app', async () => {
           testContext.class = new MergeRequestTabs({
             stubLocation,
             createRapidDiffsApp,
           });
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
           expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
           expect(init).toHaveBeenCalledTimes(1);
         });
 
-        it('creates a single Rapid Diffs app instance', () => {
+        it('creates a single Rapid Diffs app instance', async () => {
           testContext.class = new MergeRequestTabs({
             stubLocation,
             createRapidDiffsApp,
           });
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
-          testContext.class.tabShown('new', 'not-a-vue-page');
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('new', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
           expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
           expect(init).toHaveBeenCalledTimes(1);
         });
 
-        it('hides Rapid Diffs', () => {
+        it('hides Rapid Diffs', async () => {
           testContext.class = new MergeRequestTabs({
             stubLocation,
             createRapidDiffsApp,
           });
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
-          testContext.class.tabShown('new', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('new', 'not-a-vue-page');
           expect(hide).toHaveBeenCalledTimes(1);
         });
 
-        it('shows Rapid Diffs', () => {
+        it('shows Rapid Diffs', async () => {
           testContext.class = new MergeRequestTabs({
             stubLocation,
             createRapidDiffsApp,
           });
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
-          testContext.class.tabShown('new', 'not-a-vue-page');
-          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('new', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
           expect(show).toHaveBeenCalledTimes(1);
         });
+
+        it('tracks the Rapid Diffs SPA visit once', async () => {
+          testContext.class = new MergeRequestTabs({ stubLocation, createRapidDiffsApp });
+
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
+          await testContext.class.tabShown('new', 'not-a-vue-page');
+          await testContext.class.tabShown('diffs', 'not-a-vue-page');
+
+          expect(InternalEvents.trackEvent).toHaveBeenCalledTimes(1);
+          expect(InternalEvents.trackEvent).toHaveBeenCalledWith('view_merge_request_diffs', {
+            label: 'rapid_diffs',
+            property: 'spa_navigation',
+          });
+        });
+
+        it('does not track Rapid Diffs when the diffs tab was the backend-rendered page', async () => {
+          testContext.class = new MergeRequestTabs({
+            action: 'diffs',
+            stubLocation,
+            createRapidDiffsApp,
+          });
+
+          await testContext.class.tabShown('diffs', '/diffs');
+
+          expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
+          expect(InternalEvents.trackEvent).not.toHaveBeenCalled();
+        });
+
+        describe('when diff refs are missing', () => {
+          let rdAppNoDiffs;
+
+          beforeEach(() => {
+            rdAppNoDiffs = document.createElement('article');
+            rdAppNoDiffs.dataset.rapidDiffs = 'true';
+            rdAppNoDiffs.dataset.appData = JSON.stringify({ versions: null });
+            document.querySelector.mockImplementation((selector) => {
+              if (selector === '[data-rapid-diffs]') return rdAppNoDiffs;
+              if (selector === '.js-merge-request-new-submit') return null;
+              if (selector === '.content-wrapper') return mainContent;
+              return tabContent;
+            });
+          });
+
+          it('navigates to full page instead of SPA when clicking diffs tab', () => {
+            testContext.class = new MergeRequestTabs({
+              stubLocation,
+              createRapidDiffsApp,
+            });
+            const diffsHref = '/project/-/merge_requests/1/diffs';
+            testContext.class.clickTab({
+              stopImmediatePropagation: jest.fn(),
+              preventDefault: jest.fn(),
+              currentTarget: {
+                dataset: { action: 'diffs' },
+                getAttribute: () => diffsHref,
+              },
+            });
+            expect(visitUrl).toHaveBeenCalledWith(diffsHref);
+            expect(createRapidDiffsApp).not.toHaveBeenCalled();
+          });
+
+          it('does not redirect on initial page load', async () => {
+            testContext.class = new MergeRequestTabs({
+              action: 'diffs',
+              stubLocation,
+              createRapidDiffsApp,
+            });
+            await testContext.class.tabShown('diffs', '/diffs');
+            expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
+          });
+        });
+      });
+
+      describe('legacy diffs', () => {
+        let originalDiffsBundle;
+
+        beforeEach(() => {
+          originalDiffsBundle = pageBundles.diffs;
+          pageBundles.diffs = jest.fn(() => Promise.resolve({ default: jest.fn() }));
+          jest.spyOn(domUtils, 'isInVueNoteablePage').mockReturnValue(true);
+        });
+
+        afterEach(() => {
+          pageBundles.diffs = originalDiffsBundle;
+        });
+
+        it('tracks the legacy diffs SPA visit when the bundle loads', async () => {
+          testContext.class = new MergeRequestTabs({ action: 'show', stubLocation });
+
+          await testContext.class.tabShown('diffs', '/diffs');
+
+          expect(InternalEvents.trackEvent).toHaveBeenCalledWith('view_merge_request_diffs', {
+            label: 'legacy_diffs',
+            property: 'spa_navigation',
+          });
+        });
+
+        it('does not track when the bundle is already loaded', async () => {
+          testContext.class = new MergeRequestTabs({ action: 'diffs', stubLocation });
+
+          await testContext.class.tabShown('diffs', '/diffs');
+
+          expect(InternalEvents.trackEvent).not.toHaveBeenCalled();
+        });
+      });
+    });
+
+    describe('trackSpaVisit', () => {
+      useMockInternalEventsTracking();
+
+      it.each(['rapid_diffs', 'legacy_diffs'])(
+        'fires view_merge_request_diffs internal event with %s label',
+        (label) => {
+          testContext.class.trackSpaVisit(label);
+
+          expect(InternalEvents.trackEvent).toHaveBeenCalledWith('view_merge_request_diffs', {
+            label,
+            property: 'spa_navigation',
+          });
+        },
+      );
+    });
+
+    describe('destroyPipelines', () => {
+      beforeEach(() => {
+        testContext.class.mergeRequestTabs = document.createElement('div');
+        testContext.class.mergeRequestTabPanes = document.createElement('div');
+        testContext.class.currentTab = 'pipelines';
+        testContext.class.commitsTab = document.createElement('div');
+        testContext.class.mergeRequestPipelinesTable = { $destroy: jest.fn() };
+        document.body.innerHTML += '<div id="commit-pipeline-table-view"></div>';
+      });
+
+      afterEach(() => {
+        document.querySelector('#commit-pipeline-table-view')?.remove();
+      });
+
+      it.each`
+        tab
+        ${'commits'}
+        ${'new'}
+        ${'diffs'}
+        ${'reports'}
+        ${'show'}
+      `('destroys pipelines when switching to $tab tab', ({ tab }) => {
+        const { $destroy } = testContext.class.mergeRequestPipelinesTable;
+
+        testContext.class.tabShown(tab, 'foobar');
+
+        expect($destroy).toHaveBeenCalled();
+        expect(testContext.class.mergeRequestPipelinesTable).toBeNull();
+      });
+
+      it('does not destroy pipelines when switching to pipelines tab', () => {
+        const { $destroy } = testContext.class.mergeRequestPipelinesTable;
+
+        testContext.class.tabShown('pipelines', 'foobar');
+
+        expect($destroy).not.toHaveBeenCalled();
       });
     });
   });
@@ -595,6 +790,181 @@ describe('MergeRequestTabs', () => {
       ${'/group/reports/project/-/merge_requests/1/reports'} | ${'reports'}
     `('returns $action for $location', ({ pathName, action }) => {
       expect(getActionFromHref(pathName)).toBe(action);
+    });
+  });
+
+  describe('navigateToDiffNote', () => {
+    const discussion = {
+      active: true,
+      notes: [{ id: '100' }],
+      discussion_path: '/project/-/merge_requests/1/diffs#abc',
+      original_position: {
+        base_sha: 'abc',
+        head_sha: 'def',
+        start_sha: 'ghi',
+        old_path: 'old/file.js',
+        new_path: 'new/file.js',
+      },
+    };
+
+    beforeEach(() => {
+      setHTMLFixture(htmlMergeRequestsWithTaskList);
+      testContext.class = new MergeRequestTabs({ stubLocation });
+      testContext.class.createRapidDiffsApp = jest.fn();
+    });
+
+    describe('legacy fallbacks', () => {
+      it('follows discussion_path when Rapid Diffs is not enabled', async () => {
+        testContext.class.createRapidDiffsApp = null;
+        await testContext.class.navigateToDiffNote(discussion);
+        expect(visitUrl).toHaveBeenCalledWith(discussion.discussion_path);
+      });
+
+      it.each(['for_commit', 'commit_id'])(
+        'navigates to legacy diffs when discussion has %s',
+        async (field) => {
+          const disc = { ...discussion, [field]: 'abc123' };
+          await testContext.class.navigateToDiffNote(disc);
+          const url = new URL(visitUrl.mock.calls[0][0]);
+          expect(url.searchParams.get('rapid_diffs_disabled')).toBe('true');
+          expect(url.searchParams.get('reason')).toBe('unsupported');
+        },
+      );
+
+      it('navigates to legacy diffs when discussion has no position', async () => {
+        const disc = { ...discussion, original_position: undefined, position: undefined };
+        await testContext.class.navigateToDiffNote(disc);
+        const url = new URL(visitUrl.mock.calls[0][0]);
+        expect(url.searchParams.get('rapid_diffs_disabled')).toBe('true');
+      });
+    });
+
+    describe('full page navigation', () => {
+      it('navigates when discussion is not active and app is not loaded', async () => {
+        const disc = { ...discussion, active: false };
+        await testContext.class.navigateToDiffNote(disc);
+        const url = new URL(visitUrl.mock.calls[0][0]);
+        expect(url.pathname).toBe('/project/-/merge_requests/1/diffs');
+      });
+
+      it('navigates when app is loaded but version does not match', async () => {
+        testContext.class.rapidDiffsApp = { scrollToDiffNote: jest.fn() };
+        useMergeRequestVersions().$patch({
+          sourceVersions: [{ selected: true, base_sha: 'x', head_sha: 'y' }],
+          targetVersions: [{ selected: true, start_sha: 'z' }],
+        });
+        await testContext.class.navigateToDiffNote(discussion);
+        expect(visitUrl).toHaveBeenCalled();
+      });
+
+      it('includes linked file params from discussion position', async () => {
+        const disc = { ...discussion, active: false };
+        await testContext.class.navigateToDiffNote(disc);
+        const url = new URL(visitUrl.mock.calls[0][0]);
+        expect(url.searchParams.get('old_path')).toBe('old/file.js');
+        expect(url.searchParams.get('new_path')).toBe('new/file.js');
+      });
+
+      it('includes note hash', async () => {
+        const disc = { ...discussion, active: false };
+        await testContext.class.navigateToDiffNote(disc);
+        const url = new URL(visitUrl.mock.calls[0][0]);
+        expect(url.hash).toBe('#note_100');
+      });
+
+      it('uses file_path when paths are the same', async () => {
+        const disc = {
+          ...discussion,
+          active: false,
+          original_position: {
+            ...discussion.original_position,
+            old_path: 'same.js',
+            new_path: 'same.js',
+          },
+        };
+        await testContext.class.navigateToDiffNote(disc);
+        const url = new URL(visitUrl.mock.calls[0][0]);
+        expect(url.searchParams.get('file_path')).toBe('same.js');
+        expect(url.searchParams.has('old_path')).toBe(false);
+      });
+    });
+
+    describe('SPA navigation when app loaded with matching older version', () => {
+      it('does not full-page navigate', async () => {
+        testContext.class.rapidDiffsApp = { scrollToDiffNote: jest.fn() };
+        useMergeRequestVersions().$patch({
+          sourceVersions: [{ selected: true, base_sha: 'abc', head_sha: 'def' }],
+          targetVersions: [{ selected: true, version_index: 1, start_sha: 'ghi' }],
+        });
+        jest.spyOn(testContext.class, 'tabShown').mockResolvedValue();
+        // When comparing version-to-version, diffRefs.base_sha collapses onto start_sha ('ghi').
+        // The discussion's original_position must match the collapsed diffRefs.
+        const disc = {
+          ...discussion,
+          active: false,
+          original_position: { ...discussion.original_position, base_sha: 'ghi' },
+        };
+        await testContext.class.navigateToDiffNote(disc);
+        expect(visitUrl).not.toHaveBeenCalled();
+        expect(testContext.class.rapidDiffsApp.scrollToDiffNote).toHaveBeenCalledWith(disc);
+      });
+    });
+
+    describe('SPA navigation', () => {
+      const navigate = () => testContext.class.navigateToDiffNote(discussion);
+
+      beforeEach(() => {
+        useMergeRequestVersions().$reset();
+        jest.spyOn(testContext.class, 'tabShown').mockImplementation(() => {
+          testContext.class.rapidDiffsApp ||= { scrollToDiffNote: jest.fn() };
+          return Promise.resolve();
+        });
+      });
+
+      it('stores scroll position before switching tabs', async () => {
+        jest.spyOn(testContext.class, 'storeScroll');
+        await navigate();
+        expect(testContext.class.storeScroll).toHaveBeenCalled();
+      });
+
+      it('sets note hash in URL', async () => {
+        const replaceStateSpy = jest.spyOn(window.history, 'replaceState');
+        await navigate();
+        expect(replaceStateSpy).toHaveBeenCalledWith(
+          null,
+          '',
+          expect.objectContaining({ hash: '#note_100' }),
+        );
+      });
+
+      it('switches to diffs tab and scrolls to note position', async () => {
+        await navigate();
+        expect(testContext.class.tabShown).toHaveBeenCalledWith('diffs', null, false);
+        expect(testContext.class.rapidDiffsApp.scrollToDiffNote).toHaveBeenCalledWith(discussion);
+      });
+
+      it('does not call visitUrl', async () => {
+        await navigate();
+        expect(visitUrl).not.toHaveBeenCalled();
+      });
+
+      it('sets linked file data on store when app is not yet loaded', async () => {
+        const store = useDiffsList();
+        jest.spyOn(store, 'setLinkedFileData');
+        await navigate();
+        expect(store.setLinkedFileData).toHaveBeenCalledWith({
+          old_path: 'old/file.js',
+          new_path: 'new/file.js',
+        });
+      });
+
+      it('does not set linked file data when app is already loaded', async () => {
+        testContext.class.rapidDiffsApp = { scrollToDiffNote: jest.fn() };
+        const store = useDiffsList();
+        jest.spyOn(store, 'setLinkedFileData');
+        await navigate();
+        expect(store.setLinkedFileData).not.toHaveBeenCalled();
+      });
     });
   });
 

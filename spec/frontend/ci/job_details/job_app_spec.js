@@ -1,7 +1,7 @@
 import Vue, { nextTick } from 'vue';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
-import { GlLoadingIcon } from '@gitlab/ui';
+import { GlAlert, GlLoadingIcon } from '@gitlab/ui';
 import MockAdapter from 'axios-mock-adapter';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
@@ -13,6 +13,7 @@ import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import EnvironmentsBlock from '~/ci/job_details/components/environments_block.vue';
 import ErasedBlock from '~/ci/job_details/components/erased_block.vue';
 import JobApp from '~/ci/job_details/job_app.vue';
+import JobHeader from '~/ci/job_details/components/job_header.vue';
 import JobLog from '~/ci/job_details/components/log/log.vue';
 import JobLogTopBar from '~/ci/job_details/components/job_log_top_bar.vue';
 import Sidebar from '~/ci/job_details/components/sidebar/sidebar.vue';
@@ -89,6 +90,7 @@ describe('Job App', () => {
   const findJobForm = () => wrapper.findComponent(JobRunForm);
   const findJobLog = () => wrapper.findComponent(JobLog);
   const findJobLogTopBar = () => wrapper.findComponent(JobLogTopBar);
+  const findJobHeader = () => wrapper.findComponent(JobHeader);
 
   const findJobContent = () => wrapper.findByTestId('job-content');
   const findArchivedJob = () => wrapper.findByTestId('archived-job');
@@ -193,10 +195,11 @@ describe('Job App', () => {
 
   describe('with successful request', () => {
     describe('Header section', () => {
+      const findGlAlert = () => wrapper.findComponent(GlAlert);
       describe('job callout message', () => {
         it('should not render the reason when reason is absent', () =>
           setupAndMount().then(() => {
-            expect(wrapper.vm.shouldRenderCalloutMessage).toBe(false);
+            expect(findGlAlert().exists()).toBe(false);
           }));
 
         it('should render the reason when reason is present', () =>
@@ -205,8 +208,40 @@ describe('Job App', () => {
               callout_message: 'There is an unkown failure, please try again',
             },
           }).then(() => {
-            expect(wrapper.vm.shouldRenderCalloutMessage).toBe(true);
+            expect(findGlAlert().exists()).toBe(true);
+            expect(findGlAlert().text()).toBe('There is an unkown failure, please try again');
           }));
+      });
+
+      describe('attestation warning message', () => {
+        it('should not render the warning when the warning is absent', async () => {
+          await setupAndMount();
+          expect(findGlAlert().exists()).toBe(false);
+        });
+
+        it('should render the warning when the warning is present', async () => {
+          await setupAndMount({
+            jobData: {
+              supply_chain_attestation_status: 'error',
+            },
+          });
+          expect(findGlAlert().exists()).toBe(true);
+          expect(findGlAlert().text()).toBe(
+            'An error occurred while generating an attestation for build artifacts in this job. Please check the configuration, and try again.',
+          );
+        });
+      });
+
+      it('displays job header when job ID exists', async () => {
+        await setupAndMount();
+
+        expect(findJobHeader().exists()).toBe(true);
+      });
+
+      it('does not display job header when job ID is missing', async () => {
+        await setupAndMount({ jobData: { id: 0 } });
+
+        expect(findJobHeader().exists()).toBe(false);
       });
     });
 
@@ -490,13 +525,21 @@ describe('Job App', () => {
 
         expect(findSidebar().exists()).toBe(true);
       });
+
+      it('renders sidebar for job retrial', async () => {
+        await setupAndMount();
+        findSidebar().vm.$emit('update-variables');
+        await nextTick();
+
+        expect(findSidebar().exists()).toBe(true);
+      });
     });
   });
 
   describe('archived job', () => {
     beforeEach(() => setupAndMount({ jobData: { archived: true } }));
 
-    it('renders warning about job being archived', () => {
+    it('renders notice about job being archived', () => {
       expect(findArchivedJob().exists()).toBe(true);
     });
   });
@@ -504,7 +547,7 @@ describe('Job App', () => {
   describe('non-archived job', () => {
     beforeEach(() => setupAndMount());
 
-    it('does not warning about job being archived', () => {
+    it('does not render notice about job being archived', () => {
       expect(findArchivedJob().exists()).toBe(false);
     });
   });

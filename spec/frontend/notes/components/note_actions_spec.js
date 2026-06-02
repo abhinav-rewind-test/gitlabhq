@@ -12,12 +12,14 @@ import { stubComponent } from 'helpers/stub_component';
 import { TEST_HOST } from 'spec/test_constants';
 import axios from '~/lib/utils/axios_utils';
 import noteActions from '~/notes/components/note_actions.vue';
+import EmojiPicker from '~/emoji/components/picker.vue';
 import { NOTEABLE_TYPE_MAPPING } from '~/notes/constants';
 import TimelineEventButton from '~/notes/components/note_actions/timeline_event_button.vue';
 import AbuseCategorySelector from '~/abuse_reports/components/abuse_category_selector.vue';
 import UserAccessRoleBadge from '~/vue_shared/components/user_access_role_badge.vue';
 import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
 import { useNotes } from '~/notes/store/legacy_notes';
+import { useDiscussions } from '~/notes/store/discussions';
 import { globalAccessorPlugin } from '~/pinia/plugins';
 import { userDataMock } from '../mock_data';
 
@@ -39,6 +41,11 @@ describe('noteActions', () => {
   const findDisclosureDropdownGroup = () => wrapper.findComponent(GlDisclosureDropdownGroup);
   const findFeedbackButton = () => wrapper.find('[data-testid="amazon-q-feedback-button"]');
   const findDeleteButton = () => wrapper.find('.js-note-delete');
+  const findEditButton = () => wrapper.find('.js-note-edit');
+  const findCopyLinkButton = () => wrapper.find('.js-btn-copy-note-link');
+  const findMoreActionsDropdown = () =>
+    wrapper.find('.more-actions-toggle').findComponent(GlDisclosureDropdown);
+  const findResolveButton = () => wrapper.findComponent({ ref: 'resolveButton' });
 
   const setupStoreForIncidentTimelineEvents = ({
     userCanAdd,
@@ -74,6 +81,7 @@ describe('noteActions', () => {
 
   beforeEach(() => {
     pinia = createTestingPinia({ plugins: [globalAccessorPlugin], stubActions: false });
+    useDiscussions();
     useLegacyDiffs();
     useNotes().toggleAwardRequest.mockResolvedValue();
     useNotes().promoteCommentToTimelineEvent.mockResolvedValue();
@@ -172,7 +180,7 @@ describe('noteActions', () => {
       });
 
       it('should be possible to copy link to a note', () => {
-        expect(wrapper.find('.js-btn-copy-note-link').exists()).toBe(true);
+        expect(findCopyLinkButton().exists()).toBe(true);
       });
 
       it('should not show copy link action when `noteUrl` prop is empty', async () => {
@@ -190,7 +198,7 @@ describe('noteActions', () => {
         });
 
         await nextTick();
-        expect(wrapper.find('.js-btn-copy-note-link').exists()).toBe(false);
+        expect(findCopyLinkButton().exists()).toBe(false);
       });
 
       it('should be possible to delete comment', () => {
@@ -307,8 +315,32 @@ describe('noteActions', () => {
       expect(wrapper.find('.js-add-award').exists()).toBe(false);
     });
 
-    it('should not render actions dropdown', () => {
-      expect(wrapper.find('.more-actions').exists()).toBe(false);
+    it('should render actions dropdown with copy link button only', () => {
+      expect(findMoreActionsDropdown().exists()).toBe(true);
+      expect(findCopyLinkButton().exists()).toBe(true);
+
+      expect(findDeleteButton().exists()).toBe(false);
+      expect(findEditButton().exists()).toBe(false);
+      expect(findFeedbackButton().exists()).toBe(false);
+      expect(findReportAbuseButton().exists()).toBe(false);
+    });
+
+    it('should render actions dropdown with copy link and report abuse button when canReportAsAbuse is true', () => {
+      wrapper = mountNoteActions({
+        ...props,
+        canDelete: false,
+        canEdit: false,
+        canAwardEmoji: false,
+        canReportAsAbuse: true,
+      });
+
+      expect(findMoreActionsDropdown().exists()).toBe(true);
+      expect(findCopyLinkButton().exists()).toBe(true);
+      expect(findReportAbuseButton().exists()).toBe(true);
+
+      expect(findDeleteButton().exists()).toBe(false);
+      expect(findEditButton().exists()).toBe(false);
+      expect(findFeedbackButton().exists()).toBe(false);
     });
   });
 
@@ -506,6 +538,149 @@ describe('noteActions', () => {
     it('still renders other action buttons correctly', () => {
       // Verify that other buttons like delete are still rendered
       expect(findDeleteButton().exists()).toBe(true);
+    });
+  });
+
+  describe('note preview for accessible labels', () => {
+    beforeEach(() => {
+      useNotes().setUserData(userDataMock);
+    });
+
+    describe('with note preview provided', () => {
+      it('should include note preview in aria-labels', async () => {
+        wrapper = mountNoteActions({
+          ...props,
+          notePreview: '<p>This is a test comment</p>',
+          canEdit: true,
+          canResolve: true,
+          resolvedBy: null,
+        });
+
+        await nextTick();
+
+        const editAriaLabel = findEditButton().attributes('aria-label');
+        const resolveAriaLabel = findResolveButton().attributes('aria-label');
+
+        expect(editAriaLabel).toContain('Edit comment, @');
+        expect(editAriaLabel).toContain('This is a test comment');
+        expect(resolveAriaLabel).toContain('Resolve thread, @');
+        expect(resolveAriaLabel).toContain('This is a test comment');
+      });
+
+      it('should strip HTML tags from note preview', async () => {
+        wrapper = mountNoteActions({
+          ...props,
+          notePreview: '<p>Test <strong>comment</strong> with <em>HTML</em></p>',
+          canEdit: true,
+        });
+
+        await nextTick();
+
+        const ariaLabel = findEditButton().attributes('aria-label');
+
+        // Should not contain HTML tags
+        expect(ariaLabel).not.toContain('<');
+        expect(ariaLabel).not.toContain('>');
+        // Should contain the text content
+        expect(ariaLabel).toContain('Test comment with HTML');
+      });
+
+      it('should truncate long note preview to 7 words', async () => {
+        wrapper = mountNoteActions({
+          ...props,
+          notePreview: '<p>This is a very long test comment that should be truncated</p>',
+          canEdit: true,
+        });
+
+        await nextTick();
+
+        const ariaLabel = findEditButton().attributes('aria-label');
+
+        // Should contain first 7 words with ellipsis
+        expect(ariaLabel).toContain('This is a very long test comment…');
+        // Should not contain words after the 7th word
+        expect(ariaLabel).not.toContain('that');
+        expect(ariaLabel).not.toContain('should');
+      });
+    });
+
+    describe('without note preview', () => {
+      it('should not include preview in aria-label', async () => {
+        wrapper = mountNoteActions({
+          ...props,
+          notePreview: '',
+          canEdit: true,
+        });
+
+        await nextTick();
+
+        const ariaLabel = findEditButton().attributes('aria-label');
+
+        // Should only have the basic label without preview
+        expect(ariaLabel).toBe(`Edit comment, @${props.author.username}`);
+      });
+    });
+
+    describe('toggle-aria-label on emoji picker and more actions', () => {
+      const findEmojiPicker = () => wrapper.findComponent(EmojiPicker);
+
+      const mountWithEmojiPicker = (propsData) => {
+        return shallowMount(noteActions, {
+          pinia,
+          propsData,
+          stubs: {
+            EmojiPicker,
+            GlDisclosureDropdown: stubComponent(GlDisclosureDropdown, {
+              methods: { close: mockCloseDropdown },
+            }),
+            GlDisclosureDropdownGroup,
+            GlDisclosureDropdownItem,
+          },
+        });
+      };
+
+      it('passes toggle-aria-label to emoji picker with note preview', () => {
+        wrapper = mountWithEmojiPicker({
+          ...props,
+          notePreview: '<p>This is a test comment</p>',
+          canAwardEmoji: true,
+        });
+
+        const ariaLabel = findEmojiPicker().props('toggleAriaLabel');
+
+        expect(ariaLabel).toContain(`Add reaction to @${props.author.username}`);
+        expect(ariaLabel).toContain('This is a test comment');
+      });
+
+      it('passes toggle-aria-label to more actions dropdown with note preview', () => {
+        wrapper = mountWithEmojiPicker({
+          ...props,
+          notePreview: '<p>This is a test comment</p>',
+          canReportAsAbuse: true,
+        });
+
+        const ariaLabel = findMoreActionsDropdown().props('toggleAriaLabel');
+
+        expect(ariaLabel).toContain(`More actions for @${props.author.username}`);
+        expect(ariaLabel).toContain('This is a test comment');
+      });
+
+      it('passes toggle-aria-label without preview when notePreview is empty', () => {
+        wrapper = mountWithEmojiPicker({
+          ...props,
+          notePreview: '',
+          canAwardEmoji: true,
+          canReportAsAbuse: true,
+        });
+
+        expect(findEmojiPicker().props('toggleAriaLabel')).toBe(
+          `Add reaction to @${props.author.username}`,
+        );
+
+        expect(findMoreActionsDropdown().props('toggleAriaLabel')).toBe(
+          `More actions for @${props.author.username}`,
+        );
+      });
     });
   });
 

@@ -26,6 +26,7 @@ export const generateMockPipeline = ({
   type: 'merge_request',
   hasManualActions: true,
   hasScheduledActions: false,
+  pipelineSchedule: null,
   failedJobsCount: 0,
   __typename: 'Pipeline',
   commit: {
@@ -67,6 +68,7 @@ export const generateMockPipeline = ({
         name: 'build',
         detailedStatus: {
           id: 'success-1949-1949',
+          name: 'SUCCESS',
           icon: 'status_success',
           text: 'Passed',
           detailsPath: `/gitlab-org/gitlab/-/pipelines/${id}#build`,
@@ -80,6 +82,7 @@ export const generateMockPipeline = ({
         name: 'test',
         detailedStatus: {
           id: 'success-1950-1950',
+          name: 'SUCCESS',
           icon: 'status_success',
           text: 'Passed',
           detailsPath: `/gitlab-org/gitlab/-/pipelines/${id}#test`,
@@ -93,6 +96,7 @@ export const generateMockPipeline = ({
         name: 'deploy',
         detailedStatus: {
           id: 'success-1951-1951',
+          name: 'SUCCESS',
           icon: 'status_success',
           text: 'Passed',
           detailsPath: `/gitlab-org/gitlab/-/pipelines/${id}#deploy`,
@@ -116,6 +120,10 @@ export const generateMockPipeline = ({
     id: 'gid://gitlab/Project/1',
     fullPath: 'gitlab-org/gitlab',
     __typename: 'Project',
+  },
+  downstream: {
+    nodes: [],
+    __typename: 'PipelineConnection',
   },
   user: {
     id: 'gid://gitlab/User/1',
@@ -169,6 +177,7 @@ export const generateMRPipelinesResponse = ({
           iid: '1',
           title: 'Fix everything',
           webPath: '/merge_requests/1',
+          sourceBranch: 'feature-branch',
           pipelines: createMergeRequestPipelines({ count, mergeRequestEventType, status }),
         },
       },
@@ -205,8 +214,7 @@ export const mockPipelineUpdateResponse = {
         sha: '577d7917b5d80ef8cd8e543186aae41ccd870022',
         shortId: '577d7917',
         title: 'Edit .gitlab-ci.yml',
-        webUrl:
-          'http://gdk.test:3000/root/ci-project/-/commit/577d7917b5d80ef8cd8e543186aae41ccd870022',
+        webPath: '/root/ci-project/-/commit/577d7917b5d80ef8cd8e543186aae41ccd870022',
         author: {
           id: 'gid://gitlab/User/1',
           avatarUrl:
@@ -248,6 +256,7 @@ export const mockPipelineUpdateResponse = {
               detailsPath: '/root/ci-project/-/pipelines/880#build',
               __typename: 'DetailedStatus',
               tooltip: 'running',
+              name: 'RUNNING',
             },
             __typename: 'CiStage',
           },
@@ -261,6 +270,7 @@ export const mockPipelineUpdateResponse = {
               detailsPath: '/root/ci-project/-/pipelines/880#test',
               __typename: 'DetailedStatus',
               tooltip: 'created',
+              name: 'CREATED',
             },
             __typename: 'CiStage',
           },
@@ -274,6 +284,7 @@ export const mockPipelineUpdateResponse = {
               detailsPath: '/root/ci-project/-/pipelines/880#deploy',
               __typename: 'DetailedStatus',
               tooltip: 'created',
+              name: 'CREATED',
             },
             __typename: 'CiStage',
           },
@@ -289,6 +300,7 @@ export const mockPipelineUpdateResponse = {
       },
       hasManualActions: false,
       hasScheduledActions: false,
+      pipelineSchedule: null,
       failedJobsCount: 0,
       __typename: 'Pipeline',
       downstream: {
@@ -334,8 +346,7 @@ export const mockPipelines = [
       sha: 'ab708cdcfd838846528c736f36ac2d2fea4508fb',
       shortId: 'ab708cdc',
       title: 'Update .gitlab-ci.yml file',
-      webUrl:
-        'http://gdk.test:3000/root/ci-project/-/commit/ab708cdcfd838846528c736f36ac2d2fea4508fb',
+      webPath: '/root/ci-project/-/commit/ab708cdcfd838846528c736f36ac2d2fea4508fb',
       author: {
         id: 'gid://gitlab/User/1',
         avatarUrl:
@@ -378,6 +389,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/701#build',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS',
           },
           __typename: 'CiStage',
         },
@@ -391,6 +403,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/701#test',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS_WITH_WARNINGS',
           },
           __typename: 'CiStage',
         },
@@ -404,6 +417,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/701#deploy',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS',
           },
           __typename: 'CiStage',
         },
@@ -419,6 +433,7 @@ export const mockPipelines = [
     },
     hasManualActions: false,
     hasScheduledActions: false,
+    pipelineSchedule: null,
     __typename: 'Pipeline',
   },
   {
@@ -449,8 +464,7 @@ export const mockPipelines = [
       sha: 'ab708cdcfd838846528c736f36ac2d2fea4508fb',
       shortId: 'ab708cdc',
       title: 'Update .gitlab-ci.yml file',
-      webUrl:
-        'http://gdk.test:3000/root/ci-project/-/commit/ab708cdcfd838846528c736f36ac2d2fea4508fb',
+      webPath: '/root/ci-project/-/commit/ab708cdcfd838846528c736f36ac2d2fea4508fb',
       author: {
         id: 'gid://gitlab/User/1',
         avatarUrl:
@@ -493,6 +507,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/699#build',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS',
           },
           __typename: 'CiStage',
         },
@@ -506,6 +521,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/699#test',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS_WITH_WARNINGS',
           },
           __typename: 'CiStage',
         },
@@ -519,6 +535,7 @@ export const mockPipelines = [
             detailsPath: '/root/ci-project/-/pipelines/699#deploy',
             __typename: 'DetailedStatus',
             tooltip: 'passed',
+            name: 'SUCCESS',
           },
           __typename: 'CiStage',
         },
@@ -534,6 +551,160 @@ export const mockPipelines = [
     },
     hasManualActions: false,
     hasScheduledActions: false,
+    pipelineSchedule: null,
     __typename: 'Pipeline',
   },
 ];
+
+export const generatePipelineCreationRequestsResponse = ({
+  requests = [],
+  mergeRequestId = 'gid://gitlab/MergeRequest/1',
+} = {}) => ({
+  data: {
+    project: {
+      __typename: 'Project',
+      id: 'gid://gitlab/Project/1',
+      fullPath: 'root/project-1',
+      mergeRequest: {
+        __typename: 'MergeRequest',
+        id: mergeRequestId,
+        iid: '1',
+        title: 'Fix everything',
+        webPath: '/merge_requests/1',
+        pipelineCreationRequests: requests,
+      },
+    },
+  },
+});
+
+export const generatePipelineCreationSubscriptionResponse = ({
+  requests = [],
+  mergeRequestId = 'gid://gitlab/MergeRequest/1',
+} = {}) => ({
+  data: {
+    ciPipelineCreationRequestsUpdated: {
+      __typename: 'MergeRequest',
+      id: mergeRequestId,
+      iid: '1',
+      title: 'Fix everything',
+      webPath: '/merge_requests/1',
+      pipelineCreationRequests: requests,
+    },
+  },
+});
+
+export const generatePipelineCreationRequest = ({
+  status = 'SUCCEEDED',
+  pipelineId = 'gid://gitlab/Ci::Pipeline/999',
+  error = null,
+  pipeline = null,
+} = {}) => ({
+  status,
+  pipelineId,
+  error,
+  pipeline:
+    pipeline ||
+    (status === 'SUCCEEDED' ? generateMockPipeline({ id: pipelineId.split('/').pop() }) : null),
+  __typename: 'CiPipelineCreationRequest',
+});
+
+export const generateMockDownstreamSkeleton = ({ id = '100', status = 'RUNNING' } = {}) => ({
+  id: `gid://gitlab/Ci::Pipeline/${id}`,
+  detailedStatus: {
+    id: `${status.toLowerCase()}-${id}-${id}`,
+    name: status,
+    icon: `status_${status.toLowerCase()}`,
+    __typename: 'DetailedStatus',
+  },
+  sourceJob: {
+    id: `gid://gitlab/Ci::Build/${id}`,
+    retried: false,
+    __typename: 'CiBuild',
+  },
+  __typename: 'Pipeline',
+});
+
+export const generateMockDownstreamPipeline = ({ id = '100', status = 'RUNNING' } = {}) => ({
+  id: `gid://gitlab/Ci::Pipeline/${id}`,
+  iid: id,
+  name: `child-pipeline-${id}`,
+  path: `/root/ci-project/-/pipelines/${id}`,
+  detailedStatus: {
+    id: `${status.toLowerCase()}-${id}-${id}`,
+    name: status,
+    icon: `status_${status.toLowerCase()}`,
+    text: status,
+    detailsPath: `/root/ci-project/-/pipelines/${id}`,
+    tooltip: status.toLowerCase(),
+    label: status.toLowerCase(),
+    __typename: 'DetailedStatus',
+  },
+  project: {
+    id: 'gid://gitlab/Project/2',
+    fullPath: 'root/child-project',
+    name: 'child-project',
+    __typename: 'Project',
+  },
+  sourceJob: {
+    id: `gid://gitlab/Ci::Build/${id}`,
+
+    retried: false,
+    __typename: 'CiBuild',
+  },
+  __typename: 'Pipeline',
+});
+
+export const generateMockDownstreamResponse = (pipelinesWithDownstream = []) => ({
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/1',
+      mergeRequest: {
+        id: 'gid://gitlab/MergeRequest/1',
+        pipelines: {
+          nodes: pipelinesWithDownstream.map(({ pipelineId, downstreamNodes }) => ({
+            id: `gid://gitlab/Ci::Pipeline/${pipelineId}`,
+            downstream: {
+              nodes: downstreamNodes,
+              __typename: 'PipelineConnection',
+            },
+            __typename: 'Pipeline',
+          })),
+          __typename: 'PipelineConnection',
+        },
+        __typename: 'MergeRequest',
+      },
+      __typename: 'Project',
+    },
+  },
+});
+
+export const mockDownstreamPipelineUpdateResponse = {
+  data: {
+    ciPipelineStatusUpdated: {
+      id: 'gid://gitlab/Ci::Pipeline/100',
+      detailedStatus: {
+        id: 'success-100-100',
+        name: 'SUCCESS',
+        icon: 'status_success',
+        text: 'Passed',
+        detailsPath: '/root/ci-project/-/pipelines/100',
+        tooltip: 'passed',
+        label: 'passed',
+        __typename: 'DetailedStatus',
+      },
+      __typename: 'Pipeline',
+    },
+  },
+};
+
+export const generateSinglePipelineResponse = (pipeline) => ({
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/1',
+      pipeline: {
+        ...pipeline,
+      },
+      __typename: 'Project',
+    },
+  },
+});

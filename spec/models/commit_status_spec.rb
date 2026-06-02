@@ -86,7 +86,7 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
   end
 
   describe 'status state machine' do
-    let!(:commit_status) { create(:commit_status, :running, project: project) }
+    let(:commit_status) { create(:commit_status, :running, project: project) }
 
     it 'invalidates the cache after a transition' do
       expect(commit_status).to receive(:expire_etag_cache!)
@@ -555,41 +555,6 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
     end
   end
 
-  describe '.status' do
-    context 'when there are multiple statuses present' do
-      before do
-        create_status(status: 'running')
-        create_status(status: 'success')
-        create_status(allow_failure: true, status: 'failed')
-      end
-
-      it 'returns a correct compound status' do
-        expect(described_class.all.composite_status).to eq 'running'
-      end
-    end
-
-    context 'when there are only allowed to fail commit statuses present' do
-      before do
-        create_status(allow_failure: true, status: 'failed')
-      end
-
-      it 'returns status that indicates success' do
-        expect(described_class.all.composite_status).to eq 'success'
-      end
-    end
-
-    context 'when using a scope to select latest statuses' do
-      before do
-        create_status(name: 'test', retried: true, status: 'failed')
-        create_status(allow_failure: true, name: 'test', status: 'failed')
-      end
-
-      it 'returns status according to the scope' do
-        expect(described_class.latest.composite_status).to eq 'success'
-      end
-    end
-  end
-
   describe '.match_id_and_lock_version' do
     let(:status_1) { create_status(lock_version: 1) }
     let(:status_2) { create_status(lock_version: 2) }
@@ -893,13 +858,13 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
   describe '#all_met_to_become_pending?' do
     subject { commit_status.all_met_to_become_pending? }
 
-    let(:commit_status) { create(:commit_status) }
+    let(:commit_status) { build_stubbed(:commit_status) }
 
     it { is_expected.to eq(true) }
   end
 
   describe '#enqueue' do
-    let!(:current_time) { Time.zone.local(2018, 4, 5, 14, 0, 0) }
+    let(:current_time) { Time.zone.local(2018, 4, 5, 14, 0, 0) }
 
     before do
       allow(Time).to receive(:now).and_return(current_time)
@@ -963,6 +928,12 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
         :unknown_failure | true
         :api_failure | true
         :stuck_or_timeout_failure | true
+        :stuck_pending_with_matching_runners | true
+        :stuck_pending_no_matching_runners | true
+        :no_updates_running | true
+        :no_updates_canceling | true
+        :server_timeout_running | true
+        :server_timeout_canceling | true
         :runner_system_failure | true
       end
 
@@ -1056,14 +1027,14 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
       let(:status) { build(:commit_status, pipeline: pipeline, partition_id: nil) }
 
       it 'copies the partition_id from pipeline' do
-        expect { status.valid? }.to change(status, :partition_id).to(123)
+        expect { status.valid? }.to change { status.partition_id }.to(123)
       end
 
       context 'when it is already set' do
         let(:status) { build(:commit_status, pipeline: pipeline, partition_id: 125) }
 
         it 'does not change the partition_id value' do
-          expect { status.valid? }.not_to change(status, :partition_id)
+          expect { status.valid? }.not_to change { status.partition_id }
         end
       end
     end
@@ -1078,7 +1049,7 @@ RSpec.describe CommitStatus, feature_category: :continuous_integration do
       it { is_expected.to validate_presence_of(:partition_id) }
 
       it 'does not change the partition_id value' do
-        expect { status.valid? }.not_to change(status, :partition_id)
+        expect { status.valid? }.not_to change { status.partition_id }
       end
     end
   end

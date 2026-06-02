@@ -40,6 +40,10 @@ module API
         attrs.delete(:repository_storage) unless can?(current_user, :change_repository_storage, project)
       end
 
+      def authorize_project_update!(_project)
+        authorize_admin_project
+      end
+
       def verify_project_filters!(attrs)
         attrs.delete(:repository_storage) unless can?(current_user, :use_project_statistics_filters)
       end
@@ -99,9 +103,7 @@ module API
       end
 
       def immediately_delete_project_error(project)
-        if !Gitlab::CurrentSettings.allow_immediate_namespaces_deletion_for_user?(current_user)
-          '`permanently_remove` option is not permitted on this instance.'
-        elsif !project.self_deletion_scheduled?
+        if !project.self_deletion_scheduled?
           'Project must be marked for deletion first.'
         elsif project.full_path != params[:full_path]
           '`full_path` is incorrect. You must enter the complete path for the project.'
@@ -116,7 +118,7 @@ module API
           return render_api_error!(error, 400) if error
 
           destroy_conditionally!(user_project) do
-            ::Projects::DestroyService.new(user_project, current_user, {}).async_execute
+            ::Projects::DestroyService.new(user_project, current_user, {}).async_execute # rubocop:disable Gitlab/HardDeleteCalls -- permanently_remove is checked
           end
 
           return accepted!
@@ -183,7 +185,7 @@ module API
         optional :with_issues_enabled, type: Boolean, default: false, desc: 'Limit by enabled issues feature'
         optional :with_merge_requests_enabled, type: Boolean, default: false, desc: 'Limit by enabled merge requests feature'
         optional :with_programming_language, type: String, desc: 'Limit to repositories which use the given programming language'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :id_after, type: Integer, desc: 'Limit results to projects with IDs greater than the specified ID'
         optional :id_before, type: Integer, desc: 'Limit results to projects with IDs less than the specified ID'
         optional :last_activity_after, type: DateTime, desc: 'Limit results to projects with last_activity after specified time. Format: ISO 8601 YYYY-MM-DDTHH:MM:SSZ'
@@ -267,6 +269,27 @@ module API
         params[:import_type] = 'git' if params[:import_url].present?
         params
       end
+
+      def enqueue_async_transfer(project, namespace)
+        service = ::Projects::TransferService.new(project, current_user)
+        result = service.schedule_async_transfer(namespace)
+
+        if result.success?
+          present_project project, with: Entities::Project, current_user: current_user
+        else
+          render_api_error!(result.message, 400)
+        end
+      end
+
+      def execute_sync_transfer(project, namespace)
+        result = ::Projects::TransferService.new(project, current_user).execute(namespace)
+
+        if result
+          present_project project, with: Entities::Project, current_user: current_user
+        else
+          render_api_error!("Failed to transfer project #{project.errors.messages}", 400)
+        end
+      end
     end
 
     resource :users, requirements: API::USER_REQUIREMENTS do
@@ -294,7 +317,9 @@ module API
         present_projects load_projects
       end
 
-      desc 'Get projects that a user has contributed to' do
+      desc 'List all projects contributions for a user' do
+        detail 'Lists all contributions to visible projects for a specified user. Returns only contributions in the ' \
+          'past year.'
         success code: 200, model: Entities::BasicProjectDetails
         failure [{ code: 404, message: '404 User Not Found' }]
         tags %w[projects]
@@ -320,7 +345,9 @@ module API
         present_projects contributed_projects
       end
 
-      desc 'Get projects starred by a user' do
+      desc 'List all projects starred by a user' do
+        detail 'Lists all visible projects starred by a specified user. Unauthenticated requests return only ' \
+          'public projects.'
         success code: 200, model: Entities::BasicProjectDetails
         failure [{ code: 404, message: '404 User Not Found' }]
         tags %w[projects]
@@ -347,7 +374,8 @@ module API
     resource :projects do
       include CustomAttributesEndpoints
 
-      desc 'Restore a project' do
+      desc 'Restore a project marked for deletion' do
+        detail 'Restores a specified project that was marked for deletion.'
         success ::API::Entities::Project
         tags ['projects']
       end
@@ -363,7 +391,9 @@ module API
         end
       end
 
-      desc 'Get a list of visible projects for authenticated user' do
+      desc 'List all projects' do
+        detail 'Lists all projects. Unauthenticated requests return only public projects with a limited subset of ' \
+          'attributes. You can filter responses by custom attributes.'
         success code: 200, model: Entities::BasicProjectDetails
         failure [
           { code: 400, message: 'Bad request' }
@@ -580,7 +610,8 @@ module API
         end
       end
 
-      desc 'List forks of this project' do
+      desc 'List all forks of a project' do
+        detail 'Lists all forks of a project.'
         success code: 200, model: Entities::Project
         tags %w[projects]
         is_array true
@@ -609,7 +640,10 @@ module API
         status 200
       end
 
-      desc 'Update an existing project' do
+      desc 'Update a project' do
+        detail 'Updates an existing project. If your HTTP repository is not publicly accessible, add authentication ' \
+          'information to the URL `https://username:password@gitlab.company.com/group/project.git`, where `password` ' \
+          'is a public access key with the `api` scope.'
         success code: 200, model: Entities::Project
         failure [
           { code: 400, message: 'Bad request' },
@@ -629,7 +663,7 @@ module API
       end
       route_setting :authorization, permissions: :update_project, boundary_type: :project
       put ':id', feature_category: :groups_and_projects do
-        authorize_admin_project
+        authorize_project_update!(user_project)
         attrs = declared_params(include_missing: false)
         authorize! :rename_project, user_project if attrs[:name].present?
         authorize! :change_visibility_level, user_project if user_project.visibility_attribute_present?(attrs)
@@ -644,12 +678,19 @@ module API
 
         result = ::Projects::UpdateService.new(user_project, current_user, attrs).execute
 
-        if result[:status] == :success
+        case result[:status]
+        when :success
           present_project user_project, with: Entities::Project,
             user_can_admin_project: can?(current_user, :admin_project, user_project),
             current_user: current_user
-        elsif result[:status] == :api_error
+        when :api_error
           render_api_error!(result[:message], 400)
+        when :error
+          if user_project.errors.empty?
+            render_api_error!(result[:message], :unprocessable_entity)
+          else
+            render_validation_error!(user_project)
+          end
         else
           render_validation_error!(user_project)
         end
@@ -676,6 +717,7 @@ module API
       end
 
       desc 'Unarchive a project' do
+        detail 'Unarchives a specified project. You must be an administrator or have the Owner role on the project.'
         success code: 201, model: Entities::Project
         failure [
           { code: 403, message: 'Unauthenticated' }
@@ -696,6 +738,7 @@ module API
       end
 
       desc 'Star a project' do
+        detail 'Stars a specified project.'
         success code: 201, model: Entities::Project
         failure [
           { code: 304, message: 'Not modified' },
@@ -716,6 +759,7 @@ module API
       end
 
       desc 'Unstar a project' do
+        detail 'Unstars a specified project.'
         success code: 201, model: Entities::Project
         failure [
           { code: 304, message: 'Not modified' },
@@ -735,7 +779,8 @@ module API
         end
       end
 
-      desc 'Get the users who starred a project' do
+      desc 'List all users who starred a project' do
+        detail 'Lists all users who starred a specified project.'
         success code: 200, model: Entities::UserBasic
         failure [
           { code: 403, message: 'Unauthenticated' },
@@ -785,7 +830,8 @@ module API
         delete_project(user_project)
       end
 
-      desc 'Mark this project as forked from another' do
+      desc 'Create a fork relationship' do
+        detail 'Creates a fork relationship between a project and an upstream project.'
         success code: 201, model: Entities::Project
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -822,7 +868,8 @@ module API
         end
       end
 
-      desc 'Remove a forked_from relationship' do
+      desc 'Delete a fork relationship' do
+        detail 'Deletes a fork relationship between projects.'
         success code: 204
         failure [
           { code: 304, message: 'Not modified' },
@@ -842,7 +889,8 @@ module API
         not_modified! unless result
       end
 
-      desc 'Share the project with a group' do
+      desc 'Share a project with a group' do
+        detail 'Shares a specified project with a group.'
         success code: 201, model: Entities::ProjectGroupLink
         failure [
           { code: 400, message: 'Bad request' },
@@ -876,7 +924,8 @@ module API
         end
       end
 
-      desc 'Remove a group share' do
+      desc 'Delete a shared project link in a group' do
+        detail 'Deletes a shared project link in a group.'
         success code: 204
         failure [
           { code: 400, message: 'Bad request' },
@@ -905,8 +954,11 @@ module API
       end
       # rubocop: enable CodeReuse/ActiveRecord
 
-      desc 'Import members from another project' do
-        detail 'This feature was introduced in GitLab 14.2'
+      desc 'Import members' do
+        detail 'Imports members from another project. If the role of the importing member for the target project is ' \
+          'a Maintainer, then members with the Owner role for the source project are imported with the Maintainer ' \
+          'role. If the importing member is an Owner, then members with the Owner role for the source project are ' \
+          'imported with the Owner role.'
         success code: 200
         failure [
           { code: 403, message: 'Unauthenticated' },
@@ -939,7 +991,8 @@ module API
         end
       end
 
-      desc 'Get the users list of a project' do
+      desc 'List all members of a project' do
+        detail 'Lists all members with access to a specified project.'
         success code: 200, model: Entities::UserBasic
         failure [
           { code: 403, message: 'Unauthenticated' },
@@ -979,8 +1032,10 @@ module API
           desc: 'Include shared groups'
         optional :shared_visible_only, type: Boolean, default: false,
           desc: 'Limit to shared groups user has access to'
+        # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :shared_min_access_level, type: Integer, values: Gitlab::Access.all_values,
           desc: 'Limit returned shared groups by minimum access level to the project'
+        # rubocop:enable API/AccessLevelStringType
         use :pagination
       end
       route_setting :authorization, permissions: :read_ancestor_group, boundary_type: :project
@@ -999,12 +1054,12 @@ module API
       params do
         optional :relation, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce, values: %w[direct inherited], desc: 'Filter by group relation'
         optional :search, type: String, desc: 'Search for a specific group'
-        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user'
+        optional :min_access_level, type: Integer, values: Gitlab::Access.all_values, desc: 'Limit by minimum access level of authenticated user' # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
 
         use :pagination
         use :with_custom_attributes
       end
-      route_setting :authorization, permissions: :read_invited_group, boundary_type: :project
+      route_setting :authorization, permissions: :read_project_invited_group, boundary_type: :project
       get ':id/invited_groups', feature_category: :groups_and_projects do
         check_rate_limit_by_user_or_ip!(:project_invited_groups_api)
 
@@ -1014,7 +1069,7 @@ module API
       end
 
       desc 'Start the housekeeping task for a project' do
-        detail 'This feature was introduced in GitLab 9.0.'
+        detail 'Starts the housekeeping task for a project.'
         success code: 201
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -1064,7 +1119,8 @@ module API
         ::Projects::UpdateStatisticsService.new(user_project, nil, statistics: [:repository_size, :lfs_objects_size]).execute
       end
 
-      desc 'Transfer a project to a new namespace' do
+      desc 'Transfer a project to another namespace' do
+        detail 'Transfers a project to another namespace.'
         success code: 200, model: Entities::Project
         failure [
           { code: 400, message: 'Bad request' },
@@ -1082,16 +1138,16 @@ module API
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/546376')
 
         namespace = find_namespace!(params[:namespace])
-        result = ::Projects::TransferService.new(user_project, current_user).execute(namespace)
 
-        if result
-          present_project user_project, with: Entities::Project, current_user: current_user
+        if Feature.enabled?(:groups_and_projects_async_transfer, user_project.root_ancestor)
+          enqueue_async_transfer(user_project, namespace)
         else
-          render_api_error!("Failed to transfer project #{user_project.errors.messages}", 400)
+          execute_sync_transfer(user_project, namespace)
         end
       end
 
-      desc 'Get the namespaces to where the project can be transferred' do
+      desc 'List all transferable namespaces for a project' do
+        detail 'Lists all namespaces where a specified project can be transferred.'
         success code: 200, model: Entities::PublicGroupDetails
         failure [
           { code: 403, message: 'Unauthenticated' }
@@ -1103,7 +1159,7 @@ module API
         optional :search, type: String, desc: 'Return list of namespaces matching the search criteria', documentation: { example: 'search' }
         use :pagination
       end
-      route_setting :authorization, permissions: :read_transfer_location, boundary_type: :project
+      route_setting :authorization, permissions: :read_project_transfer_location, boundary_type: :project
       get ":id/transfer_locations", feature_category: :groups_and_projects do
         authorize! :change_namespace, user_project
         args = declared_params(include_missing: false)
@@ -1117,7 +1173,9 @@ module API
         present_groups(groups)
       end
 
-      desc 'Show the storage information' do
+      desc 'Retrieve the path to repository storage' do
+        detail 'Retrieves the path to repository storage for a specified project. If you are using Gitaly Cluster ' \
+          '(Praefect), see Praefect-generated replica paths instead. Administrators only.'
         success code: 200, model: Entities::ProjectRepositoryStorage
         failure [
           { code: 403, message: 'Unauthenticated' }

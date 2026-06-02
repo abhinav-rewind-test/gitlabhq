@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Upgrade Linux package instances
 description: Upgrade a single-node Linux package-based instance.
 ---
@@ -69,15 +69,15 @@ either:
 
 ### Upgrade with the official repositories (recommended)
 
-All GitLab packages are posted to the GitLab [package server](https://packages.gitlab.com/gitlab/).
+All GitLab packages are posted to the GitLab [package server](https://packages.gitlab.com/ui/browse/gitlab).
 
-| Repository                                                                             | Description |
-|:---------------------------------------------------------------------------------------|:------------|
-| [`gitlab/gitlab-ce`](https://packages.gitlab.com/gitlab/gitlab-ce)                     | Stripped down package that contains only the Community Edition features. |
-| [`gitlab/gitlab-ee`](https://packages.gitlab.com/gitlab/gitlab-ee)                     | Full GitLab package that contains all the Community Edition and Enterprise Edition features. |
-| [`gitlab/nightly-builds`](https://packages.gitlab.com/gitlab/nightly-builds)           | Nightly builds. |
-| [`gitlab/nightly-fips-builds`](https://packages.gitlab.com/gitlab/nightly-fips-builds) | Nightly FIPS-compliant builds. |
-| [`gitlab/gitlab-fips`](https://packages.gitlab.com/gitlab/gitlab-fips)                 | FIPS-compliant builds. |
+| Repository                                                                                       | Description |
+|:-------------------------------------------------------------------------------------------------|:------------|
+| [`gitlab/gitlab-ce`](https://packages.gitlab.com/ui/browse/gitlab/gitlab-ce)                     | Stripped down package that contains only the Community Edition features. |
+| [`gitlab/gitlab-ee`](https://packages.gitlab.com/ui/browse/gitlab/gitlab-ee)                     | Full GitLab package that contains all the Community Edition and Enterprise Edition features. |
+| [`gitlab/nightly-builds`](https://packages.gitlab.com/ui/browse/gitlab/nightly-builds)           | Nightly builds. |
+| [`gitlab/nightly-fips-builds`](https://packages.gitlab.com/ui/browse/gitlab/nightly-fips-builds) | Nightly FIPS-compliant builds. |
+| [`gitlab/gitlab-fips`](https://packages.gitlab.com/ui/browse/gitlab/gitlab-fips)                 | FIPS-compliant builds. |
 
 By default, Linux distribution package managers install the latest available version of a package. You can't upgrade directly to the
 latest major version of GitLab if your [upgrade path](../upgrade_paths.md) requires multiple stops. If your upgrade
@@ -139,10 +139,10 @@ sudo dnf install gitlab-ce-<version>-ce.0.el9
 sudo dnf install gitlab-ce-<version>-ce.0.el8
 
 # GitLab Enterprise Edition (latest version)
-sudo dnf install gitlab-ee
+sudo dnf upgrade gitlab-ee
 
 # GitLab Community Edition (latest version)
-sudo dnf install gitlab-ce
+sudo dnf upgrade gitlab-ce
 ```
 
 {{< /tab >}}
@@ -157,10 +157,10 @@ sudo dnf install gitlab-ee-<version>-ee.0.amazon2023
 sudo dnf install gitlab-ce-<version>-ce.0.amazon2023
 
 # GitLab Enterprise Edition (latest version)
-sudo dnf install gitlab-ee
+sudo dnf upgrade gitlab-ee
 
 # GitLab Community Edition (latest version)
-sudo dnf install gitlab-ce
+sudo dnf upgrade gitlab-ce
 ```
 
 {{< /tab >}}
@@ -197,6 +197,107 @@ sudo zypper install gitlab-ee
 
 # GitLab Community Edition (latest version)
 sudo zypper install gitlab-ce
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
+### Pre-download a package from the official repository
+
+To reduce installation time during upgrades or test that a package is accessible,
+you can download it from the official repository and later install it:
+
+{{< tabs >}}
+
+{{< tab title="Ubuntu/Debian" >}}
+
+```shell
+# GitLab Enterprise Edition
+sudo apt-get install --download-only gitlab-ee=<version>-ee.0
+sudo apt-get install /var/cache/apt/archives/gitlab-ee_<version>-ee.0_amd64.deb
+
+# GitLab Community Edition
+sudo apt-get install --download-only gitlab-ce=<version>-ce.0
+sudo apt-get install /var/cache/apt/archives/gitlab-ce_<version>-ce.0_amd64.deb
+```
+
+{{< /tab >}}
+
+{{< tab title="Amazon Linux 2" >}}
+
+```shell
+# GitLab Enterprise Edition
+sudo yumdownloader gitlab-ee-<version>-ee.0.amazon2
+sudo yum install ./gitlab-ee-<version>-ee.0.amazon2.x86_64.rpm
+
+# GitLab Community Edition
+sudo yumdownloader gitlab-ce-<version>-ce.0.amazon2
+sudo yum install ./gitlab-ce-<version>-ce.0.amazon2.x86_64.rpm
+```
+
+{{< /tab >}}
+
+{{< tab title="RHEL/Oracle Linux/AlmaLinux 8/9" >}}
+
+```shell
+# GitLab Enterprise Edition (el9)
+sudo dnf download gitlab-ee-<version>-ee.0.el9
+sudo dnf install ./gitlab-ee-<version>-ee.0.el9.x86_64.rpm
+
+# GitLab Enterprise Edition (el8)
+sudo dnf download gitlab-ee-<version>-ee.0.el8
+sudo dnf install ./gitlab-ee-<version>-ee.0.el8.x86_64.rpm
+
+# GitLab Community Edition (el9)
+sudo dnf download gitlab-ce-<version>-ce.0.el9
+sudo dnf install ./gitlab-ce-<version>-ce.0.el9.x86_64.rpm
+
+# GitLab Community Edition (el8)
+sudo dnf download gitlab-ce-<version>-ce.0.el8
+sudo dnf install ./gitlab-ce-<version>-ce.0.el8.x86_64.rpm
+```
+
+{{< /tab >}}
+
+{{< tab title="Amazon Linux 2023" >}}
+
+```shell
+# GitLab Enterprise Edition
+sudo dnf download gitlab-ee-<version>-ee.0.amazon2023
+sudo dnf install ./gitlab-ee-<version>-ee.0.amazon2023.x86_64.rpm
+
+# GitLab Community Edition
+sudo dnf download gitlab-ce-<version>-ce.0.amazon2023
+sudo dnf install ./gitlab-ce-<version>-ce.0.amazon2023.x86_64.rpm
+```
+
+{{< /tab >}}
+
+{{< tab title="OpenSUSE Leap 15.5" >}}
+
+```shell
+# GitLab Enterprise Edition
+sudo zypper install --download-only gitlab-ee-<version>-ee.0.sles15.x86_64
+sudo zypper install /var/cache/zypp/packages/gitlab_gitlab-ee/Packages/g/gitlab-ee-<version>-ee.sles15.x86_64.rpm
+
+# GitLab Community Edition
+sudo zypper install --download-only gitlab-ce-<version>-ce.0.sles15.x86_64
+sudo zypper install /var/cache/zypp/packages/gitlab_gitlab-ce/Packages/g/gitlab-ce-<version>-ce.sles15.x86_64.rpm
+```
+
+{{< /tab >}}
+
+{{< tab title="SUSE Enterprise Server 12.2/12.5" >}}
+
+```shell
+# GitLab Enterprise Edition
+sudo zypper install --download-only gitlab-ee-<version>-ee.0.sles12.x86_64
+sudo zypper install /var/cache/zypp/packages/gitlab_gitlab-ee/Packages/g/gitlab-ee-<version>-ee.0.sles12.x86_64.rpm
+
+# GitLab Community Edition
+sudo zypper install --download-only gitlab-ce-<version>-ce.0.sles12.x86_64
+sudo zypper install /var/cache/zypp/packages/gitlab_gitlab-ce/Packages/g/gitlab-ce-<version>-ce.0.sles12.x86_64.rpm
 ```
 
 {{< /tab >}}

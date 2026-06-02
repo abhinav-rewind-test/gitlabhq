@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Purchase additional compute minutes for group and personal namespaces on GitLab.com, including monthly rollover and troubleshooting.
 title: Purchase additional compute minutes
 ---
@@ -47,7 +47,7 @@ To purchase compute minutes for a group:
 
 1. Sign in to GitLab.com.
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Usage quotas**.
+1. In the left sidebar, select **Settings** > **Usage quotas**.
 1. Select **Pipelines**.
 1. Select **Buy additional compute minutes**. You are taken to the Customers Portal.
 1. In the **Subscription details** section, in the **Quantity** field, enter the desired quantity of compute minute packs.
@@ -83,7 +83,7 @@ To purchase additional compute minutes for your personal namespace:
 1. Sign in to GitLab.com.
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Usage quotas**.
+1. In the left sidebar, select **Usage quotas**.
 1. Select **Buy additional compute minutes**. You are taken to the Customers Portal.
 1. In the **Subscription details** section, select the name of the user from the dropdown list.
 1. Enter the desired quantity of compute minute packs.

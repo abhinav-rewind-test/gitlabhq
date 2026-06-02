@@ -30,6 +30,7 @@ query getWorkItemsSlim(
   $types: [IssueType!]
   $updatedAfter: Time
   $updatedBefore: Time
+  $workItemTypeIds: [WorkItemsTypeID!]
   $crmOrganizationId: String
   $crmContactId: String
   $releaseTag: [String!]
@@ -73,6 +74,7 @@ query getWorkItemsSlim(
       types: $types
       updatedAfter: $updatedAfter
       updatedBefore: $updatedBefore
+      workItemTypeIds: $workItemTypeIds
       crmContactId: $crmContactId
       crmOrganizationId: $crmOrganizationId
       releaseTag: $releaseTag
@@ -103,11 +105,12 @@ query getWorkItemsSlim(
         }
         reference(full: true)
         title
+        titleHtml
         updatedAt
         webUrl
-        webPath @gl_introduced(version: "18.6.0-pre")
+        webPath
         state
-        widgets(onlyTypes: [LABELS]) {
+        widgets(onlyTypes: [LABELS]) @skip(if: $useWorkItemFeatures) {
           type
           ... on WorkItemWidgetLabels {
             allowsScopedLabels
@@ -131,6 +134,7 @@ query getWorkItemsSlim(
         workItemType {
           id
           name
+          iconName
         }
       }
     }

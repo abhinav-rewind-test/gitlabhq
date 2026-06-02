@@ -35,6 +35,7 @@ export const OPERATORS_BEFORE = [{ value: OPERATOR_BEFORE, description: OPERATOR
 export const OPERATORS_IS_NOT = [...OPERATORS_IS, ...OPERATORS_NOT];
 export const OPERATORS_IS_NOT_OR = [...OPERATORS_IS, ...OPERATORS_NOT, ...OPERATORS_OR];
 export const OPERATORS_AFTER_BEFORE = [...OPERATORS_AFTER, ...OPERATORS_BEFORE];
+export const OPERATORS_OR_NOT = [...OPERATORS_OR, ...OPERATORS_NOT];
 export const OPERATORS_EQUAL = [{ value: OPERATOR_IS, description: OPERATOR_EQUAL_TEXT }];
 export const OPERATORS_GREATER_THAN_OR_EQUAL = [
   { value: OPERATOR_GREATER_THAN_OR_EQUAL, description: OPERATOR_GREATER_THAN_OR_EQUAL_TEXT },
@@ -118,6 +119,8 @@ export const TOKEN_TITLE_SUBSCRIBED = __('Subscribed');
 export const TOKEN_TITLE_JOB_KIND = s__('Job|Kind');
 export const TOKEN_TITLE_MESSAGE = __('Message');
 export const TOKEN_TITLE_PARENT = s__('WorkItem|Parent');
+export const TOKEN_TITLE_COMMITTED_AFTER = __('Committed after');
+export const TOKEN_TITLE_COMMITTED_BEFORE = __('Committed before');
 
 export const TOKEN_TYPE_APPROVER = 'approver';
 export const TOKEN_TYPE_APPROVED_BY = 'approved-by';
@@ -168,6 +171,8 @@ export const TOKEN_TYPE_SUBSCRIBED = 'subscribed';
 export const TOKEN_TYPE_JOB_KIND = 'kind';
 export const TOKEN_TYPE_MESSAGE = 'message';
 export const TOKEN_TYPE_PARENT = 'parent';
+export const TOKEN_TYPE_COMMITTED_AFTER = 'committed-after';
+export const TOKEN_TYPE_COMMITTED_BEFORE = 'committed-before';
 
 // Due to the i18n eslint rule we can't have a capitalized string even if it is a case-aware URL param
 /* eslint-disable @gitlab/require-i18n-strings */

@@ -11,7 +11,7 @@ module Gitlab
         yield(self) if block_given?
 
         # freeze the subscriptions as safety measure to avoid further
-        # subcriptions after initialization.
+        # subscriptions after initialization.
         lock!
       end
 
@@ -27,6 +27,10 @@ module Gitlab
       def publish(event)
         unless event.is_a?(Event)
           raise InvalidEvent, "Event being published is not an instance of Gitlab::EventStore::Event: got #{event.inspect}"
+        end
+
+        if event.instance_of?(CloudEvent)
+          raise InvalidEvent, "Event being published is an instance of GitLab::EventStore::CloudEvent"
         end
 
         subscriptions.fetch(event.class, []).each do |subscription|

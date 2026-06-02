@@ -17,13 +17,13 @@ import projectRunnersQuery from '~/ci/runner/graphql/list/project_runners.query.
 import projectAssignableRunnersQuery from '~/ci/runner/graphql/list/project_assignable_runners.query.graphql';
 import runnerJobCountQuery from '~/ci/runner/graphql/list/runner_job_count.query.graphql';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { captureException } from '~/ci/runner/sentry_utils';
+import { captureException } from '~/sentry/sentry_browser_wrapper';
 
 import RunnersTab from '~/ci/runner/project_runners_settings/components/runners_tab.vue';
 
 Vue.use(VueApollo);
 
-jest.mock('~/ci/runner/sentry_utils');
+jest.mock('~/sentry/sentry_browser_wrapper');
 
 const mockRunners = projectRunnersData.data.project.runners.edges;
 const mockAssignableRunners = projectAssignableRunnersData.data.currentUser.runners.edges;
@@ -164,6 +164,14 @@ describe('RunnersTab', () => {
           expect.objectContaining({ ...mockAssignableRunners[0].node }),
         ]);
       });
+
+      it('shows link to runner', async () => {
+        await createComponent({ props: { useAssignableQuery: true }, mountFn: mountExtended });
+
+        expect(wrapper.findByTestId('runner-link').attributes('href')).toBe(
+          mockAssignableRunners[0].webUrl,
+        );
+      });
     });
   });
 
@@ -264,7 +272,7 @@ describe('RunnersTab', () => {
         },
       ],
     ]);
-    expect(captureException).toHaveBeenCalledWith({ error, component: 'RunnersTab' });
+    expect(captureException).toHaveBeenCalledWith(error);
   });
 
   describe('component API', () => {

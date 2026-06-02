@@ -11,7 +11,7 @@ module Gitlab
       # - `boundary: 'user'` or `boundary: 'instance'` - For standalone resources without project/group boundaries
       class BoundaryExtractor
         STANDALONE_BOUNDARIES = %w[user instance].freeze
-        VALID_BOUNDARY_ACCESSOR_METHODS = %w[project group itself].freeze
+        VALID_BOUNDARY_ACCESSOR_METHODS = %w[project group itself owner].freeze
 
         def initialize(object:, arguments:, context:, directive:)
           @object = object
@@ -39,7 +39,7 @@ module Gitlab
           boundary_arg = @directive.arguments[:boundary_argument]
           return extract_from_argument(boundary_arg) if boundary_arg
 
-          # Extract from resolved object (for type fields)
+          # Method-based extraction: may fall back to :id argument for unresolved query fields.
           if @boundary_accessor
             return extract_from_id_argument if should_use_id_fallback?
 
@@ -104,8 +104,9 @@ module Gitlab
           obj = unwrap_object(object)
 
           return obj if obj.is_a?(::Project) || obj.is_a?(::Group)
-          return obj.project if obj.respond_to?(:project)
-          return obj.group if obj.respond_to?(:group)
+          return obj.project if obj.respond_to?(:project) && obj.project
+          return obj.group if obj.respond_to?(:group) && obj.group
+          return obj.owner if obj.respond_to?(:owner) && obj.owner
 
           nil
         end

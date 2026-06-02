@@ -138,6 +138,15 @@ FactoryBot.define do
     trait :with_root_storage_statistics do
       association :root_storage_statistics, factory: :namespace_root_storage_statistics
     end
+
+    trait :deletion_scheduled do
+      deletion_scheduled_at { Date.current }
+
+      after(:create) do |group, evaluator|
+        group.schedule_deletion!(transition_user: evaluator.owner || create(:user))
+        group.update!(deletion_scheduled_at: evaluator.deletion_scheduled_at)
+      end
+    end
   end
 
   factory :group_with_deletion_schedule, parent: :group do

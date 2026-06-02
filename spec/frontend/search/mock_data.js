@@ -494,7 +494,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-blobs-1',
     link: '/search?scope=blobs&search=et&group_id=123&regex=true',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'blobs',
   },
   {
@@ -503,7 +503,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-blobs-2',
     link: '/search?scope=blobs&search=et&regex=true',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'blobs',
   },
   {
@@ -521,7 +521,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-epics-4',
     link: '/search?scope=epics&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'epics',
   },
   {
@@ -530,7 +530,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-merge_requests-5',
     link: '/search?scope=merge_requests&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'merge_requests',
   },
   {
@@ -539,7 +539,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-wiki_blobs-6',
     link: '/search?scope=wiki_blobs&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'wiki_blobs',
   },
   {
@@ -548,7 +548,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-commits-7',
     link: '/search?scope=commits&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'commits',
   },
   {
@@ -557,7 +557,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-notes-8',
     link: '/search?scope=notes&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'notes',
   },
   {
@@ -566,7 +566,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-milestones-9',
     link: '/search?scope=milestones&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'milestones',
   },
   {
@@ -575,7 +575,7 @@ export const MOCK_NAVIGATION_ITEMS = [
     id: 'menu-users-10',
     link: '/search?scope=users&search=et',
     is_active: false,
-    pill_count: '0',
+    pill_count: '-',
     scope: 'users',
   },
 ];
@@ -1758,6 +1758,23 @@ export const mockSourceBranches = [
     value: 'develop-item',
   },
 ];
+
+export const MOCK_WORK_ITEM_TYPE_AGGREGATION_BUCKETS = [
+  { key: '1', count: 12, name: 'Issue', icon_name: 'issue-type-issue', base_type: 'issue' },
+  { key: '2', count: 5, name: 'Task', icon_name: 'issue-type-task', base_type: 'task' },
+  { key: '3', count: 3, name: 'Epic', icon_name: 'issue-type-epic', base_type: 'epic' },
+];
+
+export const MOCK_WORK_ITEM_TYPE_AGGREGATIONS = {
+  fetching: false,
+  error: false,
+  data: [
+    {
+      name: 'work_item_type_ids',
+      buckets: MOCK_WORK_ITEM_TYPE_AGGREGATION_BUCKETS,
+    },
+  ],
+};
 
 export const mockgetBlobSearchCountQuery = {
   data: {

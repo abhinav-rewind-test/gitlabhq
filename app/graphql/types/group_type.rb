@@ -10,6 +10,10 @@ module Types
 
     authorize :read_group
 
+    authorize_granular_token permissions: :read_group,
+      boundary: :itself,
+      boundary_type: :group
+
     expose_permissions Types::PermissionTypes::Group
 
     field :web_url,
@@ -303,7 +307,10 @@ module Types
     field :runners, Types::Ci::RunnerType.connection_type,
       null: true,
       resolver: Resolvers::Ci::GroupRunnersResolver,
-      description: "Find runners visible to the current user."
+      description: "Find runners visible to the current user.",
+      directives: granular_scope_directive(
+        permissions: :read_runner, boundary: :itself, boundary_type: :group
+      )
 
     field :organizations, Types::CustomerRelations::OrganizationType.connection_type,
       null: true,
@@ -345,25 +352,23 @@ module Types
     field :work_items,
       null: true,
       description: 'Work items that belong to the namespace.',
-      experiment: { milestone: '16.3' },
       resolver: ::Resolvers::Namespaces::WorkItemsResolver
 
     field :work_item, Types::WorkItemType,
       resolver: Resolvers::Namespaces::WorkItemResolver,
-      experiment: { milestone: '16.4' },
       description: 'Find a work item by IID directly associated with the group.'
 
     field :work_item_state_counts,
       Types::WorkItemStateCountsType,
       null: true,
-      experiment: { milestone: '16.7' },
       description: 'Counts of work items by state for the namespace.',
       resolver: Resolvers::Namespaces::WorkItemStateCountsResolver
 
     field :autocomplete_users,
       null: true,
       resolver: Resolvers::AutocompleteUsersResolver,
-      description: 'Search users for autocompletion'
+      description: 'Search users for autocompletion',
+      extras: [:lookahead]
 
     field :lock_math_rendering_limits_enabled,
       GraphQL::Types::Boolean,
@@ -392,12 +397,10 @@ module Types
 
     field :archived, GraphQL::Types::Boolean,
       description: 'Indicates if the group or any ancestor is archived.',
-      experiment: { milestone: '18.3' },
       method: :self_or_ancestors_archived?
 
     field :is_self_archived, GraphQL::Types::Boolean,
       description: 'Indicates if the group is archived.',
-      experiment: { milestone: '18.6' },
       method: :self_archived?
 
     field :marked_for_deletion, GraphQL::Types::Boolean,
@@ -532,7 +535,7 @@ module Types
     end
 
     def marked_for_deletion_on
-      group.marked_for_deletion_on
+      group.self_deletion_scheduled_deletion_created_on
     end
 
     def permanent_deletion_date

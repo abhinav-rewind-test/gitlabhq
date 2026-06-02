@@ -5,9 +5,9 @@ require 'spec_helper'
 RSpec.describe Banzai::Filter::TruncateVisibleFilter, feature_category: :markdown do
   include FilterSpecHelper
 
-  let_it_be(:project) { build(:project, :repository) }
+  let_it_be(:project, freeze: false) { build(:project, :repository) }
   let_it_be(:max_chars) { 100 }
-  let_it_be(:user) do
+  let_it_be(:user, freeze: false) do
     user = create(:user, username: 'gfm')
     project.add_maintainer(user)
     user
@@ -106,9 +106,9 @@ RSpec.describe Banzai::Filter::TruncateVisibleFilter, feature_category: :markdow
     html = convert_markdown(markdown)
     doc = filter(html, { truncate_visible_max_chars: max_chars })
 
-    # Make sure we didn't create invalid markup
-    # But also account for the 2 errors caused by the unknown `gl-emoji` elements
-    expect(doc.errors.length).to eq(2)
+    # Make sure we didn't create invalid markup.
+    # The HTML5 parser handles custom elements like `gl-emoji` without errors.
+    expect(doc.errors.length).to eq(0)
 
     expect(doc.css('gl-emoji').length).to eq(2)
     expect(doc.css('gl-emoji')[0].attr('data-name')).to eq 'wink'

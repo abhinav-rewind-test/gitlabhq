@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Gitaly on Kubernetes
 ---
 
@@ -9,7 +9,6 @@ title: Gitaly on Kubernetes
 
 - Tier: Free, Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-- Status: Limited availability
 
 {{< /details >}}
 
@@ -18,25 +17,22 @@ title: Gitaly on Kubernetes
 - Introduced in GitLab 17.3 as an [experiment](../../policy/development_stages_support.md).
 - Changed from experiment to beta in GitLab 17.10.
 - Changed from beta to limited availability in GitLab 18.2.
+- Changed from limited availability to general availability in GitLab 18.11.
 
 {{< /history >}}
 
-{{< alert type="disclaimer" />}}
-
-Running Gitaly on Kubernetes has availability trade-offs, so consider these trade-offs when planing a production environment and set expectations accordingly.
+Running Gitaly on Kubernetes has availability trade-offs, so consider these trade-offs when planning a production environment and set expectations accordingly.
 This document describes and provides guidance on how to minimize, and plan for existing limitations.
+
+Gitaly on Kubernetes has been evaluated by the Gitaly team and determined to be a safe
+way to deploy Gitaly. The rest of this document details best practices for doing so.
 
 ## Timeline
 
-Gitaly on Kubernetes has been evaluated by the Gitaly team and determined to be a safe
-way to deploy Gitaly. The rest of this document details best practices for doing
-so.
-
-Internally, we are in the process of dogfooding Gitaly on Kubernetes to ensure it can
-handle production level workloads before moving the feature to be [Generally Available (GA)](../../policy/development_stages_support.md#generally-available).
-
-We expect to finish dogfooding in FY26Q4, and move Gitaly on Kubernetes to GA in
-FY27Q1.
+[Gitaly on Kubernetes](kubernetes.md) is generally available as of GitLab 18.11. GitLab does not
+guarantee compatibility with specific managed Kubernetes offerings from cloud
+providers (such as Amazon EKS, Google GKE, or Azure AKS). You should validate
+your specific environment before deploying to production.
 
 ## Context
 
@@ -50,9 +46,6 @@ masks the problem by:
 1. Performing a graceful reload.
 
 The same approach doesn't fit a container-based lifecycle where a container or pod needs to fully shutdown and start as a new container or pod.
-
-Gitaly Cluster (Praefect) solves the data and service high-availability aspect by replicating data across instances. However, Gitaly Cluster (Praefect) is unsuited to run in Kubernetes
-because of [existing issues and design constraints](praefect/_index.md#known-issues) that are augmented by a container-based platform.
 
 To support a Cloud Native deployment, Gitaly (non-Cluster) is the only option.
 By leveraging the right Kubernetes and Gitaly features and configuration, you can minimize service disruption and provide a good user experience.
@@ -105,7 +98,7 @@ To enable this field, perform the following steps on the nodes where Gitaly will
 
 ### Address pod disruption
 
-A pod can rotate for many reasons. Understanding and planing the service lifecycle helps minimize disruption.
+A pod can rotate for many reasons. Understanding and planning the service lifecycle helps minimize disruption.
 
 For example, with Gitaly, a Kubernetes `StatefulSet` rotates on `spec.template` object changes, which can happen during Helm Chart upgrades (labels, or image tag) or pod resource requests or limits updates.
 
@@ -314,3 +307,16 @@ gitlab:
 
 Monitor disk usage regularly for long-running Gitaly containers because log file growth can cause storage issues if
 [log rotation is not enabled](https://docs.gitlab.com/charts/charts/globals/#log-rotation).
+
+## Migrate to Gitaly on Kubernetes
+
+To migrate existing repositories from non-Kubernetes Gitaly nodes to Gitaly on Kubernetes:
+
+1. Deploy your Gitaly on Kubernetes nodes and [add them as new repository storages](../repository_storage_paths.md#configure-where-new-repositories-are-stored).
+   in the GitLab Admin area. Configure storage weights so that all new repositories are created on the new repository storages.
+   This prevents new projects from being created on the old repository storages while the migration is in progress.
+1. Use the repository move API to move existing repositories to the new storages.
+   GitLab repositories can be associated with projects, groups, and snippets, and each type has a separate API.
+   For complete instructions, see [moving repositories managed by GitLab](../operations/moving_repositories.md).
+
+Each repository is made read-only for the duration of the move and is not writable until the move is complete.

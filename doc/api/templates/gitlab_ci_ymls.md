@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI/CD templates API
 ---
 
@@ -12,7 +12,8 @@ title: CI/CD templates API
 
 {{< /details >}}
 
-Use this API to retrieve available [CI/CD templates](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates).
+Use this API to retrieve the built-in [CI/CD templates](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates).
+Custom templates are not available.
 
 Users with the Guest role cannot access CI/CD templates. For more information, see [project and group visibility](../../user/public_access.md).
 

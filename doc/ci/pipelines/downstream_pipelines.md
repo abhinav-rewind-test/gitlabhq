@@ -1,7 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Trigger and manage parent-child and multi-project pipelines.
 title: Downstream pipelines
 ---
 
@@ -25,7 +26,7 @@ You can sometimes use parent-child pipelines and multi-project pipelines for sim
 but there are [key differences](pipeline_architectures.md).
 
 A pipeline hierarchy can contain up to 1000 downstream pipelines by default.
-For more information about this limit and how to change it, see [Limit pipeline hierarchy size](../../administration/instance_limits.md#limit-pipeline-hierarchy-size).
+For more information about this limit and how to change it, see [Limit pipeline hierarchy size](../../administration/cicd/limits.md#limit-pipeline-hierarchy-size).
 
 ## Parent-child pipelines
 
@@ -188,7 +189,7 @@ You can trigger a child pipeline from a YAML file generated in a job, instead of
 static file saved in your project. This technique can be very powerful for generating pipelines
 targeting content that changed or to build a matrix of targets and architectures.
 
-The artifact containing the generated YAML file must be within [instance limits](../../administration/instance_limits.md#maximum-size-of-the-ci-artifacts-archive).
+The artifact containing the generated YAML file must be within [instance limits](../../administration/cicd/limits.md#maximum-size-of-the-ci-artifacts-archive).
 
 <i class="fa-youtube-play" aria-hidden="true"></i>
 For an overview, see [Create child pipelines using dynamically generated configurations](https://youtu.be/nMdfus2JWHM).
@@ -301,7 +302,7 @@ Use:
 ## Trigger a multi-project pipeline by using the API
 
 You can use the [CI/CD job token (`CI_JOB_TOKEN`)](../jobs/ci_job_token.md) with the
-[pipeline trigger API endpoint](../../api/pipeline_triggers.md#trigger-a-pipeline-with-a-token)
+[pipeline trigger tokens API endpoint](../../api/pipeline_triggers.md#trigger-a-pipeline-with-a-token)
 to trigger multi-project pipelines from inside a CI/CD job. GitLab sets pipelines triggered
 with a job token as downstream pipelines of the pipeline that contains the job that
 made the API call.
@@ -312,7 +313,11 @@ For example:
 trigger_pipeline:
   stage: deploy
   script:
-    - curl --request POST --form "token=$CI_JOB_TOKEN" --form ref=main "https://gitlab.example.com/api/v4/projects/9/trigger/pipeline"
+    - |
+      curl --request POST \
+        --form "token=$CI_JOB_TOKEN" \
+        --form ref=main \
+        --url "https://gitlab.example.com/api/v4/projects/9/trigger/pipeline"
   rules:
     - if: $CI_COMMIT_TAG
   environment: production
@@ -425,8 +430,10 @@ In this example:
 
 ### Mirror the status of a downstream pipeline in the trigger job
 
-You can mirror the status of the downstream pipeline in the trigger job
-by using [`strategy: mirror`](../yaml/_index.md#triggerstrategy):
+You can mirror the status of the downstream pipeline in the trigger job by using
+[`trigger: strategy`](../yaml/_index.md#triggerstrategy):
+
+With `strategy: mirror`, the trigger job always has the same status as the downstream pipeline.
 
 {{< tabs >}}
 
@@ -455,6 +462,9 @@ trigger_job:
 
 {{< /tabs >}}
 
+`strategy: depend` is not recommended, because the trigger job status does not always match the status of
+the downstream pipeline. See the [additional details in the `trigger:strategy` reference](../yaml/_index.md#triggerstrategy).
+
 ### View multi-project pipelines in pipeline graphs
 
 {{< history >}}
@@ -474,12 +484,9 @@ displays to the right of the mini graph.
 {{< history >}}
 
 - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/18311) in GitLab 18.6.
-- Security reports from child pipelines [introduced](https://gitlab.com/groups/gitlab-org/-/work_items/18377) in GitLab 18.9 [with a feature flag](../../administration/feature_flags/_index.md) named `show_child_security_reports_in_mr_widget`. Enabled by default.
+- Security reports from child pipelines [introduced](https://gitlab.com/groups/gitlab-org/-/work_items/18377) in GitLab 18.9.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag. For more information, see the history.
 
 You can view and download reports from child pipelines in merge request widgets.
 This provides a unified view of test results and quality checks across your pipeline hierarchy
@@ -625,7 +632,7 @@ upstream pipeline:
 > [!warning]
 > Make sure the upstream job finishes before the downstream job starts, otherwise you cannot fetch the artifacts.
 > Use [`needs`](../yaml/_index.md#needs) to make the downstream job wait for the upstream job.
-> 
+>
 > For more information, see [issue 356016](https://gitlab.com/gitlab-org/gitlab/-/issues/356016).
 
 ### Fetch artifacts from an upstream merge request pipeline
@@ -892,50 +899,9 @@ the ones defined in the upstream project take precedence.
 
 ### Pass dotenv variables created in a job
 
-{{< details >}}
+You can pass variables to a downstream pipeline with dotenv variable inheritance.
 
-- Tier: Premium, Ultimate
-- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-You can pass variables to a downstream pipeline with [`dotenv` variable inheritance](../variables/job_scripts.md#pass-environment-variables-to-later-jobs).
-
-For example, in a [multi-project pipeline](#multi-project-pipelines):
-
-1. Save the variables in a `.env` file.
-1. Save the `.env` file as a `dotenv` report.
-1. Trigger the downstream pipeline.
-
-   ```yaml
-   build_vars:
-     stage: build
-     script:
-       - echo "BUILD_VERSION=hello" >> build.env
-     artifacts:
-       reports:
-         dotenv: build.env
-
-   deploy:
-     stage: deploy
-     trigger: my/downstream_project
-   ```
-
-1. Set the `test` job in the downstream pipeline to inherit the variables from the `build_vars`
-   job in the upstream project with `needs`. The `test` job inherits the variables in the
-   `dotenv` report and it can access `BUILD_VERSION` in the script:
-
-   ```yaml
-   test:
-     stage: test
-     script:
-       - echo $BUILD_VERSION
-     needs:
-       - project: my/upstream_project
-         job: build_vars
-         ref: master
-         artifacts: true
-   ```
+For more information, see [pass variables to downstream pipelines](../variables/dotenv_variables.md#pass-variables-to-downstream-pipelines).
 
 ### Control what type of variables to forward to downstream pipelines
 

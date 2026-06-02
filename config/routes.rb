@@ -3,7 +3,7 @@
 require 'sidekiq/web'
 require 'sidekiq/cron/web'
 
-InitializerConnections.raise_if_new_database_connection do
+InitializerConnections.warn_if_database_connection do
   Rails.application.routes.draw do
     # rubocop:disable Metrics/AbcSize -- listing routes is typical
     def draw_all_routes
@@ -63,6 +63,9 @@ InitializerConnections.raise_if_new_database_connection do
       get '/.well-known/oauth-authorization-server/api/v4/mcp', to: 'jwks#provider'
       get '/.well-known/openid-configuration/api/v4/mcp', to: 'jwks#provider'
       get '/.well-known/oauth-protected-resource/api/v4/mcp', to: 'oauth/protected_resource_metadata#show'
+      get '/.well-known/oauth-authorization-server/api/v4/orbit/mcp', to: 'jwks#provider'
+      get '/.well-known/openid-configuration/api/v4/orbit/mcp', to: 'jwks#provider'
+      get '/.well-known/oauth-protected-resource/api/v4/orbit/mcp', to: 'oauth/protected_resource_metadata#show'
 
       use_doorkeeper_device_authorization_grant do
         controller device_authorizations: 'oauth/device_authorizations'
@@ -77,11 +80,14 @@ InitializerConnections.raise_if_new_database_connection do
       match '/.well-known/oauth-authorization-server/api/v4/mcp', to: 'jwks#provider', via: :options
       match '/.well-known/openid-configuration/api/v4/mcp', to: 'jwks#provider', via: :options
       match '/.well-known/oauth-protected-resource/api/v4/mcp', to: 'oauth/protected_resource_metadata#show', via: :options
+      match '/.well-known/oauth-authorization-server/api/v4/orbit/mcp', to: 'jwks#provider', via: :options
+      match '/.well-known/openid-configuration/api/v4/orbit/mcp', to: 'jwks#provider', via: :options
+      match '/.well-known/oauth-protected-resource/api/v4/orbit/mcp', to: 'oauth/protected_resource_metadata#show', via: :options
 
       match '/oauth/token' => 'oauth/tokens#create', via: :options
       match '/oauth/revoke' => 'oauth/tokens#revoke', via: :options
 
-      match '/-/jira_connect/oauth_application_id' => 'jira_connect/oauth_application_ids#show', via: :options
+      match '/-/jira_connect/oauth_application_id' => 'jira_connect/oauth_application_ids#show', via: :options, as: :jira_connect_oauth_application_id_options
       match '/-/jira_connect/subscriptions(.:format)' => 'jira_connect/subscriptions#index', via: :options
       match '/-/jira_connect/subscriptions/:id' => 'jira_connect/subscriptions#delete', via: :options
 
@@ -106,29 +112,13 @@ InitializerConnections.raise_if_new_database_connection do
       # Terraform service discovery
       get '.well-known/terraform.json' => 'terraform/services#index', as: :terraform_services
 
-      draw :organizations
+      draw_all :organizations
 
       # Begin of the /-/ scope.
       # Use this scope for all new global routes.
       scope path: '-' do
-        # Autocomplete
-        get '/autocomplete/users' => 'autocomplete#users'
-        get '/autocomplete/users/:id' => 'autocomplete#user'
-        get '/autocomplete/projects' => 'autocomplete#projects'
-        get '/autocomplete/award_emojis' => 'autocomplete#award_emojis'
-        get '/autocomplete/merge_request_target_branches' => 'autocomplete#merge_request_target_branches'
-        get '/autocomplete/merge_request_source_branches' => 'autocomplete#merge_request_source_branches'
-        get '/autocomplete/deploy_keys_with_owners' => 'autocomplete#deploy_keys_with_owners'
-
-        Gitlab.ee do
-          get '/autocomplete/project_groups' => 'autocomplete#project_groups'
-          get '/autocomplete/project_routes' => 'autocomplete#project_routes'
-          get '/autocomplete/namespace_routes' => 'autocomplete#namespace_routes'
-          get '/autocomplete/group_subgroups' => 'autocomplete#group_subgroups'
-        end
-
         # sandbox
-        get '/sandbox/mermaid' => 'sandbox#mermaid'
+        get '/sandbox/mermaid_v11' => 'sandbox#mermaid_v11'
         get '/sandbox/swagger' => 'sandbox#swagger'
 
         get '/:model/:model_id/uploads/:secret/:filename',
@@ -138,6 +128,7 @@ InitializerConnections.raise_if_new_database_connection do
             filename: %r{[^/]+}
           },
           as: 'banzai_upload'
+        get '/diagram-proxy/:key' => 'banzai/diagram_proxy#proxy', as: :diagram_proxy
 
         get '/whats_new' => 'whats_new#index'
         post '/whats_new/mark_as_read' => 'whats_new#mark_as_read'
@@ -154,8 +145,10 @@ InitializerConnections.raise_if_new_database_connection do
 
         # HTTP Router
         # Creating a black hole for /-/http_router/version since it is taken by the
-        # cloudflare worker, see: https://gitlab.com/gitlab-org/cells/http-router/-/issues/47
+        # cloudflare worker, see: https://gitlab.com/gitlab-com/gl-infra/tenant-scale/cells-infrastructure/team/-/work_items/150
         match '/http_router/version', to: proc { [204, {}, ['']] }, via: :all
+        # topology-service caching route, see: https://gitlab.com/gitlab-com/gl-infra/tenant-scale/cells-infrastructure/team/-/work_items/648
+        match '/topology-service/__cache/*path', to: proc { [204, {}, ['']] }, via: :all
 
         # '/-/health' implemented by BasicHealthCheck middleware
         get 'liveness' => 'health#liveness'
@@ -177,6 +170,9 @@ InitializerConnections.raise_if_new_database_connection do
           get '/oauth_redirect', to: 'ide#oauth_redirect'
 
           scope path: 'project/:project_id', as: :project, constraints: { project_id: Gitlab::PathRegex.full_namespace_route_regex } do
+            # Format: /-/ide/project/:project_id/-/*path
+            get '/-/*path', to: 'ide#index'
+
             %w[edit tree blob].each do |action|
               get "/#{action}", to: 'ide#index'
               get "/#{action}/*branch/-/*path", to: 'ide#index'
@@ -195,6 +191,7 @@ InitializerConnections.raise_if_new_database_connection do
           draw :operations
         end
 
+        draw :iam
         draw :jira_connect
 
         Gitlab.ee do
@@ -236,9 +233,16 @@ InitializerConnections.raise_if_new_database_connection do
           end
         end
 
-        resources :sent_notifications, only: [], constraints: { id: /[A-Za-z0-9\-_]{1,32}/ } do
+        resources :sent_notifications, only: [], constraints: { id: /[0-9a-z\-]{1,44}/ } do
           member do
             match :unsubscribe, via: [:get, :post]
+          end
+        end
+
+        resources :awarded_achievements, only: [], constraints: { id: %r{[^/]+} }, module: :achievements do
+          member do
+            get :accept
+            post :accept
           end
         end
 
@@ -256,6 +260,7 @@ InitializerConnections.raise_if_new_database_connection do
         draw :snippets
         draw_all :profile
         draw_all :user_settings
+        draw_all :autocomplete
 
         post '/mailgun/webhooks' => 'mailgun/webhooks#process_webhook'
 

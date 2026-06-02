@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Projects::LabelsController, feature_category: :team_planning do
-  let_it_be(:group)   { create(:group) }
-  let_it_be(:project, reload: true) { create(:project, namespace: group) }
+  let_it_be(:group) { create(:group) }
+  let_it_be_with_reload(:project) { create(:project, namespace: group) }
   let_it_be(:project_2) { create(:project, namespace: group) }
   let_it_be(:user) { create(:user) }
 
@@ -16,7 +16,7 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
   end
 
   describe 'GET #index' do
-    let_it_be(:label_1) { create(:label, project: project, priority: 1, title: 'Label 1') }
+    let_it_be(:label_1, freeze: false) { create(:label, project: project, priority: 1, title: 'Label 1') }
     let_it_be(:label_2) { create(:label, project: project, priority: 3, title: 'Label 2') }
     let_it_be(:label_3) { create(:label, project: project, priority: 1, title: 'Label 3') }
     let_it_be(:label_4) { create(:label, project: project, title: 'Label 4') }
@@ -74,17 +74,6 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
           it 'does not show prioritized labels' do
             get :index, params: { namespace_id: project.namespace.to_param, project_id: project, archived: 'true' }
             expect(assigns(:prioritized_labels)).to be_empty
-          end
-
-          context 'with feature flag labels_archive disabled' do
-            before do
-              stub_feature_flags(labels_archive: false)
-            end
-
-            it 'returns all prioritized labels' do
-              get :index, params: { namespace_id: project.namespace.to_param, project_id: project, archived: 'true' }
-              expect(assigns(:prioritized_labels)).to match_array group_priority_labels + project_priority_labels
-            end
           end
         end
       end
@@ -193,7 +182,7 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
 
   describe 'POST #promote' do
     let_it_be(:promoted_label_name) { "Promoted Label" }
-    let_it_be(:label_1) { create(:label, title: promoted_label_name, project: project) }
+    let_it_be(:label_1, freeze: false) { create(:label, title: promoted_label_name, project: project) }
 
     context 'not group reporters' do
       it 'denies access' do

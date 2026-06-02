@@ -26,7 +26,7 @@ module IssuableLink
     end
 
     # Used to get the available types for the API
-    # overriden in EE
+    # overridden in EE
     def available_link_types
       [TYPE_RELATES_TO]
     end
@@ -75,7 +75,7 @@ module IssuableLink
       errors.add(
         attribute_name,
         format(
-          s_('This %{issuable} would exceed the maximum number of linked %{issuables} (%{limit}).'),
+          _('This %{issuable} would exceed the maximum number of linked %{issuables} (%{limit}).'),
           issuable: self.class.issuable_name,
           issuables: self.class.issuable_name.pluralize,
           limit: MAX_LINKS_COUNT

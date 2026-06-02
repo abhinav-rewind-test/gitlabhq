@@ -29,7 +29,7 @@
         help_text: '%{help_text} %{help_link}'.html_safe % { help_text: help_text, help_link: help_link }
     .form-group
       = f.gitlab_ui_checkbox_component :require_admin_two_factor_authentication, _('Enforce two-factor authentication for administrators'),
-        help_text: (custom_admin_roles_available? ? s_('MemberRole|Also applies to users that are assigned a custom admin role. To enhance security, enable Admin Mode. Admin Mode requires users to re-authenticate before accessing the Admin area.') : s_('To enhance security, enable Admin Mode. Admin Mode requires users to re-authenticate before accessing the Admin area.'))
+        help_text: (custom_admin_roles_available? ? s_('MemberRole|Also applies to users that are assigned a custom admin role. To enhance security, enable Admin Mode. Admin Mode requires users to re-authenticate before accessing the Admin area.') : s_('MemberRole|To enhance security, enable Admin Mode. Admin Mode requires users to re-authenticate before accessing the Admin area.'))
     .form-group
       = f.label :two_factor_authentication, _('Two-factor grace period'), class: 'label-bold'
       = f.number_field :two_factor_grace_period, min: 0, class: 'form-control gl-form-input', placeholder: '0'
@@ -49,6 +49,13 @@
       = f.gitlab_ui_checkbox_component :notify_on_unknown_sign_in,
         _('Enable email notification'),
         help_text: '%{help_text} %{help_link}'.html_safe % { help_text: help_text, help_link: help_link }
+    .form-group
+      = f.label :email_otp_enabled, _('Email-based one-time password (OTP)'), class: 'label-bold'
+      - email_otp_help_text = _('Allow users to verify sign-ins using an email-based one-time password as a multi-factor authentication method.')
+      - help_link = link_to _('Learn more.'), help_page_path('administration/settings/sign_in_restrictions.md', anchor: 'enable-email-otp'), target: '_blank', rel: 'noopener noreferrer'
+      = f.gitlab_ui_checkbox_component :email_otp_enabled,
+        _('Enable email-based one-time passwords'),
+        help_text: '%{help_text} %{help_link}'.html_safe % { help_text: email_otp_help_text, help_link: help_link }
     .form-group
       = f.label :require_email_verification_on_account_locked, _('Email verification for locked accounts'), class: 'label-bold'
       - help_text = _('Require users to verify their email address when their account is locked.')

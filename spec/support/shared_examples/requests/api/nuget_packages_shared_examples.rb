@@ -18,6 +18,30 @@ RSpec.shared_examples 'rejects nuget packages access' do |user_type, status, add
   end
 end
 
+RSpec.shared_examples 'setting the X-NuGet-Warning header on error responses' do |expected_warning:|
+  context 'with X-NuGet-Warning header' do
+    it 'includes the X-NuGet-Warning header on error responses' do
+      subject
+
+      expect(response).to have_gitlab_http_status(expected_status)
+      expect(response.headers['X-NuGet-Warning']).to eq(expected_warning)
+    end
+
+    context 'when nuget_warning_header feature flag is disabled' do
+      before do
+        stub_feature_flags(nuget_warning_header: false)
+      end
+
+      it 'does not include the X-NuGet-Warning header' do
+        subject
+
+        expect(response).to have_gitlab_http_status(expected_status)
+        expect(response.headers['X-NuGet-Warning']).to be_nil
+      end
+    end
+  end
+end
+
 RSpec.shared_examples 'process nuget service index request' do |user_type, status, add_member = true, v2 = false|
   context "for user type #{user_type}" do
     before do
@@ -107,7 +131,7 @@ RSpec.shared_examples 'process nuget metadata request at package name level' do 
     end
 
     context 'with lower case package name' do
-      let_it_be(:package_name) { 'dummy.package' }
+      let_it_be(:package_name, freeze: false) { 'dummy.package' }
 
       it_behaves_like 'returning response status', status
 
@@ -137,7 +161,7 @@ RSpec.shared_examples \
     end
 
     context 'with lower case package name' do
-      let_it_be(:package_name) { 'dummy.package' }
+      let_it_be(:package_name, freeze: false) { 'dummy.package' }
 
       it_behaves_like 'returning response status', status
 
@@ -375,7 +399,7 @@ RSpec.shared_examples 'process nuget download versions request' do |user_type, s
     end
 
     context 'with lower case package name' do
-      let_it_be(:package_name) { 'dummy.package' }
+      let_it_be(:package_name, freeze: false) { 'dummy.package' }
 
       it_behaves_like 'returning response status', status
 
@@ -426,7 +450,7 @@ RSpec.shared_examples 'process nuget download content request' do |user_type, st
     end
 
     context 'with lower case package name' do
-      let_it_be(:package_name) { 'dummy.package' }
+      let_it_be(:package_name, freeze: false) { 'dummy.package' }
 
       it_behaves_like 'returning response status', status
 
@@ -568,8 +592,8 @@ RSpec.shared_examples 'rejects nuget access with unknown target id' do |not_foun
 end
 
 RSpec.shared_examples 'allows anyone to pull public nuget packages on group level' do
-  let_it_be(:package_name) { 'dummy.package' }
-  let_it_be(:package) { create(:nuget_package, project: project, name: package_name) }
+  let_it_be(:package_name, freeze: false) { 'dummy.package' }
+  let_it_be(:package, freeze: false) { create(:nuget_package, project: project, name: package_name) }
 
   let(:not_found_response) { :not_found }
 
@@ -709,7 +733,7 @@ RSpec.shared_examples 'nuget authorize upload endpoint' do
   end
 
   it_behaves_like 'job token for package uploads', authorize_endpoint: true do
-    let_it_be(:job) { create(:ci_build, :running, user: user, project: project) }
+    let_it_be(:job, freeze: false) { create(:ci_build, :running, user: user, project: project) }
   end
 
   it_behaves_like 'rejects nuget access with unknown target id'
@@ -819,7 +843,7 @@ RSpec.shared_examples 'nuget upload endpoint' do |symbol_package: false|
   end
 
   it_behaves_like 'job token for package uploads' do
-    let_it_be(:job) { create(:ci_build, :running, user: user, project: project) }
+    let_it_be(:job, freeze: false) { create(:ci_build, :running, user: user, project: project) }
   end
 
   it_behaves_like 'rejects nuget access with unknown target id'
@@ -857,7 +881,7 @@ RSpec.shared_examples 'nuget upload endpoint' do |symbol_package: false|
       create(:nuget_package, project: project, name: 'DummyProject.DummyPackage', version: '1.0.0')
     end
 
-    let_it_be(:package_settings) do
+    let_it_be(:package_settings, freeze: false) do
       create(:namespace_package_setting, :group, namespace: project.namespace, nuget_duplicates_allowed: false)
     end
 
@@ -910,10 +934,19 @@ RSpec.shared_examples 'nuget upload endpoint' do |symbol_package: false|
     end
 
     context 'for personal access token' do
-      let_it_be(:pat_project_developer) { create(:personal_access_token, user: create(:user, developer_of: project)) }
-      let_it_be(:pat_project_maintainer) { create(:personal_access_token, user: create(:user, maintainer_of: project)) }
-      let_it_be(:pat_project_owner) { create(:personal_access_token, user: create(:user, owner_of: project)) }
-      let_it_be(:pat_with_scope_admin_mode) do
+      let_it_be(:pat_project_developer, freeze: false) do
+        create(:personal_access_token, user: create(:user, developer_of: project))
+      end
+
+      let_it_be(:pat_project_maintainer, freeze: false) do
+        create(:personal_access_token, user: create(:user, maintainer_of: project))
+      end
+
+      let_it_be(:pat_project_owner, freeze: false) do
+        create(:personal_access_token, user: create(:user, owner_of: project))
+      end
+
+      let_it_be(:pat_with_scope_admin_mode, freeze: false) do
         create(:personal_access_token, :admin_mode, user: create(:admin, developer_of: project))
       end
 
@@ -984,10 +1017,12 @@ RSpec.shared_examples 'process nuget delete request' do |user_type, status, auth
 end
 
 RSpec.shared_examples 'nuget symbol file endpoint' do
-  let_it_be(:symbol) { create(:nuget_symbol) }
-  let_it_be(:filename) { symbol.file.filename }
-  let_it_be(:signature) { symbol.signature }
-  let_it_be(:checksum) { symbol.file_sha256.delete("\n") }
+  let_it_be(:symbol_package, freeze: false) { create(:nuget_package, project: project, without_package_files: true) }
+  let_it_be(:symbol, freeze: false) { create(:nuget_symbol, package: symbol_package) }
+
+  let(:filename) { symbol.file.filename }
+  let(:signature) { symbol.signature }
+  let(:checksum) { symbol.file_sha256.delete("\n") }
 
   let(:headers) { { 'Symbolchecksum' => "SHA256:#{checksum}" } }
 
@@ -1048,6 +1083,21 @@ RSpec.shared_examples 'nuget symbol file endpoint' do
       let(:signature) { symbol.signature.upcase }
 
       it_behaves_like 'successful response'
+    end
+
+    context 'when symbol belongs to a different namespace' do
+      let_it_be(:other_project, freeze: false) { create(:project) }
+      let_it_be(:other_package, freeze: false) do
+        create(:nuget_package, project: other_project, without_package_files: true)
+      end
+
+      let_it_be(:other_symbol, freeze: false) { create(:nuget_symbol, package: other_package) }
+
+      let(:filename) { other_symbol.file.filename }
+      let(:signature) { other_symbol.signature }
+      let(:checksum) { other_symbol.file_sha256.delete("\n") }
+
+      it_behaves_like 'returning response status', :not_found
     end
   end
 

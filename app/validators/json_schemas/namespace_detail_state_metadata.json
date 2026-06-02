@@ -18,18 +18,49 @@
         "null"
       ]
     },
+    "deletion_error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "correlation_id": {
       "type": [
         "string",
         "null"
       ]
     },
-    "deletion_scheduled_at": {
+    "deletion_scheduled_by_user_id": {
+      "type": "number"
+    },
+    "transfer_scheduled_at": {
       "type": "string",
       "format": "date-time"
     },
-    "deletion_scheduled_by_user_id": {
+    "transfer_scheduled_by_user_id": {
       "type": "number"
+    },
+    "transfer_initiated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "transfer_initiated_by_user_id": {
+      "type": "number"
+    },
+    "transfer_target_parent_id": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "transfer_attempt_count": {
+      "type": "number"
+    },
+    "transfer_last_error": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "preserved_states": {
       "type": "object",
@@ -47,6 +78,13 @@
             "ancestor_inherited",
             "archived",
             "deletion_scheduled"
+          ]
+        },
+        "schedule_transfer": {
+          "type": "string",
+          "enum": [
+            "ancestor_inherited",
+            "archived"
           ]
         }
       },

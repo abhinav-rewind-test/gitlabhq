@@ -51,6 +51,12 @@ module ApplicationSettingsHelper
     Gitlab::CurrentSettings.enabled_git_access_protocol.blank?
   end
 
+  # The instance-level MCP toggle only applies to self-managed. On GitLab.com,
+  # MCP availability is controlled by the top-level group setting instead.
+  def mcp_server_setting_available?
+    !Gitlab.com? && Feature.enabled?(:mcp_server_availability_setting, :instance)
+  end
+
   def ssh_enabled?
     all_protocols_enabled? || enabled_protocol == 'ssh'
   end
@@ -89,9 +95,9 @@ module ApplicationSettingsHelper
         }
       ),
       form.gitlab_ui_checkbox_component(
-        :global_search_issues_enabled,
-        _("Show issues in global search results"),
-        checkbox_options: { checked: @application_setting.global_search_issues_enabled, multiple: false }
+        :global_search_work_items_enabled,
+        _("Show work items in global search results"),
+        checkbox_options: { checked: @application_setting.global_search_work_items_enabled, multiple: false }
       ),
       form.gitlab_ui_checkbox_component(
         :global_search_merge_requests_enabled,
@@ -112,11 +118,11 @@ module ApplicationSettingsHelper
   end
 
   def default_search_scope_options_for_select
-    options = Search::Scopes.scope_definitions.map do |scope, definition|
+    # Exclude API-only scopes from UI
+    scope_defs = Search::Scopes.scope_definitions(include_api_only: false)
+    sorted_options = scope_defs.to_a.sort_by { |_, definition| definition[:sort] }.map do |scope, definition|
       [definition[:label].call, scope.to_s]
     end
-
-    sorted_options = options.sort_by { |_label, value| Search::Scopes.scope_definitions[value.to_sym][:sort] }
     sorted_options.prepend([_('System default (automatic)'), 'system default'])
   end
 
@@ -270,7 +276,6 @@ module ApplicationSettingsHelper
       :after_sign_up_text,
       :akismet_api_key,
       :akismet_enabled,
-      :allow_immediate_namespaces_deletion,
       :allow_local_requests_from_hooks_and_services,
       :allow_local_requests_from_web_hooks_and_services,
       :allow_local_requests_from_system_hooks,
@@ -292,7 +297,6 @@ module ApplicationSettingsHelper
       :allow_bypass_placeholder_confirmation,
       :ci_delete_pipelines_in_seconds_limit_human_readable,
       :ci_job_live_trace_enabled,
-      :ci_partitions_size_limit,
       :concurrent_github_import_jobs_limit,
       :concurrent_bitbucket_import_jobs_limit,
       :concurrent_bitbucket_server_import_jobs_limit,
@@ -340,6 +344,7 @@ module ApplicationSettingsHelper
       :eks_secret_access_key,
       :email_author_in_body,
       :email_confirmation_setting,
+      :email_otp_enabled,
       :enabled_git_access_protocol,
       :enforce_ci_inbound_job_token_scope_enabled,
       :enforce_email_subaddress_restrictions,
@@ -427,8 +432,10 @@ module ApplicationSettingsHelper
       :kroki_enabled,
       :kroki_url,
       :kroki_formats,
+      :kroki_diagram_proxy_enabled,
       :plantuml_enabled,
       :plantuml_url,
+      :plantuml_diagram_proxy_enabled,
       :diagramsnet_enabled,
       :diagramsnet_url,
       :pages_extra_deployments_default_expiry_seconds,
@@ -532,6 +539,8 @@ module ApplicationSettingsHelper
       :diff_max_patch_bytes,
       :diff_max_files,
       :diff_max_lines,
+      :diff_max_versions,
+      :diff_max_commits,
       :commit_email_hostname,
       :protected_ci_variables,
       :local_markdown_version,
@@ -547,6 +556,7 @@ module ApplicationSettingsHelper
       :push_event_activities_limit,
       :custom_http_clone_url_root,
       :snippet_size_limit,
+      :description_and_note_max_size,
       :email_restrictions_enabled,
       :email_restrictions,
       :issues_create_limit,
@@ -554,6 +564,7 @@ module ApplicationSettingsHelper
       :notes_create_limit_allowlist_raw,
       :members_delete_limit,
       :raw_blob_request_limit,
+      :raw_blob_request_limit_unauthenticated,
       :project_import_limit,
       :project_export_limit,
       :project_download_export_limit,
@@ -605,6 +616,7 @@ module ApplicationSettingsHelper
       :allow_contribution_mapping_to_admins,
       :allow_s3_compatible_storage_for_offline_transfer,
       :allow_runner_registration_token,
+      :valid_runner_registrars,
       :user_defaults_to_private_profile,
       :deactivation_email_additional_text,
       :projects_api_rate_limit_unauthenticated,
@@ -646,10 +658,9 @@ module ApplicationSettingsHelper
       :require_personal_access_token_expiry,
       :observability_backend_ssl_verification_enabled,
       :show_migrate_from_jenkins_banner,
-      :ropc_without_client_credentials,
       :global_search_snippet_titles_enabled,
       :global_search_users_enabled,
-      :global_search_issues_enabled,
+      :global_search_work_items_enabled,
       :global_search_merge_requests_enabled,
       :global_search_block_anonymous_searches_enabled,
       :enable_language_server_restrictions,
@@ -657,6 +668,7 @@ module ApplicationSettingsHelper
       :vscode_extension_marketplace,
       :vscode_extension_marketplace_enabled,
       :vscode_extension_marketplace_extension_host_domain,
+      :vscode_extension_marketplace_single_origin_fallback_enabled,
       :reindexing_minimum_index_size,
       :reindexing_minimum_relative_bloat_size,
       :anonymous_searches_allowed,
@@ -667,13 +679,16 @@ module ApplicationSettingsHelper
       :runner_jobs_request_api_limit,
       :runner_jobs_patch_trace_api_limit,
       :runner_jobs_endpoints_api_limit,
-      :background_operations_max_jobs
+      :background_operations_max_jobs,
+      :enforce_granular_tokens,
+      :granular_tokens_enforced_after
     ].tap do |settings|
       unless Gitlab.com?
         settings << :deactivate_dormant_users
         settings << :deactivate_dormant_users_period
         settings << :nuget_skip_metadata_url_validation
         settings << :helm_max_packages_count
+        settings << :mcp_server_enabled
       end
     end
   end

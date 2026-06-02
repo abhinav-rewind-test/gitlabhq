@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: ログシステム
 description: 包括的なログとモニタリングの機能にアクセスします。
 ---
@@ -17,7 +17,7 @@ GitLabのログシステムは、GitLabインスタンスを分析するため�
 
 ログシステムの機能:
 
-- 構造化されたログファイルで、GitLabコンポーネント全体にわたるすべてのアプリケーションアクティビティーを追跡する。
+- 構造化されたログファイルで、GitLabコンポーネント全体にわたるすべてのアプリケーションアクティビティを追跡する。
 - 標準化された形式で、パフォーマンスメトリクス、エラー、セキュリティイベントを記録する。
 - JSONログの生成を介して、ElasticsearchやSplunkなどのログ分析ツールと連携する。
 - GitLabのさまざまなサービスとコンポーネントに対して、個別のログファイルを保持する。
@@ -25,16 +25,16 @@ GitLabのログシステムは、GitLabインスタンスを分析するため�
 
 システムログファイルは通常、標準的なログファイル形式のプレーンテキストです。
 
-ログシステムは、[監査イベント](../compliance/audit_event_reports.md)に似ています。詳細については、以下も参照してください:
+ログシステムは、[監査イベント](../compliance/audit_event_reports.md)に似ています。詳細については、以下も参照してください。
 
-- [Linuxパッケージインストールにおけるログの生成をカスタマイズする](https://docs.gitlab.com/omnibus/settings/logs.html)
+- [Linuxパッケージインストールにおけるログの生成をカスタマイズする](https://docs.gitlab.com/omnibus/settings/logs/)
 - [JSON形式でGitLabログを解析および分析する](log_parsing.md)
 
 ## ログレベル {#log-levels}
 
 各ログメッセージには、その重要度と詳細度を示すログレベルが割り当てられています。各ロガーには、最小ログレベルが割り当てられています。ロガーは、ログレベルが最小ログレベル以上の場合にのみ、ログメッセージを出力します。
 
-次のログレベルがサポートされています:
+次のログレベルがサポートされています。
 
 | レベル | 名前      |
 |:------|:----------|
@@ -51,13 +51,13 @@ GitLabロガーはデフォルトで`DEBUG`に設定されているため、す�
 
 `GITLAB_LOG_LEVEL`環境変数を使用して、GitLabロガーの最小ログレベルをオーバーライドできます。有効な値は、`0` - `5`の値、またはログレベルの名前です。
 
-例: 
+例:
 
 ```shell
 GITLAB_LOG_LEVEL=info
 ```
 
-サービスによっては、この設定の影響を受けない他のログレベルが設定されています。これらのサービスの一部には、ログレベルをオーバーライドするための独自の環境変数があります。次に例を示します: 
+サービスによっては、この設定の影響を受けない他のログレベルが設定されています。これらのサービスの一部には、ログレベルをオーバーライドするための独自の環境変数があります。例: 
 
 | サービス                   | ログレベル | 環境変数 |
 |:--------------------------|:----------|:---------------------|
@@ -75,18 +75,22 @@ GITLAB_LOG_LEVEL=info
 
 ## ログローテーション {#log-rotation}
 
-特定のサービスのログは、次のいずれかによって管理およびローテーションされる場合があります:
+特定のサービスのログは、次のいずれかによって管理およびローテーションされる場合があります。
 
 - `logrotate`
 - `svlogd`（`runit`のサービスログの生成デーモン）
 - `logrotate`および`svlogd`
 - または、いずれにも管理されない
 
-次の表は、各サービスのログの管理およびローテーションを担当する仕組みに関する情報を示しています。[`svlogd`によって管理される](https://docs.gitlab.com/omnibus/settings/logs.html#runit-logs)ログは、`current`というファイルに書き込まれます。GitLabに組み込まれている`logrotate`サービスは、`runit`によってキャプチャされるログを除く、[すべてのログを管理](https://docs.gitlab.com/omnibus/settings/logs.html#logrotate)します。
+次の表に、含まれているサービスのログ管理およびローテーションを担当するデーモンに関する情報を示します:
+
+- [`svlogd`によって管理される](https://docs.gitlab.com/omnibus/settings/logs/#runit-logs)ログは、`current`というファイルに書き込まれます。アーカイブされたバージョンは、`@<hexadecimal-ID>.s`ファイルに圧縮されます。
+- サービス`logrotate`はGitLabに組み込まれており、[他のすべてのログを管理します](https://docs.gitlab.com/omnibus/settings/logs/#logrotate)。アーカイブされたバージョンは、`<original-name>.<number>.gz`ファイルに圧縮されます。
 
 | ログタイプ                                        | logrotateによる管理    | svlogd/runitによる管理 |
 |:------------------------------------------------|:------------------------|:------------------------|
 | [Alertmanagerのログ](#alertmanager-logs)         | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
+| [Consulログ](#consul-logs)                     | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
 | [crondのログ](#crond-logs)                       | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
 | [Gitaly](#gitaly-logs)                          | {{< icon name="check-circle" >}}はい  | {{< icon name="check-circle" >}}はい  |
 | [LinuxパッケージインストールのGitLab Exporter](#gitlab-exporter-logs) | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
@@ -106,7 +110,10 @@ GITLAB_LOG_LEVEL=info
 | [Redisのログ](#redis-logs)                       | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
 | [レジストリのログ](#registry-logs)                 | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
 | [Sentinelのログ](#sentinel-logs)                 | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
+| [Sidekiqログ](#sidekiq-logs)                   | {{< icon name="dotted-circle" >}}いいえ  | {{< icon name="check-circle" >}}はい  |
 | [Workhorseのログ](#workhorse-logs)               | {{< icon name="check-circle" >}}はい  | {{< icon name="check-circle" >}}はい  |
+
+これらのログを生成するサービスの詳細については、[GitLabアーキテクチャの概要](../../development/architecture.md)を参照してください。
 
 ## Helmインストールでのログへのアクセス {#accessing-logs-on-helm-chart-installations}
 
@@ -114,7 +121,7 @@ Helmでインストールした場合では、GitLabコンポーネントは`std
 
 ### 構造化されたログを持つポッド（サブコンポーネントのフィルタリング） {#pods-with-structured-logs-subcomponent-filtering}
 
-一部のポッドには、特定のログタイプを識別する`subcomponent`フィールドが含まれています:
+一部のポッドには、特定のログタイプを識別する`subcomponent`フィールドが含まれています。
 
 ```shell
 # Webservice pod logs (Rails application)
@@ -130,7 +137,7 @@ kubectl logs -l app=sidekiq | jq 'select(."subcomponent"=="<subcomponent-key>")'
 
 サブコンポーネントを含む構造化されたログを使用しない他のGitLabコンポーネントについては、ログに直接アクセスできます。
 
-利用可能なポッドセレクターを見つけるには、次を実行します:
+利用可能なポッドセレクターを見つけるには、次を実行します。
 
 ```shell
 # List all unique app labels in use
@@ -148,7 +155,7 @@ kubectl logs <pod-name>
 
 ## `production_json.log` {#production_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/production_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/production_json.log`ファイルにあります。
@@ -156,7 +163,7 @@ kubectl logs <pod-name>
 
 このファイルには、GitLabから受信したRailsコントローラーリクエストの構造化ログが含まれています。この構造化には[Lograge](https://github.com/roidrage/lograge/)が使用されています。APIからのリクエストは、`api_json.log`という別のファイルに記録されます。
 
-各行には、ElasticsearchやSplunkなどのサービスにインジェストできるJSON形式のデータが含まれています。例では、読みやすくするために改行を追加しています:
+各行には、ElasticsearchやSplunkなどのサービスにインジェストできるJSON形式のデータが含まれています。例では、読みやすくするために改行を追加しています。
 
 ```json
 {
@@ -188,7 +195,7 @@ kubectl logs <pod-name>
 }
 ```
 
-この例は、特定のイシューに対するGETリクエストです。各行にはパフォーマンスデータが含まれており、時間は秒単位です:
+この例は、特定のイシューに対するGETリクエストです。各行にはパフォーマンスデータが含まれており、時間は秒単位です。
 
 - `duration_s`: リクエストの取得にかかった総時間
 - `queue_duration_s`: GitLab Workhorse内でリクエストがキューに入っていた総時間
@@ -212,11 +219,11 @@ kubectl logs <pod-name>
 - `pid`: ワーカーのLinuxプロセスID（ワーカーの再起動時に変更される）
 - `worker_id`: ワーカーの論理ID（ワーカーの再起動時に変更されない）
 
-HTTPトランスポートを使用したユーザーによるクローンとフェッチのアクティビティーは、ログでは`action: git_upload_pack`として表示されます。
+HTTPトランスポートを使用したユーザーによるクローンとフェッチのアクティビティは、ログでは`action: git_upload_pack`として表示されます。
 
 さらに、ログには、送信元のIPアドレス（`remote_ip`）、ユーザーのID（`user_id`）、ユーザー名（`username`）が含まれています。
 
-一部のエンドポイント（例: `/search`）は、[高度な検索](../../user/search/advanced_search.md)を使用している場合にElasticsearchへのリクエストを行うことがあります。これに関連して、`elasticsearch_calls`と`elasticsearch_call_duration_s`もログに記録され、それぞれの意味は次のとおりです:
+一部のエンドポイント（例: `/search`）は、[高度な検索](../../user/search/advanced_search.md)を使用している場合にElasticsearchへのリクエストを行うことがあります。これに関連して、`elasticsearch_calls`と`elasticsearch_call_duration_s`もログに記録され、それぞれの意味は次のとおりです。
 
 - `elasticsearch_calls`: Elasticsearchへの呼び出しの総数
 - `elasticsearch_duration_s`: Elasticsearchの呼び出しにかかった総時間
@@ -243,11 +250,8 @@ ActionCableの接続イベントとサブスクリプションイベントもこ
 }
 ```
 
-{{< alert type="note" >}}
-
-エラーが発生した場合、`class`、`message`、`backtrace`を含む`exception`フィールドが追加されます。以前のバージョンでは、`exception.class`および`exception.message`ではなく`error`フィールドが含まれていました。次に例を示します: 
-
-{{< /alert >}}
+> [!note]
+> エラーが発生した場合、`exception`フィールドに`class`、`message`、および`backtrace`が含まれます。以前のバージョンでは、`exception.class`および`exception.message`ではなく`error`フィールドが含まれていました。例: 
 
 ```json
 {
@@ -294,12 +298,12 @@ ActionCableの接続イベントとサブスクリプションイベントもこ
 
 ## `production.log` {#productionlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/production.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/production.log`ファイルにあります。
 
-このファイルには、実行されたすべてのリクエストに関する情報が含まれています。リクエストのURLや種類、IPアドレスに加えて、この特定のリクエストを処理するために使用されたコードの部分などを確認できます。また、実行されたすべてのSQLリクエストと、それぞれにかかった時間も確認できます。このタスクは、GitLabのコントリビューターやデベロッパーにとって特に有用です。バグを報告する際は、このログファイルの一部を使用してください。次に例を示します: 
+このファイルには、実行されたすべてのリクエストに関する情報が含まれています。リクエストのURLや種類、IPアドレスに加えて、この特定のリクエストを処理するために使用されたコードの部分などを確認できます。また、実行されたすべてのSQLリクエストと、それぞれにかかった時間も確認できます。このタスクは、GitLabのコントリビューターやデベロッパーにとって特に有用です。バグを報告する際は、このログファイルの一部を使用してください。例: 
 
 ```plaintext
 Started GET "/gitlabhq/yaml_db/tree/master" for 168.111.56.1 at 2015-02-12 19:34:53 +0200
@@ -323,13 +327,13 @@ Completed 200 OK in 166ms (Views: 117.4ms | ActiveRecord: 27.2ms)
 
 ## `api_json.log` {#api_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/api_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/api_json.log`ファイルにあります。
 - Helmインストールでは、Webサービスのポッドの`subcomponent="api_json"`キーの下にあります。
 
-これにより、APIに対して直接行われたリクエストを確認できます。次に例を示します: 
+これにより、APIに対して直接行われたリクエストを確認できます。例: 
 
 ```json
 {
@@ -357,7 +361,7 @@ Completed 200 OK in 166ms (Views: 117.4ms | ActiveRecord: 27.2ms)
 }
 ```
 
-このエントリは、関連付けられたSSHキーが`git fetch`または`git clone`を使用して、対象のプロジェクトをダウンロードできるかどうかを確認するためにアクセスされた内部エンドポイントを示しています。この例では、次の情報を確認できます:
+このエントリは、関連付けられたSSHキーが`git fetch`または`git clone`を使用して、対象のプロジェクトをダウンロードできるかどうかを確認するためにアクセスされた内部エンドポイントを示しています。この例では、次の情報を確認できます。
 
 - `duration`: リクエストの取得にかかった総時間（ミリ秒）
 - `queue_duration`: リクエストがGitLab Workhorse内でキューに入っていた総時間（ミリ秒）
@@ -366,11 +370,8 @@ Completed 200 OK in 166ms (Views: 117.4ms | ActiveRecord: 27.2ms)
 - `params`: クエリ文字列やHTTP本文で渡されたキーと値のペア（パスワードやトークンなどの機密性の高いパラメータは除外）
 - `ua`: リクエスタのユーザーエージェント
 
-{{< alert type="note" >}}
-
-[`Grape Logging`](https://github.com/aserafin/grape_logging) v1.8.4以降、`view_duration_s`は[`duration_s - db_duration_s`](https://github.com/aserafin/grape_logging/blob/v1.8.4/lib/grape_logging/middleware/request_logger.rb#L117-L119)によって算出されます。したがって、`view_duration_s`は、シリアライズプロセスだけでなく、Redisでの読み書きプロセスや外部HTTPなど、複数の異なる要因の影響を受ける可能性があります。
-
-{{< /alert >}}
+> [!note]
+> [`Grape Logging`](https://github.com/aserafin/grape_logging) v1.8.4以降、`view_duration_s`は[`duration_s - db_duration_s`](https://github.com/aserafin/grape_logging/blob/v1.8.4/lib/grape_logging/middleware/request_logger.rb#L117-L119)によって計算されます。したがって、`view_duration_s`は、シリアライズプロセスだけでなく、Redisでの読み書きプロセスや外部HTTPなど、複数の異なる要因の影響を受ける可能性があります。
 
 ## `application.log`（非推奨） {#applicationlog-deprecated}
 
@@ -380,12 +381,12 @@ Completed 200 OK in 166ms (Views: 117.4ms | ActiveRecord: 27.2ms)
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/application.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/application.log`ファイルにあります。
 
-このファイルには、[`application_json.log`](#application_jsonlog)の内容の、より構造化されていないバージョンが含まれています。次に例を示します:
+このファイルには、[`application_json.log`](#application_jsonlog)の内容の、より構造化されていないバージョンが含まれています。次に例を示します。
 
 ```plaintext
 October 06, 2014 11:56: User "Administrator" (admin@example.com) was created
@@ -397,13 +398,13 @@ October 07, 2014 11:25: Project "project133" was removed
 
 ## `application_json.log` {#application_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/application_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/application_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="application_json"`キーの下にあります。
 
-このファイルは、ユーザーの作成やプロジェクトの削除など、インスタンスで発生しているイベントを検出するのに役立ちます。次に例を示します: 
+このファイルは、ユーザーの作成やプロジェクトの削除など、インスタンスで発生しているイベントを検出するのに役立ちます。例: 
 
 ```json
 {
@@ -422,13 +423,13 @@ October 07, 2014 11:25: Project "project133" was removed
 
 ## `integrations_json.log` {#integrations_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/integrations_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/integrations_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="integrations_json"`キーの下にあります。
 
-このファイルには、Jira、Asana、irkerなどのサービスの[インテグレーション](../../user/project/integrations/_index.md)アクティビティーに関する情報が含まれています。JSON形式を使用します。次に例を示します:
+このファイルには、Jira、Asana、irkerなどのサービスの[インテグレーション](../../user/project/integrations/_index.md)アクティビティに関する情報が含まれています。JSON形式を使用します。次に例を示します。
 
 ```json
 {
@@ -460,7 +461,7 @@ October 07, 2014 11:25: Project "project133" was removed
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/kubernetes.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/kubernetes.log`ファイルにあります。
@@ -470,13 +471,13 @@ October 07, 2014 11:25: Project "project133" was removed
 
 ## `git_json.log` {#git_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/git_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/git_json.log`ファイルにあります。
 - Helmインストールでは、Sidekiqのポッドの`subcomponent="git_json"`キーの下にあります。
 
-GitLabはGitリポジトリとやり取りする必要がありますが、ごくまれに問題が発生することがあります。そのような場合、何が起きたのかを正確に把握する必要があります。このログファイルには、GitLabからGitリポジトリへの失敗したリクエストがすべて含まれています。ほとんどの場合、このファイルはデベロッパーにとってのみ有用です。次に例を示します: 
+GitLabはGitリポジトリとやり取りする必要がありますが、ごくまれに問題が発生することがあります。そのような場合、何が起きたのかを正確に把握する必要があります。このログファイルには、GitLabからGitリポジトリへの失敗したリクエストがすべて含まれています。ほとんどの場合、このファイルはデベロッパーにとってのみ有用です。例: 
 
 ```json
 {
@@ -496,19 +497,16 @@ GitLabはGitリポジトリとやり取りする必要がありますが、ご�
 
 {{< /details >}}
 
-{{< alert type="note" >}}
+> [!note]
+> GitLab Freeは少数の異なる監査イベントを追跡します。GitLab Premiumでは、さらに多くの監査イベントを追跡します。
 
-GitLab Freeでは、数種類の監査イベントのみを追跡します。GitLab Premiumでは、さらに多くの監査イベントを追跡します。
-
-{{< /alert >}}
-
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/audit_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/audit_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="audit_json"`キーの下にあります。
 
-このファイルには、グループまたはプロジェクトの設定とメンバーシップ（`target_details`）に対する変更が記録されます。次に例を示します: 
+このファイルには、グループまたはプロジェクトの設定とメンバーシップ（`target_details`）に対する変更が記録されます。例: 
 
 ```json
 {
@@ -539,12 +537,12 @@ Linuxパッケージインストールの場合、一部のSidekiqログは`/var
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/sidekiq/current`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/sidekiq.log`ファイルにあります。
 
-GitLabは、時間がかかる可能性のあるタスクを処理するためにバックグラウンドジョブを使用します。このファイルは、これらのジョブの処理に関するすべての情報が記録されます。次に例を示します: 
+GitLabは、時間がかかる可能性のあるタスクを処理するためにバックグラウンドジョブを使用します。このファイルは、これらのジョブの処理に関するすべての情報が記録されます。例: 
 
 ```json
 {
@@ -571,7 +569,7 @@ GitLabは、時間がかかる可能性のあるタスクを処理するため�
 }
 ```
 
-JSONログの代わりに、Sidekiqのテキストログを生成することも選択できます。次に例を示します: 
+JSONログの代わりに、Sidekiqのテキストログを生成することも選択できます。例: 
 
 ```plaintext
 2023-05-16T16:08:55.272Z pid=82525 tid=23rl INFO: Initializing websocket
@@ -586,13 +584,13 @@ JSONログの代わりに、Sidekiqのテキストログを生成することも
 2023-05-16T16:09:06.066Z pid=82525 tid=7p81 class=UserStatusCleanup::BatchWorker jid=e279aa6409ac33031a314822 INFO: arguments: []
 ```
 
-Linuxパッケージインストールの場合、次の設定オプションを追加します:
+Linuxパッケージインストールの場合、次の設定オプションを追加します。
 
 ```ruby
 sidekiq['log_format'] = 'text'
 ```
 
-自己コンパイルによるインストールの場合、`gitlab.yml`を編集し、Sidekiqの`log_format`設定オプションを指定します:
+自己コンパイルによるインストールの場合、`gitlab.yml`を編集し、Sidekiqの`log_format`設定オプションを指定します。
 
 ```yaml
   ## Sidekiq
@@ -602,7 +600,7 @@ sidekiq['log_format'] = 'text'
 
 ### `sidekiq_client.log` {#sidekiq_clientlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/sidekiq_client.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/sidekiq_client.log`ファイルにあります。
@@ -669,7 +667,7 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## Gitalyのログ {#gitaly-logs}
 
-このファイルは`/var/log/gitlab/gitaly/current`にあり、[runit](https://smarden.org/runit/)によって生成されます。`runit`はLinuxパッケージに同梱されており、その目的の簡単な説明は[Linuxパッケージのドキュメント](https://docs.gitlab.com/omnibus/architecture/#runit)に記載されています。[ログファイルはローテーション](https://smarden.org/runit/svlogd.8)され、UNIXタイムスタンプ形式で名前が変更されたうえで`gzip`圧縮されます（例: `@1584057562.s`）。
+このファイルは`/var/log/gitlab/gitaly/current`にあり、[runit](https://smarden.org/runit/)によって生成されます。`runit`はLinuxパッケージに同梱されており、その目的の簡単な説明は[Linuxパッケージのドキュメント](https://docs.gitlab.com/omnibus/architecture/#runit)に記載されています。
 
 ### `grpc.log` {#grpclog}
 
@@ -683,21 +681,21 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ### `puma_stdout.log` {#puma_stdoutlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/puma/puma_stdout.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/puma_stdout.log`ファイルにあります。
 
 ### `puma_stderr.log` {#puma_stderrlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/puma/puma_stderr.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/puma_stderr.log`ファイルにあります。
 
 ## `repocheck.log` {#repochecklog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/repocheck.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/repocheck.log`ファイルにあります。
@@ -706,17 +704,17 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `importer.log` {#importerlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/importer.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/importer.log`ファイルにあります。
 - Helmインストールでは、Sidekiqのポッドの`subcomponent="importer"`キーの下にあります。
 
-このファイルには、[プロジェクトのインポートと移行](../../user/project/import/_index.md)の進捗状況が記録されます。
+このファイルには、[プロジェクトのインポートと移行](../../user/import/_index.md)の進捗状況が記録されます。
 
 ## `exporter.log` {#exporterlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/exporter.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/exporter.log`ファイルにあります。
@@ -726,13 +724,13 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `features_json.log` {#features_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/features_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/features_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="features_json"`キーの下にあります。
 
-このファイルには、GitLabの開発における機能フラグからの変更イベントが記録されます。次に例を示します: 
+このファイルには、GitLabの開発における機能フラグからの変更イベントが記録されます。例: 
 
 ```json
 {"severity":"INFO","time":"2020-11-24T02:30:59.860Z","correlation_id":null,"key":"cd_auto_rollback","action":"enable","extra.thing":"true"}
@@ -755,13 +753,13 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/ci_resource_groups_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/ci_resource_group_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="ci_resource_groups_json"`キーの下にあります。
 
-このファイルには、[リソースグループ](../../ci/resource_groups/_index.md)の取得に関する情報が含まれています。次に例を示します: 
+このファイルには、[リソースグループ](../../ci/resource_groups/_index.md)の取得に関する情報が含まれています。例: 
 
 ```json
 {"severity":"INFO","time":"2023-02-10T23:02:06.095Z","correlation_id":"01GRYS10C2DZQ9J1G12ZVAD4YD","resource_group_id":1,"processable_id":288,"message":"attempted to assign resource to processable","success":true}
@@ -772,12 +770,12 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `auth.log` {#authlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/auth.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/auth.log`ファイルにあります。
 
-このログには、以下の内容が記録されます:
+このログには、以下の内容が記録されます。
 
 - rawエンドポイントに対する[レート制限](../settings/rate_limits_on_raw_endpoints.md)を超えるリクエスト。
 - [保護されたパス](../settings/protected_paths.md)に対する不正なリクエスト。
@@ -785,13 +783,13 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `auth_json.log` {#auth_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/auth_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/auth_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="auth_json"`キーの下にあります。
 
-このファイルには、`auth.log`のログのJSON形式のバージョンが含まれています。次に例を示します:
+このファイルには、`auth.log`のログのJSON形式のバージョンが含まれています。次に例を示します。
 
 ```json
 {
@@ -808,13 +806,13 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `graphql_json.log` {#graphql_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/graphql_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/graphql_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="graphql_json"`キーの下にあります。
 
-このファイルには、GraphQLクエリが記録されます。次に例を示します: 
+このファイルには、GraphQLクエリが記録されます。例: 
 
 ```json
 {"query_string":"query IntrospectionQuery{__schema {queryType { name },mutationType { name }}}...(etc)","variables":{"a":1,"b":2},"complexity":181,"depth":1,"duration_s":7}
@@ -828,7 +826,7 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/clickhouse.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/clickhouse.log`ファイルにあります。
@@ -838,7 +836,7 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `migrations.log` {#migrationslog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/migrations.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/migrations.log`ファイルにあります。
@@ -847,12 +845,12 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 ## `mail_room_json.log`（デフォルト） {#mail_room_jsonlog-default}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/mailroom/current`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/mail_room_json.log`ファイルにあります。
 
-この構造化されたログファイルには、`mail_room` gemの内部アクティビティーが記録されます。名前とパスは設定可能であることから、名前とパスが上記のものと一致しない場合があります。
+この構造化されたログファイルには、`mail_room` gemの内部アクティビティが記録されます。名前とパスは設定可能であることから、名前とパスが上記のものと一致しない場合があります。
 
 ## `web_hooks.log` {#web_hookslog}
 
@@ -862,13 +860,13 @@ GitLab Shellは、Gitコマンドの実行やGitリポジトリへのSSHアク�
 
 {{< /history >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/web_hooks.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/web_hooks.log`ファイルにあります。
 - Helmインストールでは、Sidekiqのポッドの`subcomponent="web_hooks"`キーの下にあります。
 
-このファイルには、Webhookのバックオフ、無効化、再有効化イベントが記録されます。次に例を示します: 
+このファイルには、Webhookのバックオフ、無効化、再有効化イベントが記録されます。例: 
 
 ```json
 {"severity":"INFO","time":"2020-11-24T02:30:59.860Z","hook_id":12,"action":"backoff","disabled_until":"2020-11-24T04:30:59.860Z","recent_failures":2}
@@ -884,17 +882,17 @@ Linuxパッケージインストールの場合、再設定ログファイルは
 
 ## `sidekiq_exporter.log`と`web_exporter.log` {#sidekiq_exporterlog-and-web_exporterlog}
 
-PrometheusメトリクスとSidekiq Exporterの両方が有効になっている場合、SidekiqはWebサーバーを起動し、定義されたポート（デフォルト: `8082`）をリッスンします。デフォルトでは、Sidekiq Exporterのアクセスログは無効になっていますが、有効にすることも可能です:
+PrometheusメトリクスとSidekiq Exporterの両方が有効になっている場合、SidekiqはWebサーバーを起動し、定義されたポート（デフォルト: `8082`）をリッスンします。デフォルトでは、Sidekiq Exporterのアクセスログは無効になっていますが、有効にすることも可能です。
 
 - Linuxパッケージインストールの場合、`/etc/gitlab/gitlab.rb`で`sidekiq['exporter_log_enabled'] = true`オプションを使用します。
 - 自己コンパイルによるインストールの場合、`gitlab.yml`で`sidekiq_exporter.log_enabled`オプションを使用します。
 
-有効にすると、インストール方法に応じてこのファイルが次の場所に生成されます:
+有効にすると、インストール方法に応じてこのファイルが次の場所に生成されます。
 
 - Linuxパッケージインストール: `/var/log/gitlab/gitlab-rails/sidekiq_exporter.log`。
 - 自己コンパイルによるインストール: `/home/git/gitlab/log/sidekiq_exporter.log`。
 
-PrometheusメトリクスとWeb Exporterの両方が有効になっている場合、PumaはWebサーバーを起動し、定義されたポート（デフォルト: `8083`）をリッスンします。インストール方法に応じてアクセスログが次の場所に生成されます:
+PrometheusメトリクスとWeb Exporterの両方が有効になっている場合、PumaはWebサーバーを起動し、定義されたポート（デフォルト: `8083`）をリッスンします。インストール方法に応じてアクセスログが次の場所に生成されます。
 
 - Linuxパッケージインストール: `/var/log/gitlab/gitlab-rails/web_exporter.log`。
 - 自己コンパイルによるインストール: `/home/git/gitlab/log/web_exporter.log`。
@@ -910,7 +908,7 @@ PrometheusメトリクスとWeb Exporterの両方が有効になっている場�
 
 GitLabの[データベースロードバランシング](../postgresql/database_load_balancing.md)の詳細が含まれています。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/database_load_balancing.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/database_load_balancing.log`ファイルにあります。
@@ -933,7 +931,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 このファイルには、[完全一致コードの検索](../../user/search/exact_code_search.md)に関連する情報が記録されます。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/zoekt.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/zoekt.log`ファイルにあります。
@@ -950,13 +948,13 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 このファイルには、Elasticsearchのインデックス作成や検索中のエラーなど、Elasticsearchインテグレーションに関連する情報が記録されます。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/elasticsearch.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/elasticsearch.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="elasticsearch"`キーの下にあります。
 
-各行には、ElasticsearchやSplunkなどのサービスにインジェストできるJSON形式のデータが含まれています。次の例では、可読性を高めるため改行が追加されています:
+各行には、ElasticsearchやSplunkなどのサービスにインジェストできるJSON形式のデータが含まれています。次の例では、可読性を高めるため改行が追加されています。
 
 ```json
 {
@@ -976,13 +974,13 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 このファイルには、`Gitlab::ErrorTracking`が追跡している例外に関する情報が記録されます。これにより、捕捉された例外を標準的かつ一貫した方法で処理できるようになります。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/exceptions_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/exceptions_json.log`ファイルにあります。
 - Helmインストールでは、SidekiqとWebサービスのポッドの`subcomponent="exceptions_json"`キーの下にあります。
 
-各行には、ElasticsearchにインジェストできるJSONが含まれています。次に例を示します: 
+各行には、ElasticsearchにインジェストできるJSONが含まれています。例: 
 
 ```json
 {
@@ -1003,7 +1001,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 ## `service_measurement.log` {#service_measurementlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/service_measurement.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/service_measurement.log`ファイルにあります。
@@ -1011,7 +1009,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 このファイルには、各サービスの実行に関する測定値を含む、単一の構造化ログのみが記録されています。SQL呼び出しの数、`execution_time`、`gc_stats`、`memory usage`などの測定値が含まれています。
 
-次に例を示します: 
+例: 
 
 ```json
 { "severity":"INFO", "time":"2020-04-22T16:04:50.691Z","correlation_id":"04f1366e-57a1-45b8-88c1-b00b23dc3616","class":"Projects::ImportExport::ExportService","current_user":"John Doe","project_full_path":"group1/test-export","file_path":"/path/to/archive","gc_stats":{"count":{"before":127,"after":127,"diff":0},"heap_allocated_pages":{"before":10369,"after":10369,"diff":0},"heap_sorted_length":{"before":10369,"after":10369,"diff":0},"heap_allocatable_pages":{"before":0,"after":0,"diff":0},"heap_available_slots":{"before":4226409,"after":4226409,"diff":0},"heap_live_slots":{"before":2542709,"after":2641420,"diff":98711},"heap_free_slots":{"before":1683700,"after":1584989,"diff":-98711},"heap_final_slots":{"before":0,"after":0,"diff":0},"heap_marked_slots":{"before":2542704,"after":2542704,"diff":0},"heap_eden_pages":{"before":10369,"after":10369,"diff":0},"heap_tomb_pages":{"before":0,"after":0,"diff":0},"total_allocated_pages":{"before":10369,"after":10369,"diff":0},"total_freed_pages":{"before":0,"after":0,"diff":0},"total_allocated_objects":{"before":24896308,"after":24995019,"diff":98711},"total_freed_objects":{"before":22353599,"after":22353599,"diff":0},"malloc_increase_bytes":{"before":140032,"after":6650240,"diff":6510208},"malloc_increase_bytes_limit":{"before":25804104,"after":25804104,"diff":0},"minor_gc_count":{"before":94,"after":94,"diff":0},"major_gc_count":{"before":33,"after":33,"diff":0},"remembered_wb_unprotected_objects":{"before":34284,"after":34284,"diff":0},"remembered_wb_unprotected_objects_limit":{"before":68568,"after":68568,"diff":0},"old_objects":{"before":2404725,"after":2404725,"diff":0},"old_objects_limit":{"before":4809450,"after":4809450,"diff":0},"oldmalloc_increase_bytes":{"before":140032,"after":6650240,"diff":6510208},"oldmalloc_increase_bytes_limit":{"before":68537556,"after":68537556,"diff":0}},"time_to_finish":0.12298400001600385,"number_of_sql_calls":70,"memory_usage":"0.0 MiB","label":"process_48616"}
@@ -1026,7 +1024,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 {{< /details >}}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/geo.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/geo.log`ファイルにあります。
@@ -1034,7 +1032,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 このファイルには、Geoがリポジトリおよびファイルの同期を試みたときの情報が含まれています。ファイル内の各行には個別のJSONエントリが含まれています。たとえば、ElasticsearchやSplunkにインジェストすることができます。
 
-次に例を示します: 
+例: 
 
 ```json
 {"severity":"INFO","time":"2017-08-06T05:40:16.104Z","message":"Repository update","project_id":1,"source":"repository","resync_repository":true,"resync_wiki":true,"class":"Gitlab::Geo::LogCursor::Daemon","cursor_delay_s":0.038}
@@ -1044,7 +1042,7 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 ## `update_mirror_service_json.log` {#update_mirror_service_jsonlog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/update_mirror_service_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/update_mirror_service_json.log`ファイルにあります。
@@ -1089,21 +1087,18 @@ GitLabの[データベースロードバランシング](../postgresql/database_
 
 {{< /history >}}
 
-{{< alert type="flag" >}}
-
-この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。この機能はテストには利用できますが、本番環境での使用には適していません。
-
-{{< /alert >}}
+> [!flag]
+> この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。この機能はテストには利用できますが、本番環境での使用には適していません。
 
 LLMプロンプトのインプットとレスポンスのアウトプットをログに記録するには、`expanded_ai_logging`機能フラグを有効にします。このフラグは、GitLab.comでのみ使用することを目的としており、GitLab Self-Managedインスタンスでは使用できません。
 
-このフラグはデフォルトでは無効になっており、次の場合にのみ有効にできます:
+このフラグはデフォルトでは無効になっており、次の場合にのみ有効にできます。
 
 - GitLab.comで、GitLab[サポートチケット](https://about.gitlab.com/support/portal/)を通じて同意を提供する。
 
 デフォルトでは、AI機能データの[データ保持ポリシー](../../user/gitlab_duo/data_usage.md#data-retention)をサポートするため、LLMのプロンプト入力と応答出力はログに含まれません。
 
-ログファイルは次の場所にあります:
+ログファイルは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/llm.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/llm.log`ファイルにあります。
@@ -1126,7 +1121,7 @@ LLMプロンプトのインプットとレスポンスのアウトプットを�
 
 `epic_work_item_sync.log`ファイルには、作業アイテムとしてエピックを同期および移行する際の情報が記録されます。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/epic_work_item_sync.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/epic_work_item_sync.log`ファイルにあります。
@@ -1147,9 +1142,9 @@ LLMプロンプトのインプットとレスポンスのアウトプットを�
 
 {{< /history >}}
 
-`secret_push_protection.log`ファイルには、[シークレットプッシュ保護](../../user/application_security/secret_detection/secret_push_protection/_index.md)機能に関連する情報が記録されます。
+`secret_push_protection.log`ファイルには、[シークレットプッシュ保護](../../user/application_security/secret_detection/secret_push_protection/_index.md)機能に関連する情報がログに記録されます。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/secret_push_protection.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/secret_push_protection.log`ファイルにあります。
@@ -1174,25 +1169,48 @@ LLMプロンプトのインプットとレスポンスのアウトプットを�
 
 GitLabは、`ActiveContext`コードの埋め込みをサポートしています。このパイプラインは、プロジェクトコードファイルの埋め込み生成を処理します。詳細については、[アーキテクチャ設計](https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/codebase_as_chat_context/code_embeddings/)を参照してください。
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/active_context.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/active_context.log`ファイルにあります。
 - Helmインストールでは、Sidekiqのポッドの`subcomponent="activecontext"`キーの下にあります。
 
+## `ai_catalog.log` {#ai_cataloglog}
+
+{{< details >}}
+
+- プラン: Premium、Ultimate
+- 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- GitLab 18.8で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/576627)されました。
+
+{{< /history >}}
+
+`ai_catalog.log`ファイルには、[AIカタログ](../../user/duo_agent_platform/ai_catalog.md)に関連する情報がログに記録され、AIカタログのフローとエージェントの実行時も含まれます。
+
+このログは次の場所にあります。
+
+- Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/ai_catalog.log`ファイルにあります。
+- セルフコンパイルインストールでは、`/home/git/gitlab/log/ai_catalog.log`ファイルにあります。
+- Helmインストールでは、Sidekiqのポッドの`subcomponent="ai_catalog"`キーの下にあります。
+
 ## `user_experience_slis.log` {#user_experience_slislog}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/user_experience_slis.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/user_experience_slis.log`ファイルにあります。
 - Helmインストールでは、Webサービスのポッドの`subcomponent="user_experience_slis"`キーの下にあります。
 
-これには、ユーザーエクスペリエンスサービスレベル指標とそのメトリクスに一致するJSON構造化ログが含まれています。
+これは、UX SLIとそのメトリクスに一致するJSON構造化されたログを含みます。
 
-各行には、ElasticsearchやSplunkなどのサービスでインジェストできるJSON形式のデータが含まれています。
+各行には、ElasticsearchなどのサービスでインジェストできるJSONが含まれています。
 
-例: 
+例:
 
 ```json
 {
@@ -1230,7 +1248,7 @@ GitLabは、`ActiveContext`コードの埋め込みをサポートしていま�
 }
 ```
 
-利用可能なフィールドは、[ユーザーエクスペリエンスサービスレベル指標の設計ドキュメント](https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/user_experience_slis/#sdk-requirements)に記載されています。
+利用可能なフィールドは、[UX SLIの設計ドキュメント](https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/user_experience_slis/#sdk-requirements)に記載されています。
 
 ## レジストリのログ {#registry-logs}
 
@@ -1238,7 +1256,7 @@ Linuxパッケージインストールの場合、コンテナレジストリの
 
 ## NGINXのログ {#nginx-logs}
 
-Linuxパッケージインストールの場合、NGINXのログは次の場所にあります:
+Linuxパッケージインストールの場合、NGINXのログは次の場所にあります。
 
 - `/var/log/gitlab/nginx/gitlab_access.log`: GitLabへのリクエストのログ
 - `/var/log/gitlab/nginx/gitlab_error.log`: GitLabに関するNGINXエラーのログ
@@ -1249,7 +1267,7 @@ Linuxパッケージインストールの場合、NGINXのログは次の場所�
 - `/var/log/gitlab/nginx/gitlab_mattermost_access.log`: Mattermostへのリクエストのログ
 - `/var/log/gitlab/nginx/gitlab_mattermost_error.log`: Mattermostに関するNGINXエラーのログ
 
-以下は、デフォルトのGitLab NGINXアクセスログの形式です:
+以下は、デフォルトのGitLab NGINXアクセスログの形式です。
 
 ```plaintext
 '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"'
@@ -1261,7 +1279,7 @@ Linuxパッケージインストールの場合、NGINXのログは次の場所�
 
 Linuxパッケージインストールの場合、Pagesのログは`/var/log/gitlab/gitlab-pages/current`にあります。
 
-次に例を示します: 
+例: 
 
 ```json
 {
@@ -1288,21 +1306,18 @@ Linuxパッケージインストールの場合、Pagesのログは`/var/log/git
 
 ## Product Usage Dataのログ {#product-usage-data-log}
 
-{{< alert type="note" >}}
+> [!note]
+> rawログを機能使用状況の分析に使用することはお勧めしません。データ品質の正確性はまだ認定されていません。
+>
+> イベントのリストは、新しい機能や既存の機能の変更に基づいて、各バージョンで変更される可能性があります。認定製品内アドプションレポートは、データが分析できる状態になった後で利用可能になります。
 
-データ品質が正確であることがまだ証明されていないことから、機能の使用状況の分析にはrawログの使用をおすすめしません。
-
-イベントのリストは、新しい機能や既存の機能の変更に基づいて、各バージョンで変更される可能性があります。認定製品内アドプションレポートは、データが分析できる状態になった後で利用可能になります。
-
-{{< /alert >}}
-
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/product_usage_data.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/product_usage_data.log`ファイルにあります。
 - Helmインストールでは、Webサービスのポッドの`subcomponent="product_usage_data"`キーの下にあります。
 
-これには、Snowplowで追跡される製品使用状況イベントのJSON形式のログが含まれています。ファイル内の各行には個別のJSONエントリが含まれており、ElasticsearchやSplunkなどのサービスがインジェストできます。例では、読みやすくするために改行を追加しています:
+これには、Snowplowで追跡される製品使用状況イベントのJSON形式のログが含まれています。ファイル内の各行には個別のJSONエントリが含まれており、ElasticsearchやSplunkなどのサービスがインジェストできます。例では、読みやすくするために改行を追加しています。
 
 ```json
 {
@@ -1322,7 +1337,7 @@ Linuxパッケージインストールの場合、Pagesのログは`/var/log/git
 }
 ```
 
-これらのログを調べるには、[Rakeタスク](../raketasks/_index.md) `product_usage_data:format`を使用します。このタスクは、読みやすくするためにJSON出力の形式を設定し、base64エンコードされたコンテキストデータをデコードします:
+これらのログを調べるには、[Rakeタスク](../raketasks/_index.md) `product_usage_data:format`を使用します。このタスクは、読みやすくするためにJSON出力の形式を設定し、base64エンコードされたコンテキストデータをデコードします。
 
 ```shell
 gitlab-rake "product_usage_data:format[log/product_usage_data.log]"
@@ -1340,7 +1355,7 @@ Linuxパッケージによるインストールの場合、Let's Encryptの[自�
 
 ## Mattermostのログ {#mattermost-logs}
 
-Linuxパッケージによるインストールの場合、Mattermostのログは次の場所にあります:
+Linuxパッケージによるインストールの場合、Mattermostのログは次の場所にあります。
 
 - `/var/log/gitlab/mattermost/mattermost.log`
 - `/var/log/gitlab/mattermost/current`
@@ -1379,6 +1394,10 @@ Linuxパッケージによるインストールの場合、Sentinelのログは`
 
 Linuxパッケージによるインストールの場合、Alertmanagerのログは`/var/log/gitlab/alertmanager/current`にあります。
 
+## Consulログ {#consul-logs}
+
+Linuxパッケージインストールの場合、Consulログは`/var/log/gitlab/consul/current`にあります。
+
 <!-- vale gitlab_base.Spelling = NO -->
 
 ## crondのログ {#crond-logs}
@@ -1399,11 +1418,11 @@ Linuxパッケージによるインストールの場合、`logrotate`のログ�
 
 Linuxパッケージによるインストールの場合、GitLab Monitorのログは`/var/log/gitlab/gitlab-monitor/`にあります。
 
-## GitLab Exporterのログ {#gitlab-exporter-logs}
+## GitLab Exporterログ {#gitlab-exporter-logs}
 
 Linuxパッケージによるインストールの場合、GitLab Exporterのログは`/var/log/gitlab/gitlab-exporter/current`にあります。
 
-## Kubernetes向けGitLabエージェントサーバーのログ {#gitlab-agent-server-for-kubernetes-logs}
+## Kubernetes向けGitLabエージェントサーバーログ {#gitlab-agent-server-for-kubernetes-logs}
 
 Linuxパッケージによるインストール場合、Kubernetes向けGitLabエージェントサーバーのログは`/var/log/gitlab/gitlab-kas/current`にあります。
 
@@ -1423,13 +1442,13 @@ Helm Chartでインストールした場合、バックアップのログはTool
 
 ## パフォーマンスバーの統計 {#performance-bar-stats}
 
-このログは次の場所にあります:
+このログは次の場所にあります。
 
 - Linuxパッケージインストールでは、`/var/log/gitlab/gitlab-rails/performance_bar_json.log`ファイルにあります。
 - セルフコンパイルインストールでは、`/home/git/gitlab/log/performance_bar_json.log`ファイルにあります。
 - Helmインストールでは、Sidekiqのポッドの`subcomponent="performance_bar_json"`キーの下にあります。
 
-このファイルには、パフォーマンスバーの統計（現在はSQLクエリの所要時間のみ）が記録されます。次に例を示します: 
+このファイルには、パフォーマンスバーの統計（現在はSQLクエリの所要時間のみ）が記録されます。例: 
 
 ```json
 {"severity":"INFO","time":"2020-12-04T09:29:44.592Z","correlation_id":"33680b1490ccd35981b03639c406a697","filename":"app/models/ci/pipeline.rb","method_path":"app/models/ci/pipeline.rb:each_with_object","request_id":"rYHomD0VJS4","duration_ms":26.889,"count":2,"query_type": "active-record"}
@@ -1441,15 +1460,12 @@ Helm Chartでインストールした場合、バックアップのログはTool
 
 前述のいずれかのコンポーネントに限定されない問題を[トラブルシューティング](../troubleshooting/_index.md)する場合、GitLabインスタンスから複数のログや統計を同時に収集すると役立ちます。
 
-{{< alert type="note" >}}
-
-GitLabサポートはこれらの情報の提供を要求することが多く、そのために必要なツールを用意しています。
-
-{{< /alert >}}
+> [!note]
+> GitLabサポートはこれらのいずれかを要求することが多く、必要なツールを保守しています。
 
 ### メインログを短時間のみ追跡する {#briefly-tail-the-main-logs}
 
-バグやエラーを容易に再現できる場合は、問題を数回再現しながら、GitLabのメインログを[ファイルに](../troubleshooting/linux_cheat_sheet.md#files-and-directories)保存します:
+バグやエラーを容易に再現できる場合は、問題を数回再現しながら、GitLabのメインログを[ファイルに](../troubleshooting/linux_cheat_sheet.md#files-and-directories)保存します。
 
 ```shell
 sudo gitlab-ctl tail | tee /tmp/<case-ID-and-keywords>.log

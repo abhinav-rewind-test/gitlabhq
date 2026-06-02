@@ -38,18 +38,11 @@ RSpec.describe Banzai::Filter::MermaidFilter, feature_category: :markdown do
     end
 
     before do
-      # TODO: refactor this (and similar usages elsewhere) so we don't have to
-      # manually recapitulate the work of AssetProxy.initialize_settings.
-      # https://gitlab.com/gitlab-org/gitlab/-/issues/582610
-      allowlist = %W[gitlab.com *.mydomain.com #{Gitlab.config.gitlab.host}]
-      stub_asset_proxy_setting(
-        enabled: true,
-        secret_key: 'shared-secret',
+      stub_asset_proxy_enabled(
         url: 'https://assets.example.com',
-        allowlist: allowlist)
-      stub_asset_proxy_setting(
-        domain_regexp: Banzai::Filter::AssetProxyFilter.host_regexp_for_allowlist(allowlist),
-        csp_directives: Banzai::Filter::AssetProxyFilter.csp_for_allowlist(allowlist))
+        secret_key: 'shared-secret',
+        allowlist: %W[gitlab.com *.mydomain.com #{Gitlab.config.gitlab.host}]
+      )
     end
 
     it 'prepares asset proxy URLs for any URLs found in the source' do
@@ -60,6 +53,26 @@ RSpec.describe Banzai::Filter::MermaidFilter, feature_category: :markdown do
       proxied_urls = Gitlab::Json.parse(result['data-proxied-urls'])
       expect(proxied_urls).to have_key(gotcha_url)
       expect(proxied_urls[gotcha_url]).to match(%r{\Ahttps://assets\.example\.com/\w+/\w+\z})
+    end
+
+    context 'when mermaid source contains gid: scheme URIs' do
+      # The globalid gem registers "gid" as a URI scheme. When URI.parse is called
+      # with a malformed gid: URI like "gid:foo" (no hierarchical path), URI::GID
+      # is instantiated but its #set_model_components method calls path.split on
+      # a nil path, raising NoMethodError instead of URI::Error.
+      let(:source) do
+        <<~MARKDOWN
+          ```mermaid
+          graph TD
+            A --gid:relation--> B
+            classDef gid:style fill:#f9f
+          ```
+        MARKDOWN
+      end
+
+      it 'does not raise an error when parsing malformed gid: URIs' do
+        expect { pipeline.call(source) }.not_to raise_error
+      end
     end
   end
 

@@ -286,68 +286,6 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
       end
     end
 
-    describe '.by_base_type_ordered_by_name' do
-      it 'orders results by name ascending (case-insensitive)' do
-        result = described_class.by_base_type_ordered_by_name([:issue, :task, :incident, :ticket])
-        names = result.map(&:name)
-
-        # Expected order: Incident, Issue, Task, Ticket
-        expect(names).to eq(%w[Incident Issue Task Ticket])
-      end
-
-      it 'returns empty array when no base_types match' do
-        result = described_class.by_base_type_ordered_by_name([:nonexistent, :fake])
-
-        expect(result).to be_empty
-      end
-
-      it 'returns empty array when given empty array' do
-        result = described_class.by_base_type_ordered_by_name([])
-
-        expect(result).to be_empty
-      end
-
-      it 'handles single base_type' do
-        result = described_class.by_base_type_ordered_by_name([:issue])
-
-        expect(result.size).to eq(1)
-        expect(result.first.base_type).to eq('issue')
-      end
-
-      it 'accepts string base_types' do
-        result = described_class.by_base_type_ordered_by_name(%w[issue task])
-
-        expect(result.map(&:base_type)).to match_array(%w[issue task])
-      end
-
-      it 'accepts mixed symbols and strings' do
-        result = described_class.by_base_type_ordered_by_name([:issue, 'task'])
-
-        expect(result.map(&:base_type)).to match_array(%w[issue task])
-      end
-
-      it 'sorts case-insensitively' do
-        all_types = [:issue, :incident, :task, :ticket]
-        result = described_class.by_base_type_ordered_by_name(all_types)
-        names = result.map(&:name)
-
-        expect(names).to eq(names.sort_by(&:downcase))
-      end
-
-      it 'ignores duplicate base_types' do
-        result = described_class.by_base_type_ordered_by_name([:issue, :issue, :task, :task])
-
-        expect(result.map(&:base_type)).to match_array(%w[issue task])
-      end
-
-      it 'maintains order when base_types are provided in different order' do
-        result1 = described_class.by_base_type_ordered_by_name([:task, :incident, :issue])
-        result2 = described_class.by_base_type_ordered_by_name([:issue, :incident, :task])
-
-        expect(result1.map(&:name)).to eq(result2.map(&:name))
-      end
-    end
-
     describe '.with_widget_definition' do
       let(:assignees_widget_type) { :assignees }
       let(:description_widget_type) { :description }
@@ -426,6 +364,22 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
     describe '#to_gid' do
       it 'returns the same result as to_global_id' do
         expect(issue_type.to_gid).to eq(issue_type.to_global_id)
+      end
+    end
+  end
+
+  describe '#persistable_id' do
+    it 'returns the type id' do
+      type = described_class.find(1)
+
+      expect(type.persistable_id).to eq(type.id)
+    end
+  end
+
+  describe '#system_defined_type_id' do
+    it 'returns the type id for every fixed item' do
+      described_class.all.each do |type| # rubocop:disable Rails/FindEach -- not an ActiveRecord relation; FixedItemsModel
+        expect(type.system_defined_type_id).to eq(type.id)
       end
     end
   end
@@ -800,10 +754,24 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
       expect(result.map(&:base_type)).to include('incident')
     end
 
-    it 'includes ticket type for issue conversion' do
+    it 'excludes ticket type for issue conversion' do
       result = issue_type.supported_conversion_types(project, user)
 
-      expect(result.map(&:base_type)).to include('ticket')
+      expect(result.map(&:base_type)).not_to include('ticket')
+    end
+
+    context 'when a candidate system-defined type is archived' do
+      before do
+        allow(::WorkItems::TypesFramework::SystemDefined::Definitions::Task)
+          .to receive(:archived?).and_return(true)
+      end
+
+      it 'excludes the archived system-defined type from the conversion list' do
+        result = issue_type.supported_conversion_types(project, user)
+
+        expect(result.map(&:base_type)).to include('incident')
+        expect(result.map(&:base_type)).not_to include('task')
+      end
     end
   end
 
@@ -1089,30 +1057,6 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
       end
     end
 
-    describe '#filterable?' do
-      context 'when configuration_class responds to filterable?' do
-        it 'returns true when configuration_class.filterable? is true' do
-          allow(type.configuration_class).to receive(:filterable?).and_return(true)
-
-          expect(type.filterable?).to be true
-        end
-
-        it 'returns false when configuration_class.filterable?is explicitly false' do
-          allow(type.configuration_class).to receive(:filterable?).and_return(false)
-
-          expect(type.filterable?).to be false
-        end
-      end
-
-      context 'when configuration_class does not respond to filterable?' do
-        it 'returns false as default when value is nil' do
-          allow(type.configuration_class).to receive(:try).with(:filterable?).and_return(nil)
-
-          expect(type.filterable?).to be false
-        end
-      end
-    end
-
     describe '#only_for_group?' do
       context 'when configuration_class responds to only_for_group?' do
         it 'returns true when configuration_class.only_for_group? is true' do
@@ -1142,6 +1086,99 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
         expect(type.enabled?).to be true
       end
     end
+  end
+
+  describe 'resolved type configuration' do
+    it_behaves_like 'work item type configuration', :creatable?, {
+      issue: true,
+      task: true,
+      incident: true,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :configurable?, {
+      issue: true,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :visible_in_settings?, {
+      issue: true,
+      task: true,
+      incident: true,
+      ticket: true
+    }
+
+    it_behaves_like 'work item type configuration', :show_project_selector?, {
+      issue: true,
+      task: true,
+      incident: true,
+      ticket: true
+    }
+
+    it_behaves_like 'work item type configuration', :can_be_conversion_target?, {
+      issue: true,
+      task: true,
+      incident: true,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :archived?, {
+      issue: false,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :only_for_group?, {
+      issue: false,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :supports_roadmap_view?, {
+      issue: false,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :use_legacy_view?, {
+      issue: false,
+      task: false,
+      incident: true,
+      ticket: true
+    }
+
+    it_behaves_like 'work item type configuration', :supports_move_action?, {
+      issue: true,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :can_promote_to_objective?, {
+      issue: false,
+      task: false,
+      incident: false,
+      ticket: false
+    }
+
+    it_behaves_like 'work item type configuration', :service_desk?, {
+      issue: false,
+      task: false,
+      incident: false,
+      ticket: true
+    }
+
+    it_behaves_like 'work item type configuration', :incident_management?, {
+      issue: false,
+      task: false,
+      incident: true,
+      ticket: false
+    }
   end
 
   describe '.base_types' do
@@ -1326,6 +1363,36 @@ RSpec.describe WorkItems::TypesFramework::SystemDefined::Type, feature_category:
 
         expect(type.licensed?).to be false
       end
+    end
+  end
+
+  describe '#filterable_list_view?' do
+    let(:issue_type) { build(:work_item_system_defined_type, :issue) }
+    let(:task_type) { build(:work_item_system_defined_type, :task) }
+    let(:incident_type) { build(:work_item_system_defined_type, :incident) }
+    let(:ticket_type) { build(:work_item_system_defined_type, :ticket) }
+
+    it 'returns true for all CE types', :aggregate_failures do
+      [issue_type, task_type, incident_type, ticket_type].each do |type|
+        expect(type.filterable_list_view?).to be true
+      end
+    end
+  end
+
+  describe '#filterable_board_view?' do
+    let(:issue_type) { build(:work_item_system_defined_type, :issue) }
+    let(:incident_type) { build(:work_item_system_defined_type, :incident) }
+    let(:ticket_type) { build(:work_item_system_defined_type, :ticket) }
+    let(:task_type) { build(:work_item_system_defined_type, :task) }
+
+    it 'returns true for issue, incident and ticket types', :aggregate_failures do
+      [issue_type, incident_type, ticket_type].each do |type|
+        expect(type.filterable_board_view?).to be true
+      end
+    end
+
+    it 'returns false for tasktypes' do
+      expect(task_type.filterable_board_view?).to be false
     end
   end
 end

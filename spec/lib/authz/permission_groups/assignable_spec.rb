@@ -3,13 +3,15 @@
 require 'spec_helper'
 
 RSpec.describe Authz::PermissionGroups::Assignable, feature_category: :permissions do
+  let(:boundaries) { %w[project] }
   let(:definition) do
     {
       name: 'action_resource',
       description: 'Grants action on resource',
       feature_category: 'feature_category_name',
       # include read_resource twice to ensure uniqueness is handled
-      permissions: %w[read_resource write_resource read_resource]
+      permissions: %w[read_resource write_resource read_resource],
+      boundaries: boundaries
     }
   end
 
@@ -45,10 +47,115 @@ RSpec.describe Authz::PermissionGroups::Assignable, feature_category: :permissio
       end
     end
 
+    describe '.available_definitions' do
+      it 'returns all definitions when none are deprecated' do
+        expect(described_class.available_definitions).to match_array([assignable, another_assignable])
+      end
+
+      context 'when a definition is deprecated' do
+        let(:deprecated_assignable) do
+          described_class.new({
+            name: 'deprecated_resource',
+            description: 'A deprecated permission',
+            permissions: %w[deprecated_action],
+            deprecated: true
+          }, 'path/to/deprecated_resource/action.yml')
+        end
+
+        before do
+          allow(::Authz::PermissionGroups::Assignable).to receive(:all).and_return({
+            assignable.name => assignable,
+            another_assignable.name => another_assignable,
+            deprecated_assignable.name => deprecated_assignable
+          })
+        end
+
+        it 'excludes deprecated definitions' do
+          expect(described_class.available_definitions).to match_array([assignable, another_assignable])
+        end
+
+        it 'still includes deprecated definitions in .definitions' do
+          expect(described_class.definitions).to include(deprecated_assignable)
+        end
+      end
+    end
+
+    describe '.available_permissions' do
+      it 'returns all unique permissions across all assignables' do
+        unique_permissions = %i[read_resource write_resource delete_other_resource write_other_resource]
+        expect(described_class.available_permissions).to match_array(unique_permissions)
+      end
+
+      context 'when a definition is deprecated' do
+        let(:deprecated_assignable) do
+          described_class.new({
+            name: 'deprecated_resource',
+            description: 'A deprecated permission',
+            permissions: %w[deprecated_action],
+            deprecated: true
+          }, 'path/to/deprecated_resource/action.yml')
+        end
+
+        before do
+          allow(::Authz::PermissionGroups::Assignable).to receive(:all).and_return({
+            assignable.name => assignable,
+            another_assignable.name => another_assignable,
+            deprecated_assignable.name => deprecated_assignable
+          })
+        end
+
+        it 'excludes permissions from deprecated definitions' do
+          expect(described_class.available_permissions).not_to include(:deprecated_action)
+        end
+      end
+    end
+
     describe '.for_permission' do
       it 'returns assignables that include the given permission' do
         expect(described_class.for_permission(:delete_other_resource))
           .to match_array([another_assignable])
+      end
+
+      context 'with a string permission name' do
+        it 'returns assignables that include the given permission' do
+          expect(described_class.for_permission('delete_other_resource'))
+            .to match_array([another_assignable])
+        end
+      end
+    end
+
+    describe '.available_for_permission' do
+      it 'returns non-deprecated assignables that include the given permission' do
+        expect(described_class.available_for_permission(:delete_other_resource))
+          .to match_array([another_assignable])
+      end
+
+      context 'when the matching assignable is deprecated' do
+        let(:deprecated_assignable) do
+          described_class.new({
+            name: 'deprecated_resource',
+            description: 'A deprecated permission',
+            permissions: %w[deprecated_action],
+            deprecated: true
+          }, 'path/to/deprecated_resource/action.yml')
+        end
+
+        before do
+          allow(::Authz::PermissionGroups::Assignable).to receive(:all).and_return({
+            assignable.name => assignable,
+            another_assignable.name => another_assignable,
+            deprecated_assignable.name => deprecated_assignable
+          })
+        end
+
+        it 'excludes deprecated assignables' do
+          expect(described_class.available_for_permission(:deprecated_action)).to be_empty
+        end
+
+        it 'still returns deprecated assignables via .for_permission' do
+          expect(described_class.for_permission(:deprecated_action))
+            .to match_array([deprecated_assignable])
+        end
       end
     end
   end
@@ -57,6 +164,99 @@ RSpec.describe Authz::PermissionGroups::Assignable, feature_category: :permissio
     describe '#permissions' do
       it 'returns unique permissions as symbols' do
         expect(assignable.permissions).to match_array([:read_resource, :write_resource])
+      end
+
+      context 'when permissions key is missing from definition' do
+        let(:definition) { { name: 'action_resource' } }
+
+        it 'returns an empty array' do
+          expect(assignable.permissions).to eq([])
+        end
+      end
+    end
+
+    describe '#deprecated?' do
+      subject(:deprecated) { assignable.deprecated? }
+
+      context 'when deprecated is not set' do
+        it { is_expected.to be(false) }
+      end
+
+      context 'when deprecated is true' do
+        let(:definition) { super().merge(deprecated: true) }
+
+        it { is_expected.to be(true) }
+      end
+
+      context 'when deprecated is false' do
+        let(:definition) { super().merge(deprecated: false) }
+
+        it { is_expected.to be(false) }
+      end
+    end
+
+    describe '#available_for' do
+      subject { assignable.available_for }
+
+      context 'when available_for is not set' do
+        it { is_expected.to eq([]) }
+      end
+
+      context 'when available_for is a list of strings' do
+        let(:definition) { super().merge(available_for: %w[granular_access_token role]) }
+
+        it { is_expected.to eq([:granular_access_token, :role]) }
+      end
+
+      context 'when available_for is a single value' do
+        let(:definition) { super().merge(available_for: 'granular_access_token') }
+
+        it { is_expected.to eq([:granular_access_token]) }
+      end
+    end
+
+    describe '#available_for?' do
+      subject { assignable.available_for?(consumer) }
+
+      context 'when available_for is not set' do
+        let(:consumer) { :granular_access_token }
+
+        it { is_expected.to be(false) }
+      end
+
+      context 'when available_for includes the consumer' do
+        let(:definition) { super().merge(available_for: %w[granular_access_token role]) }
+
+        context 'with a symbol' do
+          let(:consumer) { :granular_access_token }
+
+          it { is_expected.to be(true) }
+        end
+
+        context 'with a string' do
+          let(:consumer) { 'granular_access_token' }
+
+          it { is_expected.to be(true) }
+        end
+      end
+
+      context 'when available_for does not include the consumer' do
+        let(:definition) { super().merge(available_for: %w[role]) }
+        let(:consumer) { :granular_access_token }
+
+        it { is_expected.to be(false) }
+      end
+    end
+
+    describe '#boundaries' do
+      subject { assignable.boundaries }
+
+      it { is_expected.to eq(boundaries) }
+
+      context 'when boundaries are not defined' do
+        let(:boundaries) { nil }
+
+        it { is_expected.to eq([]) }
       end
     end
 
@@ -122,6 +322,95 @@ RSpec.describe Authz::PermissionGroups::Assignable, feature_category: :permissio
 
         it 'returns the name from category metadata' do
           is_expected.to eq('Resource Category Display Name')
+        end
+      end
+    end
+
+    describe '#resource_name' do
+      let(:file_path) { Rails.root.join(described_class::BASE_PATH, 'ci_cd/pipeline/action.yml').to_s }
+
+      context 'when resource has a metadata file with a name' do
+        let(:resource_def) do
+          Authz::PermissionGroups::Resource.new({ name: 'SSH Key' }, 'path/ssh_key/.metadata.yml')
+        end
+
+        before do
+          allow(Authz::PermissionGroups::Resource).to receive(:get)
+            .with('ci_cd/pipeline')
+            .and_return(resource_def)
+        end
+
+        it 'returns the name from the metadata' do
+          expect(assignable.resource_name).to eq('SSH Key')
+        end
+      end
+
+      context 'when resource has no metadata file' do
+        before do
+          allow(Authz::PermissionGroups::Resource).to receive(:get)
+            .with('ci_cd/pipeline')
+            .and_call_original
+        end
+
+        it 'returns the titlecased directory name' do
+          expect(assignable.resource_name).to eq('Pipeline')
+        end
+      end
+    end
+
+    describe '#resource_description' do
+      let(:file_path) { Rails.root.join(described_class::BASE_PATH, 'ci_cd/pipeline/action.yml').to_s }
+      let(:resource_dir) { File.dirname(file_path).sub('action.yml', '') }
+      let(:metadata_path) { File.join(File.dirname(file_path), '..', 'pipeline', '.metadata.yml') }
+
+      before do
+        allow(Authz::PermissionGroups::Resource).to receive(:get)
+          .with('ci_cd/pipeline')
+          .and_call_original
+      end
+
+      context 'when resource has no metadata file' do
+        it 'generates a description from action files' do
+          expect(assignable.resource_description).to match(/Grants the ability to .+ pipelines\./)
+        end
+      end
+
+      context 'when resource has a description with <actions> interpolation' do
+        let(:resource_def) do
+          Authz::PermissionGroups::Resource.new(
+            { description: 'Grants the ability to <actions> CI pipelines.' },
+            Rails.root.join(described_class::BASE_PATH, 'ci_cd/pipeline/.metadata.yml').to_s
+          )
+        end
+
+        before do
+          allow(Authz::PermissionGroups::Resource).to receive(:get)
+            .with('ci_cd/pipeline')
+            .and_return(resource_def)
+        end
+
+        it 'interpolates the action list into the description' do
+          expect(assignable.resource_description).to match(/Grants the ability to .+ CI pipelines\./)
+          expect(assignable.resource_description).not_to include('<actions>')
+        end
+      end
+
+      context 'when resource has a fully custom description' do
+        let(:resource_def) do
+          Authz::PermissionGroups::Resource.new(
+            { description: 'Grants the ability to delete all artifacts from a project.' },
+            Rails.root.join(described_class::BASE_PATH, 'ci_cd/pipeline/.metadata.yml').to_s
+          )
+        end
+
+        before do
+          allow(Authz::PermissionGroups::Resource).to receive(:get)
+            .with('ci_cd/pipeline')
+            .and_return(resource_def)
+        end
+
+        it 'returns the custom description as-is' do
+          expect(assignable.resource_description).to eq('Grants the ability to delete all artifacts from a project.')
         end
       end
     end

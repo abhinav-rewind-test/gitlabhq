@@ -36,6 +36,9 @@ module Integrations
 
     AUTH_TYPE_BASIC = 0
     AUTH_TYPE_PAT = 1
+    AUTH_TYPE_SERVICE_ACCOUNT = 2
+
+    AUTH_TYPES = [AUTH_TYPE_BASIC, AUTH_TYPE_PAT, AUTH_TYPE_SERVICE_ACCOUNT].freeze
 
     SNOWPLOW_EVENT_CATEGORY = name
 
@@ -43,14 +46,17 @@ module Integrations
 
     validates :url, public_url: true, presence: true, if: :activated?
     validates :api_url, public_url: true, allow_blank: true
-    validates :username, presence: true, if: ->(object) {
-                                               object.activated? && !object.personal_access_token_authorization?
-                                             }
+    validates :api_url,
+      public_url: true,
+      presence: true,
+      if: ->(object) { object.activated? && object.service_account_authorization? }
+    validates :username, presence: true, if: :basic_authorization_activated?
     validates :password, presence: true, if: :activated?
-    validates :jira_auth_type, presence: true, inclusion: { in: [AUTH_TYPE_BASIC, AUTH_TYPE_PAT] }, if: :activated?
+    validates :jira_auth_type, presence: true,
+      inclusion: { in: AUTH_TYPES }, if: :activated?
     validates :jira_issue_prefix, untrusted_regexp: true, length: { maximum: 255 }, if: :activated?
     validates :jira_issue_regex,  untrusted_regexp: true, length: { maximum: 255 }, if: :activated?
-    validate :validate_jira_cloud_auth_type_is_basic, if: :activated?
+    validate :validate_jira_cloud_auth_type_for_cloud, if: :activated?
 
     validates :jira_issue_transition_id,
       format: {
@@ -102,12 +108,14 @@ module Integrations
       choices: -> {
         [
           [s_('JiraService|Basic'), AUTH_TYPE_BASIC],
-          [s_('JiraService|Jira personal access token (Jira Data Center and Jira Server only)'), AUTH_TYPE_PAT]
+          [s_('JiraService|Jira personal access token (Jira Data Center and Jira Server only)'), AUTH_TYPE_PAT],
+          [s_('JiraService|Jira service account (Jira Cloud only)'), AUTH_TYPE_SERVICE_ACCOUNT]
         ]
       },
       description: -> do
-        s_('JiraIntegration|The authentication method to use with Jira. Use `0` for Basic Authentication, ' \
-        'and `1` for Jira personal access token. Defaults to `0`.')
+        s_('JiraIntegration|The authentication method to use with Jira. ' \
+           'Use `0` for basic authentication, `1` for Jira personal access token, ' \
+           'and `2` for Jira Cloud service accounts. Defaults to `0`.')
       end
 
     field :username,
@@ -117,7 +125,7 @@ module Integrations
       help: -> { s_('JiraService|Email for Jira Cloud or username for Jira Data Center and Jira Server') },
       description: -> {
         s_('JiraIntegration|The email or username to use with Jira. Use an email for Jira Cloud, and a username ' \
-        'for Jira Data Center and Jira Server. Required when using Basic Authentication (`jira_auth_type` is `0`).')
+        'for Jira Data Center and Jira Server. Required when using basic authentication (`jira_auth_type` is `0`).')
       }
 
     field :password,
@@ -176,8 +184,9 @@ module Integrations
       type: :string_array,
       api_only: true,
       description: -> {
-        s_('JiraIntegration|Keys of Jira projects. When `issues_enabled` is `true`, this setting specifies ' \
-        'which Jira projects to view issues from in GitLab.')
+        s_('JiraIntegration|Keys of Jira projects to display. When `issues_enabled` is `true`, ' \
+        'this setting filters which Jira projects are shown in GitLab. ' \
+        'It does not restrict the API token\'s access.')
       }
 
     # TODO: we can probably just delegate as part of
@@ -219,25 +228,11 @@ module Integrations
     end
 
     def options
-      url = URI.parse(client_url)
-
-      options = {
-        site: URI.join(url, '/').to_s.chomp('/'), # Find the root URL
-        context_path: (url.path.presence || '/').delete_suffix('/'),
-        auth_type: :basic,
-        use_ssl: url.scheme == 'https'
-      }
-
-      if personal_access_token_authorization?
-        options[:default_headers] = { 'Authorization' => "Bearer #{password}" }
+      if service_account_authorization?
+        build_service_account_options
       else
-        options[:username] = username&.strip
-        options[:password] = password
-        options[:use_cookies] = true
-        options[:additional_cookies] = ['OBBasicAuth=fromDialog']
+        build_standard_options
       end
-
-      options
     end
 
     def client(additional_options = {})
@@ -285,7 +280,7 @@ module Integrations
         {
           type: SECTION_TYPE_CONFIGURATION,
           title: _('Jira issue matching'),
-          description: s_('Configure custom rules for Jira issue key matching')
+          description: _('Configure custom rules for Jira issue key matching')
         }
       ]
 
@@ -436,7 +431,7 @@ module Integrations
       result = {}.merge!(server_info, client_info) if server_info && client_info
 
       success = server_info.present? && client_info.present?
-      result = @error&.message unless success
+      result = jira_error_message(@error) unless success
       { success: success, result: result }
     end
 
@@ -458,6 +453,14 @@ module Integrations
       jira_auth_type == AUTH_TYPE_PAT
     end
 
+    def basic_authorization?
+      jira_auth_type == AUTH_TYPE_BASIC
+    end
+
+    def service_account_authorization?
+      jira_auth_type == AUTH_TYPE_SERVICE_ACCOUNT
+    end
+
     def testable?
       group_level? || project_level?
     end
@@ -469,7 +472,11 @@ module Integrations
     private
 
     def jira_issue_match_regex
-      jira_regex = jira_issue_regex.presence || Gitlab::Regex.jira_issue_key_regex.source
+      # `Gitlab::UntrustedRegexp` is RE2-backed and RE2 does not support
+      # lookbehind, so we override the default `expression_escape` to keep an
+      # RE2-compatible source. The outer `\b` below already handles the
+      # boundary before the prefix.
+      jira_regex = jira_issue_regex.presence || Gitlab::Regex.jira_issue_key_regex(expression_escape: '').source
 
       Gitlab::UntrustedRegexp.new("\\b#{jira_issue_prefix}(?P<issue>#{jira_regex})")
     end
@@ -730,6 +737,16 @@ module Integrations
       nil
     end
 
+    def jira_error_message(error)
+      return unless error
+      return error.message unless error.respond_to?(:code)
+
+      code = error.code.to_i
+      return error.message if code == 0
+
+      format(s_('JiraService|Jira returned HTTP %{code}: %{message}'), code: code, message: error.message)
+    end
+
     def client_url
       api_url.presence || url
     end
@@ -802,13 +819,15 @@ module Integrations
       description
     end
 
-    def validate_jira_cloud_auth_type_is_basic
-      return unless self.class.valid_jira_cloud_url?(client_url) && jira_auth_type != AUTH_TYPE_BASIC
+    def validate_jira_cloud_auth_type_for_cloud
+      return unless self.class.valid_jira_cloud_url?(url)
+      return unless personal_access_token_authorization?
 
       errors.add(:base,
         format(
-          s_('JiraService|For Jira Cloud, the authentication type must be %{basic}'),
-          basic: s_('JiraService|Basic')
+          s_('JiraService|For Jira Cloud, the authentication type must be %{basic} or %{service_account}.'),
+          basic: s_('JiraService|Basic'),
+          service_account: s_('JiraService|Jira service account')
         )
       )
     end
@@ -823,6 +842,46 @@ module Integrations
       end
 
       options
+    end
+
+    def basic_authorization_activated?
+      activated? && basic_authorization?
+    end
+
+    def base_options
+      url = URI.parse(client_url)
+
+      {
+        site: URI.join(url, '/').to_s.chomp('/'),
+        context_path: (url.path.presence || '/').delete_suffix('/'),
+        auth_type: :basic,
+        use_ssl: url.scheme == 'https'
+      }
+    end
+
+    def build_standard_options
+      opts = base_options
+
+      if personal_access_token_authorization?
+        opts[:default_headers] = { 'Authorization' => "Bearer #{password}" }
+      else
+        opts.merge!(
+          username: username&.strip,
+          password: password,
+          use_cookies: true,
+          additional_cookies: ['OBBasicAuth=fromDialog']
+        )
+      end
+
+      opts
+    end
+
+    def build_service_account_options
+      base_options.merge(
+        default_headers: { 'Authorization' => "Bearer #{password}" },
+        use_cookies: false,
+        additional_cookies: []
+      )
     end
   end
 end

@@ -5,9 +5,15 @@ module Resolvers
     class CommitsResolver < BaseResolver
       type Types::Repositories::CommitType.connection_type, null: true
 
+      include LooksAhead
+
       argument :ref, GraphQL::Types::String,
         required: true,
         description: 'Branch or tag to search for commits.'
+
+      argument :path, GraphQL::Types::String,
+        required: false,
+        description: 'File path to filter commits by.'
 
       argument :query, Types::UntrustedRegexp,
         required: false,
@@ -25,23 +31,25 @@ module Resolvers
         required: false,
         description: 'Commits created after an ISO8601 formatted time or date.'
 
-      argument :first, GraphQL::Types::Int,
-        description: 'Returns the first _n_ elements from the list.',
-        required: false
-
-      argument :after, GraphQL::Types::String,
-        description: 'Returns the elements in the list that come after the specified cursor.',
-        required: false
-
       calls_gitaly!
 
       alias_method :repository, :object
 
-      def resolve(**arguments)
-        response = repository.list_commits(**list_commits_arguments(arguments.dup))
-        end_cursor = Base64.encode64(response.next_cursor) if response.next_cursor
+      def resolve_with_lookahead(**arguments)
+        first = arguments.delete(:first)
+        page_token = arguments.delete(:after)
+        limit = compute_limit(first)
 
-        Gitlab::Graphql::ExternallyPaginatedArray.new(nil, end_cursor, *response.commits)
+        return empty_result if limit <= 0
+
+        response = repository.list_commits(**list_commits_arguments(arguments, limit, page_token))
+        response.load_tags if node_selection&.selects?(:tags)
+        commits = response.commits.to_a
+
+        has_next_page = response.next_cursor.present?
+        end_cursor = Base64.strict_encode64(response.next_cursor) if has_next_page
+
+        Gitlab::Graphql::ExternallyPaginatedArray.new(nil, end_cursor, *commits, has_next_page: has_next_page)
       rescue Gitlab::Git::CommandError => e
         raise Gitlab::Graphql::Errors::BaseError.new(
           "ListCommits: Gitlab::Git::CommandError",
@@ -51,16 +59,27 @@ module Resolvers
 
       private
 
-      def list_commits_arguments(arguments)
-        limit = [arguments.delete(:first), field.max_page_size || context.schema.default_max_page_size].compact.min # rubocop:disable Graphql/Descriptions -- This is incorrectly flagging `field`. We should ensure that there's nothing before `field` in the cop
-        page_token = arguments.delete(:after)
+      # Checks the user defined limit, the field's max page size or the schemas
+      # default, and returns the most restrictive limit.
+      def compute_limit(first)
+        # rubocop:disable Graphql/Descriptions -- This is incorrectly flagging `field`. We should ensure that there's nothing before `field` in the cop
+        [first, field.max_page_size || context.schema.default_max_page_size].compact.min
+        # rubocop:enable Graphql/Descriptions
+      end
 
+      def list_commits_arguments(arguments, limit, page_token)
+        arguments[:path] = arguments[:path].presence
         arguments[:pagination_params] = {}.tap do |pagination_params|
-          pagination_params[:limit] = limit if limit
+          pagination_params[:limit] = limit
           pagination_params[:page_token] = Base64.decode64(page_token) if page_token
         end
+        arguments[:literal_pathspec] = true
 
         arguments
+      end
+
+      def empty_result
+        Gitlab::Graphql::ExternallyPaginatedArray.new(nil, nil, has_next_page: false)
       end
     end
   end

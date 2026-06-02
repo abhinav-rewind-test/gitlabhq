@@ -1,7 +1,8 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Unlock accounts that are locked after failed sign-in attempts.
 title: Locked user accounts
 ---
 
@@ -53,7 +54,7 @@ Prerequisites
 To unlock an account from the Admin area:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Users**.
+1. In the left sidebar, select **Overview** > **Users**.
 1. Use the search bar to find the locked user.
 1. From the **User administration** dropdown list, select **Unlock**.
 

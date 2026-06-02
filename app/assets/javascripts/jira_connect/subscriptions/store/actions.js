@@ -1,3 +1,4 @@
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import {
   fetchSubscriptions as fetchSubscriptionsREST,
   getCurrentUser,
@@ -25,9 +26,14 @@ export const fetchSubscriptions = async ({ commit }, subscriptionsPath) => {
   try {
     const data = await fetchSubscriptionsREST(subscriptionsPath);
     commit(SET_SUBSCRIPTIONS, data.data.subscriptions);
-  } catch {
+  } catch (error) {
     commit(SET_SUBSCRIPTIONS_ERROR, true);
-    commit(SET_ALERT, { message: I18N_DEFAULT_SUBSCRIPTIONS_ERROR_MESSAGE, variant: 'danger' });
+    const message =
+      error?.response?.data?.errors ||
+      error?.response?.data?.message ||
+      I18N_DEFAULT_SUBSCRIPTIONS_ERROR_MESSAGE;
+    commit(SET_ALERT, { message, variant: 'danger' });
+    Sentry.captureException(error);
   } finally {
     commit(SET_SUBSCRIPTIONS_LOADING, false);
   }
@@ -36,6 +42,7 @@ export const fetchSubscriptions = async ({ commit }, subscriptionsPath) => {
 export const loadCurrentUser = async ({ commit }, accessToken) => {
   try {
     const { data: user } = await getCurrentUser({
+      // eslint-disable-next-line @gitlab/require-i18n-strings -- False positive
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 

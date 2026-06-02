@@ -1,6 +1,6 @@
 <script>
 import { GlDisclosureDropdown, GlButton, GlTooltip } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { __, sprintf } from '~/locale';
 import { clamp } from '../services/utils';
 
@@ -12,6 +12,7 @@ const MAX_ROWS = 10;
 const MAX_COLS = 10;
 
 export default {
+  name: 'ToolbarTableButton',
   components: {
     GlButton,
     GlDisclosureDropdown,

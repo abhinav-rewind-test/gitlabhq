@@ -11,7 +11,6 @@ import {
 import SecretManagerSettings from 'ee_component/pages/projects/shared/permissions/secrets_manager/secrets_manager_settings.vue';
 import ConfirmDanger from '~/vue_shared/components/confirm_danger/confirm_danger.vue';
 import settingsMixin from 'ee_else_ce/pages/projects/shared/permissions/mixins/settings_pannel_mixin';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { __, s__ } from '~/locale';
 import {
   VISIBILITY_LEVEL_PRIVATE_INTEGER,
@@ -33,6 +32,7 @@ import { toggleHiddenClassBySelector } from '../external';
 import ProjectFeatureSetting from './project_feature_setting.vue';
 import ProjectSettingRow from './project_setting_row.vue';
 import CiCatalogSettings from './ci_catalog_settings.vue';
+import BotAccessSettings from './bot_access_settings.vue';
 
 const FEATURE_ACCESS_LEVEL_ANONYMOUS = { value: 30, label: s__('ProjectSettings|Everyone') };
 
@@ -49,11 +49,7 @@ export default {
     containerRegistryLabel: s__('ProjectSettings|Container registry'),
     ciCdLabel: __('CI/CD'),
     forksLabel: s__('ProjectSettings|Forks'),
-    issuesLabel: s__('ProjectSettings|Issues'),
     workItemsLabel: s__('ProjectSettings|Work items'),
-    issuesHelpText: s__(
-      'ProjectSettings|Flexible tool to collaboratively develop ideas and plan work in this project.',
-    ),
     workItemsHelpText: s__('ProjectSettings|Plan and track work with flexible objects and views.'),
     lfsLabel: s__('ProjectSettings|Git Large File Storage (LFS)'),
     mergeRequestsLabel: s__('ProjectSettings|Merge requests'),
@@ -97,6 +93,7 @@ export default {
       'ProjectSettings|Highlight the usage of hidden unicode characters. These have innocent uses for right-to-left languages, but can also be used in potential exploits.',
     ),
     confirmButtonText: __('Save changes'),
+    confirmButtonAriaLabel: __('Save changes for visibility, project features, permissions'),
     emailsLabel: s__('ProjectSettings|Email notifications'),
     extendedPratExpiryWebhooksExecuteLabel: s__(
       'ProjectSettings|Add additional webhook triggers for project access token expiration.',
@@ -135,12 +132,13 @@ export default {
     GlToggle,
     ConfirmDanger,
     SecretManagerSettings,
+    BotAccessSettings,
     OtherProjectSettings: () =>
       import(
         'jh_component/pages/projects/shared/permissions/components/other_project_settings.vue'
       ),
   },
-  mixins: [settingsMixin, glFeatureFlagMixin()],
+  mixins: [settingsMixin],
   props: {
     requestCveAvailable: {
       type: Boolean,
@@ -313,6 +311,21 @@ export default {
       required: false,
       default: false,
     },
+    botAccessSettingsAvailable: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    botAccessGroupId: {
+      type: Number,
+      required: false,
+      default: null,
+    },
+    botAccessRootGroupId: {
+      type: Number,
+      required: false,
+      default: null,
+    },
   },
   data() {
     const defaults = {
@@ -346,6 +359,8 @@ export default {
       extendedPratExpiryWebhooksExecute: false,
       cveIdRequestEnabled: true,
       sppRepositoryPipelineAccess: false,
+      pipelineExecutionPolicyBotAccessEnabled: false,
+      pipelineExecutionPolicyBotAccessFilePatterns: [],
       featureAccessLevelEveryone,
       featureAccessLevelMembers,
       featureAccessLevel,
@@ -355,19 +370,6 @@ export default {
     return { ...defaults, ...this.currentSettings };
   },
   computed: {
-    isPlanningViewsEnabled() {
-      return this.glFeatures.workItemPlanningView;
-    },
-    issuesFeatureLabel() {
-      return this.isPlanningViewsEnabled
-        ? this.$options.i18n.workItemsLabel
-        : this.$options.i18n.issuesLabel;
-    },
-    issuesFeatureHelpText() {
-      return this.isPlanningViewsEnabled
-        ? this.$options.i18n.workItemsHelpText
-        : this.$options.i18n.issuesHelpText;
-    },
     isProjectPrivate() {
       return this.visibilityLevel === VISIBILITY_LEVEL_PRIVATE_INTEGER;
     },
@@ -615,14 +617,14 @@ export default {
       <project-setting-row
         ref="issues-settings"
         :help-path="issuesHelpPath"
-        :label="issuesFeatureLabel"
+        :label="$options.i18n.workItemsLabel"
         label-for="issues_access_level"
-        :help-text="issuesFeatureHelpText"
+        :help-text="$options.i18n.workItemsHelpText"
       >
         <project-feature-setting
           id="issues_access_level"
           v-model="issuesAccessLevel"
-          :label="issuesFeatureLabel"
+          :label="$options.i18n.workItemsLabel"
           :options="featureAccessLevelOptions"
           :disabled-select-input="isProjectPrivate"
           name="project[project_feature_attributes][issues_access_level]"
@@ -1144,6 +1146,13 @@ export default {
           </gl-form-checkbox>
         </label>
       </project-setting-row>
+      <bot-access-settings
+        v-if="botAccessSettingsAvailable"
+        :enabled="pipelineExecutionPolicyBotAccessEnabled"
+        :file-patterns="pipelineExecutionPolicyBotAccessFilePatterns"
+        :group-id="botAccessGroupId"
+        :root-group-id="botAccessRootGroupId"
+      />
     </template>
 
     <template #footer>
@@ -1156,7 +1165,13 @@ export default {
         data-testid="project-features-save-button"
         @confirm="$emit('confirm')"
       />
-      <gl-button v-else type="submit" variant="confirm" data-testid="project-features-save-button">
+      <gl-button
+        v-else
+        type="submit"
+        variant="confirm"
+        :aria-label="$options.i18n.confirmButtonAriaLabel"
+        data-testid="project-features-save-button"
+      >
         {{ $options.i18n.confirmButtonText }}
       </gl-button>
     </template>

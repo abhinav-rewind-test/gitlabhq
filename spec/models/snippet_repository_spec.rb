@@ -21,7 +21,7 @@ RSpec.describe SnippetRepository, feature_category: :source_code_management do
   describe 'sharding key validations' do
     let_it_be(:organization) { create(:organization) }
     let_it_be(:project) { create(:project, organization: organization) }
-    let_it_be(:personal_snippet) { create(:personal_snippet, organization: organization) }
+    let_it_be(:personal_snippet, freeze: false) { create(:personal_snippet, organization: organization) }
     let_it_be(:project_snippet) { create(:project_snippet, project: project) }
 
     describe 'validations' do
@@ -138,7 +138,7 @@ RSpec.describe SnippetRepository, feature_category: :source_code_management do
 
   it_behaves_like 'shardable scopes' do
     let_it_be(:record_1) { create(:snippet_repository) }
-    let_it_be(:record_2, reload: true) { create(:snippet_repository) }
+    let_it_be_with_reload(:record_2) { create(:snippet_repository) }
   end
 
   describe '.find_snippet' do
@@ -232,8 +232,8 @@ RSpec.describe SnippetRepository, feature_category: :source_code_management do
     context 'with commit actions' do
       let(:result) do
         [{ action: :create }.merge(new_file),
-         { action: :move }.merge(move_file),
-         { action: :update }.merge(update_file)]
+          { action: :move }.merge(move_file),
+          { action: :update }.merge(update_file)]
       end
 
       let(:repo) { double }

@@ -5,6 +5,13 @@ RSpec.describe Packages::BuildInfo, type: :model, feature_category: :package_reg
   describe 'relationships' do
     it { is_expected.to belong_to(:package) }
     it { is_expected.to belong_to(:pipeline) }
+    it { is_expected.to belong_to(:project) }
+  end
+
+  describe '#pipeline' do
+    it_behaves_like 'a partition-pruned pipeline association' do
+      let(:related_resource) { create(:package_build_info, pipeline_id: pipeline.id) }
+    end
   end
 
   context 'with some build infos' do

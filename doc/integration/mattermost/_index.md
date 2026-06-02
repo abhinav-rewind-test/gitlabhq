@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Mattermost
 ---
 
@@ -98,7 +98,6 @@ By default, Mattermost uses the Linux package bundled PostgreSQL service. If you
 1. Create a PostgreSQL user matching the `user` value, and `password` value that you have defined in `mattermost['sql_data_source']`.
 1. Create a PostgreSQL database matching the `dbname` value that was used.
 1. Ensure that the `user` has permissions to the database that was created with `dbname`.
-
 1. Reconfigure GitLab and restart Mattermost to apply the changes:
 
    ```shell
@@ -135,7 +134,7 @@ integrations with GitLab add the following on the GitLab Server:
 gitlab_rails['mattermost_host'] = "https://mattermost.example.com"
 ```
 
-By default GitLab Mattermost requires all users to sign up with GitLab and disables the sign-up by email option. See Mattermost [documentation on GitLab SSO](https://docs.mattermost.com/deployment/sso-gitlab.html).
+By default GitLab Mattermost requires all users to sign up with GitLab and disables the option to create an account by email. See Mattermost [documentation on GitLab SSO](https://docs.mattermost.com/deployment/sso-gitlab.html).
 
 ## Manually (re)authorizing GitLab Mattermost with GitLab
 
@@ -355,7 +354,7 @@ If you have only configured Mattermost using `gitlab.rb`, you can upgrade GitLab
 
 If this is not the case, there are two options:
 
-1. Update [`gitlab.rb`](https://gitlab.com/gitlab-org/omnibus-gitlab/blob/master/files/gitlab-config-template/gitlab.rb.template#L706)
+1. Update [`gitlab.rb`](https://gitlab.com/gitlab-org/omnibus-gitlab/-/blob/b350e3cd5b06a94adb463ece4d41b9f3df6ab282/files/gitlab-config-template/gitlab.rb.template#L549)
    with the changes done to `config.json`. This might require adding some parameters as not all
    settings in `config.json` are available in `gitlab.rb`. Once complete, the Linux package should be
    able to upgrade GitLab Mattermost from one version to the next.
@@ -366,17 +365,18 @@ If this is not the case, there are two options:
 
 For a complete list of upgrade notices and special considerations for older versions, see the [Mattermost documentation](https://docs.mattermost.com/administration/important-upgrade-notes.html).
 
-### GitLab Mattermost versions and edition shipped with the Linux package
+### GitLab Mattermost versions and edition shipped with the Linux package (deprecated)
+
+> [!warning]
+> Bundling Mattermost with the Linux package was [deprecated](../../update/deprecations.md#mattermost-bundled-with-linux-package) in GitLab 18.9
+> and is planned for removal in 19.0. Refer to [migrating to Mattermost Standalone](https://docs.mattermost.com/administration-guide/onboard/migrate-gitlab-omnibus.html) before upgrading to GitLab 19.0.
 
 The following table outlines Mattermost version changes for GitLab 15.0 and later:
 
-| GitLab version | Mattermost version |
+| Initial GitLab version | Mattermost version |
 |:---------------|:-------------------|
-| 18.7           | 10.11.8            |
-| 18.6           | 10.11.8            |
-| 18.5           | 10.10.2            |
-| 18.4           | 10.10.2            |
-| 18.3           | 10.10.2            |
+| 18.6           | 10.11              |
+| 18.3           | 10.10              |
 | 18.2           | 10.9               |
 | 18.1           | 10.8               |
 | 18.0           | 10.7               |

@@ -5,6 +5,10 @@ module Types
   class BranchType < BaseObject
     graphql_name 'Branch'
 
+    authorize_granular_token permissions: :read_branch,
+      boundary: :project,
+      boundary_type: :project
+
     field :name,
       GraphQL::Types::String,
       null: false,

@@ -11,7 +11,10 @@ module Gitlab
       include Migrations::ExtensionHelpers
       include Migrations::SidekiqHelpers
       include Migrations::RedisHelpers
+      include Migrations::TriggerHelpers
       include Migrations::ForeignKeyHelpers
+      include Migrations::IndexHelpers
+      include Migrations::DynamicHelpers
       include DynamicModelHelpers
       include FeatureFlagMigratorHelpers
       include RenameTableHelpers
@@ -101,142 +104,6 @@ module Gitlab
         columns.each do |column_name|
           remove_column(table_name, column_name)
         end
-      end
-
-      # Creates a new index, concurrently
-      #
-      # Example:
-      #
-      #     add_concurrent_index :users, :some_column
-      #
-      # See Rails' `add_index` for more info on the available arguments.
-      def add_concurrent_index(table_name, column_name, options = {})
-        if transaction_open?
-          raise 'add_concurrent_index can not be run inside a transaction, ' \
-            'you can disable transactions by calling disable_ddl_transaction! ' \
-            'in the body of your migration class'
-        end
-
-        if !options.delete(:allow_partition) && partition?(table_name)
-          raise ArgumentError, 'add_concurrent_index can not be used on a partitioned '  \
-            'table. Please use add_concurrent_partitioned_index on the partitioned table ' \
-            'as we need to create indexes on each partition and an index on the parent table'
-        end
-
-        options = options.merge({ algorithm: :concurrently })
-
-        if index_exists?(table_name, column_name, **options)
-          name = options[:name] || index_name(table_name, column_name)
-          _, schema = table_name.to_s.split('.').reverse
-
-          if index_invalid?(name, schema: schema)
-            say "Index being recreated because the existing version was INVALID: table_name: #{table_name}, column_name: #{column_name}"
-
-            remove_concurrent_index_by_name(table_name, name)
-          else
-            say "Index not created because it already exists (this may be due to an aborted migration or similar): table_name: #{table_name}, column_name: #{column_name}"
-
-            return
-          end
-        end
-
-        disable_statement_timeout do
-          add_index(table_name, column_name, **options)
-        end
-
-        # We created this index. Now let's remove the queuing entry for async creation in case it's still there.
-        unprepare_async_index(table_name, column_name, **options)
-      end
-
-      def index_invalid?(index_name, schema: nil)
-        index_name = connection.quote(index_name)
-        schema = connection.quote(schema) if schema
-        schema ||= 'current_schema()'
-
-        connection.select_value(<<~SQL)
-          select not i.indisvalid
-          from pg_class c
-          inner join pg_index i
-            on c.oid = i.indexrelid
-          inner join pg_namespace n
-            on n.oid = c.relnamespace
-          where n.nspname = #{schema}
-            and c.relname = #{index_name}
-        SQL
-      end
-
-      # Removes an existed index, concurrently
-      #
-      # Example:
-      #
-      #     remove_concurrent_index :users, :some_column
-      #
-      # See Rails' `remove_index` for more info on the available arguments.
-      def remove_concurrent_index(table_name, column_name, options = {})
-        if transaction_open?
-          raise 'remove_concurrent_index can not be run inside a transaction, ' \
-            'you can disable transactions by calling disable_ddl_transaction! ' \
-            'in the body of your migration class'
-        end
-
-        if partition?(table_name)
-          raise ArgumentError, 'remove_concurrent_index can not be used on a partitioned '  \
-            'table. Please use remove_concurrent_partitioned_index_by_name on the partitioned table ' \
-            'as we need to remove the index on the parent table'
-        end
-
-        options = options.merge({ algorithm: :concurrently })
-
-        unless index_exists?(table_name, column_name, **options)
-          Gitlab::AppLogger.warn "Index not removed because it does not exist (this may be due to an aborted migration or similar): table_name: #{table_name}, column_name: #{column_name}"
-          return
-        end
-
-        disable_statement_timeout do
-          remove_index(table_name, **options.merge({ column: column_name }))
-        end
-
-        # We removed this index. Now let's make sure it's not queued for async creation.
-        unprepare_async_index(table_name, column_name, **options)
-      end
-
-      # Removes an existing index, concurrently
-      #
-      # Example:
-      #
-      #     remove_concurrent_index :users, "index_X_by_Y"
-      #
-      # See Rails' `remove_index` for more info on the available arguments.
-      def remove_concurrent_index_by_name(table_name, index_name, options = {})
-        if transaction_open?
-          raise 'remove_concurrent_index_by_name can not be run inside a transaction, ' \
-            'you can disable transactions by calling disable_ddl_transaction! ' \
-            'in the body of your migration class'
-        end
-
-        if partition?(table_name)
-          raise ArgumentError, 'remove_concurrent_index_by_name can not be used on a partitioned '  \
-            'table. Please use remove_concurrent_partitioned_index_by_name on the partitioned table ' \
-            'as we need to remove the index on the parent table'
-        end
-
-        index_name = index_name[:name] if index_name.is_a?(Hash)
-
-        raise 'remove_concurrent_index_by_name must get an index name as the second argument' if index_name.blank?
-
-        options = options.merge({ algorithm: :concurrently })
-
-        unless index_exists_by_name?(table_name, index_name)
-          Gitlab::AppLogger.warn "Index not removed because it does not exist (this may be due to an aborted migration or similar): table_name: #{table_name}, index_name: #{index_name}"
-          return
-        end
-
-        disable_statement_timeout do
-          remove_index(table_name, **options.merge({ name: index_name }))
-        end
-
-        # We removed this index. Now let's make sure it's not queued for async creation.
-        unprepare_async_index_by_name(table_name, index_name, **options)
       end
 
       def true_value
@@ -405,49 +272,6 @@ module Gitlab
         remove_column(table, new)
       end
 
-      # Installs triggers in a table that keep a new column in sync with an old
-      # one.
-      #
-      # table - The name of the table to install the trigger in.
-      # old_column - The name of the old column.
-      # new_column - The name of the new column.
-      # trigger_name - The name of the trigger to use (optional).
-      def install_rename_triggers(table, old, new, trigger_name: nil)
-        Gitlab::Database::UnidirectionalCopyTrigger.on_table(table, connection: connection).create(old, new, trigger_name: trigger_name)
-      end
-
-      # Removes the triggers used for renaming a column concurrently.
-      def remove_rename_triggers(table, trigger)
-        Gitlab::Database::UnidirectionalCopyTrigger.on_table(table, connection: connection).drop(trigger)
-      end
-
-      # Returns the (base) name to use for triggers when renaming columns.
-      def rename_trigger_name(table, old, new)
-        Gitlab::Database::UnidirectionalCopyTrigger.on_table(table, connection: connection).name(old, new)
-      end
-
-      # Installs a trigger in a table that assigns a sharding key from an associated table.
-      #
-      # table: The table to install the trigger in.
-      # sharding_key: The column to be assigned on `table`.
-      # parent_table: The associated table with the sharding key to be copied.
-      # parent_sharding_key: The sharding key on the parent table that will be copied to `sharding_key` on `table`.
-      # foreign_key: The column used to fetch the relevant record from `parent_table`.
-      def install_sharding_key_assignment_trigger(**args)
-        Gitlab::Database::Triggers::AssignDesiredShardingKey.new(**args.merge(connection: connection)).create
-      end
-
-      # Removes trigger used for assigning sharding keys.
-      #
-      # table: The table to install the trigger in.
-      # sharding_key: The column to be assigned on `table`.
-      # parent_table: The associated table with the sharding key to be copied.
-      # parent_sharding_key: The sharding key on the parent table that will be copied to `sharding_key` on `table`.
-      # foreign_key: The column used to fetch the relevant record from `parent_table`.
-      def remove_sharding_key_assignment_trigger(**args)
-        Gitlab::Database::Triggers::AssignDesiredShardingKey.new(**args.merge(connection: connection)).drop
-      end
-
       # Changes the type of a column concurrently.
       #
       # table - The table containing the column.
@@ -477,7 +301,7 @@ module Gitlab
       def cleanup_concurrent_column_type_change(table, column, temp_column: nil)
         temp_column ||= "#{column}_for_type_change"
 
-        transaction do
+        with_lock_retries do
           # This has to be performed in a transaction as otherwise we might have
           # inconsistent data.
           cleanup_concurrent_column_rename(table, column, temp_column)
@@ -525,7 +349,7 @@ module Gitlab
             limit: limit
           )
 
-          transaction do
+          with_lock_retries do
             # This has to be performed in a transaction as otherwise we might
             # have inconsistent data.
             rename_column(table, column, temp_column)
@@ -836,26 +660,6 @@ module Gitlab
         Arel::Nodes::SqlLiteral.new(replace.to_sql)
       end
 
-      def check_trigger_permissions!(table)
-        unless Grant.create_and_execute_trigger?(table)
-          dbname = ApplicationRecord.database.database_name
-          user = ApplicationRecord.database.username
-
-          raise <<-EOF
-Your database user is not allowed to create, drop, or execute triggers on the
-table #{table}.
-
-If you are using PostgreSQL you can solve this by logging in to the GitLab
-database (#{dbname}) using a super user and running:
-
-    ALTER #{user} WITH SUPERUSER
-
-This query will grant the user super user permissions, ensuring you don't run
-into similar problems in the future (e.g. when new tables are created).
-          EOF
-        end
-      end
-
       def index_exists_by_name?(table, index)
         index_name_exists?(table, index)
       end
@@ -876,14 +680,14 @@ into similar problems in the future (e.g. when new tables are created).
 
       # Note this should only be used with very small tables
       def backfill_iids(table)
-        sql = <<-END
+        sql = <<-SQL
           UPDATE #{table}
           SET iid = #{table}_with_calculated_iid.iid_num
           FROM (
             SELECT id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id ASC) AS iid_num FROM #{table}
           ) AS #{table}_with_calculated_iid
           WHERE #{table}.id = #{table}_with_calculated_iid.id
-        END
+        SQL
 
         execute(sql)
       end
@@ -950,6 +754,9 @@ into similar problems in the future (e.g. when new tables are created).
         old_col = column_for(table, old)
         new_type = type || old_col.type
         new_limit = limit || old_col.limit
+
+        # PostgreSQL doesn't support limit for bigint type
+        new_limit = nil if new_type == :bigint
 
         add_column(table, new, new_type,
           limit: new_limit,

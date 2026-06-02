@@ -30,6 +30,10 @@ module ApplicationSettingImplementation
     '/admin/session'
   ].freeze
 
+  DEFAULT_PROTECTED_PATHS_FOR_GET_REQUEST = [
+    '/users/sign_in_path'
+  ].freeze
+
   DEFAULT_MINIMUM_PASSWORD_LENGTH = 8
   DEFAULT_NUMBER_OF_DAYS_BEFORE_REMOVAL = 30
 
@@ -40,7 +44,6 @@ module ApplicationSettingImplementation
         after_sign_up_text: nil,
         akismet_enabled: false,
         akismet_api_key: nil,
-        allow_immediate_namespaces_deletion: true,
         allow_local_requests_from_system_hooks: true,
         allow_local_requests_from_web_hooks_and_services: false,
         allow_possible_spam: false,
@@ -51,7 +54,6 @@ module ApplicationSettingImplementation
         autocomplete_users_unauthenticated_limit: 100,
         ci_job_live_trace_enabled: false,
         ci_max_total_yaml_size_bytes: 314572800, # max_yaml_size_bytes * ci_max_includes = 2.megabyte * 150
-        ci_partitions_size_limit: 100.gigabytes,
         ci_delete_pipelines_in_seconds_limit_human_readable: '1 year',
         commit_email_hostname: default_commit_email_hostname,
         container_expiration_policies_enable_historic_entries: false,
@@ -174,6 +176,7 @@ module ApplicationSettingImplementation
         instance_token_prefix: '',
         plantuml_enabled: false,
         plantuml_url: nil,
+        plantuml_diagram_proxy_enabled: false,
         diagramsnet_enabled: true,
         diagramsnet_url: 'https://embed.diagrams.net',
         polling_interval_multiplier: 1,
@@ -184,9 +187,11 @@ module ApplicationSettingImplementation
         project_import_limit: 6,
         protected_ci_variables: true,
         protected_paths: DEFAULT_PROTECTED_PATHS,
+        protected_paths_for_get_request: DEFAULT_PROTECTED_PATHS_FOR_GET_REQUEST,
         push_event_activities_limit: 3,
         push_event_hooks_limit: 3,
         raw_blob_request_limit: 300,
+        raw_blob_request_limit_unauthenticated: ApplicationSetting::DEFAULT_RAW_BLOB_UNAUTHENTICATED_REQUEST_LIMIT,
         recaptcha_enabled: false,
         receptive_cluster_agents_enabled: false,
         relation_export_batch_size: 50,
@@ -289,6 +294,7 @@ module ApplicationSettingImplementation
         kroki_enabled: false,
         kroki_url: nil,
         kroki_formats: { blockdiag: false, bpmn: false, excalidraw: false, mermaid: false },
+        kroki_diagram_proxy_enabled: false,
         rate_limiting_response_text: nil,
         whats_new_variant: 0,
         user_deactivation_emails_enabled: true,
@@ -356,7 +362,6 @@ module ApplicationSettingImplementation
         seat_control: 0,
         show_migrate_from_jenkins_banner: true,
         top_level_group_creation_enabled: true,
-        ropc_without_client_credentials: true,
         vscode_extension_marketplace_enabled: false,
         vscode_extension_marketplace_extension_host_domain: ::WebIde::ExtensionMarketplace::DEFAULT_EXTENSION_HOST_DOMAIN,
         reindexing_minimum_index_size: 1.gigabyte,
@@ -366,6 +371,12 @@ module ApplicationSettingImplementation
         enforce_pipl_compliance: false,
         model_prompt_cache_enabled: true,
         lock_model_prompt_cache_enabled: false,
+        duo_custom_agents_enabled: true,
+        lock_duo_custom_agents_enabled: false,
+        duo_custom_flows_enabled: true,
+        lock_duo_custom_flows_enabled: false,
+        duo_external_agents_enabled: true,
+        lock_duo_external_agents_enabled: false,
         pipeline_limit_per_user: 0,
         background_operations_max_jobs: 10
       }.tap do |hsh|
@@ -708,13 +719,6 @@ module ApplicationSettingImplementation
     Hash[storages_map]
   end
 
-  def allow_immediate_namespaces_deletion_for_user?(user)
-    # Keep the previous behavior when the feature flag is disabled
-    return true unless Feature.enabled?(:allow_immediate_namespaces_deletion, user)
-
-    allow_immediate_namespaces_deletion? || user&.can_admin_all_resources?
-  end
-
   private
 
   def set_max_key_restriction!(key_type)
@@ -753,10 +757,8 @@ module ApplicationSettingImplementation
 
   def parse_addr_and_port(str)
     case str
-    when /\A\[(?<address> .* )\]:(?<port> \d+ )\z/x      # string like "[::1]:80"
-      address = $~[:address]
-      port = $~[:port]
-    when /\A(?<address> [^:]+ ):(?<port> \d+ )\z/x       # string like "127.0.0.1:80"
+    when /\A\[(?<address> .* )\]:(?<port> \d+ )\z/x,     # string like "[::1]:80"
+      /\A(?<address> [^:]+ ):(?<port> \d+ )\z/x          # string like "127.0.0.1:80"
       address = $~[:address]
       port = $~[:port]
     else                                                 # string with no port number

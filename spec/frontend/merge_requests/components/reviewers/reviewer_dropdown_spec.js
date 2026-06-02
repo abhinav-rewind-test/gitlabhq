@@ -2,7 +2,6 @@ import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
 import { GlCollapsibleListbox } from '@gitlab/ui';
 import { shallowMount, mount } from '@vue/test-utils';
-import { ASSIGN_REVIEWER_USERS_QUERY_VARIABLES_MOCK } from 'ee_else_ce_jest/merge_requests/components/reviewers/mock_data';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { mockTracking, triggerEvent } from 'helpers/tracking_helper';
@@ -27,6 +26,7 @@ const createMockUser = ({
   username = 'root',
   compositeIdentityEnforced = false,
   status = {},
+  duoStatus = {},
 } = {}) => ({
   __typename: 'UserCore',
   id: `gid://gitlab/User/${id}`,
@@ -36,9 +36,13 @@ const createMockUser = ({
   webPath: `/${username}`,
   status: {
     availability: 'NOT_SET',
-    disabledForDuoUsage: false,
-    disabledForDuoUsageReason: null,
     ...status,
+  },
+  duoStatus: {
+    disabled: false,
+    disabledReason: null,
+    flowTriggerEvents: [],
+    ...duoStatus,
   },
   compositeIdentityEnforced,
   mergeRequestInteraction: {
@@ -152,7 +156,6 @@ describe('Reviewer dropdown component', () => {
         fullPath: 'gitlab-org/gitlab',
         mergeRequestId: 'gid://gitlab/MergeRequest/1',
         search: '',
-        ...ASSIGN_REVIEWER_USERS_QUERY_VARIABLES_MOCK,
       });
     });
 
@@ -163,7 +166,26 @@ describe('Reviewer dropdown component', () => {
         fullPath: 'gitlab-org/gitlab',
         mergeRequestId: 'gid://gitlab/MergeRequest/1',
         search: 'search string',
-        ...ASSIGN_REVIEWER_USERS_QUERY_VARIABLES_MOCK,
+      });
+    });
+
+    describe('request cancellation', () => {
+      it('aborts the in-flight request when a new search is triggered before it completes', () => {
+        const abortSpy = jest.spyOn(AbortController.prototype, 'abort');
+
+        findDropdown().vm.$emit('shown');
+        findDropdown().vm.$emit('search', 'bob');
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+
+        expect(abortSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not abort when no prior request is in flight', () => {
+        const abortSpy = jest.spyOn(AbortController.prototype, 'abort');
+
+        findDropdown().vm.$emit('shown');
+
+        expect(abortSpy).not.toHaveBeenCalled();
       });
     });
 
@@ -480,17 +502,19 @@ describe('Reviewer dropdown component', () => {
 
       it('tracks which position any selected users were in after a search as a telemetry event', async () => {
         findDropdown().vm.$emit('search', 'bob');
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
         findDropdown().vm.$emit('select', 'bob');
         findDropdown().vm.$emit('hidden');
 
         await waitForPromises();
 
+        // Client-side filtering on 'bob' returns only 1 result, so bob is at position 1
         expect(trackEventSpy).toHaveBeenCalledWith(
           'user_selects_reviewer_from_mr_sidebar_after_search',
           {
-            value: 2,
+            value: 1,
             suggested_position: 0,
-            selectable_reviewers_count: 2,
+            selectable_reviewers_count: 1,
           },
           undefined,
         );
@@ -909,6 +933,79 @@ describe('Reviewer dropdown component', () => {
         }),
       );
     });
+
+    describe('client-side filtering', () => {
+      const twoUsers = [
+        createMockUser(),
+        createMockUser({ id: 2, name: 'Nonadmin', username: 'bob' }),
+      ];
+
+      beforeEach(async () => {
+        createComponent({
+          adminMergeRequest: true,
+          propsData: { users: twoUsers },
+        });
+        await waitForPromises();
+      });
+
+      it('does not call the autocomplete GraphQL query', async () => {
+        findDropdown().vm.$emit('shown');
+        await waitForPromises();
+
+        findDropdown().vm.$emit('search', 'bob');
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+        await waitForPromises();
+
+        expect(autocompleteUsersMock).not.toHaveBeenCalled();
+      });
+
+      it('filters users by name', async () => {
+        findDropdown().vm.$emit('search', 'Nonadmin');
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+        await waitForPromises();
+
+        const items = findDropdown().props('items');
+        const usersGroup = items.find((group) => group.text === 'Users');
+
+        expect(usersGroup.options).toEqual(
+          expect.arrayContaining([expect.objectContaining({ value: 'bob' })]),
+        );
+        expect(usersGroup.options).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ value: 'root' })]),
+        );
+      });
+
+      it('filters users by username', async () => {
+        findDropdown().vm.$emit('search', 'root');
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+        await waitForPromises();
+
+        const items = findDropdown().props('items');
+        const usersGroup = items.find((group) => group.text === 'Users');
+
+        expect(usersGroup.options).toEqual(
+          expect.arrayContaining([expect.objectContaining({ value: 'root' })]),
+        );
+        expect(usersGroup.options).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ value: 'bob' })]),
+        );
+      });
+
+      it('returns all users when search is empty', async () => {
+        findDropdown().vm.$emit('shown');
+        await waitForPromises();
+
+        const items = findDropdown().props('items');
+        const usersGroup = items.find((group) => group.text === 'Users');
+
+        expect(usersGroup.options).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ value: 'root' }),
+            expect.objectContaining({ value: 'bob' }),
+          ]),
+        );
+      });
+    });
   });
 
   describe('when reviewer is disabled', () => {
@@ -918,9 +1015,10 @@ describe('Reviewer dropdown component', () => {
           id: 2,
           name: 'Disabled User',
           username: 'disabled',
-          status: {
-            disabledForDuoUsage: true,
-            disabledForDuoUsageReason: 'Out of credits',
+          compositeIdentityEnforced: true,
+          duoStatus: {
+            disabled: true,
+            disabledReason: 'Out of credits',
           },
         });
 
@@ -968,9 +1066,9 @@ describe('Reviewer dropdown component', () => {
           id: 2,
           name: 'Disabled User',
           username: 'disabled',
-          status: {
-            disabledForDuoUsage: true,
-            disabledForDuoUsageReason: 'Out of credits',
+          duoStatus: {
+            disabled: true,
+            disabledReason: 'Out of credits',
           },
         });
 

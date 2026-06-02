@@ -43,25 +43,40 @@ module CommitSignature
     raise NoMethodError, 'must implement `signed_by_user` method'
   end
 
+  def verified_committer?
+    verified? || verified_system?
+  end
+
   # If commit is persisted as verified, check that commit email is still correct.
   def verification_status
     persisted_status = read_attribute(:verification_status)
-    return persisted_status unless Feature.enabled?(:check_for_mailmapped_commit_emails, project)
     return persisted_status unless verified? || verified_system?
     return persisted_status unless commit
 
-    return 'unverified_author_email' if emails_for_verification&.exclude?(commit.committer_email)
+    return 'unverified_author_email' unless verified_email?(commit.committer_email)
 
     persisted_status
   end
 
   private
 
-  def emails_for_verification
-    return x509_certificate.all_emails if x509?
+  def verified_email?(email)
+    return false unless email
 
+    emails = emails_for_verification
+    # nil: key/user deleted, we cannot verify emails so skip check
+    return true if emails.nil?
+    # empty array: user exists but has no verified emails
+    return false if emails.empty?
+
+    emails.map(&:downcase).include?(email.downcase)
+  end
+
+  def emails_for_verification
     return User.find_by_any_email(committer_email, confirmed: true)&.verified_emails if verified_system?
 
     signed_by_user&.verified_emails
   end
 end
+
+CommitSignature.prepend_mod

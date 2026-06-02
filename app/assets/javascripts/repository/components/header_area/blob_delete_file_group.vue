@@ -1,6 +1,6 @@
 <script>
 import { GlDisclosureDropdownGroup, GlDisclosureDropdownItem } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { sprintf, __ } from '~/locale';
 import { showForkSuggestion } from '~/repository/utils/fork_suggestion_utils';
 import DeleteBlobModal from '~/repository/components/delete_blob_modal.vue';
@@ -48,6 +48,7 @@ export default {
       default: false,
     },
   },
+  emits: ['showForkSuggestion'],
   computed: {
     deleteFileItem() {
       return {

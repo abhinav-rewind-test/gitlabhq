@@ -6,13 +6,14 @@ import {
   GlDropdownDivider,
   GlLoadingIcon,
 } from '@gitlab/ui';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import Api from '~/api';
 import { createAlert } from '~/alert';
 import { __ } from '~/locale';
 import { ANY_TRIGGER_AUTHOR, FILTER_PIPELINES_SEARCH_DELAY } from '../constants';
 
 export default {
+  name: 'PipelineTriggerAuthorToken',
   anyTriggerAuthor: ANY_TRIGGER_AUTHOR,
   components: {
     GlFilteredSearchToken,

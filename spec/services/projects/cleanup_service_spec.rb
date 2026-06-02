@@ -6,7 +6,7 @@ RSpec.describe Projects::CleanupService, feature_category: :source_code_manageme
   subject(:service) { described_class.new(project) }
 
   describe '.enqueue' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
     let_it_be(:user) { create(:user) }
 
     let(:object_map_file) { fixture_file_upload('spec/fixtures/bfg_object_map.txt') }
@@ -15,7 +15,7 @@ RSpec.describe Projects::CleanupService, feature_category: :source_code_manageme
 
     it 'makes the repository read-only' do
       expect { enqueue }
-        .to change(project, :repository_read_only?)
+        .to change { project.repository_read_only? }
         .from(false)
         .to(true)
     end
@@ -62,7 +62,7 @@ RSpec.describe Projects::CleanupService, feature_category: :source_code_manageme
     end
 
     it 'sets the repository read-write' do
-      expect { cleanup_after }.to change(project, :repository_read_only?).from(true).to(false)
+      expect { cleanup_after }.to change { project.repository_read_only? }.from(true).to(false)
     end
 
     it 'removes the BFG object map' do
@@ -109,7 +109,7 @@ RSpec.describe Projects::CleanupService, feature_category: :source_code_manageme
 
     it 'makes the repository read-write again' do
       expect { service.execute }
-        .to change(project, :repository_read_only?)
+        .to change { project.repository_read_only? }
         .from(true)
         .to(false)
     end

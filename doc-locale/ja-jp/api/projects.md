@@ -1,7 +1,8 @@
 ---
-stage: Runtime
+stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: プロジェクトとプロジェクト機能を作成、取得、更新、削除、管理するためのREST API。
 title: プロジェクトAPI
 ---
 
@@ -12,9 +13,9 @@ title: プロジェクトAPI
 
 {{< /details >}}
 
-このAPIを使用して、GitLabプロジェクトとそれに関連する設定を管理します。プロジェクトは、コードを保存し、イシューを追跡し、チームのアクティビティーを編成できる、コラボレーションの中心的なハブです。詳細については、[プロジェクトを作成する](../user/project/_index.md)を参照してください。
+このAPIを使用して、GitLabプロジェクトとそれに関連する設定を管理します。プロジェクトは、コードを保存し、イシューを追跡し、チームのアクティビティを編成できる、コラボレーションの中心的なハブです。詳細については、[プロジェクトを作成する](../user/project/_index.md)を参照してください。
 
-プロジェクトAPIには、次のエンドポイントが含まれています:
+プロジェクトAPIには、次のエンドポイントが含まれています。
 
 - プロジェクトの情報とメタデータを取得する
 - プロジェクトを作成、編集、削除する
@@ -24,16 +25,14 @@ title: プロジェクトAPI
 - ネームスペース間でプロジェクトを転送する
 - デプロイとコンテナレジストリの設定を管理する
 
-## 権限 {#permissions}
+## 前提条件 {#prerequisites}
 
-次のロールを持つユーザーは以下の操作を行うことができます:
-
-- プロジェクトの任意の[デフォルトロール](../user/permissions.md#roles)を持つユーザーは、プロジェクトのプロパティを読み取ることができます。
-- プロジェクトのオーナーまたはメンテナーのロールを持つユーザーは、プロジェクトのプロパティを編集することもできます。
+- プロジェクトのプロパティを読み取りできる任意の[デフォルトロール](../user/permissions.md#roles)。
+- プロジェクトのプロパティを編集するには、プロジェクトのオーナーまたはメンテナーロールが必要です。
 
 ## プロジェクトの表示レベル {#project-visibility-level}
 
-GitLabのプロジェクトには、次のいずれかの表示レベルを設定できます:
+GitLabのプロジェクトには、次のいずれかの表示レベルを設定できます。
 
 - 非公開
 - 内部
@@ -45,19 +44,72 @@ GitLabのプロジェクトには、次のいずれかの表示レベルを設�
 
 応答で返されるフィールドは、認証済みユーザーの[権限](../user/permissions.md)によって異なります。
 
+## プロジェクト機能の表示レベル {#project-feature-visibility-level}
+
+プロジェクトを作成または編集する際に、プロジェクト設定の利用可能性を制御できます。例えば、既存のプロジェクトに対して`forking_access_level`を無効にするには、次のようになります:
+
+```shell
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --data '{"forking_access_level": "disabled"}' \
+  --url "https://gitlab.example.com/api/v4/projects/<project_id>"
+```
+
+各設定は個別に定義でき、以下の値を受け入れます:
+
+- `disabled`: 機能を無効にします。
+- `private`: 機能を有効にして、**プロジェクトメンバーのみ**に設定します。
+- `enabled`: 機能を有効にして、**アクセスできる人すべて**に設定します。
+- `public`: 機能を有効にして、**全員**に設定します。`pages_access_level`のみ利用可能です。
+
+詳細については、[プロジェクト内の個々の機能の表示レベルを変更](../user/public_access.md#change-the-visibility-of-individual-features-in-a-project)を参照してください。
+
+| 属性                              | 型   | 必須 | 説明 |
+|:---------------------------------------|:-------|:---------|:------------|
+| `analytics_access_level`               | 文字列 | いいえ       | [分析](../user/analytics/_index.md)の表示レベルを設定します。 |
+| `builds_access_level`                  | 文字列 | いいえ       | [パイプライン](../ci/pipelines/settings.md#change-which-users-can-view-your-pipelines)の表示レベルを設定します。 |
+| `container_registry_access_level`      | 文字列 | いいえ       | [コンテナレジストリ](../user/packages/container_registry/_index.md#change-visibility-of-the-container-registry)の表示レベルを設定します。 |
+| `environments_access_level`            | 文字列 | いいえ       | [環境](../ci/environments/_index.md)の表示レベルを設定します。 |
+| `feature_flags_access_level`           | 文字列 | いいえ       | [機能フラグ](../operations/feature_flags.md)の表示レベルを設定します。 |
+| `forking_access_level`                 | 文字列 | いいえ       | [フォーク](../user/project/repository/forking_workflow.md)の表示レベルを設定します。 |
+| `infrastructure_access_level`          | 文字列 | いいえ       | [インフラストラクチャ管理](../user/infrastructure/_index.md)の表示レベルを設定します。 |
+| `issues_access_level`                  | 文字列 | いいえ       | [イシュー](../user/project/issues/_index.md)の表示レベルを設定します。 |
+| `merge_requests_access_level`          | 文字列 | いいえ       | [マージリクエスト](../user/project/merge_requests/_index.md)の表示レベルを設定します。 |
+| `model_experiments_access_level`       | 文字列 | いいえ       | [機械学習モデル実験](../user/project/ml/experiment_tracking/_index.md)の表示レベルを設定します。 |
+| `model_registry_access_level`          | 文字列 | いいえ       | [機械学習モデルレジストリ](../user/project/ml/model_registry/_index.md#access-the-model-registry)の表示レベルを設定します。 |
+| `monitor_access_level`                 | 文字列 | いいえ       | [アプリケーションパフォーマンスモニタリング](../operations/_index.md)の表示レベルを設定します。 |
+| `pages_access_level`                   | 文字列 | いいえ       | [GitLab Pages](../user/project/pages/pages_access_control.md)の表示レベルを設定します。 |
+| `releases_access_level`                | 文字列 | いいえ       | [リリース](../user/project/releases/_index.md)の表示レベルを設定します。 |
+| `repository_access_level`              | 文字列 | いいえ       | [リポジトリ](../user/project/repository/_index.md)の表示レベルを設定します。 |
+| `requirements_access_level`            | 文字列 | いいえ       | [要件管理](../user/project/requirements/_index.md)の表示レベルを設定します。 |
+| `security_and_compliance_access_level` | 文字列 | いいえ       | [セキュリティとコンプライアンス](../user/application_security/_index.md)の表示レベルを設定します。 |
+| `snippets_access_level`                | 文字列 | いいえ       | [スニペット](../user/snippets.md#change-default-visibility-of-snippets)の表示レベルを設定します。 |
+| `wiki_access_level`                    | 文字列 | いいえ       | [Wiki](../user/project/wiki/_index.md#enable-or-disable-a-project-wiki)の表示レベルを設定します。 |
+
 ## 非推奨の属性 {#deprecated-attributes}
 
 以下の属性は非推奨であり、REST APIの将来のバージョンで削除される可能性があります。代わりに代替属性を使用してください。
 
 | 非推奨の属性     | 代替 |
 |:-------------------------|:------------|
-| `tag_list`               | `topics`属性 |
-| `marked_for_deletion_at` | `marked_for_deletion_on`。PremiumおよびUltimateのみ。 |
-| `approvals_before_merge` | [マージリクエスト承認API](merge_request_approvals.md)。PremiumおよびUltimateのみ。 |
+| `tag_list`               | 代わりに`topics`を使用してください。 |
+| `marked_for_deletion_at` | 代わりに`marked_for_deletion_on`を使用してください。PremiumおよびUltimateのみです。 |
+| `approvals_before_merge` | GitLab 16.0で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/work_items/353097)になりました。代わりに[マージリクエストの承認API](merge_request_approvals.md)を使用してください。PremiumおよびUltimateのみです。 |
+| `packages_enabled` | GitLab 17.10で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/work_items/454759)になりました。代わりに`package_registry_access_level`を使用してください。 |
+| `container_registry_enabled` | 代わりに`container_registry_access_level`を使用してください。 |
+| `public_builds` | 代わりに`public_jobs`を使用してください。 |
+| `emails_disabled` | 代わりに`emails_enabled`を使用してください。 |
+| `issues_enabled` | 代わりに`issues_access_level`を使用してください。 |
+| `jobs_enabled` | 代わりに`builds_access_level`を使用してください。 |
+| `merge_requests_enabled` | 代わりに`merge_request_access_level`を使用してください。 |
+| `snippets_enabled` | 代わりに`snippets_access_level`を使用してください。 |
+| `wiki_enabled` | 代わりに`wiki_access_level`を使用してください。 |
+| `restrict_user_defined_variables` | GitLab 17.7で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154510)になりました。代わりに`ci_pipeline_variables_minimum_override_role`を使用してください。 |
 
-## 単一プロジェクトを取得する {#get-a-single-project}
+## プロジェクトを取得する {#retrieve-a-project}
 
-特定のプロジェクトを取得します。プロジェクトが公開されている場合、このエンドポイントには認証なしでアクセスできます。
+指定されたプロジェクトを取得します。プロジェクトが公開されている場合、このエンドポイントには認証なしでアクセスできます。
 
 ```plaintext
 GET /projects/:id
@@ -65,18 +117,235 @@ GET /projects/:id
 
 サポートされている属性:
 
-| 属性                | 種類              | 必須 | 説明 |
+| 属性                | 型              | 必須 | 説明 |
 |:-------------------------|:------------------|:---------|:------------|
-| `id`                     | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`                     | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `license`                | ブール値           | いいえ       | プロジェクトのライセンスデータを含めます。 |
-| `statistics`             | ブール値           | いいえ       | プロジェクトの統計を含めます。レポーター以上のロールを持つユーザーのみが利用できます。 |
-| `with_custom_attributes` | ブール値           | いいえ       | 応答に[カスタム属性](custom_attributes.md)を含めます。_（管理者のみ）_ |
+| `statistics`             | ブール値           | いいえ       | プロジェクトの統計を含めます。レポーター、デベロッパー、メンテナー、またはオーナーロールを持つユーザーのみ利用可能です。 |
+| `with_custom_attributes` | ブール値           | いいえ       | レスポンスに[カスタム属性](custom_attributes.md)を含めます。管理者アクセス権が必要です。 |
 
-応答には、コンテナレジストリのストレージサイズに関連する属性が含まれています:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
 
-- `container_registry_size`: プロジェクト内のすべてのコンテナリポジトリで使用されるストレージサイズの合計（バイト単位）。コンテナイメージがプッシュまたは削除されるたびに更新されます。GitLab Self-Managedインスタンスでは、[コンテナレジストリメタデータデータベース](../administration/packages/container_registry_metadata_database.md)を有効にする必要があります。
+| 属性                | 型              | 説明 |
+|:-------------------------|:------------------|:------------|
+| `id` | 整数 | プロジェクトのID。 |
+| `description` | 文字列 | プロジェクトの説明。 |
+| `description_html` | 文字列 | HTML形式のプロジェクトの説明。 |
+| `name` | 文字列 | プロジェクトの名前。 |
+| `name_with_namespace` | 文字列 | プロジェクトの名前とそのネームスペース。 |
+| `path` | 文字列 | プロジェクトのパス。 |
+| `path_with_namespace` | 文字列 | プロジェクトのパスとそのネームスペース。 |
+| `created_at` | 日時 | プロジェクトが作成されたタイムスタンプ。 |
+| `default_branch` | 文字列 | プロジェクトのデフォルトブランチ。 |
+| `tag_list` | 文字列の配列 | 非推奨。代わりに`topics`を使用してください。プロジェクトのタグのリスト。 |
+| `topics` | 文字列の配列 | プロジェクトのトピックのリスト。 |
+| `ssh_url_to_repo` | 文字列 | リポジトリをクローンするためのSSH URL。 |
+| `http_url_to_repo` | 文字列 | リポジトリをクローンするためのHTTP URL。 |
+| `web_url` | 文字列 | ブラウザでプロジェクトにアクセスするためのURL。 |
+| `readme_url` | 文字列 | プロジェクトのReadmeファイルへのURL。 |
+| `forks_count` | 整数 | プロジェクトのフォーク数。 |
+| `avatar_url` | 文字列 | プロジェクトのアバター画像へのURL。 |
+| `star_count` | 整数 | プロジェクトが受け取ったスターの数。 |
+| `last_activity_at` | 日時 | プロジェクトでの最終アクティビティのタイムスタンプ。 |
+| `visibility` | 文字列 | プロジェクトの表示レベル。指定可能な値: `private`、`internal`、または`public`。 |
+| `namespace` | オブジェクト | プロジェクトのネームスペース情報。 |
+| `namespace.id` | 整数 | ネームスペースのID。 |
+| `namespace.name` | 文字列 | ネームスペースの名前。 |
+| `namespace.path` | 文字列 | ネームスペースのパス。 |
+| `namespace.kind` | 文字列 | ネームスペースのタイプ。指定可能な値: `user`または`group`。 |
+| `namespace.full_path` | 文字列 | ネームスペースのフルパス。 |
+| `namespace.parent_id` | 整数 | 該当する場合、親ネームスペースのID。 |
+| `namespace.avatar_url` | 文字列 | ネームスペースのアバター画像へのURL。 |
+| `namespace.web_url` | 文字列 | ブラウザでネームスペースにアクセスするためのURL。 |
+| `container_registry_image_prefix` | 文字列 | コンテナイメージのレジストリ用のプレフィックス。 |
+| `_links` | オブジェクト | プロジェクトに関連するAPIエンドポイントリンクのコレクション。 |
+| `_links.self` | 文字列 | プロジェクトリソースへのURL。 |
+| `_links.issues` | 文字列 | プロジェクトのイシューへのURL。 |
+| `_links.merge_requests` | 文字列 | プロジェクトのマージリクエストへのURL。 |
+| `_links.repo_branches` | 文字列 | プロジェクトのリポジトリのブランチへのURL。 |
+| `_links.labels` | 文字列 | プロジェクトのラベルへのURL。 |
+| `_links.events` | 文字列 | プロジェクトのイベントへのURL。 |
+| `_links.members` | 文字列 | プロジェクトのメンバーへのURL。 |
+| `_links.cluster_agents` | 文字列 | プロジェクトのクラスターエージェントへのURL。 |
+| `marked_for_deletion_at` | 日付 | 非推奨。代わりに`marked_for_deletion_on`を使用してください。プロジェクトが削除予定である日付。 |
+| `marked_for_deletion_on` | 日付 | プロジェクトが削除予定である日付。 |
+| `packages_enabled` | ブール値 | プロジェクトに対してパッケージレジストリが有効になっているかどうか。 |
+| `empty_repo` | ブール値 | リポジトリが空であるかどうか。 |
+| `archived` | ブール値 | プロジェクトがアーカイブされているかどうか。 |
+| `owner` | オブジェクト | プロジェクトオーナーに関する情報。 |
+| `owner.id` | 整数 | プロジェクトオーナーのID。 |
+| `owner.username` | 文字列 | オーナーのユーザー名。 |
+| `owner.public_email` | 文字列 | オーナーの公開メールアドレス。 |
+| `owner.name` | 文字列 | プロジェクトオーナーの名前。 |
+| `owner.state` | 文字列 | オーナーアカウントの現在のステータス。 |
+| `owner.locked` | ブール値 | オーナーアカウントがロックされているかどうかを示します。 |
+| `owner.avatar_url` | 文字列 | オーナーのアバター画像へのURL。 |
+| `owner.web_url` | 文字列 | オーナーのプロファイル用Web URL。 |
+| `owner.created_at` | 日時 | オーナーが作成されたタイムスタンプ。 |
+| `resolve_outdated_diff_discussions` | ブール値 | 最新ではない差分ディスカッションが自動的に解決されるかどうか。 |
+| `container_expiration_policy` | オブジェクト | コンテナイメージのポリシーの有効期限に関する設定。 |
+| `container_expiration_policy.cadence` | 文字列 | コンテナポリシーの有効期限が実行される頻度。 |
+| `container_expiration_policy.enabled` | ブール値 | コンテナポリシーの有効期限が有効になっているかどうか。 |
+| `container_expiration_policy.keep_n` | 整数 | 保持するコンテナイメージの数。 |
+| `container_expiration_policy.older_than` | 文字列 | この値より古いコンテナイメージを削除します。 |
+| `container_expiration_policy.name_regex` | 文字列 | 非推奨。代わりに`name_regex_delete`を使用してください。コンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.name_regex_delete` | 文字列 | 削除するコンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.name_regex_keep` | 文字列 | 保持するコンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.next_run_at` | 日時 | 次回のポリシー実行予定のタイムスタンプ。 |
+| `repository_object_format` | 文字列 | リポジトリで使用されるオブジェクト形式。指定可能な値: `sha1`または`sha256`。 |
+| `issues_enabled` | ブール値 | プロジェクトに対してイシューが有効になっているかどうか。 |
+| `merge_requests_enabled` | ブール値 | プロジェクトに対してマージリクエストが有効になっているかどうか。 |
+| `wiki_enabled` | ブール値 | プロジェクトに対してWikiが有効になっているかどうか。 |
+| `jobs_enabled` | ブール値 | プロジェクトに対してジョブが有効になっているかどうか。 |
+| `snippets_enabled` | ブール値 | プロジェクトに対してスニペットが有効になっているかどうか。 |
+| `container_registry_enabled` | ブール値 | 非推奨。代わりに`container_registry_access_level`を使用してください。コンテナレジストリが有効になっているかどうか。 |
+| `service_desk_enabled` | ブール値 | プロジェクトに対してサービスデスクが有効になっているかどうか。 |
+| `service_desk_address` | 文字列 | サービスデスクのメールアドレス。 |
+| `can_create_merge_request_in` | ブール値 | 現在のユーザーがプロジェクトでマージリクエストを作成できるかどうか。 |
+| `issues_access_level` | 文字列 | イシュー機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `repository_access_level` | 文字列 | リポジトリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `merge_requests_access_level` | 文字列 | マージリクエスト機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `forking_access_level` | 文字列 | プロジェクトをフォークするためのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `wiki_access_level` | 文字列 | Wiki機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `builds_access_level` | 文字列 | CI/CDのビルド機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `snippets_access_level` | 文字列 | スニペット機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `pages_access_level` | 文字列 | GitLab Pagesのアクセスレベル。指定可能な値: `disabled`、`private`、`enabled`、または`public`。 |
+| `analytics_access_level` | 文字列 | アナリティクス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `container_registry_access_level` | 文字列 | コンテナレジストリのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `security_and_compliance_access_level` | 文字列 | セキュリティとコンプライアンス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `releases_access_level` | 文字列 | リリース機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `environments_access_level` | 文字列 | 環境機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `feature_flags_access_level` | 文字列 | 機能フラグ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `infrastructure_access_level` | 文字列 | インフラストラクチャ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `monitor_access_level` | 文字列 | モニター機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_experiments_access_level` | 文字列 | モデル実験機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_registry_access_level` | 文字列 | モデルレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `package_registry_access_level` | 文字列 | パッケージレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `emails_disabled` | ブール値 | プロジェクトのメールが無効になっているかどうかを示します。 |
+| `emails_enabled` | ブール値 | プロジェクトのメールが有効になっているかどうかを示します。 |
+| `show_diff_preview_in_email` | ブール値 | メール通知に差分プレビューが表示されるかどうかを示します。 |
+| `shared_runners_enabled` | ブール値 | プロジェクトに対して共有Runnerが有効になっているかどうか。 |
+| `lfs_enabled` | ブール値 | プロジェクトに対してGit LFSが有効になっているかどうかを示します。 |
+| `creator_id` | 整数 | プロジェクトを作成したユーザーのID。 |
+| `import_url` | 文字列 | プロジェクトがインポートされたURL。 |
+| `import_type` | 文字列 | プロジェクトに利用されたインポートのタイプ。 |
+| `import_status` | 文字列 | プロジェクトインポートのステータス。 |
+| `import_error` | 文字列 | インポートが失敗した場合のエラーメッセージ。 |
+| `open_issues_count` | 整数 | 未解決のイシューの数。 |
+| `updated_at` | 日時 | プロジェクトが最後に更新されたタイムスタンプ。 |
+| `ci_default_git_depth` | 整数 | CI/CDパイプラインのデフォルトGit深度。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_delete_pipelines_in_seconds` | 整数 | 古いパイプラインが削除されるまでの秒数。 |
+| `ci_forward_deployment_enabled` | ブール値 | 前方デプロイが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_forward_deployment_rollback_allowed` | ブール値 | 前方デプロイに対してロールバックが許可されているかどうか。 |
+| `ci_job_token_scope_enabled` | ブール値 | CI/CDジョブトークンスコープが有効になっているかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_separated_caches` | ブール値 | ブランチによってCI/CDキャッシュが分離されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_allow_fork_pipelines_to_run_in_parent_project` | ブール値 | フォークパイプラインが親プロジェクトで実行できるかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_id_token_sub_claim_components` | 文字列の配列 | CI/CDIDトークンのサブジェクトクレームに含まれるコンポーネント。 |
+| `build_git_strategy` | 文字列 | CI/CDビルドに利用されるGitストラテジー（フェッチまたはクローン）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `keep_latest_artifact` | ブール値 | 新しいアーティファクトが作成されたときに最新のアーティファクトが保持されるかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `restrict_user_defined_variables` | ブール値 | ユーザー定義の変数が制限されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_pipeline_variables_minimum_override_role` | 文字列 | パイプライン変数をオーバーライドするために必要な最小ロール。 |
+| `runner_token_expiration_interval` | 整数 | Runnerトークンの有効期限（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `group_runners_enabled` | ブール値 | プロジェクトに対してグループRunnerが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `resource_group_default_process_mode` | 文字列 | リソースグループのデフォルト処理モード。 |
+| `auto_cancel_pending_pipelines` | 文字列 | 保留中のパイプラインを自動的にキャンセルする設定。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `build_timeout` | 整数 | CI/CDジョブのタイムアウト（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_enabled` | ブール値 | プロジェクトに対してAuto DevOpsが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_deploy_strategy` | 文字列 | Auto DevOpsのデプロイストラテジー。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_push_repository_for_job_token_allowed` | ブール値 | ジョブトークンを使用してリポジトリへのプッシュが許可されているかどうか。 |
+| `runners_token` | 文字列 | プロジェクトにRunnerを登録するためのトークン。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_config_path` | 文字列 | CI/CD設定ファイルへのパス。 |
+| `public_jobs` | ブール値 | ジョブログが公開アクセス可能かどうか。 |
+| `shared_with_groups` | オブジェクトの配列 | プロジェクトが共有されているグループのリスト。 |
+| `shared_with_groups[].group_id` | 整数 | プロジェクトが共有されているグループのID。 |
+| `shared_with_groups[].group_name` | 文字列 | プロジェクトが共有されているグループの名前。 |
+| `shared_with_groups[].group_full_path` | 文字列 | プロジェクトが共有されているグループのフルパス。 |
+| `shared_with_groups[].group_access_level` | 整数 | グループに付与されたアクセスレベル。 |
+| `only_allow_merge_if_pipeline_succeeds` | ブール値 | パイプラインが成功した場合にのみマージが許可されるかどうか。 |
+| `allow_merge_on_skipped_pipeline` | ブール値 | パイプラインがスキップされた場合にマージが許可されるかどうか。 |
+| `request_access_enabled` | ブール値 | ユーザーがプロジェクトへのアクセスをリクエストできるかどうか。 |
+| `only_allow_merge_if_all_discussions_are_resolved` | ブール値 | すべてのディスカッションが解決された場合にのみマージが許可されるかどうか。 |
+| `remove_source_branch_after_merge` | ブール値 | マージ後にソースブランチが自動的に削除されるかどうか。 |
+| `printing_merge_request_link_enabled` | ブール値 | プッシュ後にマージリクエストリンクが印刷されるかどうかを示します。 |
+| `printing_merge_requests_link_enabled` | ブール値 | プッシュ後にマージリクエストリンクが印刷されるかどうか。 |
+| `merge_method` | 文字列 | プロジェクトに利用されるマージメソッド。指定可能な値: `merge`、`rebase_merge`、または`ff`。 |
+| `merge_request_title_regex` | 文字列 | マージリクエストタイトルの検証用正規表現パターン。 |
+| `merge_request_title_regex_description` | 文字列 | マージリクエストタイトルの正規表現検証の説明。 |
+| `squash_option` | 文字列 | マージリクエストのスカッシュオプション。 |
+| `enforce_auth_checks_on_uploads` | ブール値 | アップロードに対する認証チェックが強制されるかどうか。 |
+| `suggestion_commit_message` | 文字列 | 提案用のカスタムコミットメッセージ。 |
+| `merge_commit_template` | 文字列 | マージコミットメッセージのテンプレート。 |
+| `squash_commit_template` | 文字列 | スカッシュコミットメッセージのテンプレート。 |
+| `issue_branch_template` | 文字列 | イシューから作成されたブランチ名のテンプレート。 |
+| `warn_about_potentially_unwanted_characters` | ブール値 | 不要な可能性のある文字の使用について警告するかどうか。 |
+| `autoclose_referenced_issues` | ブール値 | 参照されているイシューが自動的にクローズされるかどうか。 |
+| `max_artifacts_size` | 整数 | CI/CDアーティファクトの最大サイズ（MB）。 |
+| `approvals_before_merge` | 整数 | 非推奨。代わりにマージリクエスト承認APIを使用してください。マージ前に必要な承認の数。 |
+| `mirror` | ブール値 | プロジェクトがミラーであるかどうか。 |
+| `external_authorization_classification_label` | 文字列 | 外部認可分類ラベル。 |
+| `requirements_enabled` | ブール値 | 要件管理が有効になっているかどうかを示します。 |
+| `requirements_access_level` | 文字列 | 要件機能のアクセスレベル。 |
+| `security_and_compliance_enabled` | ブール値 | セキュリティとコンプライアンス機能が有効になっているかどうかを示します。 |
+| `secret_push_protection_enabled` | ブール値 | シークレットプッシュ保護が有効になっているかどうか。 |
+| `pre_receive_secret_detection_enabled` | ブール値 | プリレシーブシークレット検出が有効になっているかどうかを示します。 |
+| `compliance_frameworks` | 文字列の配列 | プロジェクトに適用されるコンプライアンスフレームワーク。 |
+| `issues_template` | 文字列 | イシューのデフォルトの説明。説明は、GitLab Flavored Markdownを使用して解析されます。PremiumおよびUltimateのみです。 |
+| `merge_requests_template` | 文字列 | マージリクエストの説明のテンプレート。PremiumおよびUltimateのみです。 |
+| `ci_restrict_pipeline_cancellation_role` | 文字列 | パイプラインをキャンセルするために必要な最小ロール。 |
+| `merge_pipelines_enabled` | ブール値 | マージパイプラインが有効になっているかどうかを示します。 |
+| `merge_trains_enabled` | ブール値 | マージトレインが有効になっているかどうかを示します。 |
+| `merge_trains_skip_train_allowed` | ブール値 | マージトレインのスキップが許可されているかどうかを示します。 |
+| `only_allow_merge_if_all_status_checks_passed` | ブール値 | すべてのステータスチェックが合格した場合にのみマージが許可されるかどうか。Ultimateのみです。 |
+| `allow_pipeline_trigger_approve_deployment` | ブール値 | パイプライントリガーがデプロイを承認できるかどうか。 |
+| `prevent_merge_without_jira_issue` | ブール値 | マージに連携されたJiraイシューが必要かどうかを示します。 |
+| `duo_remote_flows_enabled` | ブール値 | GitLab Duoリモートフローが有効になっているかどうかを示します。 |
+| `duo_foundational_flows_enabled` | ブール値 | GitLab Duo基本フローが有効になっているかどうかを示します。 |
+| `duo_sast_fp_detection_enabled` | ブール値 | GitLab DuoSAST誤検出判定が有効になっているかどうかを示します。 |
+| `web_based_commit_signing_enabled` | ブール値 | Webベースのコミット署名が有効になっているかどうかを示します。 |
+| `spp_repository_pipeline_access` | ブール値 | セキュリティポリシーのリポジトリパイプラインアクセス。セキュリティオーケストレーションポリシー機能が利用可能な場合にのみ表示されます。 |
+| `permissions` | オブジェクト | プロジェクトのユーザー権限。 |
+| `permissions.project_access` | オブジェクト | ユーザーのプロジェクトアクセスユーザー権限。 |
+| `permissions.project_access.access_level` | 整数 | プロジェクトのアクセスレベル。 |
+| `permissions.project_access.notification_level` | 整数 | プロジェクトの通知レベル。 |
+| `permissions.group_access` | オブジェクト | ユーザーのグループアクセスユーザー権限。 |
+| `permissions.group_access.access_level` | 整数 | グループのアクセスレベル。 |
+| `permissions.group_access.notification_level` | 整数 | グループの通知レベル。 |
+| `license_url` | 文字列 | プロジェクトのライセンスファイルへのURL。 |
+| `license.key` | 文字列 | ライセンスのキー識別子。 |
+| `license.name` | 文字列 | ライセンスのフルネーム。 |
+| `license.nickname` | 文字列 | ライセンスのニックネーム。 |
+| `license.html_url` | 文字列 | ライセンスの詳細を表示するためのURL。 |
+| `license.source_url` | 文字列 | ライセンスソーステキストへのURL。 |
+| `repository_storage` | 文字列 | プロジェクトのリポジトリのストレージロケーション。 |
+| `mirror_user_id` | 整数 | ミラーを設定したユーザーのID。 |
+| `mirror_trigger_builds` | ブール値 | ミラーの更新がビルドをトリガーするかどうか。 |
+| `only_mirror_protected_branches` | ブール値 | 保護された保護ブランチのみがミラーされるかどうか。 |
+| `mirror_overwrites_diverged_branches` | ブール値 | ミラーが分岐したブランチを上書きするかどうか。 |
+| `statistics.commit_count` | 整数 | プロジェクトのコミット数。 |
+| `statistics.storage_size` | 整数 | 合計ストレージサイズ（バイト）。 |
+| `statistics.repository_size` | 整数 | リポジトリストレージサイズ（バイト）。 |
+| `statistics.wiki_size` | 整数 | Wikiストレージサイズ（バイト）。 |
+| `statistics.lfs_objects_size` | 整数 | LFSオブジェクトストレージサイズ（バイト）。 |
+| `statistics.job_artifacts_size` | 整数 | ジョブアーティファクトストレージサイズ（バイト）。 |
+| `statistics.pipeline_artifacts_size` | 整数 | パイプラインアーティファクトストレージサイズ（バイト）。 |
+| `statistics.packages_size` | 整数 | パッケージストレージサイズ（バイト）。 |
+| `statistics.snippets_size` | 整数 | スニペットストレージサイズ（バイト）。 |
+| `statistics.uploads_size` | 整数 | アップロードストレージサイズ（バイト）。 |
+| `statistics.container_registry_size` | 整数 | コンテナレジストリストレージサイズ（バイト）。<sup>1</sup> |
+| `forked_from_project` | オブジェクト | このプロジェクトがフォークしたアップストリームプロジェクト。アップストリームプロジェクトがプライベートな場合、このフィールドを表示するには認証トークンが必要です。 |
+| `mr_default_target_self` | ブール値 | マージリクエストがデフォルトでこのプロジェクトをターゲットとするかどうか。`false`の場合、マージリクエストはアップストリームプロジェクトをターゲットとします。プロジェクトがフォークである場合にのみ表示されます。 |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
 
-レスポンス例:
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --header "Accept: application/json" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>"
+```
+
+レスポンス例: 
 
 ```json
 {
@@ -178,6 +447,8 @@ GET /projects/:id
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [
     {
@@ -214,6 +485,7 @@ GET /projects/:id
   "mirror_overwrites_diverged_branches": false,
   "external_authorization_classification_label": null,
   "packages_enabled": true,
+  "empty_repo": false,
   "service_desk_enabled": false,
   "service_desk_address": null,
   "autoclose_referenced_issues": true,
@@ -255,108 +527,30 @@ GET /projects/:id
 }
 ```
 
-[GitLab Ultimate](https://about.gitlab.com/pricing/)のユーザーは、GitLab 15.5以降を使用して`only_allow_merge_if_all_status_checks_passed`パラメータを表示することもできます:
-
-```json
-{
-  "id": 1,
-  "project_id": 3,
-  "only_allow_merge_if_all_status_checks_passed": false,
-  ...
-}
-```
-
-プロジェクトがフォークの場合、`forked_from_project`フィールドが応答に表示されます。このフィールドでは、アップストリームプロジェクトが非公開の場合、認証用の有効なトークンを指定する必要があります。フィールド`mr_default_target_self`も表示されます。この値が`false`の場合、すべてのマージリクエストはデフォルトでアップストリームプロジェクトをターゲットとします。
-
-```json
-{
-   "id":3,
-
-   ...
-
-   "mr_default_target_self": false,
-   "forked_from_project":{
-      "id":13083,
-      "description":"GitLab Community Edition",
-      "name":"GitLab Community Edition",
-      "name_with_namespace":"GitLab.org / GitLab Community Edition",
-      "path":"gitlab-foss",
-      "path_with_namespace":"gitlab-org/gitlab-foss",
-      "created_at":"2013-09-26T06:02:36.000Z",
-      "default_branch":"main",
-      "tag_list":[], //deprecated, use `topics` instead
-      "topics":[],
-      "ssh_url_to_repo":"git@gitlab.com:gitlab-org/gitlab-foss.git",
-      "http_url_to_repo":"https://gitlab.com/gitlab-org/gitlab-foss.git",
-      "web_url":"https://gitlab.com/gitlab-org/gitlab-foss",
-      "avatar_url":"https://gitlab.com/uploads/-/system/project/avatar/13083/logo-extra-whitespace.png",
-      "license_url": "https://gitlab.com/gitlab-org/gitlab/-/blob/main/LICENSE",
-      "license": {
-        "key": "mit",
-        "name": "MIT License",
-        "nickname": null,
-        "html_url": "http://choosealicense.com/licenses/mit/",
-        "source_url": "https://opensource.org/licenses/MIT"
-      },
-      "star_count":3812,
-      "forks_count":3561,
-      "last_activity_at":"2018-01-02T11:40:26.570Z",
-      "namespace": {
-            "id": 72,
-            "name": "GitLab.org",
-            "path": "gitlab-org",
-            "kind": "group",
-            "full_path": "gitlab-org",
-            "parent_id": null
-      },
-      "repository_storage": "default"
-   }
-
-   ...
-
-}
-```
-
-### イシューとマージリクエストのテンプレート {#templates-for-issues-and-merge-requests}
-
-{{< details >}}
-
-- プラン: Premium、Ultimate
-- 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
-
-{{< /details >}}
-
-[GitLab PremiumまたはUltimate](https://about.gitlab.com/pricing/)のユーザーに対しては、[イシューおよびマージリクエストの説明テンプレート](../user/project/description_templates.md)を管理するための`issues_template`パラメータと`merge_requests_template`パラメータも表示されます。
-
-```json
-{
-  "id": 3,
-  "issues_template": null,
-  "merge_requests_template": null,
-  ...
-}
-```
-
 ## プロジェクトのリストを取得する {#list-projects}
 
-プロジェクトのリストを取得します。
+プロジェクトとプロジェクト属性をリスト表示。
 
 ### すべてのプロジェクトのリストを取得する {#list-all-projects}
 
 {{< history >}}
 
-- 応答の`_links.cluster_agents`属性はGitLab 15.0で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/347047)されました。
-- `web_based_commit_signing_enabled`はGitLab 18.2で、`use_web_based_commit_signing_enabled`[フラグ](../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/194650)されました。デフォルトでは無効になっています。
+- `web_based_commit_signing_enabled`は、GitLab 18.2で`use_web_based_commit_signing_enabled`[フラグ](../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/194650)されました。デフォルトでは無効になっています。
 
 {{< /history >}}
 
-{{< alert type="flag" >}}
+> [!flag] `web_based_commit_signing_enabled`属性の利用可能性は機能フラグによって制御されます。詳細については、履歴を参照してください。この機能はテストには利用できますが、本番環境での使用には適していません。
 
-`web_based_commit_signing_enabled`属性の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。この機能はテストには利用できますが、本番環境での使用には適していません。
+認証済みユーザーがアクセスできるインスタンス上のすべてのプロジェクトをリスト表示します。未認証のリクエストは、限定された属性のサブセットを持つ公開プロジェクトのみを返します。
 
-{{< /alert >}}
+[カスタム属性](custom_attributes.md)でレスポンスをフィルタリングできます。
 
-認証済みユーザーに対して、GitLab全体の表示可能なすべてのプロジェクトのリストを取得します。認証なしでアクセスすると、単純なフィールドを持つ公開プロジェクトのみが返されます。
+このエンドポイントはページネーションをサポートしています:
+
+- オフセットベースのページネーションを使用して、最大50,000プロジェクトにアクセスします。
+- キーセットベースのページネーションを使用して、50,000以上のプロジェクトをリスト表示します。
+
+詳細については、[ページネーション](rest/_index.md#pagination)を参照してください。
 
 ```plaintext
 GET /projects
@@ -364,7 +558,7 @@ GET /projects
 
 サポートされている属性:
 
-| 属性                     | 種類     | 必須 | 説明 |
+| 属性                     | 型     | 必須 | 説明 |
 |:------------------------------|:---------|:---------|:------------|
 | `archived`                    | ブール値  | いいえ       | アーカイブ状態で制限します。 |
 | `id_after`                    | 整数  | いいえ       | 指定されたIDより大きいIDを持つプロジェクトに結果を制限します。 |
@@ -372,20 +566,20 @@ GET /projects
 | `imported`                    | ブール値  | いいえ       | 現在のユーザーによって外部システムからインポートされたプロジェクトに結果を制限します。 |
 | `include_hidden`              | ブール値  | いいえ       | 非表示プロジェクトを含めます。_（管理者のみ）_PremiumおよびUltimateのみ。 |
 | `include_pending_delete`      | ブール値  | いいえ       | 削除保留中のプロジェクトを含めます。_（管理者のみ）_ |
-| `last_activity_after`         | 日時 | いいえ       | 指定された時刻以降に最後のアクティビティーが行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`） |
-| `last_activity_before`        | 日時 | いいえ       | 指定された時刻以前に最後のアクティビティーが行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`） |
+| `last_activity_after`         | 日時 | いいえ       | 指定された時刻以降に最後のアクティビティが行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`） |
+| `last_activity_before`        | 日時 | いいえ       | 指定された時刻以前に最後のアクティビティが行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`） |
 | `membership`                  | ブール値  | いいえ       | 現在のユーザーがメンバーであるプロジェクトで制限します。 |
-| `min_access_level`            | 整数  | いいえ       | 現在のユーザーの最小[ロール（`access_level`）](members.md#roles)で制限します。 |
+| `min_access_level`            | 整数  | いいえ       | 現在のユーザーが少なくとも指定されたアクセスレベルを持つプロジェクトに限定します。使用可能な値: `5` （最小アクセス）、`10` （ゲスト）、`15` （プランナー）、`20` （レポーター）、`25` （セキュリティマネージャー）、`30` （デベロッパー）、`40` （メンテナー）、または`50` （オーナー）。 |
 | `order_by`                    | 文字列   | いいえ       | `id`、`name`、`path`、`created_at`、`updated_at`、`star_count`、`last_activity_at`、または`similarity`フィールドで並べ替えられたプロジェクトを返します。`repository_size`、`storage_size`、`packages_size`、または`wiki_size`フィールドは、管理者のみが使用できます。`similarity`は検索時にのみ使用可能であり、現在のユーザーがメンバーであるプロジェクトに限定されます。デフォルトは`created_at`です。 |
 | `owned`                       | ブール値  | いいえ       | 現在のユーザーが明示的に所有するプロジェクトで制限します。 |
 | `repository_checksum_failed`  | ブール値  | いいえ       | リポジトリチェックサムの計算に失敗したプロジェクトを制限します。PremiumおよびUltimateのみです。 |
 | `repository_storage`          | 文字列   | いいえ       | `repository_storage`に保存されているプロジェクトに結果を制限します。_（管理者のみ）_ |
 | `search_namespaces`           | ブール値  | いいえ       | 検索条件に一致するときに、祖先のネームスペースを含めます。デフォルトは`false`です。 |
 | `search`                      | 文字列   | いいえ       | `path`、`name`、または`description`が検索条件（大文字と小文字は区別されない、部分文字列一致）に一致するプロジェクトのリストを返します。複数の用語は、エスケープされたスペース（`+`または`%20`）で区切って指定できます。これらの用語はANDで結合されます。たとえば`one+two`は、部分文字列`one`および`two`（順不同）に一致します。 |
-| `simple`                      | ブール値  | いいえ       | プロジェクトごとに制限されたフィールドのみを返します。認証がない場合、このオペレーションは何も行いません。単純なフィールドのみが返されます。 |
+| `simple`                      | ブール値  | いいえ       | `true`の場合、各プロジェクトに対して限定されたフィールドのみを返します。未認証のリクエストは、`simple`が設定されていなくても、限定されたフィールドを持つ公開プロジェクトのみを返します。 |
 | `sort`                        | 文字列   | いいえ       | `asc`または`desc`の順にソートされたプロジェクトを返します。デフォルトは`desc`です。 |
-| `starred`                     | ブール値  | いいえ       | 現在のユーザーがお気に入りに登録したプロジェクトで制限します。 |
-| `statistics`                  | ブール値  | いいえ       | プロジェクトの統計を含めます。レポーター以上のロールを持つユーザーのみが利用できます。 |
+| `starred`                     | ブール値  | いいえ       | 現在のユーザーがStar付きに登録したプロジェクトで制限します。 |
+| `statistics`                  | ブール値  | いいえ       | プロジェクトの統計を含めます。レポーター、デベロッパー、メンテナー、またはオーナーロールを持つユーザーのみ利用可能です。 |
 | `topic_id`                    | 整数  | いいえ       | トピックIDで指定された、割り当てられたトピックを含むプロジェクトに結果を制限します。 |
 | `topic`                       | 文字列   | いいえ       | カンマ区切りのトピック名。指定されたすべてのトピックに一致するプロジェクトに結果を制限します。`topics`属性を参照してください。 |
 | `updated_after`               | 日時 | いいえ       | 指定された時刻以降に最終更新が行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`）。GitLab 15.10で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/393979)されました。このフィルターを機能させるには、`updated_at`を`order_by`属性として指定する必要もあります。 |
@@ -398,62 +592,158 @@ GET /projects
 | `with_programming_language`   | 文字列   | いいえ       | 指定されているプログラミング言語を使用するプロジェクトで制限します。 |
 | `marked_for_deletion_on`      | 日付     | いいえ       | プロジェクトが削除対象としてマークされた日付でフィルタリングします。GitLab 17.1で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/463939)されました。PremiumおよびUltimateのみです。 |
 | `active`                      | ブール値  | いいえ       | アーカイブされておらず、削除対象としてマークされていないプロジェクトで制限します。 |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
 
-このエンドポイントは、一部の`order_by`オプションで[キーセットページネーション](rest/_index.md#keyset-based-pagination)をサポートしています。
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
 
-`simple=true`であるか、またはユーザーが認証されていない場合、これは次のような内容を返します:
+| 属性 | 型 | 説明 |
+|-----------|------|-------------|
+| `id` | 整数 | プロジェクトのID。 |
+| `description` | 文字列 | プロジェクトの説明。 |
+| `name` | 文字列 | プロジェクトの名前。 |
+| `name_with_namespace` | 文字列 | プロジェクトの名前とそのネームスペース。 |
+| `path` | 文字列 | プロジェクトのパス。 |
+| `path_with_namespace` | 文字列 | プロジェクトのパスとそのネームスペース。 |
+| `created_at` | 日時 | プロジェクトが作成されたタイムスタンプ。 |
+| `default_branch` | 文字列 | プロジェクトのデフォルトブランチ。 |
+| `tag_list` | 文字列の配列 | 非推奨。代わりに`topics`を使用してください。プロジェクトのタグのリスト。 |
+| `topics` | 文字列の配列 | プロジェクトのトピックのリスト。 |
+| `ssh_url_to_repo` | 文字列 | リポジトリをクローンするためのSSH URL。 |
+| `http_url_to_repo` | 文字列 | リポジトリをクローンするためのHTTP URL。 |
+| `web_url` | 文字列 | ブラウザでプロジェクトにアクセスするためのURL。 |
+| `readme_url` | 文字列 | プロジェクトのReadmeファイルへのURL。 |
+| `forks_count` | 整数 | プロジェクトのフォーク数。 |
+| `avatar_url` | 文字列 | プロジェクトのアバター画像へのURL。 |
+| `star_count` | 整数 | プロジェクトが受け取ったスターの数。 |
+| `last_activity_at` | 日時 | プロジェクトでの最終アクティビティのタイムスタンプ。 |
+| `visibility` | 文字列 | プロジェクトの表示レベル。指定可能な値: `private`、`internal`、または`public`。 |
+| `namespace` | オブジェクト | プロジェクトのネームスペース情報。 |
+| `namespace.id` | 整数 | ネームスペースのID。 |
+| `namespace.name` | 文字列 | ネームスペースの名前。 |
+| `namespace.path` | 文字列 | ネームスペースのパス。 |
+| `namespace.kind` | 文字列 | ネームスペースのタイプ。指定可能な値: `user`または`group`。 |
+| `namespace.full_path` | 文字列 | ネームスペースのフルパス。 |
+| `namespace.parent_id` | 整数 | 該当する場合、親ネームスペースのID。 |
+| `namespace.avatar_url` | 文字列 | ネームスペースのアバター画像へのURL。 |
+| `namespace.web_url` | 文字列 | ブラウザでネームスペースにアクセスするためのURL。 |
+| `container_registry_image_prefix` | 文字列 | コンテナイメージのレジストリ用のプレフィックス。 |
+| `_links` | オブジェクト | プロジェクトに関連するAPIエンドポイントリンクのコレクション。 |
+| `_links.self` | 文字列 | プロジェクトリソースへのURL。 |
+| `_links.issues` | 文字列 | プロジェクトのイシューへのURL。 |
+| `_links.merge_requests` | 文字列 | プロジェクトのマージリクエストへのURL。 |
+| `_links.repo_branches` | 文字列 | プロジェクトのリポジトリのブランチへのURL。 |
+| `_links.labels` | 文字列 | プロジェクトのラベルへのURL。 |
+| `_links.events` | 文字列 | プロジェクトのイベントへのURL。 |
+| `_links.members` | 文字列 | プロジェクトのメンバーへのURL。 |
+| `_links.cluster_agents` | 文字列 | プロジェクトのクラスターエージェントへのURL。 |
+| `marked_for_deletion_at` | 日付 | 非推奨。代わりに`marked_for_deletion_on`を使用してください。プロジェクトが削除予定である日付。 |
+| `marked_for_deletion_on` | 日付 | プロジェクトが削除予定である日付。 |
+| `packages_enabled` | ブール値 | プロジェクトに対してパッケージレジストリが有効になっているかどうか。 |
+| `empty_repo` | ブール値 | リポジトリが空であるかどうか。 |
+| `archived` | ブール値 | プロジェクトがアーカイブされているかどうか。 |
+| `resolve_outdated_diff_discussions` | ブール値 | 最新ではない差分ディスカッションが自動的に解決されるかどうか。 |
+| `container_expiration_policy` | オブジェクト | コンテナイメージのポリシーの有効期限に関する設定。 |
+| `container_expiration_policy.cadence` | 文字列 | コンテナポリシーの有効期限が実行される頻度。 |
+| `container_expiration_policy.enabled` | ブール値 | コンテナポリシーの有効期限が有効になっているかどうか。 |
+| `container_expiration_policy.keep_n` | 整数 | 保持するコンテナイメージの数。 |
+| `container_expiration_policy.older_than` | 文字列 | この値より古いコンテナイメージを削除します。 |
+| `container_expiration_policy.name_regex` | 文字列 | 非推奨。代わりに`name_regex_delete`を使用してください。コンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.name_regex_keep` | 文字列 | 保持するコンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.next_run_at` | 日時 | 次回のポリシー実行予定のタイムスタンプ。 |
+| `repository_object_format` | 文字列 | リポジトリで使用されるオブジェクト形式 (sha1またはsha256)。 |
+| `issues_enabled` | ブール値 | プロジェクトに対してイシューが有効になっているかどうか。 |
+| `merge_requests_enabled` | ブール値 | プロジェクトに対してマージリクエストが有効になっているかどうか。 |
+| `wiki_enabled` | ブール値 | プロジェクトに対してWikiが有効になっているかどうか。 |
+| `jobs_enabled` | ブール値 | プロジェクトに対してジョブが有効になっているかどうか。 |
+| `snippets_enabled` | ブール値 | プロジェクトに対してスニペットが有効になっているかどうか。 |
+| `container_registry_enabled` | ブール値 | 非推奨。代わりに`container_registry_access_level`を使用してください。コンテナレジストリが有効になっているかどうか。 |
+| `service_desk_enabled` | ブール値 | プロジェクトに対してサービスデスクが有効になっているかどうか。 |
+| `can_create_merge_request_in` | ブール値 | 現在のユーザーがプロジェクトでマージリクエストを作成できるかどうか。 |
+| `issues_access_level` | 文字列 | イシュー機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `repository_access_level` | 文字列 | リポジトリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `merge_requests_access_level` | 文字列 | マージリクエスト機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `forking_access_level` | 文字列 | プロジェクトをフォークするためのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `wiki_access_level` | 文字列 | Wiki機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `builds_access_level` | 文字列 | CI/CDのビルド機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `snippets_access_level` | 文字列 | スニペット機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `pages_access_level` | 文字列 | GitLab Pagesのアクセスレベル。指定可能な値: `disabled`、`private`、`enabled`、または`public`。 |
+| `analytics_access_level` | 文字列 | アナリティクス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `container_registry_access_level` | 文字列 | コンテナレジストリのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `security_and_compliance_access_level` | 文字列 | セキュリティとコンプライアンス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `releases_access_level` | 文字列 | リリース機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `environments_access_level` | 文字列 | 環境機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `feature_flags_access_level` | 文字列 | 機能フラグ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `infrastructure_access_level` | 文字列 | インフラストラクチャ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `monitor_access_level` | 文字列 | モニター機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_experiments_access_level` | 文字列 | モデル実験機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_registry_access_level` | 文字列 | モデルレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `package_registry_access_level` | 文字列 | パッケージレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `emails_disabled` | ブール値 | プロジェクトのメールが無効になっているかどうかを示します。 |
+| `emails_enabled` | ブール値 | プロジェクトのメールが有効になっているかどうかを示します。 |
+| `show_diff_preview_in_email` | ブール値 | メール通知に差分プレビューが表示されるかどうかを示します。 |
+| `shared_runners_enabled` | ブール値 | プロジェクトに対して共有Runnerが有効になっているかどうか。 |
+| `lfs_enabled` | ブール値 | プロジェクトに対してGit LFSが有効になっているかどうかを示します。 |
+| `creator_id` | 整数 | プロジェクトを作成したユーザーのID。 |
+| `import_status` | 文字列 | プロジェクトインポートのステータス。 |
+| `open_issues_count` | 整数 | 未解決のイシューの数。 |
+| `description_html` | 文字列 | HTML形式のプロジェクトの説明。 |
+| `updated_at` | 日時 | プロジェクトが最後に更新されたタイムスタンプ。 |
+| `ci_config_path` | 文字列 | CI/CD設定ファイルへのパス。 |
+| `public_jobs` | ブール値 | ジョブログが公開アクセス可能かどうか。 |
+| `shared_with_groups` | オブジェクトの配列 | プロジェクトが共有されているグループのリスト。 |
+| `only_allow_merge_if_pipeline_succeeds` | ブール値 | パイプラインが成功した場合にのみマージが許可されるかどうか。 |
+| `allow_merge_on_skipped_pipeline` | ブール値 | パイプラインがスキップされた場合にマージが許可されるかどうか。 |
+| `request_access_enabled` | ブール値 | ユーザーがプロジェクトへのアクセスをリクエストできるかどうか。 |
+| `only_allow_merge_if_all_discussions_are_resolved` | ブール値 | すべてのディスカッションが解決された場合にのみマージが許可されるかどうか。 |
+| `remove_source_branch_after_merge` | ブール値 | マージ後にソースブランチが自動的に削除されるかどうか。 |
+| `printing_merge_request_link_enabled` | ブール値 | プッシュ後にマージリクエストリンクが印刷されるかどうかを示します。 |
+| `merge_method` | 文字列 | プロジェクトに利用されるマージメソッド。指定可能な値: `merge`、`rebase_merge`、または`ff`。 |
+| `merge_request_title_regex` | 文字列 | マージリクエストタイトルの検証用正規表現パターン。 |
+| `merge_request_title_regex_description` | 文字列 | マージリクエストタイトルの正規表現検証の説明。 |
+| `squash_option` | 文字列 | マージリクエストのスカッシュオプション。 |
+| `enforce_auth_checks_on_uploads` | ブール値 | アップロードに対する認証チェックが強制されるかどうか。 |
+| `suggestion_commit_message` | 文字列 | 提案用のカスタムコミットメッセージ。 |
+| `merge_commit_template` | 文字列 | マージコミットメッセージのテンプレート。 |
+| `squash_commit_template` | 文字列 | スカッシュコミットメッセージのテンプレート。 |
+| `issue_branch_template` | 文字列 | イシューから作成されたブランチ名のテンプレート。 |
+| `warn_about_potentially_unwanted_characters` | ブール値 | 不要な可能性のある文字の使用について警告するかどうか。 |
+| `autoclose_referenced_issues` | ブール値 | 参照されているイシューが自動的にクローズされるかどうか。 |
+| `max_artifacts_size` | 整数 | CI/CDアーティファクトの最大サイズ（MB）。 |
+| `approvals_before_merge` | 整数 | 非推奨。代わりにマージリクエスト承認APIを使用してください。マージ前に必要な承認の数。 |
+| `mirror` | ブール値 | プロジェクトがミラーであるかどうか。 |
+| `external_authorization_classification_label` | 文字列 | 外部認可分類ラベル。 |
+| `requirements_enabled` | ブール値 | 要件管理が有効になっているかどうかを示します。 |
+| `requirements_access_level` | 文字列 | 要件機能のアクセスレベル。 |
+| `security_and_compliance_enabled` | ブール値 | セキュリティとコンプライアンス機能が有効になっているかどうかを示します。 |
+| `compliance_frameworks` | 文字列の配列 | プロジェクトに適用されるコンプライアンスフレームワーク。 |
+| `issues_template` | 文字列 | イシューのデフォルトの説明。説明は、GitLab Flavored Markdownを使用して解析されます。PremiumおよびUltimateのみです。 |
+| `merge_requests_template` | 文字列 | マージリクエストの説明のテンプレート。PremiumおよびUltimateのみです。 |
+| `merge_pipelines_enabled` | ブール値 | マージパイプラインが有効になっているかどうかを示します。 |
+| `merge_trains_enabled` | ブール値 | マージトレインが有効になっているかどうかを示します。 |
+| `merge_trains_skip_train_allowed` | ブール値 | マージトレインのスキップが許可されているかどうかを示します。 |
+| `only_allow_merge_if_all_status_checks_passed` | ブール値 | すべてのステータスチェックが合格した場合にのみマージが許可されるかどうか。Ultimateのみです。 |
+| `allow_pipeline_trigger_approve_deployment` | ブール値 | パイプライントリガーがデプロイを承認できるかどうか。 |
+| `prevent_merge_without_jira_issue` | ブール値 | マージに連携されたJiraイシューが必要かどうかを示します。 |
+| `duo_remote_flows_enabled` | ブール値 | GitLab Duoリモートフローが有効になっているかどうかを示します。 |
+| `duo_foundational_flows_enabled` | ブール値 | GitLab Duo基本フローが有効になっているかどうかを示します。 |
+| `duo_sast_fp_detection_enabled` | ブール値 | GitLab DuoSAST誤検出判定が有効になっているかどうかを示します。 |
+| `spp_repository_pipeline_access` | ブール値 | セキュリティポリシーのリポジトリパイプラインアクセス。セキュリティオーケストレーションポリシー機能が利用可能な場合にのみ表示されます。 |
+| `permissions` | オブジェクト | プロジェクトのユーザー権限。 |
+| `permissions.project_access` | オブジェクト | ユーザーのプロジェクトアクセス権限。 |
+| `permissions.group_access` | オブジェクト | ユーザーのグループアクセス権限。 |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
-curl --request GET "https://gitlab.example.com/api/v4/projects?simple=true"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --header "Accept: application/json" \
+     --url "https://gitlab.example.com/api/v4/projects
 ```
 
-レスポンス例:
-
-```json
-[
-  {
-    "id": 4,
-    "description": null,
-    "name": "Diaspora Client",
-    "name_with_namespace": "Diaspora / Diaspora Client",
-    "path": "diaspora-client",
-    "path_with_namespace": "diaspora/diaspora-client",
-    "created_at": "2013-09-30T13:46:02Z",
-    "default_branch": "main",
-    "tag_list": [
-      "example",
-      "disapora client"
-    ],
-    "topics": [
-      "example",
-      "disapora client"
-    ],
-    "ssh_url_to_repo": "git@gitlab.example.com:diaspora/diaspora-client.git",
-    "http_url_to_repo": "https://gitlab.example.com/diaspora/diaspora-client.git",
-    "web_url": "https://gitlab.example.com/diaspora/diaspora-client",
-    "avatar_url": "https://gitlab.example.com/uploads/project/avatar/4/uploads/avatar.png",
-    "star_count": 0,
-    "last_activity_at": "2013-09-30T13:46:02Z",
-    "visibility": "public",
-    "namespace": {
-      "id": 2,
-      "name": "Diaspora",
-      "path": "diaspora",
-      "kind": "group",
-      "full_path": "diaspora",
-      "parent_id": null,
-      "avatar_url": null,
-      "web_url": "https://gitlab.example.com/diaspora"
-    }
-  },
-  {
-    ...
-  }
-```
-
-ユーザーが認証されていて、`simple`が設定されていない場合、このエンドポイントは次の内容を返します:
+レスポンス例: 
 
 ```json
 [
@@ -560,6 +850,8 @@ curl --request GET "https://gitlab.example.com/api/v4/projects?simple=true"
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "build_timeout": 3600,
     "auto_cancel_pending_pipelines": "enabled",
@@ -603,45 +895,23 @@ curl --request GET "https://gitlab.example.com/api/v4/projects?simple=true"
 ]
 ```
 
-{{< alert type="note" >}}
+> [!note] 
+> `last_activity_at`は[プロジェクトアクティビティ](../user/project/working_with_projects.md#view-project-activity)と[プロジェクトイベント](events.md)に基づいて更新されます。データベースパフォーマンスを最適化するため、このフィールドは1時間に1回のみ更新されます。最後の更新から1時間以内に発生したイベントは、タイムスタンプを変更しません。結果として、`last_activity_at`は最大1時間最新ではない可能性があります。`updated_at`は、プロジェクトレコードがデータベースで変更されるたびに更新されます。
 
-`last_activity_at`は、[プロジェクトアクティビティー](../user/project/working_with_projects.md#view-project-activity)と[プロジェクトイベント](events.md)に基づいて更新されます。`updated_at`は、プロジェクトレコードがデータベースで変更されるたびに更新されます。
+### ユーザーの全個人プロジェクトを一覧表示する {#list-all-personal-projects-for-a-user}
 
-{{< /alert >}}
+指定されたユーザーの全個人プロジェクトを一覧表示します。次の制限が適用されます。
 
-[カスタム属性](custom_attributes.md)でフィルタリングするには、以下を使用します:
+- ユーザーの個人ネームスペース内のプロジェクトのみを返します。グループまたはサブグループプロジェクトは返しません。
+- ユーザープロファイルがプライベートの場合、空のリストが返されます。
+- 認証なしのリクエストは、公開プロジェクトのみを返します。
 
-```plaintext
-GET /projects?custom_attributes[key]=value&custom_attributes[other_key]=other_value
-```
+このエンドポイントはページネーションをサポートしています:
 
-リクエストの例:
+- オフセットベースのページネーションを使用して、最大50,000プロジェクトにアクセスします。
+- キーセットベースのページネーションを使用して、50,000以上のプロジェクトをリスト表示します。
 
-```shell
-curl --globoff --request GET "https://gitlab.example.com/api/v4/projects?custom_attributes[location]=Antarctica&custom_attributes[role]=Developer"
-```
-
-#### ページネーションの制限 {#pagination-limits}
-
-[オフセットベースのページネーション](rest/_index.md#offset-based-pagination)を使用すると、[最大50,000件のプロジェクト](https://gitlab.com/gitlab-org/gitlab/-/issues/34565)にアクセスできます。
-
-この制限を超えるプロジェクトを取得するには、[キーセットページネーション](rest/_index.md#keyset-based-pagination)を使用します。キーセットページネーションは、`order_by=id`のみをサポートします。その他のソートオプションは利用できません。
-
-### ユーザーのプロジェクトのリストを取得する {#list-a-users-projects}
-
-指定されたユーザーが所有する、表示可能なプロジェクトのリストを取得します。認証なしでアクセスした場合、公開プロジェクトのみが返されます。
-
-前提要件: 
-
-- [特定の属性](https://gitlab.com/gitlab-org/gitlab/-/blob/520776fa8e5a11b8275b7c597d75246fcfc74c89/lib/api/entities/project.rb#L109-130)を表示するには、管理者であるか、プロジェクトのオーナーロールを持っている必要があります。
-
-{{< alert type="note" >}}
-
-`user_id`で指定されたユーザーのネームスペースにあるプロジェクトのみが返されます。グループまたはサブグループ内のユーザーが所有するプロジェクトは返されません。プロファイルが非公開に設定されている場合、空のリストが返されます。
-
-{{< /alert >}}
-
-このエンドポイントは、一部の`order_by`オプションで[キーセットページネーション](rest/_index.md#keyset-based-pagination)をサポートしています。
+詳細については、[ページネーション](rest/_index.md#pagination)を参照してください。
 
 ```plaintext
 GET /users/:user_id/projects
@@ -649,30 +919,193 @@ GET /users/:user_id/projects
 
 サポートされている属性:
 
-| 属性                     | 種類     | 必須 | 説明 |
+| 属性                     | 型     | 必須 | 説明 |
 |:------------------------------|:---------|:---------|:------------|
 | `user_id`                     | 文字列   | はい      | ユーザーのIDまたはユーザー名。 |
 | `archived`                    | ブール値  | いいえ       | アーカイブ状態で制限します。 |
 | `id_after`                    | 整数  | いいえ       | 指定されたIDより大きいIDを持つプロジェクトに結果を制限します。 |
 | `id_before`                   | 整数  | いいえ       | 指定されたIDより小さいIDを持つプロジェクトに結果を制限します。 |
 | `membership`                  | ブール値  | いいえ       | 現在のユーザーがメンバーであるプロジェクトで制限します。 |
-| `min_access_level`            | 整数  | いいえ       | 現在のユーザーの最小[ロール（`access_level`）](members.md#roles)で制限します。 |
+| `min_access_level`            | 整数  | いいえ       | 現在のユーザーが少なくとも指定されたアクセスレベルを持つプロジェクトに限定します。使用可能な値: `5` （最小アクセス）、`10` （ゲスト）、`15` （プランナー）、`20` （レポーター）、`25` （セキュリティマネージャー）、`30` （デベロッパー）、`40` （メンテナー）、または`50` （オーナー）。 |
 | `order_by`                    | 文字列   | いいえ       | `id`、`name`、`path`、`created_at`、`updated_at`、`star_count`、または`last_activity_at`のフィールドで並べ替えられたプロジェクトを返します。デフォルトは`created_at`です。 |
 | `owned`                       | ブール値  | いいえ       | 現在のユーザーが明示的に所有するプロジェクトで制限します。 |
 | `search`                      | 文字列   | いいえ       | 検索条件に一致するプロジェクトのリストを返します。 |
-| `simple`                      | ブール値  | いいえ       | プロジェクトごとに制限されたフィールドのみを返します。認証がない場合、このオペレーションは何も行いません。単純なフィールドのみが返されます。 |
+| `simple`                      | ブール値  | いいえ       | `true`の場合、各プロジェクトに対して限定されたフィールドのみを返します。未認証のリクエストは、`simple`が設定されていなくても、限定されたフィールドを持つ公開プロジェクトのみを返します。 |
 | `sort`                        | 文字列   | いいえ       | `asc`または`desc`の順にソートされたプロジェクトを返します。デフォルトは`desc`です。 |
-| `starred`                     | ブール値  | いいえ       | 現在のユーザーがお気に入りに登録したプロジェクトで制限します。 |
-| `statistics`                  | ブール値  | いいえ       | プロジェクトの統計を含めます。レポーター以上のロールを持つユーザーのみが利用できます。 |
-| `updated_after`               | 日時 | いいえ       | 指定された時刻以降に最終更新が行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`）。GitLab 15.10で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/393979)されました。 |
-| `updated_before`              | 日時 | いいえ       | 指定された時刻以前に最終更新が行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`）。GitLab 15.10で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/393979)されました。 |
-| `visibility`                  | 文字列   | いいえ       | 表示レベル（`public`、`internal`、`private`）で制限します。 |
-| `with_custom_attributes`      | ブール値  | いいえ       | 応答に[カスタム属性](custom_attributes.md)を含めます。_（管理者のみ）_ |
+| `starred`                     | ブール値  | いいえ       | 現在のユーザーがStar付きに登録したプロジェクトで制限します。 |
+| `statistics`                  | ブール値  | いいえ       | プロジェクトの統計を含めます。レポーター、デベロッパー、メンテナー、またはオーナーロールを持つユーザーのみ利用可能です。 |
+| `updated_after`               | 日時 | いいえ       | 指定された時刻以降に最終更新が行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`）。 |
+| `updated_before`              | 日時 | いいえ       | 指定された時刻以前に最終更新が行われたプロジェクトに結果を制限します。形式: ISO 8601（`YYYY-MM-DDTHH:MM:SSZ`）。 |
+| `visibility`                  | 文字列   | いいえ       | 表示レベルで制限します。指定可能な値: `public`、`internal`、または`private`。 |
+| `with_custom_attributes`      | ブール値  | いいえ       | レスポンスに[カスタム属性](custom_attributes.md)を含めます。管理者アクセス権が必要です。 |
 | `with_issues_enabled`         | ブール値  | いいえ       | 有効になっているイシュー機能で制限します。 |
 | `with_merge_requests_enabled` | ブール値  | いいえ       | 有効になっているマージリクエスト機能で制限します。 |
 | `with_programming_language`   | 文字列   | いいえ       | 指定されているプログラミング言語を使用するプロジェクトで制限します。 |
 
-レスポンス例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|-----------|------|-------------|
+| `id` | 整数 | プロジェクトのID。 |
+| `description` | 文字列 | プロジェクトの説明。 |
+| `name` | 文字列 | プロジェクトの名前。 |
+| `name_with_namespace` | 文字列 | プロジェクトの名前とそのネームスペース。 |
+| `path` | 文字列 | プロジェクトのパス。 |
+| `path_with_namespace` | 文字列 | プロジェクトのパスとそのネームスペース。 |
+| `created_at` | 日時 | プロジェクトが作成されたタイムスタンプ。 |
+| `default_branch` | 文字列 | プロジェクトのデフォルトブランチ。 |
+| `tag_list` | 文字列の配列 | 非推奨。代わりに`topics`を使用してください。プロジェクトのタグのリスト。 |
+| `topics` | 文字列の配列 | プロジェクトのトピックのリスト。 |
+| `ssh_url_to_repo` | 文字列 | リポジトリをクローンするためのSSH URL。 |
+| `http_url_to_repo` | 文字列 | リポジトリをクローンするためのHTTP URL。 |
+| `web_url` | 文字列 | ブラウザでプロジェクトにアクセスするためのURL。 |
+| `readme_url` | 文字列 | プロジェクトのReadmeファイルへのURL。 |
+| `forks_count` | 整数 | プロジェクトのフォーク数。 |
+| `avatar_url` | 文字列 | プロジェクトのアバター画像へのURL。 |
+| `star_count` | 整数 | プロジェクトが受け取ったスターの数。 |
+| `last_activity_at` | 日時 | プロジェクトでの最終アクティビティのタイムスタンプ。 |
+| `visibility` | 文字列 | プロジェクトの表示レベル。指定可能な値: `private`、`internal`、または`public`。 |
+| `namespace` | オブジェクト | プロジェクトのネームスペース情報。 |
+| `namespace.id` | 整数 | ネームスペースのID。 |
+| `namespace.name` | 文字列 | ネームスペースの名前。 |
+| `namespace.path` | 文字列 | ネームスペースのパス。 |
+| `namespace.kind` | 文字列 | ネームスペースのタイプ。指定可能な値: `user`または`group`。 |
+| `namespace.full_path` | 文字列 | ネームスペースのフルパス。 |
+| `namespace.parent_id` | 整数 | 該当する場合、親ネームスペースのID。 |
+| `namespace.avatar_url` | 文字列 | ネームスペースのアバター画像へのURL。 |
+| `namespace.web_url` | 文字列 | ブラウザでネームスペースにアクセスするためのURL。 |
+| `container_registry_image_prefix` | 文字列 | コンテナイメージのレジストリ用のプレフィックス。 |
+| `_links` | オブジェクト | プロジェクトに関連するAPIエンドポイントリンクのコレクション。 |
+| `_links.self` | 文字列 | プロジェクトリソースへのURL。 |
+| `_links.issues` | 文字列 | プロジェクトのイシューへのURL。 |
+| `_links.merge_requests` | 文字列 | プロジェクトのマージリクエストへのURL。 |
+| `_links.repo_branches` | 文字列 | プロジェクトのリポジトリのブランチへのURL。 |
+| `_links.labels` | 文字列 | プロジェクトのラベルへのURL。 |
+| `_links.events` | 文字列 | プロジェクトのイベントへのURL。 |
+| `_links.members` | 文字列 | プロジェクトのメンバーへのURL。 |
+| `_links.cluster_agents` | 文字列 | プロジェクトのクラスターエージェントへのURL。 |
+| `marked_for_deletion_at` | 日付 | 非推奨。代わりに`marked_for_deletion_on`を使用してください。プロジェクトが削除予定である日付。 |
+| `marked_for_deletion_on` | 日付 | プロジェクトが削除予定である日付。 |
+| `packages_enabled` | ブール値 | プロジェクトに対してパッケージレジストリが有効になっているかどうか。 |
+| `empty_repo` | ブール値 | リポジトリが空であるかどうか。 |
+| `archived` | ブール値 | プロジェクトがアーカイブされているかどうか。 |
+| `resolve_outdated_diff_discussions` | ブール値 | 最新ではない差分ディスカッションが自動的に解決されるかどうか。 |
+| `container_expiration_policy` | オブジェクト | コンテナイメージのポリシーの有効期限に関する設定。 |
+| `container_expiration_policy.cadence` | 文字列 | コンテナポリシーの有効期限が実行される頻度。 |
+| `container_expiration_policy.enabled` | ブール値 | コンテナポリシーの有効期限が有効になっているかどうか。 |
+| `container_expiration_policy.keep_n` | 整数 | 保持するコンテナイメージの数。 |
+| `container_expiration_policy.older_than` | 文字列 | この値より古いコンテナイメージを削除します。 |
+| `container_expiration_policy.name_regex` | 文字列 | 非推奨。代わりに`name_regex_delete`を使用してください。コンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.name_regex_keep` | 文字列 | 保持するコンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.next_run_at` | 日時 | 次回のポリシー実行予定のタイムスタンプ。 |
+| `repository_object_format` | 文字列 | リポジトリで使用されるオブジェクト形式 (sha1またはsha256)。 |
+| `issues_enabled` | ブール値 | プロジェクトに対してイシューが有効になっているかどうか。 |
+| `merge_requests_enabled` | ブール値 | プロジェクトに対してマージリクエストが有効になっているかどうか。 |
+| `wiki_enabled` | ブール値 | プロジェクトに対してWikiが有効になっているかどうか。 |
+| `jobs_enabled` | ブール値 | プロジェクトに対してジョブが有効になっているかどうか。 |
+| `snippets_enabled` | ブール値 | プロジェクトに対してスニペットが有効になっているかどうか。 |
+| `container_registry_enabled` | ブール値 | 非推奨。代わりに`container_registry_access_level`を使用してください。コンテナレジストリが有効になっているかどうか。 |
+| `service_desk_enabled` | ブール値 | プロジェクトに対してサービスデスクが有効になっているかどうか。 |
+| `can_create_merge_request_in` | ブール値 | 現在のユーザーがプロジェクトでマージリクエストを作成できるかどうか。 |
+| `issues_access_level` | 文字列 | イシュー機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `repository_access_level` | 文字列 | リポジトリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `merge_requests_access_level` | 文字列 | マージリクエスト機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `forking_access_level` | 文字列 | プロジェクトをフォークするためのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `wiki_access_level` | 文字列 | Wiki機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `builds_access_level` | 文字列 | CI/CDのビルド機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `snippets_access_level` | 文字列 | スニペット機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `pages_access_level` | 文字列 | GitLab Pagesのアクセスレベル。指定可能な値: `disabled`、`private`、`enabled`、または`public`。 |
+| `analytics_access_level` | 文字列 | アナリティクス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `container_registry_access_level` | 文字列 | コンテナレジストリのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `security_and_compliance_access_level` | 文字列 | セキュリティとコンプライアンス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `releases_access_level` | 文字列 | リリース機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `environments_access_level` | 文字列 | 環境機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `feature_flags_access_level` | 文字列 | 機能フラグ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `infrastructure_access_level` | 文字列 | インフラストラクチャ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `monitor_access_level` | 文字列 | モニター機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_experiments_access_level` | 文字列 | モデル実験機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_registry_access_level` | 文字列 | モデルレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `package_registry_access_level` | 文字列 | パッケージレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `emails_disabled` | ブール値 | プロジェクトのメールが無効になっているかどうかを示します。 |
+| `emails_enabled` | ブール値 | プロジェクトのメールが有効になっているかどうかを示します。 |
+| `show_diff_preview_in_email` | ブール値 | メール通知に差分プレビューが表示されるかどうかを示します。 |
+| `shared_runners_enabled` | ブール値 | プロジェクトに対して共有Runnerが有効になっているかどうか。 |
+| `lfs_enabled` | ブール値 | プロジェクトに対してGit LFSが有効になっているかどうかを示します。 |
+| `creator_id` | 整数 | プロジェクトを作成したユーザーのID。 |
+| `import_status` | 文字列 | プロジェクトインポートのステータス。 |
+| `open_issues_count` | 整数 | 未解決のイシューの数。 |
+| `description_html` | 文字列 | HTML形式のプロジェクトの説明。 |
+| `updated_at` | 日時 | プロジェクトが最後に更新されたタイムスタンプ。 |
+| `ci_default_git_depth` | 整数 | CI/CDパイプラインのデフォルトGit深度。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_forward_deployment_enabled` | ブール値 | 前方デプロイが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_job_token_scope_enabled` | ブール値 | CI/CDジョブトークンスコープが有効になっているかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_separated_caches` | ブール値 | ブランチによってCI/CDキャッシュが分離されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_allow_fork_pipelines_to_run_in_parent_project` | ブール値 | フォークパイプラインが親プロジェクトで実行できるかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `build_git_strategy` | 文字列 | CI/CDビルドに利用されるGitストラテジー（フェッチまたはクローン）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `keep_latest_artifact` | ブール値 | 新しいアーティファクトが作成されたときに最新のアーティファクトが保持されるかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `restrict_user_defined_variables` | ブール値 | ユーザー定義の変数が制限されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `runners_token` | 文字列 | プロジェクトにRunnerを登録するためのトークン。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `runner_token_expiration_interval` | 整数 | Runnerトークンの有効期限（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `group_runners_enabled` | ブール値 | プロジェクトに対してグループRunnerが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_cancel_pending_pipelines` | 文字列 | 保留中のパイプラインを自動的にキャンセルする設定。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `build_timeout` | 整数 | CI/CDジョブのタイムアウト（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_enabled` | ブール値 | プロジェクトに対してAuto DevOpsが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_deploy_strategy` | 文字列 | Auto DevOpsのデプロイストラテジー。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_config_path` | 文字列 | CI/CD設定ファイルへのパス。 |
+| `public_jobs` | ブール値 | ジョブログが公開アクセス可能かどうか。 |
+| `shared_with_groups` | オブジェクトの配列 | プロジェクトが共有されているグループのリスト。 |
+| `only_allow_merge_if_pipeline_succeeds` | ブール値 | パイプラインが成功した場合にのみマージが許可されるかどうか。 |
+| `allow_merge_on_skipped_pipeline` | ブール値 | パイプラインがスキップされた場合にマージが許可されるかどうか。 |
+| `request_access_enabled` | ブール値 | ユーザーがプロジェクトへのアクセスをリクエストできるかどうか。 |
+| `only_allow_merge_if_all_discussions_are_resolved` | ブール値 | すべてのディスカッションが解決された場合にのみマージが許可されるかどうか。 |
+| `remove_source_branch_after_merge` | ブール値 | マージ後にソースブランチが自動的に削除されるかどうか。 |
+| `printing_merge_request_link_enabled` | ブール値 | プッシュ後にマージリクエストリンクが印刷されるかどうかを示します。 |
+| `merge_method` | 文字列 | プロジェクトに利用されるマージメソッド。指定可能な値: `merge`、`rebase_merge`、または`ff`。 |
+| `merge_request_title_regex` | 文字列 | マージリクエストタイトルの検証用正規表現パターン。 |
+| `merge_request_title_regex_description` | 文字列 | マージリクエストタイトルの正規表現検証の説明。 |
+| `squash_option` | 文字列 | マージリクエストのスカッシュオプション。 |
+| `enforce_auth_checks_on_uploads` | ブール値 | アップロードに対する認証チェックが強制されるかどうか。 |
+| `suggestion_commit_message` | 文字列 | 提案用のカスタムコミットメッセージ。 |
+| `merge_commit_template` | 文字列 | マージコミットメッセージのテンプレート。 |
+| `squash_commit_template` | 文字列 | スカッシュコミットメッセージのテンプレート。 |
+| `issue_branch_template` | 文字列 | イシューから作成されたブランチ名のテンプレート。 |
+| `warn_about_potentially_unwanted_characters` | ブール値 | 不要な可能性のある文字の使用について警告するかどうか。 |
+| `autoclose_referenced_issues` | ブール値 | 参照されているイシューが自動的にクローズされるかどうか。 |
+| `max_artifacts_size` | 整数 | CI/CDアーティファクトの最大サイズ（MB）。 |
+| `approvals_before_merge` | 整数 | 非推奨。代わりにマージリクエスト承認APIを使用してください。マージ前に必要な承認の数。 |
+| `mirror` | ブール値 | プロジェクトがミラーであるかどうか。 |
+| `external_authorization_classification_label` | 文字列 | 外部認可分類ラベル。 |
+| `requirements_enabled` | ブール値 | 要件管理が有効になっているかどうかを示します。 |
+| `requirements_access_level` | 文字列 | 要件機能のアクセスレベル。 |
+| `security_and_compliance_enabled` | ブール値 | セキュリティとコンプライアンス機能が有効になっているかどうかを示します。 |
+| `compliance_frameworks` | 文字列の配列 | プロジェクトに適用されるコンプライアンスフレームワーク。 |
+| `issues_template` | 文字列 | イシューのデフォルトの説明。説明は、GitLab Flavored Markdownを使用して解析されます。PremiumおよびUltimateのみです。 |
+| `merge_requests_template` | 文字列 | マージリクエストの説明のテンプレート。PremiumおよびUltimateのみです。 |
+| `merge_pipelines_enabled` | ブール値 | マージパイプラインが有効になっているかどうかを示します。 |
+| `merge_trains_enabled` | ブール値 | マージトレインが有効になっているかどうかを示します。 |
+| `merge_trains_skip_train_allowed` | ブール値 | マージトレインのスキップが許可されているかどうかを示します。 |
+| `only_allow_merge_if_all_status_checks_passed` | ブール値 | すべてのステータスチェックが合格した場合にのみマージが許可されるかどうか。Ultimateのみです。 |
+| `allow_pipeline_trigger_approve_deployment` | ブール値 | パイプライントリガーがデプロイを承認できるかどうか。 |
+| `prevent_merge_without_jira_issue` | ブール値 | マージに連携されたJiraイシューが必要かどうかを示します。 |
+| `duo_remote_flows_enabled` | ブール値 | GitLab Duoリモートフローが有効になっているかどうかを示します。 |
+| `duo_foundational_flows_enabled` | ブール値 | GitLab Duo基本フローが有効になっているかどうかを示します。 |
+| `duo_sast_fp_detection_enabled` | ブール値 | GitLab DuoSAST誤検出判定が有効になっているかどうかを示します。 |
+| `spp_repository_pipeline_access` | ブール値 | セキュリティポリシーのリポジトリパイプラインアクセス。セキュリティオーケストレーションポリシー機能が利用可能な場合にのみ表示されます。 |
+| `permissions` | オブジェクト | プロジェクトのユーザー権限。 |
+| `permissions.project_access` | オブジェクト | ユーザーのプロジェクトアクセス権限。 |
+| `permissions.group_access` | オブジェクト | ユーザーのグループアクセス権限。 |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
+
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --header "Accept: application/json" \
+     --url "https://gitlab.example.com/api/v4/users/:user_id/projects
+```
+
+レスポンス例: 
 
 ```json
 [
@@ -746,6 +1179,8 @@ GET /users/:user_id/projects
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "shared_with_groups": [],
     "only_allow_merge_if_pipeline_succeeds": false,
@@ -872,6 +1307,8 @@ GET /users/:user_id/projects
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "shared_with_groups": [],
     "only_allow_merge_if_pipeline_succeeds": false,
@@ -894,6 +1331,7 @@ GET /users/:user_id/projects
     "mirror_overwrites_diverged_branches": false,
     "external_authorization_classification_label": null,
     "packages_enabled": true, // deprecated, use package_registry_access_level instead
+    "empty_repo": false,
     "package_registry_access_level": "enabled",
     "service_desk_enabled": false,
     "service_desk_address": null,
@@ -932,9 +1370,9 @@ GET /users/:user_id/projects
 ]
 ```
 
-### ユーザーがコントリビュートしたプロジェクトのリストを取得する {#list-projects-a-user-has-contributed-to}
+### ユーザーのすべてのプロジェクト貢献をリスト表示 {#list-all-projects-contributions-for-a-user}
 
-指定されたユーザーが過去1年以内にコントリビュートした、表示可能なプロジェクトのリストを返します。コントリビュートとみなされる内容の詳細については、[コントリビュートしたプロジェクトの表示](../user/project/working_with_projects.md#view-projects-you-work-with)を参照してください。
+指定されたユーザーに対する、可視プロジェクトへのすべての貢献をリスト表示します。過去1年間の貢献のみを返します。貢献としてカウントされるものに関する詳細については、[View projects you work with](../user/project/working_with_projects.md#view-projects-you-work-with)を参照してください。
 
 ```plaintext
 GET /users/:user_id/contributed_projects
@@ -942,21 +1380,176 @@ GET /users/:user_id/contributed_projects
 
 サポートされている属性:
 
-| 属性  | 種類    | 必須 | 説明 |
+| 属性  | 型    | 必須 | 説明 |
 |:-----------|:--------|:---------|:------------|
 | `user_id`  | 文字列  | はい      | ユーザーのIDまたはユーザー名。 |
 | `order_by` | 文字列  | いいえ       | `id`、`name`、`path`、`created_at`、`updated_at`、`star_count`、または`last_activity_at`のフィールドで並べ替えられたプロジェクトを返します。デフォルトは`created_at`です。 |
-| `simple`   | ブール値 | いいえ       | プロジェクトごとに制限されたフィールドのみを返します。認証がない場合、このオペレーションは何も行いません。単純なフィールドのみが返されます。 |
+| `simple`   | ブール値 | いいえ       | `true`の場合、各プロジェクトに対して限定されたフィールドのみを返します。未認証のリクエストは、`simple`が設定されていなくても、限定されたフィールドを持つ公開プロジェクトのみを返します。 |
 | `sort`     | 文字列  | いいえ       | `asc`または`desc`の順にソートされたプロジェクトを返します。デフォルトは`desc`です。 |
 
-リクエストの例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|-----------|------|-------------|
+| `id` | 整数 | プロジェクトのID。 |
+| `description` | 文字列 | プロジェクトの説明。 |
+| `name` | 文字列 | プロジェクトの名前。 |
+| `name_with_namespace` | 文字列 | プロジェクトの名前とそのネームスペース。 |
+| `path` | 文字列 | プロジェクトのパス。 |
+| `path_with_namespace` | 文字列 | プロジェクトのパスとそのネームスペース。 |
+| `created_at` | 日時 | プロジェクトが作成されたタイムスタンプ。 |
+| `default_branch` | 文字列 | プロジェクトのデフォルトブランチ。 |
+| `tag_list` | 文字列の配列 | 非推奨。代わりに`topics`を使用してください。プロジェクトのタグのリスト。 |
+| `topics` | 文字列の配列 | プロジェクトのトピックのリスト。 |
+| `ssh_url_to_repo` | 文字列 | リポジトリをクローンするためのSSH URL。 |
+| `http_url_to_repo` | 文字列 | リポジトリをクローンするためのHTTP URL。 |
+| `web_url` | 文字列 | ブラウザでプロジェクトにアクセスするためのURL。 |
+| `readme_url` | 文字列 | プロジェクトのReadmeファイルへのURL。 |
+| `forks_count` | 整数 | プロジェクトのフォーク数。 |
+| `avatar_url` | 文字列 | プロジェクトのアバター画像へのURL。 |
+| `star_count` | 整数 | プロジェクトが受け取ったスターの数。 |
+| `last_activity_at` | 日時 | プロジェクトでの最終アクティビティのタイムスタンプ。 |
+| `visibility` | 文字列 | プロジェクトの表示レベル。指定可能な値: `private`、`internal`、または`public`。 |
+| `namespace` | オブジェクト | プロジェクトのネームスペース情報。 |
+| `namespace.id` | 整数 | ネームスペースのID。 |
+| `namespace.name` | 文字列 | ネームスペースの名前。 |
+| `namespace.path` | 文字列 | ネームスペースのパス。 |
+| `namespace.kind` | 文字列 | ネームスペースのタイプ。指定可能な値: `user`または`group`。 |
+| `namespace.full_path` | 文字列 | ネームスペースのフルパス。 |
+| `namespace.parent_id` | 整数 | 該当する場合、親ネームスペースのID。 |
+| `namespace.avatar_url` | 文字列 | ネームスペースのアバター画像へのURL。 |
+| `namespace.web_url` | 文字列 | ブラウザでネームスペースにアクセスするためのURL。 |
+| `container_registry_image_prefix` | 文字列 | コンテナイメージのレジストリ用のプレフィックス。 |
+| `_links` | オブジェクト | プロジェクトに関連するAPIエンドポイントリンクのコレクション。 |
+| `_links.self` | 文字列 | プロジェクトリソースへのURL。 |
+| `_links.issues` | 文字列 | プロジェクトのイシューへのURL。 |
+| `_links.merge_requests` | 文字列 | プロジェクトのマージリクエストへのURL。 |
+| `_links.repo_branches` | 文字列 | プロジェクトのリポジトリのブランチへのURL。 |
+| `_links.labels` | 文字列 | プロジェクトのラベルへのURL。 |
+| `_links.events` | 文字列 | プロジェクトのイベントへのURL。 |
+| `_links.members` | 文字列 | プロジェクトのメンバーへのURL。 |
+| `_links.cluster_agents` | 文字列 | プロジェクトのクラスターエージェントへのURL。 |
+| `marked_for_deletion_at` | 日付 | 非推奨。代わりに`marked_for_deletion_on`を使用してください。プロジェクトが削除予定である日付。 |
+| `marked_for_deletion_on` | 日付 | プロジェクトが削除予定である日付。 |
+| `packages_enabled` | ブール値 | プロジェクトに対してパッケージレジストリが有効になっているかどうか。 |
+| `empty_repo` | ブール値 | リポジトリが空であるかどうか。 |
+| `archived` | ブール値 | プロジェクトがアーカイブされているかどうか。 |
+| `resolve_outdated_diff_discussions` | ブール値 | 最新ではない差分ディスカッションが自動的に解決されるかどうか。 |
+| `container_expiration_policy` | オブジェクト | コンテナイメージのポリシーの有効期限に関する設定。 |
+| `container_expiration_policy.cadence` | 文字列 | コンテナポリシーの有効期限が実行される頻度。 |
+| `container_expiration_policy.enabled` | ブール値 | コンテナポリシーの有効期限が有効になっているかどうか。 |
+| `container_expiration_policy.keep_n` | 整数 | 保持するコンテナイメージの数。 |
+| `container_expiration_policy.older_than` | 文字列 | この値より古いコンテナイメージを削除します。 |
+| `container_expiration_policy.name_regex` | 文字列 | 非推奨。代わりに`name_regex_delete`を使用してください。コンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.name_regex_keep` | 文字列 | 保持するコンテナイメージ名に一致する正規表現。 |
+| `container_expiration_policy.next_run_at` | 日時 | 次回のポリシー実行予定のタイムスタンプ。 |
+| `repository_object_format` | 文字列 | リポジトリで使用されるオブジェクト形式 (sha1またはsha256)。 |
+| `issues_enabled` | ブール値 | プロジェクトに対してイシューが有効になっているかどうか。 |
+| `merge_requests_enabled` | ブール値 | プロジェクトに対してマージリクエストが有効になっているかどうか。 |
+| `wiki_enabled` | ブール値 | プロジェクトに対してWikiが有効になっているかどうか。 |
+| `jobs_enabled` | ブール値 | プロジェクトに対してジョブが有効になっているかどうか。 |
+| `snippets_enabled` | ブール値 | プロジェクトに対してスニペットが有効になっているかどうか。 |
+| `container_registry_enabled` | ブール値 | 非推奨。代わりに`container_registry_access_level`を使用してください。コンテナレジストリが有効になっているかどうか。 |
+| `service_desk_enabled` | ブール値 | プロジェクトに対してサービスデスクが有効になっているかどうか。 |
+| `can_create_merge_request_in` | ブール値 | 現在のユーザーがプロジェクトでマージリクエストを作成できるかどうか。 |
+| `issues_access_level` | 文字列 | イシュー機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `repository_access_level` | 文字列 | リポジトリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `merge_requests_access_level` | 文字列 | マージリクエスト機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `forking_access_level` | 文字列 | プロジェクトをフォークするためのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `wiki_access_level` | 文字列 | Wiki機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `builds_access_level` | 文字列 | CI/CDのビルド機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `snippets_access_level` | 文字列 | スニペット機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `pages_access_level` | 文字列 | GitLab Pagesのアクセスレベル。指定可能な値: `disabled`、`private`、`enabled`、または`public`。 |
+| `analytics_access_level` | 文字列 | アナリティクス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `container_registry_access_level` | 文字列 | コンテナレジストリのアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `security_and_compliance_access_level` | 文字列 | セキュリティとコンプライアンス機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `releases_access_level` | 文字列 | リリース機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `environments_access_level` | 文字列 | 環境機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `feature_flags_access_level` | 文字列 | 機能フラグ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `infrastructure_access_level` | 文字列 | インフラストラクチャ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `monitor_access_level` | 文字列 | モニター機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_experiments_access_level` | 文字列 | モデル実験機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `model_registry_access_level` | 文字列 | モデルレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `package_registry_access_level` | 文字列 | パッケージレジストリ機能のアクセスレベル。指定可能な値: `disabled`、`private`、または`enabled`。 |
+| `emails_disabled` | ブール値 | プロジェクトのメールが無効になっているかどうかを示します。 |
+| `emails_enabled` | ブール値 | プロジェクトのメールが有効になっているかどうかを示します。 |
+| `show_diff_preview_in_email` | ブール値 | メール通知に差分プレビューが表示されるかどうかを示します。 |
+| `shared_runners_enabled` | ブール値 | プロジェクトに対して共有Runnerが有効になっているかどうか。 |
+| `lfs_enabled` | ブール値 | プロジェクトに対してGit LFSが有効になっているかどうかを示します。 |
+| `creator_id` | 整数 | プロジェクトを作成したユーザーのID。 |
+| `import_status` | 文字列 | プロジェクトインポートのステータス。 |
+| `open_issues_count` | 整数 | 未解決のイシューの数。 |
+| `description_html` | 文字列 | HTML形式のプロジェクトの説明。 |
+| `updated_at` | 日時 | プロジェクトが最後に更新されたタイムスタンプ。 |
+| `ci_default_git_depth` | 整数 | CI/CDパイプラインのデフォルトGit深度。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_forward_deployment_enabled` | ブール値 | 前方デプロイが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_job_token_scope_enabled` | ブール値 | CI/CDジョブトークンスコープが有効になっているかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_separated_caches` | ブール値 | ブランチによってCI/CDキャッシュが分離されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_allow_fork_pipelines_to_run_in_parent_project` | ブール値 | フォークパイプラインが親プロジェクトで実行できるかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `build_git_strategy` | 文字列 | CI/CDビルドに利用されるGitストラテジー（フェッチまたはクローン）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `keep_latest_artifact` | ブール値 | 新しいアーティファクトが作成されたときに最新のアーティファクトが保持されるかどうかを示します。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `restrict_user_defined_variables` | ブール値 | ユーザー定義の変数が制限されているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `runners_token` | 文字列 | プロジェクトにRunnerを登録するためのトークン。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `runner_token_expiration_interval` | 整数 | Runnerトークンの有効期限（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `group_runners_enabled` | ブール値 | プロジェクトに対してグループRunnerが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_cancel_pending_pipelines` | 文字列 | 保留中のパイプラインを自動的にキャンセルする設定。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `build_timeout` | 整数 | CI/CDジョブのタイムアウト（秒）。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_enabled` | ブール値 | プロジェクトに対してAuto DevOpsが有効になっているかどうか。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `auto_devops_deploy_strategy` | 文字列 | Auto DevOpsのデプロイストラテジー。管理者権限またはプロジェクトのオーナーロールがある場合にのみ表示されます。 |
+| `ci_config_path` | 文字列 | CI/CD設定ファイルへのパス。 |
+| `public_jobs` | ブール値 | ジョブログが公開アクセス可能かどうか。 |
+| `shared_with_groups` | オブジェクトの配列 | プロジェクトが共有されているグループのリスト。 |
+| `only_allow_merge_if_pipeline_succeeds` | ブール値 | パイプラインが成功した場合にのみマージが許可されるかどうか。 |
+| `allow_merge_on_skipped_pipeline` | ブール値 | パイプラインがスキップされた場合にマージが許可されるかどうか。 |
+| `request_access_enabled` | ブール値 | ユーザーがプロジェクトへのアクセスをリクエストできるかどうか。 |
+| `only_allow_merge_if_all_discussions_are_resolved` | ブール値 | すべてのディスカッションが解決された場合にのみマージが許可されるかどうか。 |
+| `remove_source_branch_after_merge` | ブール値 | マージ後にソースブランチが自動的に削除されるかどうか。 |
+| `printing_merge_request_link_enabled` | ブール値 | プッシュ後にマージリクエストリンクが印刷されるかどうかを示します。 |
+| `merge_method` | 文字列 | プロジェクトに利用されるマージメソッド。指定可能な値: `merge`、`rebase_merge`、または`ff`。 |
+| `merge_request_title_regex` | 文字列 | マージリクエストタイトルの検証用正規表現パターン。 |
+| `merge_request_title_regex_description` | 文字列 | マージリクエストタイトルの正規表現検証の説明。 |
+| `squash_option` | 文字列 | マージリクエストのスカッシュオプション。 |
+| `enforce_auth_checks_on_uploads` | ブール値 | アップロードに対する認証チェックが強制されるかどうか。 |
+| `suggestion_commit_message` | 文字列 | 提案用のカスタムコミットメッセージ。 |
+| `merge_commit_template` | 文字列 | マージコミットメッセージのテンプレート。 |
+| `squash_commit_template` | 文字列 | スカッシュコミットメッセージのテンプレート。 |
+| `issue_branch_template` | 文字列 | イシューから作成されたブランチ名のテンプレート。 |
+| `warn_about_potentially_unwanted_characters` | ブール値 | 不要な可能性のある文字の使用について警告するかどうか。 |
+| `autoclose_referenced_issues` | ブール値 | 参照されているイシューが自動的にクローズされるかどうか。 |
+| `max_artifacts_size` | 整数 | CI/CDアーティファクトの最大サイズ（MB）。 |
+| `approvals_before_merge` | 整数 | 非推奨。代わりにマージリクエスト承認APIを使用してください。マージ前に必要な承認の数。 |
+| `mirror` | ブール値 | プロジェクトがミラーであるかどうか。 |
+| `external_authorization_classification_label` | 文字列 | 外部認可分類ラベル。 |
+| `requirements_enabled` | ブール値 | 要件管理が有効になっているかどうかを示します。 |
+| `requirements_access_level` | 文字列 | 要件機能のアクセスレベル。 |
+| `security_and_compliance_enabled` | ブール値 | セキュリティとコンプライアンス機能が有効になっているかどうかを示します。 |
+| `compliance_frameworks` | 文字列の配列 | プロジェクトに適用されるコンプライアンスフレームワーク。 |
+| `issues_template` | 文字列 | イシューのデフォルトの説明。説明は、GitLab Flavored Markdownを使用して解析されます。PremiumおよびUltimateのみです。 |
+| `merge_requests_template` | 文字列 | マージリクエストの説明のテンプレート。PremiumおよびUltimateのみです。 |
+| `merge_pipelines_enabled` | ブール値 | マージパイプラインが有効になっているかどうかを示します。 |
+| `merge_trains_enabled` | ブール値 | マージトレインが有効になっているかどうかを示します。 |
+| `merge_trains_skip_train_allowed` | ブール値 | マージトレインのスキップが許可されているかどうかを示します。 |
+| `only_allow_merge_if_all_status_checks_passed` | ブール値 | すべてのステータスチェックが合格した場合にのみマージが許可されるかどうか。Ultimateのみです。 |
+| `allow_pipeline_trigger_approve_deployment` | ブール値 | パイプライントリガーがデプロイを承認できるかどうか。 |
+| `prevent_merge_without_jira_issue` | ブール値 | マージに連携されたJiraイシューが必要かどうかを示します。 |
+| `duo_remote_flows_enabled` | ブール値 | GitLab Duoリモートフローが有効になっているかどうかを示します。 |
+| `duo_foundational_flows_enabled` | ブール値 | GitLab Duo基本フローが有効になっているかどうかを示します。 |
+| `duo_sast_fp_detection_enabled` | ブール値 | GitLab DuoSAST誤検出判定が有効になっているかどうかを示します。 |
+| `spp_repository_pipeline_access` | ブール値 | セキュリティポリシーのリポジトリパイプラインアクセス。セキュリティオーケストレーションポリシー機能が利用可能な場合にのみ表示されます。 |
+| `permissions` | オブジェクト | プロジェクトのユーザー権限。 |
+| `permissions.project_access` | オブジェクト | ユーザーのプロジェクトアクセス権限。 |
+| `permissions.group_access` | オブジェクト | ユーザーのグループアクセス権限。 |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
+
+リクエスト例: 
 
 ```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/users/5/contributed_projects"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 [
@@ -1149,6 +1742,7 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" \
     "mirror_overwrites_diverged_branches": false,
     "external_authorization_classification_label": null,
     "packages_enabled": true, // deprecated, use package_registry_access_level instead
+    "empty_repo": false,
     "package_registry_access_level": "enabled",
     "service_desk_enabled": false,
     "service_desk_address": null,
@@ -1186,36 +1780,13 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" \
 ]
 ```
 
-### 名前でプロジェクトを検索する {#search-for-projects-by-name}
-
-認証済みのユーザーがアクセスできる名前でプロジェクトを検索します。認証なしでこのエンドポイントにアクセスする場合、エンドポイントは公開されているプロジェクトをリストします。
-
-```plaintext
-GET /projects
-```
-
-属性の例:
-
-| 属性  | 種類   | 必須 | 説明 |
-|:-----------|:-------|:---------|:------------|
-| `search`   | 文字列 | はい      | プロジェクト名に含まれる文字列。 |
-| `order_by` | 文字列 | いいえ       | `id`、`name`、`created_at`、`star_count`、または`last_activity_at`フィールドで並べ替えられたリクエストを返します。 |
-| `sort`     | 文字列 | いいえ       | `asc`または`desc`の順にソートされたリクエストを返します。 |
-
-リクエストの例:
-
-```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" \
-  --url "https://gitlab.example.com/api/v4/projects?search=test"
-```
-
 ## 属性のリストを取得する {#list-attributes}
 
 プロジェクトの属性のリストを取得します。
 
-### ユーザーのリストを取得する {#list-users}
+### プロジェクトのすべてのメンバーをリストする {#list-all-members-of-a-project}
 
-プロジェクトのユーザーリストを取得します。
+指定されたプロジェクトへのアクセス権を持つすべてのメンバーをリスト表示します。
 
 ```plaintext
 GET /projects/:id/users
@@ -1223,13 +1794,31 @@ GET /projects/:id/users
 
 サポートされている属性:
 
-| 属性    | 種類              | 必須 | 説明 |
+| 属性    | 型              | 必須 | 説明 |
 |:-------------|:------------------|:---------|:------------|
-| `id`         | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
-| `search`     | 文字列            | いいえ       | 特定のユーザーを検索します。 |
-| `skip_users` | 整数の配列     | いいえ       | 指定されたIDを持つユーザーを除外します。 |
+| `id`         | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `search`     | 文字列            | いいえ       | 特定のメンバーを`username`または`name`で検索します。 |
+| `skip_users` | 整数の配列     | いいえ       | 指定されたIDを持つメンバーを除外します。 |
 
-レスポンス例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|:----------|:-----|:------------|
+| `id` | 整数 | ユーザーのID。 |
+| `username` | 文字列 | ユーザーのユーザー名。 |
+| `name` | 文字列 | ユーザーのフルネーム。 |
+| `state` | 文字列 | ユーザーアカウントの状態。指定可能な値: `active`または`blocked`。 |
+| `avatar_url` | 文字列 | ユーザーのアバター画像へのURL。 |
+| `web_url` | 文字列 | ブラウザでユーザーのプロフィールにアクセスするためのURL。 |
+
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.com/api/v4/projects/<project_id>/users" \
+```
+
+レスポンス例: 
 
 ```json
 [
@@ -1252,9 +1841,9 @@ GET /projects/:id/users
 ]
 ```
 
-### グループのリストを取得する {#list-groups}
+### すべての祖先グループをリスト表示 {#list-all-ancestor-groups}
 
-このプロジェクトの祖先グループのリストを取得します。
+指定されたプロジェクトのすべての祖先グループをリスト表示します。
 
 ```plaintext
 GET /projects/:id/groups
@@ -1262,16 +1851,34 @@ GET /projects/:id/groups
 
 サポートされている属性:
 
-| 属性                 | 種類              | 必須 | 説明 |
+| 属性                 | 型              | 必須 | 説明 |
 |:--------------------------|:------------------|:---------|:------------|
-| `id`                      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
-| `search`                  | 文字列            | いいえ       | 特定のグループを検索します。 |
-| `shared_min_access_level` | 整数           | いいえ       | 少なくともこの[ロール（`access_level`）](members.md#roles)を持つ共有グループに制限します。 |
-| `shared_visible_only`     | ブール値           | いいえ       | ユーザーがアクセスできる共有グループに制限します。 |
+| `id`                      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `search`                  | 文字列            | いいえ       | グループIDで特定のグループを検索します。 |
+| `shared_min_access_level` | 整数           | いいえ       | 少なくとも指定されたアクセスレベルを持つ共有グループに限定します。使用可能な値: `5` （最小アクセス）、`10` （ゲスト）、`15` （プランナー）、`20` （レポーター）、`25` （セキュリティマネージャー）、`30` （デベロッパー）、`40` （メンテナー）、または`50` （オーナー）。 |
+| `shared_visible_only`     | ブール値           | いいえ       | `true`の場合、認証済みユーザーがアクセスできる共有グループのみを返します。 |
 | `skip_groups`             | 整数の配列 | いいえ       | 渡されたグループIDをスキップします。 |
 | `with_shared`             | ブール値           | いいえ       | このグループと共有されているプロジェクトを含めます。デフォルトは`false`です。 |
 
-レスポンス例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|:----------|:-----|:------------|
+| `id` | 整数 | グループのID。 |
+| `name` | 文字列 | グループの名前。 |
+| `avatar_url` | 文字列 | グループのアバター画像へのURL。 |
+| `web_url` | 文字列 | ブラウザでグループにアクセスするためのURL。 |
+| `full_name` | 文字列 | グループの正式名称。 |
+| `full_path` | 文字列 | グループのフルパス。 |
+
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/groups"
+```
+
+レスポンス例: 
 
 ```json
 [
@@ -1294,9 +1901,9 @@ GET /projects/:id/groups
 ]
 ```
 
-### 共有可能なグループのリストを取得する {#list-shareable-groups}
+### プロジェクトに招待できるすべてのグループをリスト表示 {#list-all-groups-available-to-invite-to-a-project}
 
-プロジェクトと共有可能なグループのリストを取得します。
+プロジェクトに招待できるすべてのグループをリスト表示します。
 
 ```plaintext
 GET /projects/:id/share_locations
@@ -1304,12 +1911,30 @@ GET /projects/:id/share_locations
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
-| `search`  | 文字列            | いいえ       | 特定のグループを検索します。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `search`  | 文字列            | いいえ       | グループIDで特定のグループを検索します。 |
 
-レスポンス例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|:----------|:-----|:------------|
+| `id` | 整数 | グループのID。 |
+| `web_url` | 文字列 | ブラウザでグループにアクセスするためのURL。 |
+| `name` | 文字列 | グループの名前。 |
+| `avatar_url` | 文字列 | グループのアバター画像へのURL。 |
+| `full_name` | 文字列 | グループの正式名称。 |
+| `full_path` | 文字列 | グループのフルパス。 |
+
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/share_locations"
+```
+
+レスポンス例: 
 
 ```json
 [
@@ -1332,14 +1957,19 @@ GET /projects/:id/share_locations
 ]
 ```
 
-### プロジェクトに招待されたグループのリストを取得する {#list-a-projects-invited-groups}
+### プロジェクト内のすべての招待されたグループをリスト表示 {#list-all-invited-groups-in-a-project}
 
-プロジェクトに招待されたグループのリストを取得します。認証なしでアクセスすると、公開招待グループのみが返されます。このエンドポイントは、次の項目ごとに1分あたり60件のリクエストにレート制限されています:
+プロジェクト内のすべての招待されたグループをリスト表示します。認証なしでアクセスした場合、公開されている招待済みグループのみを返します。このエンドポイントは、次の項目ごとに1分あたり60件のリクエストにレート制限されています。
 
-- 認証済みユーザーのユーザー。
-- 認証されていないユーザーのIPアドレス。
+- 認証済みユーザーのユーザー
+- 未認証ユーザーのIPアドレス
 
-APIの結果は[ページネーション](rest/_index.md#pagination)されるため、デフォルトでは、このリクエストは一度に20個の結果を返します。
+このエンドポイントはページネーションをサポートしています:
+
+- オフセットベースのページネーションを使用して、最大50,000プロジェクトにアクセスします。
+- キーセットベースのページネーションを使用して、50,000以上のプロジェクトをリスト表示します。
+
+詳細については、[ページネーション](rest/_index.md#pagination)を参照してください。
 
 ```plaintext
 GET /projects/:id/invited_groups
@@ -1347,15 +1977,33 @@ GET /projects/:id/invited_groups
 
 サポートされている属性:
 
-| 属性                | 種類             | 必須 | 説明 |
+| 属性                | 型             | 必須 | 説明 |
 |:-------------------------|:-----------------|:---------|:------------|
-| `id`                     | 整数または文字列   | はい      | グループのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths) |
-| `search`                 | 文字列           | いいえ       | 検索条件に一致する認証済みグループのリストを返します |
-| `min_access_level`       | 整数          | いいえ       | 現在のユーザーが、指定されている[ロール（`access_level`）](members.md#roles)以上のロールを持っているグループに制限します。 |
-| `relation`               | 文字列の配列 | いいえ       | グループを関係（直接または継承）でフィルタリングします。 |
-| `with_custom_attributes` | ブール値          | いいえ       | 応答に[カスタム属性](custom_attributes.md)を含めます（管理者のみ） |
+| `id`                     | 整数または文字列   | はい      | グループのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `search`                 | 文字列           | いいえ       | 検索条件に一致する認証済みグループのリストを返します。 |
+| `min_access_level`       | 整数          | いいえ       | 現在のユーザーが少なくとも指定されたアクセスレベルを持つグループに限定します。使用可能な値: `5` （最小アクセス）、`10` （ゲスト）、`15` （プランナー）、`20` （レポーター）、`25` （セキュリティマネージャー）、`30` （デベロッパー）、`40` （メンテナー）、または`50` （オーナー）。 |
+| `relation`               | 文字列の配列 | いいえ       | リレーションでグループをフィルタリングします。指定可能な値: `direct`または`inherited`。 |
+| `with_custom_attributes` | ブール値          | いいえ       | `true`の場合、応答に[カスタム属性](custom_attributes.md)を返します。管理者アクセスが必要です。 |
 
-レスポンス例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)と次のレスポンス属性を返します: 
+
+| 属性 | 型 | 説明 |
+|:----------|:-----|:------------|
+| `id` | 整数 | グループのID。 |
+| `web_url` | 文字列 | ブラウザでグループにアクセスするためのURL。 |
+| `name` | 文字列 | グループの名前。 |
+| `avatar_url` | 文字列 | グループのアバター画像へのURL。 |
+| `full_name` | 文字列 | グループの正式名称。 |
+| `full_path` | 文字列 | グループのフルパス。 |
+
+リクエスト例: 
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/invited_groups"
+```
+
+レスポンス例: 
 
 ```json
 [
@@ -1370,9 +2018,9 @@ GET /projects/:id/invited_groups
 ]
 ```
 
-### 使用されているプログラミング言語のリストを取得する {#list-programming-languages-used}
+### プログラミング言語使用状況の情報を取得する {#retrieve-programming-language-usage-information}
 
-プロジェクトで使用されているプログラミング言語のリストと使用率を取得します。
+指定されたプロジェクトで使用されているすべてのプログラミング言語に関する情報を取得します。
 
 ```plaintext
 GET /projects/:id/languages
@@ -1380,18 +2028,20 @@ GET /projects/:id/languages
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+成功した場合、[`200 OK`](rest/troubleshooting.md#status-codes)とプログラミング言語および使用率のリストを返します。
+
+リクエスト例: 
 
 ```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/5/languages"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -1412,12 +2062,12 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" \
 
 - `operations_access_level`はGitLab 16.0で[削除](https://gitlab.com/gitlab-org/gitlab/-/issues/385798)されました。
 - `model_registry_access_level`はGitLab 16.7で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/412734)されました。
-- `packages_enabled`GitLab 17.10で[deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
-- `package_registry_access_level`GitLab 18.5で[introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
+- `packages_enabled`はGitLab 17.10で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)になりました。
+- `package_registry_access_level`はGitLab 18.5で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
 
 {{< /history >}}
 
-認証済みユーザーが所有する新しいプロジェクトを作成します。
+認証済みユーザーが所有するプロジェクトを作成します。
 
 HTTPリポジトリが公開されていない場合は、URL `https://username:password@gitlab.company.com/group/project.git`に認証情報を追加します。ここで、`password`は`api`スコープが有効な公開アクセスキーです。
 
@@ -1427,7 +2077,7 @@ POST /projects
 
 サポートされている一般的なプロジェクトの属性:
 
-| 属性                                          | 種類    | 必須                       | 説明 |
+| 属性                                          | 型    | 必須                       | 説明 |
 |:---------------------------------------------------|:--------|:-------------------------------|:------------|
 | `name`                                             | 文字列  | はい（`path`が指定されていない場合） | 新しいプロジェクトの名前。指定されていない場合はパスと等しくなります。 |
 | `path`                                             | 文字列  | はい（`name`が指定されていない場合） | 新しいプロジェクトのリポジトリ名。指定されていない場合は、名前に基づいて生成されます（小文字とダッシュを使用して生成）。パスの先頭と末尾には特殊文字を使用できません。また、連続する特殊文字を含めることはできません。 |
@@ -1443,7 +2093,7 @@ POST /projects
 | `ci_config_path`                                   | 文字列  | いいえ                             | CI設定ファイルへのパス。 |
 | `container_expiration_policy_attributes`           | ハッシュ    | いいえ                             | このプロジェクト用のイメージのクリーンアップポリシーを更新します。`cadence`（文字列）、`keep_n`（整数）、`older_than`（文字列）、`name_regex`（文字列）、`name_regex_delete`（文字列）、`name_regex_keep`（文字列）、`enabled`（ブール値）を指定できます。`cadence`、`keep_n`、`older_than`の値の詳細については、[コンテナレジストリ](../user/packages/container_registry/reduce_container_registry_storage.md#use-the-cleanup-policy-api)のドキュメントを参照してください。 |
 | `container_registry_enabled`                       | ブール値 | いいえ                             | _（非推奨）_このプロジェクトのコンテナレジストリを有効にします。代わりに`container_registry_access_level`を使用してください。 |
-| `default_branch`                                   | 文字列  | いいえ                             | [デフォルトブランチ](../user/project/repository/branches/default.md)名。`initialize_with_readme`が`true`である必要があります。 |
+| `default_branch`                                   | 文字列  | いいえ                             | [デフォルトブランチ](../user/project/repository/branches/default.md)名。ブランチ名（例: `main`）または完全修飾参照（例: `refs/heads/main`）を受け入れます。完全修飾参照が提供された場合、APIは`refs/heads/`プレフィックスを削除します。`initialize_with_readme`が`true`である必要があります。 |
 | `description`                                      | 文字列  | いいえ                             | プロジェクトの短い説明。 |
 | `emails_disabled`                                  | ブール値 | いいえ                             | _（非推奨）_メール通知を無効にします。代わりに`emails_enabled`を使用してください。 |
 | `emails_enabled`                                   | ブール値 | いいえ                             | メール通知を有効にします。 |
@@ -1489,36 +2139,7 @@ POST /projects
 | `warn_about_potentially_unwanted_characters`       | ブール値 | いいえ                             | このプロジェクトで不要である可能性がある文字の使用に関する警告を有効にします。 |
 | `wiki_enabled`                                     | ブール値 | いいえ                             | _（非推奨）_このプロジェクト用にWikiを有効にします。代わりに`wiki_access_level`を使用してください。 |
 
-アクセス制御オプションを使用した[プロジェクト機能の表示レベル](../user/public_access.md#change-the-visibility-of-individual-features-in-a-project)設定は、次のいずれかにできます:
-
-- `disabled`: 機能を無効にします。
-- `private`: 機能を有効にして、**Only project members**（プロジェクトメンバーのみ）に設定します。
-- `enabled`: 機能を有効にして、**Everyone with access**（アクセスできる人すべて）に設定します。
-- `public`: 機能を有効にして、**全員**に設定します。`pages_access_level`でのみ利用可能です。
-
-| 属性                              | 種類   | 必須 | 説明 |
-|:---------------------------------------|:-------|:---------|:------------|
-| `analytics_access_level`               | 文字列 | いいえ       | [分析](../user/analytics/_index.md)の表示レベルを設定します。 |
-| `builds_access_level`                  | 文字列 | いいえ       | [パイプライン](../ci/pipelines/settings.md#change-which-users-can-view-your-pipelines)の表示レベルを設定します。 |
-| `container_registry_access_level`      | 文字列 | いいえ       | [コンテナレジストリ](../user/packages/container_registry/_index.md#change-visibility-of-the-container-registry)の表示レベルを設定します。 |
-| `environments_access_level`            | 文字列 | いいえ       | [環境](../ci/environments/_index.md)の表示レベルを設定します。 |
-| `feature_flags_access_level`           | 文字列 | いいえ       | [機能フラグ](../operations/feature_flags.md)の表示レベルを設定します。 |
-| `forking_access_level`                 | 文字列 | いいえ       | [フォーク](../user/project/repository/forking_workflow.md)の表示レベルを設定します。 |
-| `infrastructure_access_level`          | 文字列 | いいえ       | [インフラストラクチャ管理](../user/infrastructure/_index.md)の表示レベルを設定します。 |
-| `issues_access_level`                  | 文字列 | いいえ       | [イシュー](../user/project/issues/_index.md)の表示レベルを設定します。 |
-| `merge_requests_access_level`          | 文字列 | いいえ       | [マージリクエスト](../user/project/merge_requests/_index.md)の表示レベルを設定します。 |
-| `model_experiments_access_level`       | 文字列 | いいえ       | [機械学習モデル検証](../user/project/ml/experiment_tracking/_index.md)の表示レベルを設定します。 |
-| `model_registry_access_level`          | 文字列 | いいえ       | [機械学習モデルレジストリ](../user/project/ml/model_registry/_index.md#access-the-model-registry)の表示レベルを設定します。 |
-| `monitor_access_level`                 | 文字列 | いいえ       | [アプリケーションパフォーマンスモニタリング](../operations/_index.md)の表示レベルを設定します。 |
-| `pages_access_level`                   | 文字列 | いいえ       | [GitLab Pages](../user/project/pages/pages_access_control.md)の表示レベルを設定します。 |
-| `releases_access_level`                | 文字列 | いいえ       | [リリース](../user/project/releases/_index.md)の表示レベルを設定します。 |
-| `repository_access_level`              | 文字列 | いいえ       | [リポジトリ](../user/project/repository/_index.md)の表示レベルを設定します。 |
-| `requirements_access_level`            | 文字列 | いいえ       | [要件管理](../user/project/requirements/_index.md)の表示レベルを設定します。 |
-| `security_and_compliance_access_level` | 文字列 | いいえ       | [セキュリティとコンプライアンス](../user/application_security/_index.md)の表示レベルを設定します。 |
-| `snippets_access_level`                | 文字列 | いいえ       | [スニペット](../user/snippets.md#change-default-visibility-of-snippets)の表示レベルを設定します。 |
-| `wiki_access_level`                    | 文字列 | いいえ       | [Wiki](../user/project/wiki/_index.md#enable-or-disable-a-project-wiki)の表示レベルを設定します。 |
-
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request POST --header "PRIVATE-TOKEN: <your-token>" \
@@ -1528,20 +2149,22 @@ curl --request POST --header "PRIVATE-TOKEN: <your-token>" \
      --url "https://gitlab.example.com/api/v4/projects/"
 ```
 
+個々のプロジェクト機能の表示レベルを設定するには、[Project feature visibility level](#project-feature-visibility-level)を参照してください。
+
 ### ユーザーのプロジェクトを作成する {#create-a-project-for-a-user}
 
 {{< history >}}
 
 - `operations_access_level`はGitLab 16.0で[削除](https://gitlab.com/gitlab-org/gitlab/-/issues/385798)されました。
 - `model_registry_access_level`はGitLab 16.7で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/412734)されました。
-- `packages_enabled`GitLab 17.10で[deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
-- `package_registry_access_level`GitLab 18.5で[introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
+- `packages_enabled`はGitLab 17.10で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)になりました。
+- `package_registry_access_level`はGitLab 18.5で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
 
 {{< /history >}}
 
-ユーザーのプロジェクトを作成します。
+ユーザーのためにプロジェクトを作成します。
 
-前提要件: 
+前提条件: 
 
 - 管理者である必要があります。
 
@@ -1553,7 +2176,7 @@ POST /projects/user/:user_id
 
 サポートされている一般的なプロジェクトの属性:
 
-| 属性                                          | 種類    | 必須 | 説明 |
+| 属性                                          | 型    | 必須 | 説明 |
 |:---------------------------------------------------|:--------|:---------|:------------|
 | `name`                                             | 文字列  | はい      | 新しいプロジェクトの名前。 |
 | `user_id`                                          | 整数 | はい      | プロジェクトオーナーのユーザーID。 |
@@ -1616,43 +2239,17 @@ POST /projects/user/:user_id
 | `warn_about_potentially_unwanted_characters`       | ブール値 | いいえ       | このプロジェクトで不要である可能性がある文字の使用に関する警告を有効にします。 |
 | `wiki_enabled`                                     | ブール値 | いいえ       | _（非推奨）_このプロジェクト用にWikiを有効にします。代わりに`wiki_access_level`を使用してください。 |
 
-アクセス制御オプションを使用した[プロジェクト機能の表示レベル](../user/public_access.md#change-the-visibility-of-individual-features-in-a-project)設定は、次のいずれかにできます:
+個々のプロジェクト機能の表示レベルを設定するには、[Project feature visibility level](#project-feature-visibility-level)を参照してください。
 
-- `disabled`: 機能を無効にします。
-- `private`: 機能を有効にして、**Only project members**（プロジェクトメンバーのみ）に設定します。
-- `enabled`: 機能を有効にして、**Everyone with access**（アクセスできる人すべて）に設定します。
-- `public`: 機能を有効にして、**全員**に設定します。`pages_access_level`でのみ利用可能です。
-
-| 属性                              | 種類   | 必須 | 説明 |
-|:---------------------------------------|:-------|:---------|:------------|
-| `analytics_access_level`               | 文字列 | いいえ       | [分析](../user/analytics/_index.md)の表示レベルを設定します。 |
-| `builds_access_level`                  | 文字列 | いいえ       | [パイプライン](../ci/pipelines/settings.md#change-which-users-can-view-your-pipelines)の表示レベルを設定します。 |
-| `container_registry_access_level`      | 文字列 | いいえ       | [コンテナレジストリ](../user/packages/container_registry/_index.md#change-visibility-of-the-container-registry)の表示レベルを設定します。 |
-| `environments_access_level`            | 文字列 | いいえ       | [環境](../ci/environments/_index.md)の表示レベルを設定します。 |
-| `feature_flags_access_level`           | 文字列 | いいえ       | [機能フラグ](../operations/feature_flags.md)の表示レベルを設定します。 |
-| `forking_access_level`                 | 文字列 | いいえ       | [フォーク](../user/project/repository/forking_workflow.md)の表示レベルを設定します。 |
-| `infrastructure_access_level`          | 文字列 | いいえ       | [インフラストラクチャ管理](../user/infrastructure/_index.md)の表示レベルを設定します。 |
-| `issues_access_level`                  | 文字列 | いいえ       | [イシュー](../user/project/issues/_index.md)の表示レベルを設定します。 |
-| `merge_requests_access_level`          | 文字列 | いいえ       | [マージリクエスト](../user/project/merge_requests/_index.md)の表示レベルを設定します。 |
-| `model_experiments_access_level`       | 文字列 | いいえ       | [機械学習モデル検証](../user/project/ml/experiment_tracking/_index.md)の表示レベルを設定します。 |
-| `model_registry_access_level`          | 文字列 | いいえ       | [機械学習モデルレジストリ](../user/project/ml/model_registry/_index.md#access-the-model-registry)の表示レベルを設定します。 |
-| `monitor_access_level`                 | 文字列 | いいえ       | [アプリケーションパフォーマンスモニタリング](../operations/_index.md)の表示レベルを設定します。 |
-| `pages_access_level`                   | 文字列 | いいえ       | [GitLab Pages](../user/project/pages/pages_access_control.md)の表示レベルを設定します。 |
-| `releases_access_level`                | 文字列 | いいえ       | [リリース](../user/project/releases/_index.md)の表示レベルを設定します。 |
-| `repository_access_level`              | 文字列 | いいえ       | [リポジトリ](../user/project/repository/_index.md)の表示レベルを設定します。 |
-| `requirements_access_level`            | 文字列 | いいえ       | [要件管理](../user/project/requirements/_index.md)の表示レベルを設定します。 |
-| `security_and_compliance_access_level` | 文字列 | いいえ       | [セキュリティとコンプライアンス](../user/application_security/_index.md)の表示レベルを設定します。 |
-| `snippets_access_level`                | 文字列 | いいえ       | [スニペット](../user/snippets.md#change-default-visibility-of-snippets)の表示レベルを設定します。 |
-| `wiki_access_level`                    | 文字列 | いいえ       | [Wiki](../user/project/wiki/_index.md#enable-or-disable-a-project-wiki)の表示レベルを設定します。 |
-
-### プロジェクトを編集する {#edit-a-project}
+### プロジェクトを更新する {#update-a-project}
 
 {{< history >}}
 
 - `operations_access_level`はGitLab 16.0で[削除](https://gitlab.com/gitlab-org/gitlab/-/issues/385798)されました。
 - `model_registry_access_level`はGitLab 16.7で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/412734)されました。
-- `packages_enabled`GitLab 17.10で[deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
-- `package_registry_access_level`GitLab 18.5で[introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
+- `packages_enabled`はGitLab 17.10で[非推奨](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)になりました。
+- `package_registry_access_level`はGitLab 18.5で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/issues/454759)。
+- `protect_merge_request_pipelines`と`ci_display_pipeline_variables`はGitLab 18.10で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/issues/584488)。
 
 {{< /history >}}
 
@@ -1666,9 +2263,9 @@ PUT /projects/:id
 
 サポートされている一般的なプロジェクトの属性:
 
-| 属性                                          | 種類              | 必須 | 説明 |
+| 属性                                          | 型              | 必須 | 説明 |
 |:---------------------------------------------------|:------------------|:---------|:------------|
-| `id`                                               | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`                                               | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `allow_merge_on_skipped_pipeline`                  | ブール値           | いいえ       | スキップされたジョブでマージリクエストをマージできるかどうかを設定します。 |
 | `allow_pipeline_trigger_approve_deployment`        | ブール値           | いいえ       | パイプラインのトリガー元がデプロイを承認できるかどうかを設定します。PremiumおよびUltimateのみです。 |
 | `only_allow_merge_if_all_status_checks_passed`     | ブール値           | いいえ       | すべてのステータスチェックに合格していなければ、マージリクエストのマージをブロックする必要があることを示します。デフォルトはfalseです。<br/><br/>機能フラグ`only_allow_merge_if_all_status_checks_passed`をデフォルトで無効にして、GitLab 15.5で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/369859)されました。この機能フラグは、GitLab 15.9でデフォルトで有効になりました。Ultimateのみです。 |
@@ -1676,7 +2273,7 @@ PUT /projects/:id
 | `auto_cancel_pending_pipelines`                    | 文字列            | いいえ       | 保留中のパイプラインを自動的にキャンセルします。このアクションは、有効状態と無効状態を切り替えます。ブール値ではありません。 |
 | `auto_devops_deploy_strategy`                      | 文字列            | いいえ       | 自動デプロイ戦略（`continuous`、`manual`、または`timed_incremental`）。 |
 | `auto_devops_enabled`                              | ブール値           | いいえ       | このプロジェクトに対してAuto DevOpsを有効にします。 |
-| `auto_duo_code_review_enabled`                     | ブール値           | いいえ       | マージリクエストでGitLab Duoによる自動レビューを有効にします。[マージリクエストのGitLab Duo](../user/project/merge_requests/duo_in_merge_requests.md#have-gitlab-duo-review-your-code)してください。Ultimateのみです。 |
+| `auto_duo_code_review_enabled`                     | ブール値           | いいえ       | マージリクエストでGitLab Duoによる自動レビューを有効にします。[GitLab Duo in merge requests](../user/project/merge_requests/duo_in_merge_requests.md#use-gitlab-duo-to-review-your-code)を参照してください。Ultimateのみです。 |
 | `autoclose_referenced_issues`                      | ブール値           | いいえ       | デフォルトブランチで参照されているイシューを自動的にクローズするかどうかを設定します。 |
 | `avatar`                                           | 混合             | いいえ       | プロジェクトのアバターの画像ファイル。 |
 | `build_git_strategy`                               | 文字列            | いいえ       | Git戦略。`fetch`がデフォルトです。 |
@@ -1684,10 +2281,11 @@ PUT /projects/:id
 | `ci_config_path`                                   | 文字列            | いいえ       | CI設定ファイルへのパス。 |
 | `ci_default_git_depth`                             | 整数           | いいえ       | [シャロークローン](../ci/pipelines/settings.md#limit-the-number-of-changes-fetched-during-clone)のリビジョンのデフォルト数。 |
 | `ci_delete_pipelines_in_seconds`                   | 整数           | いいえ       | 設定された時刻よりも前のパイプラインは削除されます。 |
+| `ci_display_pipeline_variables`                    | ブール値           | いいえ       | 手動でパイプラインを実行した後、パイプライン詳細ページに手動で定義されたすべての変数を表示します。 |
 | `ci_forward_deployment_enabled`                    | ブール値           | いいえ       | [古いデプロイジョブを防止](../ci/pipelines/settings.md#prevent-outdated-deployment-jobs)を有効または無効にします。 |
 | `ci_forward_deployment_rollback_allowed`           | ブール値           | いいえ       | [ロールバックデプロイのジョブの再試行を許可する](../ci/pipelines/settings.md#prevent-outdated-deployment-jobs)を有効または無効にします。 |
 | `ci_allow_fork_pipelines_to_run_in_parent_project` | ブール値           | いいえ       | [フォークからのマージリクエストに対して親プロジェクトでパイプラインを実行する](../ci/pipelines/merge_request_pipelines.md#run-pipelines-in-the-parent-project)を有効または無効にします。_（GitLab 15.3で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/325189)されました）_ |
-| `ci_id_token_sub_claim_components`                 | 配列             | いいえ       | [IDトークン](../ci/secrets/id_token_authentication.md)の`sub`クレームに含まれるフィールド。`project_path`で始まる配列を指定できます。配列には`ref_type`と`ref`も含まれる場合があります。`["project_path", "ref_type", "ref"]`がデフォルトです。GitLab 17.10で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/477260)されました。 |
+| `ci_id_token_sub_claim_components`                 | 配列             | いいえ       | [IDトークン](../ci/secrets/id_token_authentication.md)の`sub`クレームに含まれるフィールド。`project_path`で始まる配列を指定できます。配列には、`ref_type`、`ref`、`ref_protected`、`environment_protected`、および`deployment_tier`も含まれる場合があります。`["project_path", "ref_type", "ref"]`がデフォルトです。GitLab 17.10で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/477260)されました。`environment_protected`と`deployment_tier`のサポートはGitLab 18.7で導入されました。 |
 | `ci_separated_caches`                              | ブール値           | いいえ       | キャッシュをブランチの保護状態に応じて[分離](../ci/caching/_index.md#cache-key-names)するかどうかを設定します。 |
 | `ci_restrict_pipeline_cancellation_role`           | 文字列            | いいえ       | [パイプラインまたはジョブをキャンセルするために必要なロール](../ci/pipelines/settings.md#restrict-roles-that-can-cancel-pipelines-or-jobs)を設定します。`developer`、`maintainer`、`no_one`のいずれかです。GitLab 16.8で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/429921)されました。PremiumおよびUltimateのみです。 |
 | `ci_pipeline_variables_minimum_override_role`      | 文字列            | いいえ       | 変数をオーバーライドできるロールを指定できます。`owner`、`maintainer`、`developer`、`no_one_allowed`のいずれかです。GitLab 17.1で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/440338)されました。GitLab 17.1～17.7では、`restrict_user_defined_variables`を有効にする必要があります。 |
@@ -1704,7 +2302,8 @@ PUT /projects/:id
 | `group_runners_enabled`                            | ブール値           | いいえ       | このプロジェクトのグループRunnerを有効にします。 |
 | `import_url`                                       | 文字列            | いいえ       | リポジトリのインポート元URL。 |
 | `issues_enabled`                                   | ブール値           | いいえ       | _（非推奨）_このプロジェクト用にイシューを有効にします。代わりに`issues_access_level`を使用してください。 |
-| `issues_template`                                  | 文字列            | いいえ       | イシューのデフォルトの説明。説明は、GitLab Flavored Markdownを使用して解析されます。[イシューとマージリクエストのテンプレート](#templates-for-issues-and-merge-requests)を参照してください。PremiumおよびUltimateのみです。 |
+| `issues_template` | 文字列 | いいえ | 新しいイシューのデフォルトの説明。GitLab Flavored Markdownとしてフォーマットされます。PremiumおよびUltimateのみです。 |
+| `merge_requests_template` | 文字列 | いいえ | 新しいマージリクエストのデフォルトの説明。GitLab Flavored Markdownとしてフォーマットされます。PremiumおよびUltimateのみです。 |
 | `jobs_enabled`                                     | ブール値           | いいえ       | _（非推奨）_このプロジェクト用にジョブを有効にします。代わりに`builds_access_level`を使用してください。 |
 | `keep_latest_artifact`                             | ブール値           | いいえ       | このプロジェクトの最新のアーティファクトを保持する機能を無効または有効にします。 |
 | `lfs_enabled`                                      | ブール値           | いいえ       | LFSを有効にします。 |
@@ -1717,7 +2316,7 @@ PUT /projects/:id
 | `merge_trains_skip_train_allowed`                  | ブール値           | いいえ       | パイプラインが完了するのを待たずに、マージトレインマージリクエストをマージできるようにします。 |
 | `mirror_overwrites_diverged_branches`              | ブール値           | いいえ       | プルミラーが、分岐したブランチを上書きします。PremiumおよびUltimateのみです。 |
 | `mirror_trigger_builds`                            | ブール値           | いいえ       | プルミラーリングがビルドをトリガーします。PremiumおよびUltimateのみです。 |
-| `mirror_user_id`                                   | 整数           | いいえ       | プルミラーイベントに関連するすべてのアクティビティーを担当するユーザー。_（管理者のみ）_PremiumとUltimateプランのみ。 |
+| `mirror_user_id`                                   | 整数           | いいえ       | プルミラーイベントに関連するすべてのアクティビティを担当するユーザー。_（管理者のみ）_PremiumとUltimateプランのみ。 |
 | `mirror`                                           | ブール値           | いいえ       | プロジェクトでプルミラーリングを有効にします。PremiumおよびUltimateのみです。 |
 | `mr_default_target_self`                           | ブール値           | いいえ       | フォークされたプロジェクトの場合、マージリクエストのターゲットをこのプロジェクトに設定します。`false`の場合、ターゲットはアップストリームプロジェクトになります。 |
 | `name`                                             | 文字列            | いいえ       | プロジェクト名。 |
@@ -1729,6 +2328,7 @@ PUT /projects/:id
 | `path`                                             | 文字列            | いいえ       | プロジェクトのカスタムリポジトリ名。デフォルトでは、名前に基づいて生成されます。 |
 | `prevent_merge_without_jira_issue`                 | ブール値           | いいえ       | マージリクエストで、Jiraからの関連イシューを必須にするかどうかを設定します。Ultimateのみです。 |
 | `printing_merge_request_link_enabled`              | ブール値           | いいえ       | コマンドラインからプッシュするときに、マージリクエストを作成/表示するためのリンクを表示します。 |
+| `protect_merge_request_pipelines`                  | ブール値           | いいえ       | [control access to protected variables and runners](../ci/pipelines/merge_request_pipelines.md#control-access-to-protected-variables-and-runners)を有効または無効にします。 |
 | `public_builds`                                    | ブール値           | いいえ       | _（非推奨）_`true`の場合、プロジェクトメンバー以外のユーザーもジョブを表示できます。代わりに`public_jobs`を使用してください。 |
 | `public_jobs`                                      | ブール値           | いいえ       | `true`の場合、プロジェクトメンバー以外のユーザーもジョブを表示できます。 |
 | `remove_source_branch_after_merge`                 | ブール値           | いいえ       | すべての新しいマージリクエストに対して、デフォルトで`Delete source branch`オプションを有効にします。 |
@@ -1750,9 +2350,9 @@ PUT /projects/:id
 | `visibility`                                       | 文字列            | いいえ       | [プロジェクトの表示レベル](#project-visibility-level)を参照してください。 |
 | `warn_about_potentially_unwanted_characters`       | ブール値           | いいえ       | このプロジェクトで不要である可能性がある文字の使用に関する警告を有効にします。 |
 | `wiki_enabled`                                     | ブール値           | いいえ       | _（非推奨）_このプロジェクト用にWikiを有効にします。代わりに`wiki_access_level`を使用してください。 |
-| `web_based_commit_signing_enabled`                 | ブール値           | いいえ       | GitLab UIから作成されたコミットに対する、Webベースのコミット署名を有効にします。GitLab.comでのみ利用可能です。 |
+| `web_based_commit_signing_enabled`                 | ブール値           | いいえ       | GitLab UIから作成されたコミットのWebベースのコミット署名を有効にします。GitLab.comでのみ利用可能です。 |
 
-たとえば、[GitLab.comプロジェクトのインスタンスRunner](../ci/runners/_index.md)の設定を切り替えるには、次のようにします:
+たとえば、[GitLab.comプロジェクトのインスタンスRunner](../ci/runners/_index.md)の設定を切り替えるには、次のようにします。
 
 ```shell
 curl --request PUT --header "PRIVATE-TOKEN: <your-token>" \
@@ -1760,42 +2360,13 @@ curl --request PUT --header "PRIVATE-TOKEN: <your-token>" \
      --data "shared_runners_enabled=true" # to turn off: "shared_runners_enabled=false"
 ```
 
-アクセス制御オプションを使用した[プロジェクト機能の表示レベル](../user/public_access.md#change-the-visibility-of-individual-features-in-a-project)設定は、次のいずれかにできます:
-
-- `disabled`: 機能を無効にします。
-- `private`: 機能を有効にして、**Only project members**（プロジェクトメンバーのみ）に設定します。
-- `enabled`: 機能を有効にして、**Everyone with access**（アクセスできる人すべて）に設定します。
-- `public`: 機能を有効にして、**全員**に設定します。`pages_access_level`でのみ利用可能です。
-
-サポートされているプロジェクトの表示レベル属性を以下に示します:
-
-| 属性                              | 種類   | 必須 | 説明 |
-|:---------------------------------------|:-------|:---------|:------------|
-| `analytics_access_level`               | 文字列 | いいえ       | [分析](../user/analytics/_index.md)の表示レベルを設定します。 |
-| `builds_access_level`                  | 文字列 | いいえ       | [パイプライン](../ci/pipelines/settings.md#change-which-users-can-view-your-pipelines)の表示レベルを設定します。 |
-| `container_registry_access_level`      | 文字列 | いいえ       | [コンテナレジストリ](../user/packages/container_registry/_index.md#change-visibility-of-the-container-registry)の表示レベルを設定します。 |
-| `environments_access_level`            | 文字列 | いいえ       | [環境](../ci/environments/_index.md)の表示レベルを設定します。 |
-| `feature_flags_access_level`           | 文字列 | いいえ       | [機能フラグ](../operations/feature_flags.md)の表示レベルを設定します。 |
-| `forking_access_level`                 | 文字列 | いいえ       | [フォーク](../user/project/repository/forking_workflow.md)の表示レベルを設定します。 |
-| `infrastructure_access_level`          | 文字列 | いいえ       | [インフラストラクチャ管理](../user/infrastructure/_index.md)の表示レベルを設定します。 |
-| `issues_access_level`                  | 文字列 | いいえ       | [イシュー](../user/project/issues/_index.md)の表示レベルを設定します。 |
-| `merge_requests_access_level`          | 文字列 | いいえ       | [マージリクエスト](../user/project/merge_requests/_index.md)の表示レベルを設定します。 |
-| `model_experiments_access_level`       | 文字列 | いいえ       | [機械学習モデル検証](../user/project/ml/experiment_tracking/_index.md)の表示レベルを設定します。 |
-| `model_registry_access_level`          | 文字列 | いいえ       | [機械学習モデルレジストリ](../user/project/ml/model_registry/_index.md#access-the-model-registry)の表示レベルを設定します。 |
-| `monitor_access_level`                 | 文字列 | いいえ       | [アプリケーションパフォーマンスモニタリング](../operations/_index.md)の表示レベルを設定します。 |
-| `pages_access_level`                   | 文字列 | いいえ       | [GitLab Pages](../user/project/pages/pages_access_control.md)の表示レベルを設定します。 |
-| `releases_access_level`                | 文字列 | いいえ       | [リリース](../user/project/releases/_index.md)の表示レベルを設定します。 |
-| `repository_access_level`              | 文字列 | いいえ       | [リポジトリ](../user/project/repository/_index.md)の表示レベルを設定します。 |
-| `requirements_access_level`            | 文字列 | いいえ       | [要件管理](../user/project/requirements/_index.md)の表示レベルを設定します。 |
-| `security_and_compliance_access_level` | 文字列 | いいえ       | [セキュリティとコンプライアンス](../user/application_security/_index.md)の表示レベルを設定します。 |
-| `snippets_access_level`                | 文字列 | いいえ       | [スニペット](../user/snippets.md#change-default-visibility-of-snippets)の表示レベルを設定します。 |
-| `wiki_access_level`                    | 文字列 | いいえ       | [Wiki](../user/project/wiki/_index.md#enable-or-disable-a-project-wiki)の表示レベルを設定します。 |
+個々のプロジェクト機能の表示レベルを設定するには、[Project feature visibility level](#project-feature-visibility-level)を参照してください。
 
 ### メンバーをインポートする {#import-members}
 
 別のプロジェクトからメンバーをインポートします。
 
-ターゲットプロジェクトに対するインポートメンバーのロールによって、次のようになります:
+ターゲットプロジェクトに対するインポートメンバーのロールによって、次のようになります。
 
 - メンテナーの場合、ソースプロジェクトのオーナーロールを持つメンバーは、メンテナーロールでインポートされます。
 - オーナーの場合、ソースプロジェクトのオーナーロールを持つメンバーは、オーナーロールでインポートされます。
@@ -1806,12 +2377,12 @@ POST /projects/:id/import_project_members/:project_id
 
 サポートされている属性:
 
-| 属性    | 種類              | 必須 | 説明 |
+| 属性    | 型              | 必須 | 説明 |
 |:-------------|:------------------|:---------|:------------|
 | `id`         | 整数または文字列 | はい      | メンバーを受け入れるターゲットプロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `project_id` | 整数または文字列 | はい      | メンバーのインポート元のソースプロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request POST \
@@ -1854,9 +2425,9 @@ curl --request POST \
 
 ### プロジェクトをアーカイブする {#archive-a-project}
 
-プロジェクトをアーカイブします。
+指定されたプロジェクトをアーカイブします。
 
-前提要件: 
+前提条件: 
 
 - 管理者であるか、プロジェクトのオーナーロールが割り当てられている必要があります。
 
@@ -1868,11 +2439,11 @@ POST /projects/:id/archive
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request POST \
@@ -1880,7 +2451,7 @@ curl --request POST \
   --url "https://gitlab.example.com/api/v4/projects/5/archive"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -1969,6 +2540,8 @@ curl --request POST \
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [],
   "only_allow_merge_if_pipeline_succeeds": false,
@@ -2001,9 +2574,9 @@ curl --request POST \
 
 ### プロジェクトのアーカイブを解除する {#unarchive-a-project}
 
-プロジェクトのアーカイブを解除します。
+指定されたプロジェクトのアーカイブを解除します。
 
-前提要件: 
+前提条件: 
 
 - 管理者であるか、プロジェクトのオーナーロールが割り当てられている必要があります。
 
@@ -2015,11 +2588,11 @@ POST /projects/:id/unarchive
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request POST \
@@ -2027,7 +2600,7 @@ curl --request POST \
   --url "https://gitlab.example.com/api/v4/projects/5/unarchive"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -2116,6 +2689,8 @@ curl --request POST \
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [],
   "only_allow_merge_if_pipeline_succeeds": false,
@@ -2150,28 +2725,24 @@ curl --request POST \
 
 {{< history >}}
 
-- プロジェクトの即時削除は、GitLab 15.11で[GitLab.comとGitLab Self-Managed向けに有効](https://gitlab.com/gitlab-org/gitlab/-/issues/396500)になりました。
-- [プロジェクトの削除のマーク](https://gitlab.com/groups/gitlab-org/-/epics/17208)は、18.0でGitLab PremiumからGitLab Freeに移行しました。
-- GitLab 18.5以降、即時削除の[インスタンス設定](../administration/settings/visibility_and_access_controls.md#immediate-deletion)が無効になっている場合（`allow_immediate_namespaces_deletion`という名前の[機能フラグ](../administration/feature_flags/_index.md)の背後にある）、`permanently_remove`は[許可されません](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/205572)。この設定は、セルフマネージドではデフォルトで有効になっていますが、GitLab.comとDedicatedでは無効になっています。
+- GitLab 16.0で[一般提供](https://gitlab.com/gitlab-org/gitlab/-/issues/389557)になりました。PremiumおよびUltimateのみです。
+- GitLab 18.0で、GitLab PremiumからGitLab Freeに[移行](https://gitlab.com/groups/gitlab-org/-/epics/17208)しました。
 
 {{< /history >}}
 
-前提要件: 
+前提条件: 
 
 - 管理者であるか、プロジェクトのオーナーロールを持っている必要があります。
 
-プロジェクトを削除対象としてマークします。プロジェクトは、保持期間の終了時に削除されます:
+プロジェクトを削除対象としてマークします。プロジェクトは保持期間の終了時に削除されます:
 
 - GitLab.comでは、プロジェクトは30日間保持されます。
 - GitLab Self-Managedでは、保持期間は[インスタンスの設定](../administration/settings/visibility_and_access_controls.md#deletion-protection)によって制御されます。
 
-このエンドポイントは、以前に削除対象としてマークされたプロジェクトを即座に削除することもできます。
+このエンドポイントは、以前に削除対象としてマークされていたプロジェクトを即座に削除することもできます。
 
-{{< alert type="warning" >}}
-
-GitLab.comでは、プロジェクトが削除された後、そのデータは30日間保持され、即時削除は利用できません。GitLab.comでプロジェクトをすぐに削除する必要がある場合は、[サポートチケット](https://about.gitlab.com/support/)を発行してください。
-
-{{< /alert >}}
+> [!warning] 
+> GitLab.comでは、プロジェクトが削除された後、そのデータは30日間保持され、永続的な削除はできません。GitLab.comでプロジェクトを本当に即座に削除する必要がある場合、[サポートチケット](https://about.gitlab.com/support/)を開くことができます。
 
 ```plaintext
 DELETE /projects/:id
@@ -2179,15 +2750,15 @@ DELETE /projects/:id
 
 サポートされている属性:
 
-| 属性            | 種類              | 必須 | 説明 |
+| 属性            | 型              | 必須 | 説明 |
 |:---------------------|:------------------|:---------|:------------|
-| `id`                 | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
-| `full_path`          | 文字列            | いいえ       | `permanently_remove`で使用するプロジェクトのフルパス。GitLab 15.11でPremiumおよびUltimate限定で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/396500)され、18.0でGitLab Freeに移行されました。プロジェクトパスを確認するには、[単一プロジェクトの取得](projects.md#get-a-single-project)の`path_with_namespace`を使用します。 |
-| `permanently_remove` | ブール値/文字列    | いいえ       | 削除対象としてマークされているプロジェクトを即時削除します。GitLab 15.11でPremiumおよびUltimate限定で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/396500)され、18.0でGitLab Freeに移行されました。GitLab.comとDedicatedでは無効になっています。 |
+| `id`                 | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `full_path`          | 文字列            | いいえ       | `permanently_remove`で使用するプロジェクトのフルパス。GitLab 15.11でPremiumおよびUltimate限定で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/396500)され、18.0でGitLab Freeに移行されました。プロジェクトパスを確認するには、[単一プロジェクトの取得](projects.md#retrieve-a-project)の`path_with_namespace`を使用します。 |
+| `permanently_remove` | ブール値/文字列    | いいえ       | 削除対象としてマークされているプロジェクトを即時削除します。GitLab 15.11でPremiumおよびUltimate限定で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/396500)され、18.0でGitLab Freeに移行されました。GitLab.comおよびDedicatedでは無効になっています。 |
 
 ### 削除対象としてマークされているプロジェクトを復元する {#restore-a-project-marked-for-deletion}
 
-削除対象としてマークされているプロジェクトを復元します。
+削除対象としてマークされていた指定されたプロジェクトを復元します。
 
 ```plaintext
 POST /projects/:id/restore
@@ -2195,15 +2766,15 @@ POST /projects/:id/restore
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
 ### プロジェクトを新しいネームスペースに転送する {#transfer-a-project-to-a-new-namespace}
 
 プロジェクトを新しいネームスペースに転送します。
 
-プロジェクトの転送に必要な前提要件については、[プロジェクトを別のネームスペースに転送](../user/project/working_with_projects.md#transfer-a-project)を参照してください。
+プロジェクトの転送に必要な前提条件については、[プロジェクトを別のネームスペースに転送](../user/project/working_with_projects.md#transfer-a-project)を参照してください。
 
 ```plaintext
 PUT /projects/:id/transfer
@@ -2211,12 +2782,12 @@ PUT /projects/:id/transfer
 
 サポートされている属性:
 
-| 属性   | 種類              | 必須 | 説明 |
+| 属性   | 型              | 必須 | 説明 |
 |:------------|:------------------|:---------|:------------|
-| `id`        | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`        | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `namespace` | 整数または文字列 | はい      | プロジェクトの転送先のネームスペースのIDまたはパス。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request PUT \
@@ -2224,7 +2795,7 @@ curl --request PUT \
   --url "https://gitlab.example.com/api/v4/projects/5/transfer?namespace=14"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
   {
@@ -2342,12 +2913,6 @@ curl --request PUT \
 
 #### プロジェクト転送に利用可能なグループのリストを取得する {#list-groups-available-for-project-transfer}
 
-{{< history >}}
-
-- GitLab 15.4で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/371006)されました。
-
-{{< /history >}}
-
 ユーザーがプロジェクトを転送できる転送先グループのリストを取得します。
 
 ```plaintext
@@ -2356,18 +2921,18 @@ GET /projects/:id/transfer_locations
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `search`  | 文字列            | いいえ       | 検索するグループ名。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --url "https://gitlab.example.com/api/v4/projects/1/transfer_locations"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 [
@@ -2398,16 +2963,28 @@ curl --url "https://gitlab.example.com/api/v4/projects/1/transfer_locations"
 PUT /projects/:id
 ```
 
+前提条件: 
+
+- プロジェクトのメンテナーまたはオーナーロールが必要です。
+- ファイルのサイズは200 KB以下である必要があります。理想的な画像サイズは192 x 192ピクセルです。
+- 画像は、次のいずれかのファイル形式である必要があります。
+  - `.bmp`
+  - `.gif`
+  - `.ico`
+  - `.jpeg`
+  - `.png`
+  - `.tiff`
+
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
 | `avatar`  | 文字列            | はい      | アップロードするファイル。 |
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-ファイルシステムからアバターをアップロードするには、`--form`引数を使用します。これにより、cURLはヘッダー`Content-Type: multipart/form-data`を使用してデータを送信します。`file=`パラメータは、ファイルシステムの画像ファイルを指しており、先頭に`@`を付ける必要があります。次に例を示します:
+ファイルシステムからアバターをアップロードするには、`--form`引数を使用します。これにより、cURLはヘッダー`Content-Type: multipart/form-data`を使用してデータを送信します。`avatar=`パラメータは、ファイルシステムの画像ファイルを指しており、先頭に`@`を付ける必要があります。
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request PUT \
@@ -2416,7 +2993,7 @@ curl --request PUT \
   --form "avatar=@dk.png"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -2432,7 +3009,7 @@ curl --request PUT \
 
 {{< /history >}}
 
-プロジェクトアバターをダウンロードします。プロジェクトが公開されている場合、このエンドポイントには認証なしでアクセスできます。
+プロジェクトのアバターをダウンロードします。プロジェクトが公開されている場合、このエンドポイントには認証なしでアクセスできます。
 
 ```plaintext
 GET /projects/:id/avatar
@@ -2440,11 +3017,11 @@ GET /projects/:id/avatar
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
 | `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" \
@@ -2453,15 +3030,9 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" \
 
 ### プロジェクトアバターを削除する {#remove-a-project-avatar}
 
-{{< history >}}
-
-- GitLab 15.4で[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/92604)されました。
-
-{{< /history >}}
-
 プロジェクトアバターを削除するには、`avatar`属性に空白の値を指定します。
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
@@ -2472,9 +3043,11 @@ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
 
 プロジェクトをグループと共有します。
 
+詳細については、[Invite a group to a project](../user/project/members/sharing_projects_groups.md#invite-a-group-to-a-project)を参照してください。
+
 ### プロジェクトをグループと共有する {#share-a-project-with-a-group}
 
-プロジェクトをグループと共有します。
+指定されたプロジェクトをグループと共有します。
 
 ```plaintext
 POST /projects/:id/share
@@ -2482,16 +3055,16 @@ POST /projects/:id/share
 
 サポートされている属性:
 
-| 属性      | 種類              | 必須 | 説明 |
+| 属性      | 型              | 必須 | 説明 |
 |:---------------|:------------------|:---------|:------------|
-| `group_access` | 整数           | はい      | グループに付与する[ロール（`access_level`）](members.md#roles)。 |
+| `group_access` | 整数           | はい      | グループに付与するアクセスレベル。使用可能な値: `5` （最小アクセス）、`10` （ゲスト）、`15` （プランナー）、`20` （レポーター）、`25` （セキュリティマネージャー）、`30` （デベロッパー）、`40` （メンテナー）、または`50` （オーナー）。 |
 | `group_id`     | 整数           | はい      | 共有するグループのID。 |
-| `id`           | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`           | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `expires_at`   | 文字列            | いいえ       | ISO 8601形式での共有有効期限。例: `2016-09-26`。 |
 
 ### グループ内の共有プロジェクトリンクを削除する {#delete-a-shared-project-link-in-a-group}
 
-グループからプロジェクトの共有を解除します。成功すると`204`が返されますが、コンテンツは返されません。
+指定されたグループとのプロジェクトの共有を解除します。成功すると`204`が返されますが、コンテンツは返されません。
 
 ```plaintext
 DELETE /projects/:id/share/:group_id
@@ -2499,12 +3072,12 @@ DELETE /projects/:id/share/:group_id
 
 サポートされている属性:
 
-| 属性  | 種類              | 必須 | 説明 |
+| 属性  | 型              | 必須 | 説明 |
 |:-----------|:------------------|:---------|:------------|
 | `group_id` | 整数           | はい      | グループのID。 |
-| `id`       | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`       | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request DELETE \
@@ -2522,9 +3095,9 @@ POST /projects/:id/housekeeping
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `task`    | 文字列            | いいえ       | 到達不能なオブジェクトの手動プルーニングをトリガーする場合は`prune`、積極的なハウスキーピングをトリガーする場合は`eager`。 |
 
 ## リアルタイムセキュリティスキャン {#real-time-security-scan}
@@ -2551,11 +3124,11 @@ POST /projects/:id/security_scans/sast/scan
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |-----------|-------------------|----------|-------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
-リクエストの例:
+リクエスト例: 
 
 ```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
@@ -2567,7 +3140,7 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
  --url "https://gitlab.example.com/api/v4/projects/:id/security_scans/sast/scan"
 ```
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -2592,7 +3165,7 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
 
 このエンドポイントには、管理者のみがアクセスできます。
 
-プロジェクト（またはリクエストされた場合はWiki）のGitリポジトリのスナップショットをダウンロードします。このスナップショットは、常に非圧縮の[tar](https://en.wikipedia.org/wiki/Tar_(computing))形式です。
+プロジェクトのスナップショット（リクエストされた場合はWiki）のGitリポジトリをダウンロードします。このスナップショットは、常に非圧縮の[tar](https://en.wikipedia.org/wiki/Tar_(computing))形式です。
 
 リポジトリが破損して`git clone`が機能しない場合でも、スナップショットを使用すると、一部のデータを取得できる場合があります。
 
@@ -2602,14 +3175,14 @@ GET /projects/:id/snapshot
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
-| `id`      | 整数または文字列 | はい      | プロジェクトの[IDまたはURLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
+| `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 | `wiki`    | ブール値           | いいえ       | プロジェクトリポジトリではなく、Wikiをダウンロードするかどうか。 |
 
-## リポジトリストレージへのパスを取得する {#get-the-path-to-repository-storage}
+## リポジトリストレージへのパスを取得する {#retrieve-the-path-to-repository-storage}
 
-指定されたプロジェクトのリポジトリストレージへのパスを取得します。Gitaly Cluster（Praefect）を使用している場合は、代わりに[Praefectによって生成されたレプリカパス](../administration/gitaly/praefect/_index.md#praefect-generated-replica-paths)を参照してください。
+指定されたプロジェクトのリポジトリストレージへのパスを取得します。Gitaly Cluster (Praefect)を使用している場合は、代わりに[Praefectによって生成されたレプリカパス](../administration/gitaly/praefect/_index.md#praefect-generated-replica-paths)を参照してください。
 
 管理者のみが利用できます。
 
@@ -2619,7 +3192,7 @@ GET /projects/:id/storage
 
 サポートされている属性:
 
-| 属性 | 種類              | 必須 | 説明 |
+| 属性 | 型              | 必須 | 説明 |
 |:----------|:------------------|:---------|:------------|
 | `id`      | 整数または文字列 | はい      | プロジェクトのIDまたは[URLエンコードされたパス](rest/_index.md#namespaced-paths)。 |
 
@@ -2649,7 +3222,7 @@ GET /projects/:id/storage
 
 {{< /history >}}
 
-デベロッパー以上のロールが付与されている場合、次のリクエストは`secret_push_protection_enabled`値も返す可能性があります。これらのリクエストの一部には、ロールに関するより厳格な要件があります。詳細については、前述のエンドポイントを参照してください。この情報を使用して、プロジェクトに対してシークレットプッシュ保護が有効になっているかどうかを判断します。`secret_push_protection_enabled`の値を変更するには、[プロジェクトセキュリティ設定API](project_security_settings.md)を使用してください。
+セキュリティマネージャー、デベロッパー、メンテナー、またはオーナーロールを持つ場合、以下のリクエストでも`secret_push_protection_enabled`の値を返すことができます。これらのリクエストの一部には、ロールに関するより厳格な要件があります。詳細については、前述のエンドポイントを参照してください。この情報を使用して、プロジェクトに対してシークレットプッシュ保護が有効になっているかどうかを判断します。`secret_push_protection_enabled`の値を変更するには、[プロジェクトセキュリティ設定API](project_security_settings.md)を使用してください。
 
 - `GET /projects`
 - `GET /projects/:id`
@@ -2662,7 +3235,7 @@ GET /projects/:id/storage
 - `POST /projects/:id/archive`
 - `POST /projects/:id/unarchive`
 
-レスポンス例:
+レスポンス例: 
 
 ```json
 {
@@ -2679,7 +3252,7 @@ GET /projects/:id/storage
 
 `restrict_user_defined_variables`と`ci_pipeline_variables_minimum_override_role`に競合する値を設定すると、`pipeline_variables_minimum_override_role`設定の方が優先順位が高いため、応答の値が予期される値と異なる場合があります。
 
-たとえば、次のような場合が該当します:
+たとえば、次のような場合が該当します。
 
 - `restrict_user_defined_variables`を`true`、`ci_pipeline_variables_minimum_override_role`を`developer`に設定すると、応答は`restrict_user_defined_variables: false`を返します。`ci_pipeline_variables_minimum_override_role`を`developer`に設定すると、優先され、変数は制限されません。
 - `restrict_user_defined_variables`を`false`、`ci_pipeline_variables_minimum_override_role`を`maintainer`に設定すると、応答は`restrict_user_defined_variables: true`を返します。`ci_pipeline_variables_minimum_override_role`を`maintainer`に設定すると優先され、変数が制限されるためです。

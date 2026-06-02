@@ -1,8 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-title: GitLab CI/CD variables
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: CI/CD variables
 description: Configuration, usage, and security.
 ---
 
@@ -24,9 +24,12 @@ to execute scripts. Each shell has its own set of reserved variable names.
 
 To ensure consistent behavior, you should always put variable values in single or double quotes.
 Variables are internally parsed by the [Psych YAML parser](https://docs.ruby-lang.org/en/master/Psych.html),
-so quoted and unquoted variables might be parsed differently. For example, `VAR1: 012345`
-is interpreted as an octal value, so the value becomes `5349`, but `VAR1: "012345"` is parsed
-as a string with a value of `012345`.
+so quoted and unquoted variables might be parsed differently. For example:
+
+- `VAR1: 012345` is interpreted as an octal value, so the value becomes `5349`.
+- `VAR1: "012345"` is parsed as a string with a value of `012345`.
+- `VAR1: 019` is parsed as the string `"019"` and not as octal, because `9` is not a valid
+  octal digit. Octal parsing only applies when all digits are 0–7.
 
 For more information about advanced use of GitLab CI/CD, see [7 advanced GitLab CI workflow hacks](https://about.gitlab.com/webcast/7cicd-hacks/) shared by GitLab engineers.
 
@@ -134,7 +137,7 @@ Prerequisites:
 To add or update variables in the project settings:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Variables**.
 1. Select **Add variable** and fill in the details:
    - **Key**: Must be one line, with no spaces, using only letters, numbers, or `_`.
@@ -169,7 +172,7 @@ Prerequisites:
 To add a group variable:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Variables**.
 1. Select **Add variable** and fill in the details:
    - **Key**: Must be one line, with no spaces, using only letters, numbers, or `_`.
@@ -199,7 +202,7 @@ Alternatively, group variables can be added [by using the API](../../api/group_l
 To set a group CI/CD variable to only be available for certain environments:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Variables**.
 1. To the right of the variable, select **Edit** ({{< icon name="pencil" >}}).
 1. For **Environment scope**, select **All (default)** (`*`), a specific [environment](../environments/_index.md),
@@ -217,6 +220,7 @@ To set a group CI/CD variable to only be available for certain environments:
 {{< history >}}
 
 - Default visibility [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/195494) from **Visible** to **Masked** in GitLab 18.3.
+- **Masked and hidden** option [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/592708) in GitLab 19.0.
 
 {{< /history >}}
 
@@ -229,7 +233,7 @@ Prerequisites:
 To add an instance variable:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Variables**.
 1. Select **Add variable** and fill in the details:
    - **Key**: Must be one line, with no spaces, using only letters, numbers, or `_`.
@@ -491,7 +495,7 @@ The order of precedence for variables is (from highest to lowest):
    the job uses the value from the closest subgroup. For example, if you have
    `Group > Subgroup 1 > Subgroup 2 > Project`, the variable defined in `Subgroup 2` takes precedence.
 1. Instance variables.
-1. [Variables from `dotenv` reports](job_scripts.md#pass-environment-variables-to-later-jobs).
+1. [Variables from `dotenv` reports](dotenv_variables.md#pass-variables-to-later-jobs).
 1. Job variables, defined in jobs in the `.gitlab-ci.yml` file.
 1. Default variables for all jobs, defined at the top-level of the `.gitlab-ci.yml` file.
 1. [Deployment variables](predefined_variables.md#deployment-variables).
@@ -567,13 +571,14 @@ To limit the use of pipeline variables to only the Maintainer role and higher:
 - Under **Minimum role to use pipeline variables**, select one of:
   - `no_one_allowed`: No pipelines can run with pipeline variables.
     Default for new projects in new namespaces on GitLab.com.
+    Once the setting is at this value, only the Owner role can change it.
   - `owner`: Only users with the Owner role can run pipelines with pipeline variables.
-    You must have the Owner role for the project to change the setting to this value.
+    Once the setting is at this value, only the Owner role can change it.
   - `maintainer`: Only users with the Maintainer or Owner role can run pipelines with pipeline variables.
     Default when not specified on GitLab Self-Managed and GitLab Dedicated.
   - `developer`: Only users with the Developer, Maintainer, or Owner role can run pipelines with pipeline variables.
 
-You can also use [the projects API](../../api/projects.md#edit-a-project) to set
+You can also use [the projects API](../../api/projects.md#update-a-project) to set
 the role for the `ci_pipeline_variables_minimum_override_role` setting.
 
 This restriction does not affect the use of CI/CD variables from the project or group settings.
@@ -602,7 +607,7 @@ Prerequisites:
 To enable the pipeline variable restriction setting in projects in the group:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Variables**.
 1. In the **Disable pipeline variables in projects that don't use them** section,
    select **Start migration**.

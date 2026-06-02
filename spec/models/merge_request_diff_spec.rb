@@ -89,17 +89,43 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       merge_request.create_merge_request_diff
     end
 
-    it 'creates hidden refs' do
-      hidden_refs = subject.project.repository.raw.list_refs(["refs/#{Repository::REF_MERGE_REQUEST}/", "refs/#{Repository::REF_KEEP_AROUND}/"])
+    context 'when creating a new merge request' do
+      context 'when async_keep_around_refs_for_merge_request_diffs is enabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: true)
+        end
 
-      expect(hidden_refs).to match_array([
-        Gitaly::ListRefsResponse::Reference.new(name: subject.merge_request.ref_path, target: subject.head_commit_sha),
-        Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{subject.head_commit_sha}", target: subject.head_commit_sha),
-        Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{subject.start_commit_sha}", target: subject.start_commit_sha)
-      ])
+        it 'calls enqueue_keep_around_commits' do
+          expect_any_instance_of(described_class).to receive(:enqueue_keep_around_commits)
+
+          create(:merge_request)
+        end
+      end
+
+      context 'when async_keep_around_refs_for_merge_request_diffs is disabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: false)
+        end
+
+        it 'creates hidden refs' do
+          hidden_refs = subject.project.repository.raw.list_refs(["refs/#{Repository::REF_MERGE_REQUEST}/", "refs/#{Repository::REF_KEEP_AROUND}/"])
+
+          expect(hidden_refs).to match_array([
+            Gitaly::ListRefsResponse::Reference.new(name: subject.merge_request.ref_path, target: subject.head_commit_sha),
+            Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{subject.head_commit_sha}", target: subject.head_commit_sha),
+            Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{subject.start_commit_sha}", target: subject.start_commit_sha)
+          ])
+        end
+
+        it 'does not enqueue KeepAroundRefsWorker' do
+          expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+          create(:merge_request)
+        end
+      end
     end
 
-    context 'when diff_type is merge_head' do
+    context 'when diff_type is merge_head', :sidekiq_inline do
       let(:merge_request) { create(:merge_request) }
 
       let!(:merge_head) do
@@ -118,15 +144,49 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       it { expect(merge_head.base_commit_sha).to eq(merge_request.merge_ref_head.diff_refs.base_sha) }
       it { expect(merge_head.start_commit_sha).to eq(merge_request.target_branch_sha) }
 
-      it 'creates hidden refs' do
-        hidden_refs = merge_request.project.repository.raw.list_refs(["refs/#{Repository::REF_MERGE_REQUEST}/", "refs/#{Repository::REF_KEEP_AROUND}/"])
+      context 'when async_keep_around_refs_for_merge_request_diffs is enabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: true)
+        end
 
-        expect(hidden_refs).to match_array([
-          Gitaly::ListRefsResponse::Reference.new(name: merge_request.ref_path, target: merge_request.source_branch_sha),
-          Gitaly::ListRefsResponse::Reference.new(name: merge_request.merge_ref_path, target: merge_head.head_commit_sha),
-          Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{merge_head.start_commit_sha}", target: merge_head.start_commit_sha),
-          Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{merge_request.source_branch_sha}", target: merge_request.source_branch_sha)
-        ])
+        it 'does not enqueue KeepAroundRefsWorker for merge_head diffs' do
+          mr = create(:merge_request)
+          MergeRequests::MergeToRefService
+            .new(project: mr.project, current_user: mr.author)
+            .execute(mr)
+
+          expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+          mr.create_merge_head_diff
+        end
+      end
+
+      context 'when async_keep_around_refs_for_merge_request_diffs is disabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: false)
+        end
+
+        it 'creates hidden refs' do
+          hidden_refs = merge_request.project.repository.raw.list_refs(["refs/#{Repository::REF_MERGE_REQUEST}/", "refs/#{Repository::REF_KEEP_AROUND}/"])
+
+          expect(hidden_refs).to match_array([
+            Gitaly::ListRefsResponse::Reference.new(name: merge_request.ref_path, target: merge_request.source_branch_sha),
+            Gitaly::ListRefsResponse::Reference.new(name: merge_request.merge_ref_path, target: merge_head.head_commit_sha),
+            Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{merge_head.start_commit_sha}", target: merge_head.start_commit_sha),
+            Gitaly::ListRefsResponse::Reference.new(name: "refs/#{Repository::REF_KEEP_AROUND}/#{merge_request.source_branch_sha}", target: merge_request.source_branch_sha)
+          ])
+        end
+
+        it 'does not enqueue KeepAroundRefsWorker for merge_head diffs' do
+          mr = create(:merge_request)
+          MergeRequests::MergeToRefService
+            .new(project: mr.project, current_user: mr.author)
+            .execute(mr)
+
+          expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+          mr.create_merge_head_diff
+        end
       end
     end
 
@@ -148,6 +208,27 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       it { expect(subject.base_commit_sha).to eq('ae73cb07c9eeaf35924a10f713b364d32b2dd34f') }
       it { expect(subject.start_commit_sha).to eq('0b4bc9a49b562e85de7cc9e834518ea6828729b9') }
       it { expect(subject.reload.patch_id_sha).to eq('f14ae956369247901117b8b7d237c9dc605898c5') }
+
+      it 'does not make additional Gitaly calls when accessing diffs after preload', :request_store do
+        mr_diff = merge_request.merge_request_diffs.build
+        mr_diff.preload_gitaly_data
+
+        initial_count = Gitlab::GitalyClient.get_request_count
+
+        collection = mr_diff.send(:compare_diffs_preloaded)
+        collection.to_a
+
+        expect(Gitlab::GitalyClient.get_request_count).to eq(initial_count)
+      end
+
+      context 'when compare_diffs_preloaded returns nil' do
+        it 'does not raise an error' do
+          mr_diff = merge_request.merge_request_diffs.build
+          allow(mr_diff).to receive(:compare_diffs_preloaded).and_return(nil)
+
+          expect { mr_diff.preload_gitaly_data }.not_to raise_error
+        end
+      end
     end
   end
 
@@ -176,7 +257,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
 
     let_it_be(:project) { create(:project) }
     let_it_be(:target_project_id) { project.id }
-    let_it_be(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request, source_project: project, target_project: project) }
     let_it_be(:merge_request_diff) { create(:merge_request_diff, merge_request: merge_request) }
 
     let_it_be(:commits_metadata) do
@@ -201,8 +282,13 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
         :diff_commit_without_metadata,
         merge_request_diff: merge_request_diff,
         relative_order: 1,
-        sha: 'def456'
+        sha: 'def456',
+        project_id: project.id
       )
+    end
+
+    before do
+      stub_feature_flags(mr_diff_commits_read_new_table: false)
     end
 
     subject(:by_commit_sha) { described_class.by_commit_sha(target_project_id, sha) }
@@ -282,6 +368,31 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
         by_commit_sha
       end
     end
+
+    context 'when mr_diff_commits_read_new_table is enabled' do
+      before do
+        stub_feature_flags(mr_diff_commits_read_new_table: true, merge_request_diff_commits_partition: true)
+      end
+
+      context 'when querying for a different project' do
+        let(:sha) { 'def456' }
+        let_it_be(:other_project) { create(:project) }
+
+        it 'returns empty result' do
+          expect(described_class.by_commit_sha(other_project, sha)).to be_empty
+        end
+      end
+    end
+
+    context 'when mr_diff_commits_read_new_table is disabled' do
+      before do
+        stub_feature_flags(mr_diff_commits_read_new_table: false)
+      end
+
+      it 'does not filter by project_id' do
+        expect(described_class.by_commit_sha(project, 'def456')).to eq([merge_request_diff])
+      end
+    end
   end
 
   describe '#diff_refs' do
@@ -321,7 +432,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
   end
 
   describe '.ids_for_external_storage_migration' do
-    let_it_be(:merge_request) { create(:merge_request) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request) }
     let_it_be(:outdated) { merge_request.merge_request_diff }
     let_it_be(:latest) { merge_request.create_merge_request_diff }
     let_it_be(:merge_head) { merge_request.create_merge_head_diff }
@@ -397,7 +508,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
   end
 
   describe '#ensure_project_id' do
-    let_it_be(:merge_request) { create(:merge_request, :without_diffs) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request, :without_diffs) }
 
     let(:diff) { build(:merge_request_diff, merge_request: merge_request, project_id: project_id) }
 
@@ -407,7 +518,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       let(:project_id) { nil }
 
       it do
-        expect { subject }.to change(diff, :project_id).from(nil).to(merge_request.target_project_id)
+        expect { subject }.to change { diff.project_id }.from(nil).to(merge_request.target_project_id)
       end
     end
 
@@ -415,13 +526,13 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       let(:project_id) { create(:project, :stubbed_repository).id }
 
       it do
-        expect { subject }.not_to change(diff, :project_id)
+        expect { subject }.not_to change { diff.project_id }
       end
     end
   end
 
   describe '#update_external_diff_store' do
-    let_it_be(:merge_request) { create(:merge_request) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request) }
 
     let(:diff) { merge_request.merge_request_diff }
     let(:store) { diff.external_diff.object_store }
@@ -494,7 +605,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
         .with('merge_request_diff_files', anything)
         .and_raise(ActiveRecord::Rollback)
 
-      expect { diff.migrate_files_to_external_storage! }.not_to change(diff, :merge_request_diff_files)
+      expect { diff.migrate_files_to_external_storage! }.not_to change { diff.merge_request_diff_files }
 
       diff.reload
 
@@ -910,6 +1021,32 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       end
     end
 
+    describe '#diffs_for_streaming_by_changed_paths' do
+      let(:diff_refs) { diff_with_commits.diff_refs }
+      let(:expected_block) { proc {} }
+      let(:repository) { diff_with_commits.project.repository }
+
+      it 'calls diffs_by_changed_paths with given offset' do
+        expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, 0) do |_, &block|
+          expect(block).to be(expected_block)
+        end
+
+        diff_with_commits.diffs_for_streaming_by_changed_paths(&expected_block)
+      end
+
+      context 'when offset_index is given' do
+        let(:offset) { 5 }
+
+        it 'calls diffs_by_changed_paths with given offset' do
+          expect(repository).to receive(:diffs_by_changed_paths).with(diff_refs, offset) do |_, &block|
+            expect(block).to be(expected_block)
+          end
+
+          diff_with_commits.diffs_for_streaming_by_changed_paths({ offset_index: offset }, &expected_block)
+        end
+      end
+    end
+
     describe '#diffs' do
       let(:diff_options) { {} }
 
@@ -1037,6 +1174,58 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       end
     end
 
+    describe '#enqueue_keep_around_commits' do
+      let(:merge_request) { create(:merge_request) }
+      let(:merge_request_diff) { merge_request.merge_request_diff }
+
+      context 'when async_keep_around_refs_for_merge_request_diffs is enabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: true)
+        end
+
+        it 'enqueues KeepAroundRefsWorker with project IDs, SHAs, and source' do
+          project_ids = [merge_request_diff.project.id, merge_request.source_project_id].compact.uniq
+          expect(MergeRequests::KeepAroundRefsWorker).to receive(:perform_async).with(
+            project_ids,
+            [merge_request_diff.start_commit_sha, merge_request_diff.head_commit_sha],
+            'MergeRequestDiff'
+          )
+
+          merge_request_diff.send(:enqueue_keep_around_commits)
+        end
+
+        it 'does not call keep_around_commits synchronously' do
+          allow(MergeRequests::KeepAroundRefsWorker).to receive(:perform_async)
+
+          expect(merge_request_diff).not_to receive(:keep_around_commits)
+
+          merge_request_diff.send(:enqueue_keep_around_commits)
+        end
+
+        context 'when diff is a merge_head diff' do
+          it 'does not enqueue KeepAroundRefsWorker' do
+            allow(merge_request_diff).to receive(:merge_head?).and_return(true)
+
+            expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+            merge_request_diff.send(:enqueue_keep_around_commits)
+          end
+        end
+      end
+
+      context 'when async_keep_around_refs_for_merge_request_diffs is disabled' do
+        before do
+          stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: false)
+        end
+
+        it 'does not enqueue KeepAroundRefsWorker' do
+          expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+          merge_request_diff.send(:enqueue_keep_around_commits)
+        end
+      end
+    end
+
     describe "#set_patch_id_sha" do
       let(:mr_diff) { create(:merge_request).merge_request_diff }
 
@@ -1148,8 +1337,8 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       end
 
       it 'saves empty state' do
-        allow_any_instance_of(described_class).to receive_message_chain(:compare, :commits)
-          .and_return([])
+        compare = instance_double(Gitlab::Git::Compare, commits: [], generated_files: Set.new, diffs: Gitlab::Git::DiffCollection.new([]))
+        allow_any_instance_of(described_class).to receive(:compare).and_return(compare)
 
         mr_diff = create(:merge_request).merge_request_diff
 
@@ -1444,12 +1633,16 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
 
   describe '#commit_shas' do
     let_it_be(:project) { create(:project, :repository) }
+    let(:shas_from_commits) do
+      diff_with_commits.merge_request.commits.map(&:sha)
+    end
+
     let(:diff_with_commits) do
       create(:merge_request, source_project: project, target_project: project).merge_request_diff
     end
 
-    let(:shas_from_commits) do
-      diff_with_commits.merge_request.commits.map(&:sha)
+    before do
+      stub_feature_flags(mr_diff_commits_read_new_table: false)
     end
 
     shared_examples 'result with commit SHAs' do
@@ -1485,14 +1678,14 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
 
       it_behaves_like 'result with commit SHAs'
 
-      context 'without preload_metadata' do
+      context 'with default mode (:auto)' do
         let(:query_options) { {} }
 
         it_behaves_like 'query count verification', expected_count: 10
       end
 
-      context 'with preload_metadata enabled' do
-        let(:query_options) { { preload_metadata: true } }
+      context 'with mode: :preload' do
+        let(:query_options) { { mode: :preload } }
 
         it_behaves_like 'query count verification'
       end
@@ -1502,6 +1695,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       let(:query_options) { {} }
 
       before do
+        diff_with_commits.merge_request.target_project
         allow(diff_with_commits.association(:merge_request_diff_commits)).to receive(:loaded?).and_return(false)
       end
 
@@ -1531,6 +1725,41 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
         it_behaves_like 'query count verification'
       end
     end
+
+    context 'with mode: :force_metadata' do
+      it 'always uses a single query when commits are not preloaded' do
+        diff_with_commits.merge_request_diff_commits.reset
+
+        recorder = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+          diff_with_commits.commit_shas(mode: :force_metadata)
+        end
+
+        expect(recorder.count).to eq(1)
+        expect(recorder.log.first).to include('COALESCE(merge_request_commits_metadata.sha')
+      end
+
+      it 'always uses a single query even when commits are already preloaded' do
+        diff_with_commits.merge_request_diff_commits.load
+
+        recorder = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+          diff_with_commits.commit_shas(mode: :force_metadata)
+        end
+
+        expect(recorder.count).to eq(1)
+        expect(recorder.log.first).to include('COALESCE(merge_request_commits_metadata.sha')
+      end
+
+      it 'returns the same shas regardless of association state' do
+        diff_with_commits.merge_request_diff_commits.reset
+        shas_without_preload = diff_with_commits.commit_shas(mode: :force_metadata)
+
+        diff_with_commits.merge_request_diff_commits.load
+        shas_with_preload = diff_with_commits.commit_shas(mode: :force_metadata)
+
+        expect(shas_without_preload).not_to be_empty
+        expect(shas_without_preload).to eq(shas_with_preload)
+      end
+    end
   end
 
   describe '#commits_count' do
@@ -1540,7 +1769,7 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
   end
 
   describe '#files_count' do
-    let_it_be(:merge_request) { create(:merge_request) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request) }
 
     let(:diff) { merge_request.merge_request_diff }
     let(:actual_count) { diff.merge_request_diff_files.count }
@@ -1606,7 +1835,8 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
       create(:diff_commit_without_metadata,
         merge_request_diff: merge_request_diff,
         relative_order: merge_request_diff.merge_request_diff_commits.count + 1,
-        sha: 'def456'
+        sha: 'def456',
+        project_id: project.id
       )
     end
 
@@ -1621,6 +1851,10 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
 
     let(:non_existent_shas) do
       Array.new(30) { Digest::SHA1.hexdigest(SecureRandom.hex) }
+    end
+
+    before do
+      stub_feature_flags(mr_diff_commits_read_new_table: false)
     end
 
     shared_examples 'merge request diff with commit shas' do
@@ -2028,6 +2262,118 @@ RSpec.describe MergeRequestDiff, feature_category: :code_review_workflow do
 
       it 'returns false' do
         expect(merge_request_diff.has_encoded_file_paths?).to eq(false)
+      end
+    end
+  end
+
+  describe '#first_diffs_slice' do
+    let(:merge_request_diff) { build_stubbed(:merge_request_diff) }
+
+    let(:paginated_diffs) do
+      instance_double(
+        Gitlab::Diff::FileCollection::PaginatedMergeRequestDiff,
+        diff_files: ['paginated diffs']
+      )
+    end
+
+    it 'calls #paginated_diffs with limit and options' do
+      expect(merge_request_diff)
+        .to receive(:paginated_diffs)
+        .with(1, 5, { expanded: true })
+        .and_return(paginated_diffs)
+
+      expect(merge_request_diff.first_diffs_slice(5, expanded: true))
+        .to eq(paginated_diffs)
+    end
+  end
+
+  describe '#read_new_commits_table?' do
+    let(:merge_request_diff) { build_stubbed(:merge_request_diff) }
+
+    context 'when merge_request has no target_project' do
+      before do
+        allow(merge_request_diff).to receive(:merge_request).and_return(nil)
+      end
+
+      it { expect(merge_request_diff.read_new_commits_table?).to be false }
+    end
+
+    context 'when merge_request has a target_project' do
+      let(:project) { build_stubbed(:project) }
+      let(:merge_request) { build_stubbed(:merge_request, target_project: project) }
+
+      before do
+        allow(merge_request_diff).to receive(:merge_request).and_return(merge_request)
+      end
+
+      context 'when both feature flags are enabled' do
+        before do
+          stub_feature_flags(mr_diff_commits_read_new_table: project, merge_request_diff_commits_partition: project)
+        end
+
+        it { expect(merge_request_diff.read_new_commits_table?).to be true }
+      end
+
+      context 'when mr_diff_commits_read_new_table is disabled' do
+        before do
+          stub_feature_flags(mr_diff_commits_read_new_table: false, merge_request_diff_commits_partition: project)
+        end
+
+        it { expect(merge_request_diff.read_new_commits_table?).to be false }
+      end
+
+      context 'when merge_request_diff_commits_partition is disabled' do
+        before do
+          stub_feature_flags(mr_diff_commits_read_new_table: project, merge_request_diff_commits_partition: false)
+        end
+
+        it { expect(merge_request_diff.read_new_commits_table?).to be false }
+      end
+    end
+  end
+
+  describe '#ensure_commit_shas' do
+    let(:merge_request) { create(:merge_request) }
+
+    subject { merge_request.merge_request_diffs.build }
+
+    before do
+      subject.ensure_commit_shas
+    end
+
+    it { expect(subject.head_commit_sha).to eq('b83d6e391c22777fca1ed3012fce84f633d7fed0') }
+    it { expect(subject.base_commit_sha).to eq('ae73cb07c9eeaf35924a10f713b364d32b2dd34f') }
+    it { expect(subject.start_commit_sha).to eq('0b4bc9a49b562e85de7cc9e834518ea6828729b9') }
+
+    context 'when diff_type is merge_head', :sidekiq_inline do
+      subject do
+        MergeRequests::MergeToRefService
+          .new(project: merge_request.project, current_user: merge_request.author)
+          .execute(merge_request)
+
+        merge_request.build_merge_head_diff
+      end
+
+      it { expect(subject.head_commit_sha).to eq(merge_request.merge_ref_head.diff_refs.head_sha) }
+      it { expect(subject.base_commit_sha).to eq(merge_request.merge_ref_head.diff_refs.base_sha) }
+
+      context 'when head_commit_sha and base_commit_sha are set' do
+        it 'does not call merge_ref_head on merge_request' do
+          expect(subject.merge_request).not_to receive(:merge_ref_head)
+
+          subject.ensure_commit_shas
+        end
+      end
+    end
+
+    context 'when diff_type is regular' do
+      context 'when head_commit_sha and base_commit_sha are set' do
+        it 'does not call find_base_sha or source_branch_sha on merge_request' do
+          expect(subject.merge_request).not_to receive(:source_branch_sha)
+          expect(subject).not_to receive(:find_base_sha)
+
+          subject.ensure_commit_shas
+        end
       end
     end
   end

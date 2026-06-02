@@ -26,7 +26,7 @@ module API
               ]
               tags %w[packages]
             end
-            route_setting :authorization, skip_granular_token_authorization: true
+            route_setting :authorization, skip_granular_token_authorization: :public_endpoint
             get 'index', format: :json, urgency: :default do
               track_package_event(
                 'cli_metadata',
@@ -74,21 +74,26 @@ module API
                   regexp: API::NO_SLASH_URL_PART_REGEX,
                   documentation: { example: 'k813f89485474661234z7109cve5709eFFFFFFFF' }
                 requires :same_file_name, same_as: :file_name, allow_blank: false, type: String,
-                  desc: 'The symbol file name'
+                  desc: "The symbol file name. Must match the 'file_name' parameter"
               end
-              route_setting :authorization, skip_granular_token_authorization: true
+              route_setting :authorization, skip_granular_token_authorization: :public_endpoint
               get '*file_name/*signature/*same_file_name', format: false, urgency: :low do
                 bad_request!('Missing checksum header') if headers['Symbolchecksum'].blank?
 
-                project_or_group_without_auth
+                project_ids = if project_or_group_without_auth.is_a?(::Project)
+                                project_or_group_without_auth.id
+                              else
+                                project_or_group_without_auth.all_active_project_ids
+                              end
 
                 checksums = headers['Symbolchecksum'].scan(SHA256_REGEX).flatten
 
                 symbol = ::Packages::Nuget::Symbol
-                  .find_by_signature_and_file_and_checksum(
-                    declared_params[:signature],
-                    declared_params[:file_name],
-                    checksums
+                  .find_by_project_and_signature_and_file_and_checksum(
+                    signature: declared_params[:signature],
+                    file_name: declared_params[:file_name],
+                    checksums: checksums,
+                    project_ids: project_ids
                   )
 
                 not_found!('Symbol') unless symbol
@@ -98,7 +103,7 @@ module API
             end
 
             namespace '/v2' do
-              route_setting :authorization, skip_granular_token_authorization: true
+              route_setting :authorization, skip_granular_token_authorization: :public_endpoint
               get format: :xml, urgency: :low do
                 env['api.format'] = :xml
                 content_type 'application/xml; charset=utf-8'
@@ -123,7 +128,7 @@ module API
                 tags %w[packages]
               end
 
-              route_setting :authorization, skip_granular_token_authorization: true
+              route_setting :authorization, skip_granular_token_authorization: :public_endpoint
               get '$metadata', format: :xml, urgency: :low do
                 env['api.format'] = :xml
                 content_type 'application/xml; charset=utf-8'

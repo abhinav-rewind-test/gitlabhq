@@ -45,6 +45,7 @@ $diff-file-header: 41px;
       cursor: auto;
     }
 
+    // stylelint-disable-next-line gitlab/no-has -- scoped to diff file header
     &:has(.gl-new-dropdown-toggle[aria-expanded="true"]) {
       z-index: $zindex-dropdown-menu;
     }
@@ -130,7 +131,9 @@ $diff-file-header: 41px;
     @apply gl-bg-strong;
     text-align: center;
     padding: $gl-padding;
+    border-radius: var(--diff-file-image-viewer-border-radius);
 
+    // stylelint-disable-next-line gitlab/no-has -- scoped to image diff viewer container
     &:has(> .view) {
       padding-bottom: $gl-padding-32;
     }
@@ -146,20 +149,7 @@ $diff-file-header: 41px;
 
       img {
         border: 1px solid var(--gl-background-color-default);
-        background-image: linear-gradient(45deg,
-        var(--gl-border-color-default) 25%,
-        transparent 25%,
-        transparent 75%,
-        var(--gl-border-color-default) 75%,
-        var(--gl-border-color-default) 100%),
-          linear-gradient(45deg,
-        var(--gl-border-color-default) 25%,
-        transparent 25%,
-        transparent 75%,
-        var(--gl-border-color-default) 75%,
-        var(--gl-border-color-default) 100%);
-        background-size: 10px 10px;
-        background-position: 0 0, 5px 5px;
+        @include checkerboard-bg;
         max-width: 100%;
       }
 
@@ -430,18 +420,6 @@ $diff-file-header: 41px;
   }
 }
 
-@include gl-container-width-up(md, panel, false) {
-  .panel-content {
-    .diff-file .file-title,
-    .diff-file .file-title-flex-parent {
-      &,
-      &.is-wiki {
-        top: calc(#{$mr-sticky-header-height} - 2px);
-      }
-    }
-  }
-}
-
 .code .diff-grid-row.line_holder.diff-tr .diff-td.commented:not(.hll) {
   --highlight-border-color: #{$gl-color-blue-300};
   background-color: $gl-color-blue-50;
@@ -512,7 +490,7 @@ table.code {
         }
       }
 
-      &:not(.js-unfold-bottom) a {
+      &:not(.js-unfold-bottom) a { // stylelint-disable-line gitlab/no-js-class
         position: relative;
 
         &::before {

@@ -138,6 +138,30 @@ describe('wikis/components/wiki_header', () => {
       buildWrapper();
     });
 
+    it('attaches keyup event listener and removes it properly when user has edit permission', () => {
+      jest.spyOn(document, 'addEventListener');
+      jest.spyOn(document, 'removeEventListener');
+      buildWrapper({ showEditButton: true });
+
+      expect(document.addEventListener).toHaveBeenCalledWith('keyup', wrapper.vm.onKeyUp);
+
+      wrapper.destroy();
+
+      expect(document.removeEventListener).toHaveBeenCalledWith('keyup', wrapper.vm.onKeyUp);
+    });
+
+    it('does not attach or remove keyup event listener when user does not have edit permission', () => {
+      jest.spyOn(document, 'addEventListener');
+      jest.spyOn(document, 'removeEventListener');
+      buildWrapper({ showEditButton: false });
+
+      expect(document.addEventListener).not.toHaveBeenCalled();
+
+      wrapper.destroy();
+
+      expect(document.removeEventListener).not.toHaveBeenCalled();
+    });
+
     it('renders correct page heading', () => {
       expect(findPageHeading().text()).toBe('Wiki page heading');
     });
@@ -255,20 +279,6 @@ describe('wikis/components/wiki_header', () => {
       findSubscribeButton().vm.$emit('click');
       // there should be no second mutation call
       expect(mutateSpy).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('wikiFloatingSidebarToggle feature flag', () => {
-    it('hides the toggle component on large screens when the FF is enabled', () => {
-      buildWrapper({ glFeatures: { wikiFloatingSidebarToggle: true } });
-
-      expect(findSidebarToggle().classes()).toContain('@lg/panel:gl-hidden');
-    });
-
-    it('does not hide the toggle component on large screens when the FF is disabled', () => {
-      buildWrapper({ glFeatures: { wikiFloatingSidebarToggle: false } });
-
-      expect(findSidebarToggle().classes()).not.toContain('@lg/panel:gl-hidden');
     });
   });
 });

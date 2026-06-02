@@ -11,13 +11,13 @@ module API
         optional :state, type: String, desc: 'Filter tokens which are either active or not',
           values: %w[active inactive], documentation: { example: 'active' }
         optional :created_before, type: DateTime, desc: 'Filter tokens which were created before given datetime',
-          documentation: { example: '2022-01-01' }
+          documentation: { example: '2022-01-01T00:00:00Z' }
         optional :created_after, type: DateTime, desc: 'Filter tokens which were created after given datetime',
-          documentation: { example: '2021-01-01' }
+          documentation: { example: '2021-01-01T00:00:00Z' }
         optional :last_used_before, type: DateTime, desc: 'Filter tokens which were used before given datetime',
-          documentation: { example: '2021-01-01' }
+          documentation: { example: '2021-01-01T00:00:00Z' }
         optional :last_used_after, type: DateTime, desc: 'Filter tokens which were used after given datetime',
-          documentation: { example: '2022-01-01' }
+          documentation: { example: '2022-01-01T00:00:00Z' }
         optional :expires_before, type: Date, desc: 'Filter tokens which expire before given datetime',
           documentation: { example: '2022-01-01' }
         optional :expires_after, type: Date, desc: 'Filter tokens which expire after given datetime',
@@ -39,7 +39,7 @@ module API
         user_param =
           if current_user.can_admin_all_resources?
             if params[:user_id].present?
-              user = user(params[:user_id])
+              user = find_pat_user_by_id(params[:user_id])
 
               not_found! if user.nil?
 
@@ -56,14 +56,18 @@ module API
         declared(params, include_missing: false).merge(user_param)
       end
 
-      def user(user_id)
+      def find_pat_user_by_id(user_id)
         UserFinder.new(user_id).find_by_id
       end
 
       def restrict_non_admins!
         return if params[:user_id].blank?
 
-        unauthorized! unless Ability.allowed?(current_user, :read_user_personal_access_tokens, user(params[:user_id]))
+        unauthorized! unless Ability.allowed?(
+          current_user,
+          :read_personal_access_token,
+          find_pat_user_by_id(params[:user_id])
+        )
       end
 
       def find_token(id)
@@ -78,7 +82,8 @@ module API
       end
 
       def rotate_token(token, params)
-        service = ::PersonalAccessTokens::RotateService.new(current_user, token, nil, params).execute
+        service = ::PersonalAccessTokens::RotateService.new(current_user, token, nil,
+          params.merge(creation_source: PersonalAccessToken::CREATION_SOURCE_API)).execute
 
         if service.success?
           status :ok

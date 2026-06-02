@@ -1,6 +1,6 @@
 <script>
 import { GlCollapsibleListbox, GlButton } from '@gitlab/ui';
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 import { __, sprintf } from '~/locale';
 import axios from '~/lib/utils/axios_utils';
 import SafeHtml from '~/vue_shared/directives/safe_html';
@@ -29,6 +29,7 @@ export default {
       required: true,
     },
   },
+  emits: ['input'],
   data() {
     return {
       searchTerm: '',
@@ -41,6 +42,7 @@ export default {
         .filter((template) => template.format === this.format)
         .map((template) => ({
           text: template.title,
+          // eslint-disable-next-line @gitlab/no-hardcoded-urls -- Don't have access to the data to generate this using JavaScript path helper. Acceptable in this case since template.path comes from Rails.
           value: `${template.path}/raw`,
         }))
         .filter(({ text }) => text.toLowerCase().includes(this.searchTerm.toLowerCase()));
@@ -66,6 +68,7 @@ export default {
       const selected = this.templates.find((template) => template.slug === selectedTemplateSlug);
       if (!selected) return;
 
+      // eslint-disable-next-line @gitlab/no-hardcoded-urls -- Don't have access to the data to generate this using JavaScript path helper. Acceptable in this case since template.path comes from Rails.
       const selectedTemplatePath = `${selected.path}/raw`;
       this.selectTemplate(selectedTemplatePath);
     },

@@ -4,17 +4,17 @@ class Import::UrlController < ApplicationController
   feature_category :importers
   urgency :low
 
-  before_action only: :new do
-    push_frontend_feature_flag(:import_by_url_new_page, current_user)
-  end
-
   def new
-    render_404 unless Feature.enabled?(:import_by_url_new_page, current_user)
+    if namespace_id.present?
+      namespace = Namespace.find_by_id(namespace_id)
+      @namespace = namespace if namespace && can?(current_user, :import_projects, namespace)
 
-    return unless namespace_id.present?
-
-    namespace = Namespace.find_by_id(namespace_id)
-    @namespace = namespace if namespace && can?(current_user, :import_projects, namespace)
+      render_404 unless @namespace
+    else
+      unless can?(current_user, :import_projects, current_user.namespace)
+        access_denied!(s_('ProjectImportByURL|You do not have permission to import projects.'))
+      end
+    end
   end
 
   def validate

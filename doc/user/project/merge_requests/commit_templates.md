@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use commit message templates to ensure commits to your GitLab project contain all necessary information and are formatted correctly.
 title: Commit message templates
 ---
@@ -31,12 +31,12 @@ contain the information you need.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for a project.
+- You must have the Maintainer or Owner role for a project.
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Depending on the template type you want to create, scroll to either
    [**Merge commit message template**](#default-template-for-merge-commits) or
    [**Squash commit message template**](#default-template-for-squash-commits).
@@ -111,4 +111,5 @@ To restore the commit message to the project template, reload the page.
 
 ## Related topics
 
-- [Squash and merge](squash_and_merge.md).
+- [Merge request title templates](title_templates.md)
+- [Squash and merge](squash_and_merge.md)

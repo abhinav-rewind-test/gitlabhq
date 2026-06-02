@@ -20,7 +20,6 @@ FactoryBot.define do
       create(:jenkins_integration, project: projects[1])
 
       # slack
-      create(:slack_slash_commands_integration, project: projects[0])
       create(:integrations_slack, project: projects[1])
       create(:integrations_slack, project: projects[2])
 
@@ -34,8 +33,8 @@ FactoryBot.define do
       create(:custom_issue_tracker_integration, project: projects[2], active: true)
       create(:project_error_tracking_setting, project: projects[0])
       create(:project_error_tracking_setting, project: projects[1], enabled: false)
-      create_list(:incident, 2, project: projects[0], author: Users::Internal.alert_bot)
-      create_list(:incident, 2, project: projects[1], author: Users::Internal.alert_bot)
+      create_list(:incident, 2, project: projects[0], author: Users::Internal.in_organization(projects[0].organization).alert_bot)
+      create_list(:incident, 2, project: projects[1], author: Users::Internal.in_organization(projects[1].organization).alert_bot)
       create_list(:issue, 4, project: projects[0])
       create(:merge_request, :simple, :with_terraform_reports, source_project: projects[0])
       create(:merge_request, :rebased, :with_terraform_reports, source_project: projects[0])

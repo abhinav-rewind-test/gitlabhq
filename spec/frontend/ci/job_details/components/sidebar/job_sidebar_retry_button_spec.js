@@ -36,10 +36,7 @@ describe('Job Sidebar Retry Button', () => {
         confirmationMessage: null,
         ...props,
       },
-      provide: {
-        ...defaultProvide,
-        ...provide,
-      },
+      provide: { ...defaultProvide, ...provide },
       store,
     });
   };
@@ -139,25 +136,24 @@ describe('Job Sidebar Retry Button', () => {
     it('is rendered with correct text and attributes', async () => {
       createWrapper({ props: { isManualJob: true } });
       await waitForPromises();
-      expect(findActionsDropdown().attributes('aria-label')).toBe('Retry job with modified value');
-      expect(findManualRunEditButton().text()).toBe('Retry job with modified value');
+      expect(findActionsDropdown().attributes('aria-label')).toBe('Retry job with modified values');
+      expect(findManualRunEditButton().text()).toBe('Retry job with modified values');
     });
 
     it.each`
-      isManualJob | ciJobInputsFlag | canSetPipelineVariables | shouldShowDropdown | description
-      ${true}     | ${false}        | ${true}                 | ${true}            | ${'shows dropdown for manual job with pipeline variables permission'}
-      ${true}     | ${false}        | ${false}                | ${false}           | ${'does not show dropdown for manual job without pipeline variables permission'}
-      ${true}     | ${true}         | ${true}                 | ${true}            | ${'shows dropdown for manual job with feature flag enabled'}
-      ${true}     | ${true}         | ${false}                | ${true}            | ${'shows dropdown for manual job with feature flag enabled (ignores permission)'}
-      ${false}    | ${true}         | ${true}                 | ${true}            | ${'shows dropdown for retryable job with feature flag enabled'}
-      ${false}    | ${false}        | ${true}                 | ${false}           | ${'does not show retryable job without feature flag'}
+      isManualJob | canSetPipelineVariables | hasInputs | shouldShowDropdown | description
+      ${true}     | ${true}                 | ${true}   | ${true}            | ${'shows dropdown for manual job with inputs'}
+      ${true}     | ${true}                 | ${false}  | ${true}            | ${'shows dropdown for manual job without inputs'}
+      ${true}     | ${false}                | ${true}   | ${true}            | ${'shows dropdown for manual job (no permissions) with inputs'}
+      ${true}     | ${false}                | ${false}  | ${false}           | ${'does not show dropdown for manual job (no permissions) without inputs'}
+      ${false}    | ${false}                | ${true}   | ${true}            | ${'shows dropdown for retryable job with inputs'}
+      ${false}    | ${true}                 | ${false}  | ${false}           | ${'does not show dropdown for retryable job without inputs'}
     `(
       '$description',
-      async ({ isManualJob, ciJobInputsFlag, canSetPipelineVariables, shouldShowDropdown }) => {
+      async ({ isManualJob, canSetPipelineVariables, hasInputs, shouldShowDropdown }) => {
         createWrapper({
-          props: { isManualJob },
+          props: { isManualJob, hasInputs },
           provide: {
-            glFeatures: { ciJobInputs: ciJobInputsFlag },
             canSetPipelineVariables,
           },
         });

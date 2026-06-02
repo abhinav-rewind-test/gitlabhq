@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI Lint API
 ---
 
@@ -111,7 +111,8 @@ POST /projects/:id/ci/lint
 Example request:
 
 ```shell
-curl --header "Content-Type: application/json" \
+curl --request POST \
+  --header "Content-Type: application/json" \
   --url "https://gitlab.example.com/api/v4/projects/:id/ci/lint" \
   --data @- <<'EOF'
 {
@@ -196,7 +197,8 @@ GET /projects/:id/ci/lint
 Example request:
 
 ```shell
-curl --url "https://gitlab.example.com/api/v4/projects/:id/ci/lint"
+curl --request GET \
+  --url "https://gitlab.example.com/api/v4/projects/:id/ci/lint"
 ```
 
 Example responses:

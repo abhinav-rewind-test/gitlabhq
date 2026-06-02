@@ -10,6 +10,7 @@ module Types
     connection_type_class Types::CountableConnectionType
 
     authorize :read_project
+    authorize_granular_token permissions: :read_project, boundary: :itself, boundary_type: :project
 
     def self.authorization_scopes
       super + [:ai_workflows]
@@ -496,13 +497,17 @@ module Types
       calls_gitaly: true,
       description: 'Pipelines of the project.',
       extras: [:lookahead],
+      scopes: [:api, :read_api, :ai_workflows],
       resolver: Resolvers::Ci::ProjectPipelinesResolver
 
     field :pipeline_schedules,
       type: Types::Ci::PipelineScheduleType.connection_type,
       null: true,
       description: 'Pipeline schedules of the project. This field can only be resolved for one project per request.',
-      resolver: Resolvers::Ci::ProjectPipelineSchedulesResolver
+      resolver: Resolvers::Ci::ProjectPipelineSchedulesResolver,
+      directives: granular_scope_directive(
+        permissions: :read_pipeline_schedule, boundary: :itself, boundary_type: :project
+      )
 
     field :pipeline_triggers,
       Types::Ci::PipelineTriggerType.connection_type,
@@ -516,6 +521,7 @@ module Types
       description: 'Pipeline of the project. If no arguments are provided, returns the latest pipeline for the ' \
         'head commit on the default branch',
       extras: [:lookahead],
+      scopes: [:api, :read_api, :ai_workflows],
       resolver: Resolvers::Ci::ProjectPipelineResolver
 
     field :pipeline_counts, Types::Ci::PipelineCountsType,
@@ -651,13 +657,11 @@ module Types
       Types::ContainerRegistry::Protection::RuleType.connection_type,
       null: true,
       description: 'Container protection rules for the project.',
-      experiment: { milestone: '16.10' },
       resolver: Resolvers::ProjectContainerRegistryProtectionRulesResolver
 
     field :container_protection_tag_rules,
       Types::ContainerRegistry::Protection::TagRuleType.connection_type,
       null: true,
-      experiment: { milestone: '17.8' },
       description: 'Container repository tag protection rules for the project.'
 
     field :container_repositories, Types::ContainerRegistry::ContainerRepositoryType.connection_type,
@@ -686,6 +690,13 @@ module Types
       null: true,
       description: 'Terraform states associated with the project.',
       resolver: Resolvers::Terraform::StatesResolver
+
+    field :terraform_state_protection_rules,
+      Types::Terraform::StateProtectionRuleType.connection_type,
+      null: true,
+      experiment: { milestone: '18.11' },
+      description: 'Terraform state protection rules for the project.',
+      resolver: Resolvers::Terraform::StateProtectionRulesResolver
 
     field :pipeline_analytics, Types::Ci::AnalyticsType,
       null: true,
@@ -758,14 +769,6 @@ module Types
       null: true,
       description: 'Template used to create squash commit message in merge requests.'
 
-    field :merge_request_title_regex, GraphQL::Types::String,
-      null: true,
-      description: 'Regex used to validate the title of merge requests.'
-
-    field :merge_request_title_regex_description, GraphQL::Types::String,
-      null: true,
-      description: 'Description of the regex used to validate the title of merge requests.'
-
     field :labels, Types::LabelType.connection_type,
       null: true,
       description: 'Labels available on this project.',
@@ -813,7 +816,10 @@ module Types
     field :runners, Types::Ci::RunnerType.connection_type,
       null: true,
       resolver: ::Resolvers::Ci::ProjectRunnersResolver,
-      description: "Find runners visible to the current user."
+      description: "Find runners visible to the current user.",
+      directives: granular_scope_directive(
+        permissions: :read_runner, boundary: :itself, boundary_type: :project
+      )
 
     field :data_transfer, Types::DataTransfer::ProjectDataTransferType,
       null: true, # disallow null once data_transfer_monitoring feature flag is rolled-out! https://gitlab.com/gitlab-org/gitlab/-/issues/391682
@@ -848,7 +854,8 @@ module Types
     field :autocomplete_users,
       null: true,
       resolver: Resolvers::AutocompleteUsersResolver,
-      description: 'Search users for autocompletion'
+      description: 'Search users for autocompletion',
+      extras: [:lookahead]
 
     field :detailed_import_status,
       ::Types::Projects::DetailedImportStatusType,
@@ -1028,7 +1035,7 @@ module Types
       BatchLoader::GraphQL.wrap(object.forks_count)
     end
 
-    def is_catalog_resource # rubocop:disable Naming/PredicateName
+    def is_catalog_resource # rubocop:disable Naming/PredicatePrefix
       lazy_catalog_resource = BatchLoader::GraphQL.for(object.id).batch do |project_ids, loader|
         ::Ci::Catalog::Resource.for_projects(project_ids).each do |catalog_resource|
           loader.call(catalog_resource.project_id, catalog_resource)
@@ -1044,7 +1051,7 @@ module Types
       Gitlab::Routing.url_helpers.explore_catalog_path(project.catalog_resource)
     end
 
-    def is_published # rubocop:disable Naming/PredicateName -- disabled to match the field name.
+    def is_published # rubocop:disable Naming/PredicatePrefix -- disabled to match the field name.
       project&.catalog_resource&.published?
     end
 

@@ -3,13 +3,13 @@
 require 'spec_helper'
 
 RSpec.describe Projects::Settings::AccessTokensController, feature_category: :system_access do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group) }
-  let_it_be(:resource) { create(:project, group: group, maintainers: user) }
-  let_it_be(:access_token_user) { create(:user, :project_bot, maintainer_of: resource) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:group, freeze: false) { create(:group) }
+  let_it_be(:resource, freeze: false) { create(:project, group: group, maintainers: user) }
+  let_it_be(:access_token_user, freeze: false) { create(:user, :project_bot, maintainer_of: resource) }
 
-  let_it_be(:another_resource) { create(:project, group: create(:group)) }
-  let_it_be(:access_token_user_from_another_resource) { create(:user, :project_bot, maintainer_of: another_resource) }
+  let_it_be(:another_resource, freeze: false) { create(:project, group: create(:group)) }
+  let_it_be(:access_token_user_from_another_resource, freeze: false) { create(:user, :project_bot, maintainer_of: another_resource) }
 
   before do
     sign_in(user)
@@ -94,6 +94,21 @@ RSpec.describe Projects::Settings::AccessTokensController, feature_category: :sy
 
       it_behaves_like 'POST resource access tokens available'
     end
+
+    context 'when scopes are not provided' do
+      let(:access_token_params) { { name: 'Nerd Bot', expires_at: 1.month.from_now } }
+
+      it { expect(subject).to have_gitlab_http_status(:unprocessable_entity) }
+
+      it 'returns error message' do
+        subject
+        expect(json_response['errors']).to include('Select at least one scope.')
+      end
+
+      it 'does not create the token' do
+        expect { subject }.not_to change { PersonalAccessToken.count }
+      end
+    end
   end
 
   describe 'PUT /:namespace/:project/-/settings/access_tokens/:id', :sidekiq_inline do
@@ -109,7 +124,7 @@ RSpec.describe Projects::Settings::AccessTokensController, feature_category: :sy
   end
 
   describe '#index' do
-    let_it_be(:resource_access_tokens) { create_list(:personal_access_token, 3, user: access_token_user) }
+    let_it_be(:resource_access_tokens, freeze: false) { create_list(:personal_access_token, 3, user: access_token_user) }
 
     before do
       stub_config(dependency_proxy: { enabled: true })

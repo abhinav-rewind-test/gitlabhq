@@ -1,6 +1,6 @@
 <script>
 import { GlButton, GlDisclosureDropdown, GlLabel } from '@gitlab/ui';
-import { difference, unionBy } from 'lodash';
+import { difference, unionBy } from 'lodash-es';
 import fuzzaldrinPlus from 'fuzzaldrin-plus';
 import { NAMESPACE_GROUP, NAMESPACE_PROJECT } from '~/issues/constants';
 import { __, createListFormat, s__, sprintf } from '~/locale';
@@ -9,11 +9,12 @@ import DropdownContentsCreateView from '~/sidebar/components/labels/labels_selec
 import groupLabelsQuery from '~/sidebar/components/labels/labels_select_widget/graphql/group_labels.query.graphql';
 import projectLabelsQuery from '~/sidebar/components/labels/labels_select_widget/graphql/project_labels.query.graphql';
 import { isScopedLabel } from '~/lib/utils/common_utils';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import Tracking from '~/tracking';
 import { ISSUABLE_CHANGE_LABEL } from '~/behaviors/shortcuts/keybindings';
 import workItemByIidQuery from '../graphql/work_item_by_iid.query.graphql';
 import updateWorkItemMutation from '../graphql/update_work_item.mutation.graphql';
-import { i18n, TRACKING_CATEGORY_SHOW, WORK_ITEM_TYPE_NAME_EPIC } from '../constants';
+import { i18n, TRACKING_CATEGORY_SHOW, VIEW_CONTEXT, WORK_ITEM_TYPE_NAME_EPIC } from '../constants';
 import {
   findLabelsWidget,
   formatLabelForListbox,
@@ -30,12 +31,13 @@ export default {
     GlLabel,
     WorkItemSidebarDropdownWidget,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [Tracking.mixin(), glFeatureFlagsMixin()],
   inject: {
     canAdminLabel: 'canAdminLabel',
     issuesListPath: 'issuesListPath',
     labelsManagePath: 'labelsManagePath',
     epicsListPath: { default: '' },
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
   },
   props: {
     fullPath: {
@@ -96,6 +98,7 @@ export default {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_label',
         property: `type_${this.workItemType}`,
+        extra: { viewContext: this.viewContext },
       };
     },
     dropdownText() {
@@ -177,6 +180,7 @@ export default {
         return {
           fullPath: this.workItemFullPath,
           iid: this.workItemIid,
+          useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
         };
       },
       update(data) {
@@ -285,6 +289,7 @@ export default {
                   removeLabelIds,
                 },
               },
+              useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
             },
           });
 

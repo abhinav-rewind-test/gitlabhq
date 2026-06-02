@@ -113,6 +113,7 @@ RSpec.shared_examples 'when user bulk assigns parent' do
     click_update_selected
 
     find_work_item_element(child_work_item.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).to have_content parent_work_item.title
     end
@@ -124,6 +125,7 @@ RSpec.shared_examples 'when user bulk assigns parent' do
     click_update_selected
 
     find_work_item_element(child_work_item.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).to have_content parent_work_item.title
     end
@@ -131,6 +133,7 @@ RSpec.shared_examples 'when user bulk assigns parent' do
     close_drawer
 
     find_work_item_element(child_work_item_2.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).to have_content parent_work_item.title
     end
@@ -143,7 +146,10 @@ RSpec.shared_examples 'when user bulk unassigns parent' do
     select_no_parent_on_bulk_edit
     click_update_selected
 
+    expect(find_work_item_element(child_work_item.id)).to have_no_testid('work-item-parent-metadata-link')
+
     find_work_item_element(child_work_item.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).not_to have_content parent_work_item.title
     end
@@ -154,7 +160,11 @@ RSpec.shared_examples 'when user bulk unassigns parent' do
     select_no_parent_on_bulk_edit
     click_update_selected
 
+    expect(find_work_item_element(child_work_item.id)).to have_no_testid('work-item-parent-metadata-link')
+    expect(find_work_item_element(child_work_item_2.id)).to have_no_testid('work-item-parent-metadata-link')
+
     find_work_item_element(child_work_item.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).not_to have_content parent_work_item.title
     end
@@ -162,6 +172,7 @@ RSpec.shared_examples 'when user bulk unassigns parent' do
     close_drawer
 
     find_work_item_element(child_work_item_2.id).click
+    expect(page).to have_testid('detail-wrapper')
     within_testid('work-item-parent') do
       expect(page).not_to have_content parent_work_item.title
     end
@@ -185,16 +196,6 @@ RSpec.shared_examples 'when parent bulk edit shows no available items' do
 end
 
 RSpec.shared_examples 'when parent bulk edit fetches correct work items' do
-  it 'fetches and excludes incident, test case and ticket for task work items' do
-    check_work_items([child_work_item.title])
-    click_parent_bulk_edit_dropdown
-
-    within_testid('bulk-edit-parent') do
-      expect(page).to have_content parent_work_item.title
-      expect(page).not_to have_content incident_work_item.title
-    end
-  end
-
   it 'searches across groups when issue is selected' do
     check_work_items([child_work_item.title])
     click_parent_bulk_edit_dropdown

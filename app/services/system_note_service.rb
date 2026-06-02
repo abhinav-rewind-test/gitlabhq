@@ -400,8 +400,8 @@ module SystemNoteService
     ::SystemNotes::AlertManagementService.new(noteable: alert, container: alert.project).log_resolving_alert(monitoring_tool)
   end
 
-  def change_issue_type(issue, author, previous_type)
-    ::SystemNotes::IssuablesService.new(noteable: issue, container: issue.project, author: author).change_issue_type(previous_type)
+  def change_issue_type(issue, author)
+    ::SystemNotes::IssuablesService.new(noteable: issue, container: issue.project, author: author).change_issue_type
   end
 
   def add_timeline_event(timeline_event)
@@ -414,6 +414,10 @@ module SystemNoteService
 
   def delete_timeline_event(noteable, author)
     incidents_service(noteable).delete_timeline_event(author)
+  end
+
+  def move_child_to_new_parent(prev_parent:, child:, new_parent:, author:)
+    ::SystemNotes::IssuablesService.new(noteable: prev_parent, container: prev_parent.project, author: author).move_child_to_new_parent(child, new_parent)
   end
 
   private

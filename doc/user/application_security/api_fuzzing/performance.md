@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Dynamic Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Performance tuning and testing speed
 ---
 
@@ -80,7 +80,7 @@ with API fuzzing. This table shows statistics collected during benchmarking of a
 
 This table shows how increasing the size of the runner and vCPU count can have a large impact on testing speed/performance.
 
-Here is an example job definition for API fuzzing that adds a `tags` section to use the medium SaaS runner on Linux. The job extends the job definition included through the API fuzzing template.
+Here is an example job definition for API fuzzing that adds a `tags` section to use the medium GitLab-hosted runner on Linux. The job extends the job definition included through the API fuzzing template.
 
 ```yaml
 apifuzzer_fuzz:

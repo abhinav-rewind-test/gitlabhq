@@ -453,6 +453,21 @@ class NotifyPreview < ActionMailer::Preview
     Notify.bulk_import_complete(user.id, bulk_import.id)
   end
 
+  # To generate the appropriate test record via the Rails console:
+  # user = User.first
+  # export = FactoryBot.create(:offline_export, :finished, :with_configuration, user: user)
+  def offline_export_complete
+    offline_export = Import::Offline::Export.last
+
+    Notify.offline_export_complete(user.id, offline_export.id)
+  end
+
+  def offline_export_failed
+    offline_export = Import::Offline::Export.last
+
+    Notify.offline_export_failed(user.id, offline_export.id)
+  end
+
   def bulk_import_csv_user_mapping_success
     Notify.bulk_import_csv_user_mapping(
       user.id,
@@ -519,6 +534,13 @@ class NotifyPreview < ActionMailer::Preview
       )
 
       ::Notify.group_scheduled_for_deletion(user.id, group.id).message
+    end
+  end
+
+  def group_was_transferred_email
+    cleanup do
+      old_path = "old-namespace/#{group.path}"
+      ::Notify.group_was_transferred_email(group.id, user.id, old_path).message
     end
   end
 

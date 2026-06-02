@@ -10,6 +10,9 @@ RSpec.describe 'cross-database foreign keys', feature_category: :database do
   let!(:acceptable_cross_schema_foreign_key_patterns) do
     [
       [:gitlab_main_cell_local, :gitlab_main_org],
+      [:gitlab_main_cell_local, :gitlab_main_user],
+      [:gitlab_main_cell_setting, :gitlab_main_org],
+      [:gitlab_main_cell_setting, :gitlab_main_user],
       [:gitlab_ci_cell_local, :gitlab_ci]
     ]
   end
@@ -20,25 +23,20 @@ RSpec.describe 'cross-database foreign keys', feature_category: :database do
   # should be added as a comment along with the name of the column.
   let!(:allowed_cross_database_foreign_keys) do
     keys = [
-      'lfs_objects_projects.lfs_object_id',
-      'p_ci_build_tags.tag_id',                                     # https://gitlab.com/gitlab-org/gitlab/-/issues/470872
-      'targeted_message_dismissals.targeted_message_id',            # https://gitlab.com/gitlab-org/gitlab/-/issues/531357
-      'user_broadcast_message_dismissals.broadcast_message_id',     # https://gitlab.com/gitlab-org/gitlab/-/issues/531358
-      'targeted_message_namespaces.targeted_message_id',            # https://gitlab.com/gitlab-org/gitlab/-/issues/531357
-      'term_agreements.term_id',                                    # https://gitlab.com/gitlab-org/gitlab/-/issues/531367
-      'appearance_uploads.uploaded_by_user_id',                     # https://gitlab.com/gitlab-org/gitlab/-/issues/534207
-      'appearance_uploads.project_id',                              # https://gitlab.com/gitlab-org/gitlab/-/issues/534207
-      'appearance_uploads.namespace_id',                            # https://gitlab.com/gitlab-org/gitlab/-/issues/534207
-      'appearance_uploads.organization_id',                         # https://gitlab.com/gitlab-org/gitlab/-/issues/534207
-      'application_settings.workspaces_oauth_application_id',       # https://gitlab.com/gitlab-org/gitlab/-/issues/574704
-      'application_settings.web_ide_oauth_application_id',          # https://gitlab.com/gitlab-org/gitlab/-/issues/574704
-
+      'p_ci_build_tags.tag_id', # https://gitlab.com/gitlab-org/gitlab/-/issues/470872
       # https://gitlab.com/gitlab-org/gitlab/-/issues/560435
       'dingtalk_tracker_data.integration_id',
 
-      # https://gitlab.com/gitlab-org/gitlab/-/issues/560712
-      'audit_events_streaming_instance_namespace_filters.external_streaming_destination_id',
-      'audit_events_streaming_http_instance_namespace_filters.namespace_id'
+      # Subscription add-ons are static/deprecated tables to be removed
+      # https://gitlab.com/groups/gitlab-org/-/work_items/19981
+      'subscription_add_on_purchases.subscription_add_on_id',
+
+      # Plans are static/deprecated tables to be removed
+      # https://gitlab.com/groups/gitlab-org/-/work_items/19409
+      'gitlab_subscriptions.hosted_plan_id',
+      'plan_limits.plan_id',
+
+      'pool_repositories.shard_id' # https://gitlab.com/gitlab-org/gitlab/-/work_items/594744
     ]
 
     keys
@@ -51,9 +49,7 @@ RSpec.describe 'cross-database foreign keys', feature_category: :database do
   def is_cross_db?(fk_record)
     tables = [fk_record.from_table, fk_record.to_table]
 
-    table_schemas = Gitlab::Database::GitlabSchema.table_schemas!(tables)
-
-    !Gitlab::Database::GitlabSchema.cross_foreign_key_allowed?(table_schemas, tables)
+    !Gitlab::Database::GitlabSchema.cross_foreign_key_allowed?(tables)
   end
 
   def matches_acceptable_cross_schema_fk?(fk)

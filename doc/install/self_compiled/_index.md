@@ -1,7 +1,8 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Install GitLab from source on Debian or Ubuntu by compiling and configuring each component manually.
 title: Self-compiled installation
 ---
 
@@ -461,7 +462,7 @@ you must not make any changes:
 systemctl show --value --property=Type redis-server.service
 ```
 
-If the output is **not** `notify`, run:
+If the output is not `notify`, run:
 
 ```shell
 # Configure Redis to not daemonize, but be supervised by systemd instead and disable the pidfile
@@ -1053,7 +1054,7 @@ To start and stop GitLab when using:
 
 After completing your installation, consider taking the
 [recommended next steps](../next_steps.md), including authentication options
-and sign-up restrictions.
+and new user account restrictions.
 
 ## Advanced Setup Tips
 
@@ -1242,7 +1243,6 @@ error Command failed with exit code 137.
 This can occur when Yarn kills a container that runs out of memory. To fix this:
 
 1. Increase your system's memory to at least 8 GB.
-
 1. Run this command to clean the assets:
 
    ```shell

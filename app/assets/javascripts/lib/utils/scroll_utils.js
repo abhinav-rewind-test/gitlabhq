@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import { defer } from 'lodash';
+import { defer } from 'lodash-es';
 import { NO_SCROLL_TO_HASH_CLASS } from '~/lib/utils/constants';
 import { getScrollingElement } from '~/lib/utils/panels';
 import { contentTop } from './common_utils';
@@ -125,9 +125,10 @@ export const scrollToElement = (element, options = {}) => {
  */
 export const preventScrollToFragment = (event) => {
   const link = event.target.closest('a[href]');
-  if (!link) return;
+  if (!link?.hash) return;
+  if (link.href.split('#')[0] !== window.location.href.split('#')[0]) return;
   event.preventDefault();
-  const hash = link.href.split('#')[1];
+  const hash = link.hash.slice(1);
   const target = document.getElementById(hash);
   if (!target) return;
   target.classList.add(NO_SCROLL_TO_HASH_CLASS);
@@ -135,4 +136,66 @@ export const preventScrollToFragment = (event) => {
   // replaceHistory won't highlight the element
   window.location.hash = hash;
   scrollTo({ top: scrollTop, left: scrollLeft }, target);
+};
+
+/**
+ * Resolves the scrolling container for a list of section items.
+ *
+ * Strategy:
+ * - Find the first existing section element by id from the provided items.
+ * - Use `getScrollingElement(target)` to determine the appropriate scrollable container,
+ *   which may be a panel container or `document.scrollingElement` depending on context.
+ *
+ * @param {Array<{id: string}>} [items=[]] List of navigation items with element ids.
+ * @returns {HTMLElement|null} The scrolling container element or null if no target element is found.
+ */
+export const resolveScrollContainer = (items = []) => {
+  const target = items.map((i) => document.getElementById(i.id)).find(Boolean);
+  if (!target) return null;
+  return getScrollingElement(target) || null;
+};
+
+/**
+ * Determines the active section based on the current scroll position within a container.
+ *
+ * Strategy:
+ * - If scrolled to bottom: return the last item id.
+ * - Otherwise: iterate items in order and return the first section whose top edge has not yet
+ *   scrolled above the container's top edge (rect.top >= cRect.top + 1).
+ * - Fallback: return null if all sections are above the viewport.
+ *
+ * @param {Array<{id: string}>} [items=[]] List of sections in visual order.
+ * @param {HTMLElement} container The scrolling container being observed.
+ * @returns {string|null} The id of the active section or null if no change is needed.
+ */
+export const computeActiveSection = (items = [], container) => {
+  if (!items.length || !container) return null;
+
+  const cRect = container.getBoundingClientRect
+    ? container.getBoundingClientRect()
+    : { top: 0, bottom: window.innerHeight || 0 };
+
+  const hasScrollMetrics =
+    typeof container.scrollTop === 'number' &&
+    typeof container.clientHeight === 'number' &&
+    typeof container.scrollHeight === 'number';
+
+  if (hasScrollMetrics) {
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+    if (atBottom) {
+      return items[items.length - 1]?.id || null;
+    }
+  }
+
+  for (const item of items) {
+    const el = document.getElementById(item.id);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top >= cRect.top + 1) {
+        return item.id;
+      }
+    }
+  }
+
+  return null;
 };

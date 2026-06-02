@@ -405,16 +405,6 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
             expect(response.http_status).to eq(:conflict)
             expect(response.message).to eq('Error updating stale job')
           end
-
-          context 'when the rescue_stale_object_errors_in_pipeline_processing feature flag is disabled' do
-            before do
-              stub_feature_flags(rescue_stale_object_errors_in_pipeline_processing: false)
-            end
-
-            it 'raises an error' do
-              expect { service.execute(pipeline) }.to raise_error(ActiveRecord::StaleObjectError)
-            end
-          end
         end
       end
     end
@@ -423,13 +413,17 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
       let!(:downstream_pipeline) { create(:ci_pipeline, project: create(:project)) }
 
       context 'when the strategy is `depend`' do
-        let!(:bridge) { create(:ci_bridge, :strategy_depend, status: 'success', pipeline: downstream_pipeline) }
+        let!(:bridge) do
+          create(:ci_bridge, :strategy_depend, status: 'success', pipeline: downstream_pipeline, downstream: project)
+        end
 
         it_behaves_like 'updates the bridge status when authorized'
       end
 
       context 'when the strategy is `mirror`' do
-        let!(:bridge) { create(:ci_bridge, :strategy_mirror, status: 'success', pipeline: downstream_pipeline) }
+        let!(:bridge) do
+          create(:ci_bridge, :strategy_mirror, status: 'success', pipeline: downstream_pipeline, downstream: project)
+        end
 
         it_behaves_like 'updates the bridge status when authorized'
       end

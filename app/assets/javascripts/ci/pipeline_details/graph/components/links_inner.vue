@@ -1,5 +1,5 @@
 <script>
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import { STAGE_VIEW } from '~/ci/pipeline_details/graph/constants';
 import { createJobsHash, generateJobNeedsDict } from '~/ci/pipeline_details/utils';
 import { reportToSentry } from '~/ci/utils';
@@ -33,7 +33,7 @@ export default {
     defaultLinkColor: {
       type: String,
       required: false,
-      default: 'gl-stroke-gray-200',
+      default: 'gl-stroke-gray-700',
     },
     highlightedJob: {
       type: String,
@@ -46,6 +46,7 @@ export default {
       default: STAGE_VIEW,
     },
   },
+  emits: ['error', 'highlighted-jobs-change'],
   data() {
     return {
       links: [],
@@ -91,7 +92,7 @@ export default {
       }
     },
     highlightedJobs(jobs) {
-      this.$emit('highlightedJobsChange', jobs);
+      this.$emit('highlighted-jobs-change', jobs);
     },
     linksData() {
       this.calculateLinkData();

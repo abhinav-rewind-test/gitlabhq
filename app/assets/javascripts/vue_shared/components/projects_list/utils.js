@@ -7,9 +7,10 @@ import {
   ACTION_UNARCHIVE,
   ACTION_ARCHIVE,
   ACTION_LEAVE,
+  ACTION_TRANSFER,
 } from '~/vue_shared/components/list_actions/constants';
 import toast from '~/vue_shared/plugins/global_toast';
-import { sprintf, __, s__ } from '~/locale';
+import { __, s__, sprintf } from '~/locale';
 
 export const availableGraphQLProjectActions = ({
   userPermissions,
@@ -26,23 +27,20 @@ export const availableGraphQLProjectActions = ({
 
   // Rules
   const canEdit = userPermissions.viewEditPage;
+  const canTransfer = userPermissions.changeNamespace;
   const canArchive = userPermissions.archiveProject && !archived && !markedForDeletion;
   const canUnarchive = userPermissions.archiveProject && isSelfArchived;
   const canRestore = userPermissions.removeProject && isSelfDeletionScheduled;
   const { canLeave } = userPermissions;
   // Projects that are not marked for deletion can be deleted (delayed)
   const canDelete = userPermissions.removeProject && !markedForDeletion;
-  // Projects with self deletion scheduled can be deleted immediately if the
-  // allow_immediate_namespaces_deletion application setting is enabled
-  const canDeleteImmediately =
-    userPermissions.removeProject &&
-    isSelfDeletionScheduled &&
-    gon?.allow_immediate_namespaces_deletion;
+  const canDeleteImmediately = userPermissions.removeProject && isSelfDeletionScheduled;
 
   // Actions mapped to rules
   const actions = {
     [ACTION_COPY_ID]: true,
     [ACTION_EDIT]: canEdit,
+    [ACTION_TRANSFER]: canTransfer,
     [ACTION_ARCHIVE]: canArchive,
     [ACTION_UNARCHIVE]: canUnarchive,
     [ACTION_RESTORE]: canRestore,
@@ -105,6 +103,19 @@ export const renderLeaveSuccessToast = (project) => {
     sprintf(s__('Projects|You left the "%{nameWithNamespace}" project.'), {
       nameWithNamespace: project.nameWithNamespace,
     }),
+  );
+};
+
+export const renderTransferSuccessToast = (project) => {
+  toast(
+    sprintf(
+      s__(
+        "TransferProject|Project '%{project_name}' transfer has been scheduled. Users with the Maintainer or Owner role will be notified when it completes.",
+      ),
+      {
+        project_name: project.nameWithNamespace,
+      },
+    ),
   );
 };
 

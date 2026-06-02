@@ -43,7 +43,7 @@ RSpec.describe Gitlab::Database::Aggregation::Graphql::AggregationConnection, :c
 
     let(:engine_definition) do
       Gitlab::Database::Aggregation::ClickHouse::Engine.build do
-        self.table_primary_key = %w[id]
+        self.table_name = 'events'
 
         dimensions do
           column :author_id, :integer
@@ -172,6 +172,17 @@ RSpec.describe Gitlab::Database::Aggregation::Graphql::AggregationConnection, :c
       it 'raises an execution error' do
         expect { connection.cursor_for(:uknown_node) }
           .to raise_error(GraphQL::ExecutionError, /Invalid cursor provided/)
+      end
+    end
+
+    describe '#count' do
+      it 'returns the total number of aggregated rows via a database query' do
+        expect(connection.count).to eq(3)
+      end
+
+      it 'does not load rows into memory' do
+        expect(nodes).not_to receive(:load_data)
+        connection.count
       end
     end
   end

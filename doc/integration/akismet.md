@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Akismet
 ---
 
@@ -26,7 +26,7 @@ Privacy note: GitLab submits the user's IP and user agent to Akismet.
 > GitLab submits all issues to Akismet.
 
 Akismet configuration is available to users on GitLab Self-Managed. Akismet is already enabled on
-GitLab SaaS (GitLab.com), where its configuration and management are handled by GitLab Inc.
+GitLab.com, where its configuration and management are handled by GitLab Inc.
 
 ## Configure Akismet
 
@@ -44,7 +44,7 @@ To use Akismet:
 1. Select **Show** to reveal the API key, and copy the API key's value.
 1. Sign in to GitLab as an administrator.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Reporting**.
+1. In the left sidebar, select **Settings** > **Reporting**.
 1. Expand **Spam and Anti-bot Protection**.
 1. Select the **Enable Akismet** checkbox.
 1. Fill in the API key from step 3.

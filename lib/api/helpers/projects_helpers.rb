@@ -82,12 +82,12 @@ module API
         optional :repository_storage, type: String, desc: 'Which storage shard the repository is on. Available only to admins'
         optional :squash_option, type: String, values: %w[never always default_on default_off], desc: 'Squash default for project. One of `never`, `always`, `default_on`, or `default_off`.'
         optional :mr_default_target_self, type: Boolean, desc: 'Merge requests of this forked project targets itself by default'
+        optional :mr_default_title_template, type: String, limit: 100, desc: 'Template used to generate the default merge request title. Maximum 100 characters.'
         optional :warn_about_potentially_unwanted_characters, type: Boolean, desc: 'Warn about potentially unwanted characters'
-        optional :merge_request_title_regex, type: String, desc: 'The regex the Merge Request must adhere to'
-        optional :merge_request_title_regex_description, type: String, desc: 'The description for the regex the Merge Request must adhere to'
       end
 
       params :optional_project_params_ee do
+        # EE-specific project parameters
       end
 
       params :optional_project_params do
@@ -101,6 +101,7 @@ module API
       end
 
       params :optional_create_project_params_ee do
+        # EE-specific project creation parameters
       end
 
       params :optional_create_project_params do
@@ -110,6 +111,7 @@ module API
       end
 
       params :optional_filter_params_ee do
+        # EE-specific filter parameters
       end
 
       params :optional_update_params_ce do
@@ -125,9 +127,12 @@ module API
         optional :ci_id_token_sub_claim_components, type: Array[String], desc: 'Claims that will be used to build the sub claim in id tokens'
         optional :ci_delete_pipelines_in_seconds, type: Integer, desc: 'Pipelines older than the configured time are deleted'
         optional :max_artifacts_size, type: Integer, desc: "Set the maximum file size for each job's artifacts"
+        optional :protect_merge_request_pipelines, type: Boolean, desc: "Make protected CI/CD variables and runners available in merge request pipelines"
+        optional :ci_display_pipeline_variables, type: Boolean, desc: "Display all manually-defined variables in the pipeline details page after running a pipeline manually"
       end
 
       params :optional_update_params_ee do
+        # EE-specific project update parameters
       end
 
       params :optional_update_params do
@@ -145,7 +150,7 @@ module API
       end
 
       params :share_project_params_ee do
-        # Overriden in EE
+        # Overridden in EE
       end
 
       def self.update_params_at_least_one_of
@@ -180,8 +185,6 @@ module API
           :merge_requests_template,
           :merge_trains_enabled,
           :merge_method,
-          :merge_request_title_regex,
-          :merge_request_title_regex_description,
           :name,
           :only_allow_merge_if_all_discussions_are_resolved,
           :only_allow_merge_if_pipeline_succeeds,
@@ -217,6 +220,7 @@ module API
           :service_desk_enabled,
           :keep_latest_artifact,
           :mr_default_target_self,
+          :mr_default_title_template,
           :enforce_auth_checks_on_uploads,
           :releases_access_level,
           :environments_access_level,
@@ -230,6 +234,8 @@ module API
           :ci_push_repository_for_job_token_allowed,
           :ci_delete_pipelines_in_seconds,
           :max_artifacts_size,
+          :protect_merge_request_pipelines,
+          :ci_display_pipeline_variables,
 
           # TODO: remove in API v5, replaced by *_access_level
           :issues_enabled,

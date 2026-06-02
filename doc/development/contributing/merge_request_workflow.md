@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Merge requests workflow
 ---
 
@@ -62,10 +62,8 @@ For a walkthrough of the contribution process, see [Tutorial: Make a GitLab cont
   You can do this by tagging them in an MR before submitting the code for review. Talking
   to team members can be helpful when making design decisions. Communicating the
   intent behind your changes can also help expedite merge request reviews.
-
 - Consider placing your code behind a feature flag if you think it might affect production availability.
   Not sure? Read [When to use feature flags](https://handbook.gitlab.com/handbook/product-development/how-we-work/product-development-flow/feature-flag-lifecycle/#when-to-use-feature-flags).
-
 - If you would like quick feedback on your merge request feel free to mention someone
   from the [core team](https://about.gitlab.com/community/core-team/) or one of the
   [merge request coaches](https://about.gitlab.com/company/team/). When having your code reviewed
@@ -199,8 +197,16 @@ code. We use the following [definition of done](https://www.agilealliance.org/gl
 To reach the definition of done, the merge request must create no regressions and meet all these criteria:
 
 - Verified as working in production on GitLab.com.
-- Verified as working for GitLab Self-Managed instances.
+- Verified as working for GitLab Self-Managed / Dedicated instances.
 - Verified as supporting [Geo](../../administration/geo/_index.md) through the [self-service framework](../geo/framework.md). For more information, see [Geo is a requirement in the definition of done](../geo/framework.md#geo-is-a-requirement-in-the-definition-of-done).
+- Verified as compatible with the [Cells architecture](../cells/_index.md) for changes that affect GitLab.com.
+  Confirm that:
+  - Compute (web requests, Sidekiq workers) should be scoped to a single organization.
+  - New database rows that belong to a customer have a sharding key.
+  - No new customer-owned resources exist outside of an organization.
+  - Organization data remains migratable to another cell.
+
+  For the more information, see [Cells development principles](../cells/_index.md#cells-development-principles).
 
 If a regression occurs, we prefer you revert the change.
 Your contribution is incomplete until you have made sure it meets all of these
@@ -352,4 +358,4 @@ this area.
 ## Related topics
 
 - [The responsibility of the merge request author](../code_review.md#the-responsibility-of-the-merge-request-author)
-- [Having your merge request reviewed](../code_review.md#having-your-merge-request-reviewed)
+- [Having your merge request reviewed](../code_review.md#participating-in-code-review)

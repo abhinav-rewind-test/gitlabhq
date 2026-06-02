@@ -7,7 +7,8 @@ import { TAB_KEY_CODE } from '~/lib/utils/keycodes';
 import { keysFor, TOGGLE_SUPER_SIDEBAR } from '~/behaviors/shortcuts/keybindings';
 import { s__ } from '~/locale';
 import Tracking from '~/tracking';
-import { sidebarState, JS_TOGGLE_EXPAND_CLASS } from '../constants';
+import { JS_TOGGLE_EXPAND_CLASS } from '../constants';
+import { sidebarState } from '../state';
 import {
   isCollapsed,
   toggleSuperSidebarCollapsed,
@@ -28,7 +29,6 @@ export default {
     SidebarPortalTarget,
     ScrollScrim,
     TrialWidget: () => import('jh_else_ee/contextual_sidebar/components/trial_widget.vue'),
-    TierBadge: () => import('ee_component/vue_shared/components/tier_badge/tier_badge.vue'),
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -41,7 +41,6 @@ export default {
   provide() {
     return {
       isIconOnly: computed(() => this.isIconOnly),
-      primaryCtaLink: this.sidebarData.tier_badge_href,
     };
   },
   props: {
@@ -82,9 +81,6 @@ export default {
     },
     isIconOnly() {
       return this.canIconOnly && this.sidebarState.isIconOnly;
-    },
-    showTierBadge() {
-      return Boolean(this.sidebarData.tier_badge_href);
     },
   },
   watch: {
@@ -128,14 +124,10 @@ export default {
       if (this.canIconOnly) {
         this.wasToggledManually = true;
         toggleSuperSidebarIconOnly();
-        return;
+      } else {
+        // on mobile
+        toggleSuperSidebarCollapsed(!isCollapsed());
       }
-
-      this.track(isCollapsed() ? 'nav_show' : 'nav_hide', {
-        label: 'nav_toggle_keyboard_shortcut',
-        property: 'nav_sidebar',
-      });
-      toggleSuperSidebarCollapsed(!isCollapsed(), true);
     },
     isOverlapping() {
       return GlBreakpointInstance.windowWidth() < breakpoints.xl;
@@ -155,7 +147,7 @@ export default {
       }
     },
     collapseSidebar() {
-      toggleSuperSidebarCollapsed(true, false);
+      toggleSuperSidebarCollapsed(true);
     },
     handleEscKey() {
       if (this.isOverlapping() && this.isNotPeeking()) {
@@ -211,14 +203,13 @@ export default {
       <h2 id="super-sidebar-heading" class="gl-sr-only">
         {{ $options.i18n.primaryNavigation }}
       </h2>
-      <div class="contextual-nav gl-flex gl-grow gl-flex-col gl-overflow-hidden">
+      <div class="contextual-nav gl-flex gl-grow gl-flex-col gl-overflow-hidden gl-pt-2">
         <div
           v-if="sidebarData.current_context_header && !isIconOnly"
           id="super-sidebar-context-header"
-          class="super-sidebar-context-header gl-m-0 gl-flex gl-justify-between gl-px-5 gl-py-3 gl-font-bold gl-leading-reset"
+          class="super-sidebar-context-header gl-m-0 gl-px-5 gl-py-3 gl-font-bold gl-leading-reset"
         >
           {{ sidebarData.current_context_header }}
-          <tier-badge v-if="showTierBadge" data-testid="sidebar-tier-badge" is-upgrade />
         </div>
         <scroll-scrim class="gl-grow" data-testid="nav-container">
           <sidebar-menu

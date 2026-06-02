@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Webhook events
 description: "List of GitLab webhook events and payloads. Includes JSON examples."
 ---
@@ -35,7 +35,7 @@ For a list of events triggered for system webhooks, see [system webhooks](../../
 | [Merge request event](#merge-request-events)                                  | A merge request is created, edited, merged, or closed, or a commit is added in the source branch. |
 | [Milestone event](#milestone-events)                                          | A milestone is created, closed, reopened, or deleted. |
 | [Pipeline event](#pipeline-events)                                            | A pipeline status changes. |
-| [Project or group access token event](#project-and-group-access-token-events) | A project or group access token will expire in seven days. |
+| [Project or group access token event](#project-and-group-access-token-events) | A project or group access token will expire in 7, 30, or 60 days. |
 | [Push event](#push-events)                                                    | A push is made to the repository. |
 | [Release event](#release-events)                                              | A release is created, edited, or deleted. |
 | [Tag event](#tag-events)                                                      | Tags are created or deleted in the repository. |
@@ -177,7 +177,7 @@ tags by default. This limit is controlled by the `push_event_hooks_limit` settin
 are triggered at all for that push event.
 
 For GitLab Self-Managed instances, administrators can modify this limit using the
-[Application Settings API](../../../api/settings.md#available-settings).
+[application Settings API](../../../api/settings.md#available-settings).
 
 Request header:
 
@@ -962,12 +962,19 @@ The following fields are deprecated and included for backward compatibility only
 
 ### `object_attributes` field
 
+{{< history >}}
+
+- `actioned_at` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224849) in GitLab 18.10.
+
+{{< /history >}}
+
 The `object_attributes` field contains the current state of the merge request.
 It includes the following fields:
 
 | Field                           | Type    | Description |
 |---------------------------------|---------|-------------|
 | `action`                        | String  | The action that triggered the webhook. For example, `open`, `update`, or `merge`. |
+| `actioned_at`                   | String  | When the action that triggered the webhook occurred. |
 | `approval_rules`                | Array   | Array of approval rule objects (EE only). |
 | `assignee_ids`                  | Array   | Array of assignee IDs. |
 | `author_id`                     | Integer | The ID of the merge request author. |
@@ -1000,6 +1007,7 @@ It includes the following fields:
 | `source_branch`                 | String  | The source branch name. |
 | `source`                        | Object  | Source project details. For example, name and description. |
 | `source_project_id`             | Integer | The ID of the source project. |
+| `squash_commit_sha`             | String  | The SHA of the squash commit. Only present when the merge request is merged with squash. |
 | `state_id`                      | Integer | The state ID (`1`: opened, `2`: closed, `3`: merged, `4`:locked). |
 | `state`                         | String  | The state of the merge request (`opened`, `closed`, `merged`, `locked`). |
 | `system_action`                 | String  | The system action (only present if `system` is `true`). |
@@ -1051,6 +1059,7 @@ Each changed field follows this format:
 - `prepared_at`
 - `reviewer_ids`
 - `reviewers`
+- `squash_commit_sha`
 - `state_id`
 - `target_branch`
 - `time_change`
@@ -1195,7 +1204,7 @@ X-Gitlab-Event: Merge Request Hook
 
 The following example is a complete merge request webhook payload for an `open` action.
 Deprecated fields are omitted for clarity. For a list of deprecated fields and their
-recommended alternatives, see [Deprecated fields](#deprecated-fields).
+recommended alternatives, see [deprecated fields](#deprecated-fields).
 
 ```json
 {
@@ -1243,6 +1252,7 @@ recommended alternatives, see [Deprecated fields](#deprecated-fields).
     "milestone_id": 8,
     "source_branch": "feature/booking-validation",
     "source_project_id": 2,
+    "squash_commit_sha": null,
     "state_id": 1,
     "target_branch": "main",
     "target_project_id": 2,
@@ -1348,7 +1358,8 @@ recommended alternatives, see [Deprecated fields](#deprecated-fields).
         "created_at": "2026-01-16 05:56:22 UTC"
       }
     ],
-    "action": "open"
+    "action": "open",
+    "actioned_at": "2026-01-16 05:56:26 UTC"
   },
   "labels": [
     {
@@ -2647,7 +2658,6 @@ Payload example:
 Access token expiry events trigger before an [access tokens](../../../security/tokens/_index.md) expires.
 These events trigger:
 
-- One day before the token expires
 - Seven days before the token expires
 - 30 days before the token expires (requires configuration)
 - 60 days before the token expires (requires configuration)
@@ -2725,6 +2735,66 @@ Payload example for group:
 }
 ```
 
+## Project and group deploy token events
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/196804) in GitLab 18.4 [with a flag](../../../administration/feature_flags/_index.md) named `project_deploy_token_expiring_notifications`. Disabled by default.
+
+{{< /history >}}
+
+Deploy token expiry events trigger before a [deploy token](../../../security/tokens/_index.md) expires.
+These events trigger:
+
+- 7 days before the token expires.
+- 30 days before the token expires.
+- 60 days before the token expires.
+
+The available values for `event_name` in the payload are:
+
+- `expiring_deploy_token`
+
+Request header:
+
+```plaintext
+X-Gitlab-Event: Resource Deploy Token Hook
+```
+
+Payload example for project:
+
+```json
+{
+  "object_kind": "deploy_token",
+  "project": {
+    "id": 2,
+    "name": "Gitlab Test",
+    "description": "Voluptates sit architecto quos distinctio.",
+    "web_url": "https://gitlab.example.com/gitlab-org/gitlab-test",
+    "avatar_url": null,
+    "git_ssh_url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "git_http_url": "https://gitlab.example.com/gitlab-org/gitlab-test.git",
+    "namespace": "Gitlab Org",
+    "visibility_level": 10,
+    "path_with_namespace": "gitlab-org/gitlab-test",
+    "default_branch": "master",
+    "ci_config_path": null,
+    "homepage": "https://gitlab.example.com/gitlab-org/gitlab-test",
+    "url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "ssh_url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "http_url": "https://gitlab.example.com/gitlab-org/gitlab-test.git"
+  },
+  "object_attributes": {
+    "id": 79,
+    "name": "seven-days-6days",
+    "expires_at": "2025-08-03 07:57:25 UTC",
+    "created_at": "2025-07-28 07:57:25 UTC",
+    "revoked": false,
+    "deploy_token_type": "project_type"
+  },
+  "event_name": "expiring_deploy_token"
+}
+```
+
 ## Vulnerability events
 
 {{< history >}}
@@ -2797,6 +2867,7 @@ Payload example:
       }
     ],
     "report_type": "dependency_scanning",
+    "scanner_external_id": "gitlab-sbom-vulnerability-scanner",
     "confidence": "unknown",
     "confidence_overridden": false,
     "confirmed_at": "2025-01-08T00:46:14.413Z",

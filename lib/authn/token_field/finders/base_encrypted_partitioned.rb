@@ -10,10 +10,17 @@ module Authn
             return record if record
           end
 
-          base_scope.find_by(encrypted_field => tokens) # rubocop:disable CodeReuse/ActiveRecord -- have to use find_by
+          return if skip_fallback?
+
+          base_scope
+            .find_by(encrypted_field => tokens) # rubocop:disable CodeReuse/ActiveRecord -- have to use find_by
         end
 
         protected
+
+        def skip_fallback?
+          false
+        end
 
         def partition_key
           raise NotImplementedError

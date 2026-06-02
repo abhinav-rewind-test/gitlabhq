@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI/CD expressions
 ---
 
@@ -127,11 +127,12 @@ For example:
 spec:
   component: [name, version]
   inputs:
-    image_tag:
-      default: latest
+    stage:
+      default: build
 ---
 
 build-job:
+  stage: $[[ inputs.stage ]]
   image: registry.example.com/$[[ component.name ]]:$[[ component.version ]]
   script:
     - echo "Building with component version $[[ component.version ]]"
@@ -139,6 +140,7 @@ build-job:
 
 ## Related topics
 
+- [Moa expression language](../functions/moa.md)
 - [CI/CD inputs](../inputs/_index.md)
 - [CI/CD components](../components/_index.md)
 - [Matrix expressions](matrix_expressions.md)

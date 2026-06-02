@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: 'See the Technical Writers assigned to Development Guidelines: https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-development-guidelines'
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: 'Development Guidelines: learn about organization when developing GitLab.'
 title: Organization
 ---
@@ -21,22 +21,55 @@ The current development focus is achieving **feature parity** for organizations.
 Guidance on building new features on organizations, or migrating existing features from top-level group to organizations, will come in the future.
 Please contact the team on Slack (`#g_organizations`) if you wish to informally discuss this.
 
+### Available and planned support for implementing organizations
+
+The Organizations team are implementing changes which will automatically include support for:
+
+- Application level Organization Isolation: There will be an ActiveRecord extension that will take care of [Organization Scoping](https://gitlab.com/groups/gitlab-org/-/work_items/19414). This is provisionally planned for availability and usage in early FY27-Q2.
+- Sidekiq: there is no need to pass `organization_id` to Sidekiq worker parameters: Sidekiq workers will inherit the Current Organization from the scheduling context
+- Events / Logging: similar to User, Project or Namespace, Organization will be included
+- Routing: Enabling / disabling organization based URL's (`/o/<organization>` prefix) will be available.
+- Organization availability in tests
+
+Teams do not need to implement these, unless there are specific reasons.
+
+## Database table design
+
+See the [sharding guidelines](sharding/_index.md).
+
 ## Using `Current.organization`
 
-The application maps incoming requests to an organization through `Current.organization`. This context is automatically set in the request layer and should be used to ensure data is properly scoped to the current organization.
+Ensure that `Current.organization` is set correctly at the request layer.
+For the cases where this is not set automatically, follow the steps below.
+
+Once `Current.organization` is set, the ActiveRecord extension
+(`gitlab-database-data_isolation`) will use this
+context to conditionally scope queries to that organization.
 
 ### Where `Current.organization` is available
 
-`Current.organization` is available in:
+`Current.organization` is available in the following contexts. Some are set up automatically, while others require you to call `set_current_organization` explicitly.
 
-- Controllers
-- GraphQL
-- Grape API endpoints (use the `set_current_organization` helper)
-- Sidekiq
+Set automatically (platform-wide):
+
+- Controllers — `ApplicationController` includes a `before_action :set_current_organization` that runs for every request.
+- GraphQL — `GraphqlController` inherits from `ApplicationController`, so the same `before_action` applies automatically.
+- Sidekiq — set from the organization context captured when the job is enqueued.
+
+Requires developer setup:
+
+- Grape API endpoints — `Current.organization` is not set automatically. Call the `set_current_organization` helper in a `before` block for each API class that needs it:
+
+  ```ruby
+  before do
+    authenticate_non_get!
+    set_current_organization
+  end
+  ```
 
 ### Passing organization context
 
-When creating or updating records, pass the organization context using `Current.organization`:
+If there is application logic that needs the `Current.organization`, it should be passed from the request layer:
 
 ```ruby
 # In controllers
@@ -46,29 +79,13 @@ def create
     group_params.with_defaults(organization_id: Current.organization.id)
   ).execute
 end
-
-# In GraphQL mutations
-def resolve(args)
-  args[:organization_id] = Current.organization.id
-  # ...
-end
-
-# In finders
-@snippets = SnippetsFinder.new(
-  current_user,
-  organization_id: Current.organization.id,
-  author: current_user
-).execute
 ```
 
 ### Scoping queries to organizations
 
-Ensure queries are scoped to the current organization:
-
-```ruby
-@labels = Label.in_organization(organization).templates
-@topic = Projects::Topic.in_organization(organization.id).find_by_name(topic_name)
-```
+There will be a ActiveRecord extension (`gitlab-database-data_isolation`)
+that will provide Organization Scoping, dependent on the isolation state of the
+organization.
 
 ## Organization routing
 
@@ -112,7 +129,6 @@ Some routes are not currently available under the organization scope:
 
 Enable the following feature flags to test organizations:
 
-- `organization_scoped_paths`
 - `ui_for_organizations`
 - `organization_switching`
 
@@ -148,11 +164,25 @@ you've discovered a cross-organization data leak. This is particularly useful wh
 
 ### Automated testing
 
-For automated testing strategies, see [Testing with Organizations](../../development/testing_guide/testing_with_organizations.md).
+For automated testing strategies, see [Testing with Organizations](../testing_guide/testing_with_organizations.md).
+
+## Frontend guidelines
+
+### REST API and GraphQL requests
+
+Providing the current organization context to REST API and GraphQL requests does not require any additional arguments. Behind the scenes the current organization is passed via the `X-GitLab-Organization-ID` header in [axios_utils.js#L15](https://gitlab.com/gitlab-org/gitlab/-/blob/3deab3ebc51cdbb14de4a593b35d3df2e26f34bc/app/assets/javascripts/lib/utils/axios_utils.js#L15) and [graphql.js#L183](https://gitlab.com/gitlab-org/gitlab/-/blob/3deab3ebc51cdbb14de4a593b35d3df2e26f34bc/app/assets/javascripts/lib/graphql.js#L183).
+
+### URLs
+
+Do not hardcode or construct URLs on the frontend as they will not support [organization routing](#organization-routing). See [URLs in GitLab](../urls_in_gitlab.md#frontend-guidelines) for guidelines on how to generate URLs on the frontend.
+
+### Accessing the current organization
+
+The current organization context is available on the frontend via `window.gon.current_organization`. Behind the scenes this is exposed to the frontend in [gon_helper.rb#L69](https://gitlab.com/gitlab-org/gitlab/-/blob/f8cdb7b281830854374686003edf7bb66b7a59fa/lib/gitlab/gon_helper.rb#L69).
 
 ## Related topics
 
 - [Sharding guidelines](sharding/_index.md)
 - [Organization user documentation](../../user/organization/_index.md)
-- [Testing with Organizations](../../development/testing_guide/testing_with_organizations.md)
+- [Testing with Organizations](../testing_guide/testing_with_organizations.md)
 - [Consolidating groups and projects](https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/consolidating_groups_and_projects/) architecture documentation

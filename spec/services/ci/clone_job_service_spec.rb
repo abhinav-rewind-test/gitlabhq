@@ -50,6 +50,7 @@ RSpec.describe Ci::CloneJobService, feature_category: :continuous_integration do
     end
 
     let_it_be(:internal_job_variable) { create(:ci_job_variable, job: job) }
+    let_it_be(:supply_chain_attestation) { create(:supply_chain_attestation, build: job) }
 
     let(:clone_accessors) do
       %i[pipeline project ref tag options name allow_failure stage_idx yaml_variables
@@ -74,9 +75,9 @@ RSpec.describe Ci::CloneJobService, feature_category: :continuous_integration do
         job_artifacts_cobertura needs job_artifacts_accessibility
         job_artifacts_requirements job_artifacts_coverage_fuzzing
         job_artifacts_requirements_v2 job_artifacts_repository_xray
-        job_artifacts_api_fuzzing terraform_state_versions job_artifacts_cyclonedx
+        job_artifacts_api_fuzzing terraform_state_versions job_artifacts_cyclonedx job_artifacts_sarif
         scoped_user_id exit_code job_annotations job_artifacts_annotations
-        job_artifacts_jacoco].freeze
+        job_artifacts_jacoco job_artifacts_environment_key supply_chain_attestation].freeze
     end
 
     let(:ignore_accessors) do
@@ -328,6 +329,45 @@ RSpec.describe Ci::CloneJobService, feature_category: :continuous_integration do
           expect(new_job.inputs.count).to eq(job.inputs.count)
           expect(new_job.inputs.first.name).to eq('test_input')
           expect(new_job.inputs.first.value).to eq({ 'key' => 'value' })
+        end
+      end
+
+      describe 'job source' do
+        context 'when the source is a security policy' do
+          before do
+            create(:ci_build_source, job: job, source: :pipeline_execution_policy)
+            job.reset
+          end
+
+          it 'preserves the policy-origin source on the cloned job', :aggregate_failures do
+            expect(new_job.job_source).to be_present
+            expect(new_job.job_source.source).to eq('pipeline_execution_policy')
+            expect(new_job.job_source.project_id).to eq(project.id)
+            expect(new_job.source).to eq('pipeline_execution_policy')
+          end
+
+          it 'creates a new job source rather than reusing the original' do
+            expect(new_job.job_source).not_to eq(job.job_source)
+          end
+        end
+
+        context 'when the source is the pipeline source' do
+          before do
+            create(:ci_build_source, job: job, source: pipeline.source)
+            job.reset
+          end
+
+          it 'clones the non-policy source' do
+            expect(new_job.job_source.source).to eq(pipeline.source)
+          end
+        end
+
+        context 'when the job has no job source' do
+          it 'does not build a job source and falls back to the pipeline source', :aggregate_failures do
+            expect(job.job_source).to be_nil
+            expect(new_job.job_source).to be_nil
+            expect(new_job.source).to eq(pipeline.source)
+          end
         end
       end
 

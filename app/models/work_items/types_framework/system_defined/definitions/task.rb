@@ -8,6 +8,8 @@ module WorkItems
           class << self
             def widgets
               %w[
+                agent_plan
+                ai_session
                 assignees
                 award_emoji
                 crm_contacts
@@ -32,7 +34,7 @@ module WorkItems
             end
 
             def widget_options
-              { weight: { editable: true, rollup: false } }
+              {}
             end
 
             def configuration
@@ -42,6 +44,14 @@ module WorkItems
                 base_type: 'task',
                 icon_name: "work-item-task"
               }
+            end
+
+            def filterable_board_view?
+              false
+            end
+
+            def configurable?
+              false
             end
           end
         end

@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Localization
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Translate GitLab to your language
 ---
 
@@ -32,9 +32,14 @@ See [Externalization for GitLab](externalization.md).
 
 If you edit externalized strings in GitLab, you must [update the `pot` file](externalization.md#updating-the-po-files-with-the-new-content) before pushing your changes.
 
+### Pluralization
+
+Pluralization rules vary across languages. For guidance on `n_()` and `n__()` syntax, [CLDR](https://cldr.unicode.org/)
+plural categories, and common anti-patterns, see [pluralization](pluralization.md).
+
 ## Translate strings
 
-The translation process is managed at [https://crowdin.com/project/gitlab-ee](https://crowdin.com/project/gitlab-ee)
+The translation process is managed at <https://crowdin.com/project/gitlab-ee>
 using [Crowdin](https://crowdin.com/).
 You must create a Crowdin account before you can submit translations. Once you are signed in, select
 the language you wish to contribute translations to.

@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Static Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting application security
 description: How to troubleshoot GitLab application security features, including how to get more detailed logging.
 ---
@@ -28,14 +28,18 @@ From highest to lowest severity, the logging levels are:
 - `info` (default)
 - `debug`
 
-### Debug-level logging
+### Turn on debug-level logging
 
 > [!warning]
 > Debug logging can be a serious security risk. The output may contain the content of
 > environment variables and other secrets available to the job. The output is uploaded
 > to the GitLab server and is visible in job logs.
 
-To enable debug-level logging, add the following to your `.gitlab-ci.yml` file:
+Prerequisites:
+
+- The Maintainer or Owner role for the project.
+
+To turn on debug-level logging, add the following to your `.gitlab-ci.yml` file:
 
 ```yaml
 variables:
@@ -52,7 +56,7 @@ see [logging level](#logging-level).
 
 If a Secure job is failing and it's unclear why:
 
-1. Enable [debug-level logging](#debug-level-logging).
+1. Enable [debug-level logging](#turn-on-debug-level-logging).
 1. Run the job.
 1. Examine the job's output.
 1. Remove the `debug` log level to return to the default `info` value.
@@ -105,14 +109,14 @@ Unable to run pipeline
     jobs:sast config key may not be used with `rules`: only/except
 ```
 
-This error appears when the included job's `rules` configuration has been [overridden](sast/_index.md#overriding-sast-jobs)
+This error appears when the included job's `rules` configuration has been [overridden](sast/_index.md#override-sast-jobs)
 with [the deprecated `only` or `except` syntax.](../../ci/yaml/deprecated_keywords.md#only--except)
 To fix this issue, you must either:
 
 - [Transition your `only/except` syntax to `rules`](#transitioning-your-onlyexcept-syntax-to-rules).
 - (Temporarily) [Pin your templates to the deprecated versions](#pin-your-templates-to-the-deprecated-versions)
 
-For more information, see [Overriding SAST jobs](sast/_index.md#overriding-sast-jobs).
+For more information, see [Overriding SAST jobs](sast/_index.md#override-sast-jobs).
 
 ### Transitioning your `only/except` syntax to `rules`
 

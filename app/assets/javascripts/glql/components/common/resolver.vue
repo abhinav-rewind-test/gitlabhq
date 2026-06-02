@@ -1,14 +1,17 @@
 <script>
-import { pick } from 'lodash';
+import { pick } from 'lodash-es';
 import { sha256 } from '~/lib/utils/text_utility';
 import { InternalEvents } from '~/tracking';
+import {
+  DEFAULT_PAGE_SIZE,
+  DEFAULT_DISPLAY_TYPE,
+  PAGINATED_DISPLAY_TYPES_WITH_DEFAULT_LIMIT,
+} from '~/glql/constants';
 import { parse } from '../../core/parser';
 import { execute } from '../../core/executor';
 import { transform } from '../../core/transformer';
 import DataPresenter from '../presenters/data.vue';
 import GlqlPagination from './pagination.vue';
-
-const DEFAULT_PAGE_SIZE = 20;
 
 export default {
   name: 'GlqlResolver',
@@ -37,8 +40,7 @@ export default {
       config: undefined,
       variables: undefined,
       fields: undefined,
-      aggregate: undefined,
-      groupBy: undefined,
+      mode: undefined,
       error: undefined,
     };
   },
@@ -46,8 +48,16 @@ export default {
     hasDisplayType() {
       return Boolean(this.config?.display);
     },
+    isPaginatedDisplayWithDefaultLimit() {
+      return PAGINATED_DISPLAY_TYPES_WITH_DEFAULT_LIMIT.has(
+        this.config?.display ?? DEFAULT_DISPLAY_TYPE,
+      );
+    },
     hasNextPage() {
-      return Boolean(this.data?.count && this.data.nodes?.length < this.data.count);
+      return (
+        this.isPaginatedDisplayWithDefaultLimit &&
+        Boolean(this.data?.count && this.data.nodes?.length < this.data.count)
+      );
     },
   },
   watch: {
@@ -65,8 +75,7 @@ export default {
       this.config = undefined;
       this.variables = undefined;
       this.fields = undefined;
-      this.aggregate = undefined;
-      this.groupBy = undefined;
+      this.mode = undefined;
       this.error = undefined;
     },
 
@@ -79,8 +88,7 @@ export default {
           'config',
           'variables',
           'fields',
-          'aggregate',
-          'groupBy',
+          'mode',
           'error',
           'loading',
           'hasNextPage',
@@ -102,19 +110,29 @@ export default {
       this.emitChange();
 
       try {
-        const { query, config, variables, fields, aggregate, groupBy } = await parse(
-          this.glqlQuery,
-        );
+        const { query, config, variables, fields, mode } = await parse(this.glqlQuery);
 
         this.query = query;
         this.config = config;
         this.variables = variables;
         this.fields = fields;
-        this.aggregate = aggregate;
-        this.groupBy = groupBy;
+        this.mode = mode;
 
-        this.setVariable('limit', this.config.limit ?? DEFAULT_PAGE_SIZE);
-        this.data = await transform(await execute(this.query, this.variables), this.config);
+        // Honor an explicit `limit:` from the user. Otherwise, only paginated
+        // display types (lists, tables) get the default page size; aggregated
+        // displays (charts) fetch the full result set in one round-trip.
+        if (this.config.limit != null) {
+          this.setVariable('limit', this.config.limit);
+        } else if (this.isPaginatedDisplayWithDefaultLimit) {
+          this.setVariable('limit', DEFAULT_PAGE_SIZE);
+        }
+
+        const executionResult = await execute(this.query, this.variables);
+
+        this.data = await transform(executionResult, {
+          fields: this.fields,
+          mode: this.mode,
+        });
 
         this.trackRender();
       } catch (error) {
@@ -129,11 +147,16 @@ export default {
     async loadMore() {
       try {
         this.setVariable('after', this.data.pageInfo?.endCursor);
-        this.setVariable('limit', DEFAULT_PAGE_SIZE);
         this.loading = true;
         this.emitChange();
 
-        const data = await transform(await execute(this.query, this.variables), this.config);
+        const executionResult = await execute(this.query, this.variables);
+
+        const data = await transform(executionResult, {
+          fields: this.fields,
+          mode: this.mode,
+        });
+
         this.data = {
           ...this.data,
           pageInfo: data.pageInfo,
@@ -170,16 +193,16 @@ export default {
       v-if="hasDisplayType"
       :data="data"
       :fields="fields"
-      :aggregate="aggregate"
-      :group-by="groupBy"
       :display-type="config.display"
+      :display-config="config.displayConfig"
       :loading="loading"
       @error="handlePresenterError"
     />
-    <div v-if="hasNextPage" class="glql-load-more gl-border-t gl-border-section gl-p-3">
+    <div v-if="hasNextPage" class="glql-load-more gl-border-t gl-p-3">
       <glql-pagination
         :count="data.nodes.length"
         :total-count="data.count"
+        :page-size="variables.limit.value"
         :loading="loading"
         @loadMore="loadMore"
       />

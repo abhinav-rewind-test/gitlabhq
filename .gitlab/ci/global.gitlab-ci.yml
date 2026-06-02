@@ -18,6 +18,7 @@
     - '[ "$FOSS_ONLY" = "1" ] && rm -rf ee/ qa/spec/ee/ qa/qa/specs/features/ee/ qa/qa/ee/ qa/qa/ee.rb'
     - export GOPATH=$CI_PROJECT_DIR/.go
     - mkdir -p $GOPATH
+    - (command -v git &> /dev/null && git config --global http.https://gitlab.com/gitlab-org/gitlab.proactiveAuth basic) || true
     - source scripts/utils.sh
     - log_disk_usage "true"  # https://gitlab.com/gitlab-org/gitlab/-/issues/478880
 
@@ -39,14 +40,6 @@
     RAILS_ENV: "production"
     NODE_ENV: "production"
     GITLAB_ALLOW_SEPARATE_CI_DATABASE: "true"
-
-.cache-analytics:
-  after_script:
-    - |
-      source scripts/utils.sh
-      section_start "cache-analytics" "Uploading cache metrics"
-      bundle exec ruby scripts/cache_metrics || true
-      section_end "cache-analytics"
 
 .redis-services:
   services:
@@ -152,7 +145,7 @@
 
 .es8-services:
   services:
-    - name: elasticsearch:8.19.11
+    - name: elasticsearch:8.19.15
 
 .es8-variables:
   variables:
@@ -170,7 +163,7 @@
 
 .es9-services:
   services:
-    - name: elasticsearch:9.3.0
+    - name: elasticsearch:9.3.3
 
 .es9-variables:
   variables:
@@ -192,12 +185,34 @@
       alias: elasticsearch
       command: ["bin/opensearch", "-E", "discovery.type=single-node", "-E", "plugins.security.disabled=true", "-E", "cluster.routing.allocation.disk.threshold_enabled=false"]
 
+.pgvector17-services:
+  services:
+    - name: pgvector/pgvector:pg17
+      alias: pgvector
+      variables:
+        POSTGRES_PASSWORD: password
+
 .use-pg17-opensearch-latest-ee:
   extends:
     - .use-pg17
   services:
     - !reference [.db-services-with-auto-explain, services]
     - !reference [.opensearch-latest-services, services]
+
+.use-pg17-pgvector17-es8-ee:
+  extends:
+    - .use-pg17
+    - .es8-variables
+  services:
+    - !reference [.db-services-with-auto-explain, services]
+    - !reference [.pgvector17-services, services]
+    - !reference [.es8-services, services]
+  variables:
+    PGVECTOR_HOST: pgvector
+    PGVECTOR_PORT: "5432"
+    PGVECTOR_DATABASE: postgres
+    PGVECTOR_USER: postgres
+    PGVECTOR_PASSWORD: password
 
 .os1-services:
   services:
@@ -239,33 +254,22 @@
     - !reference [.db-services-with-auto-explain, services]
     - !reference [.os2-services, services]
 
-.use-pg17-clickhouse23:
-  extends: .use-pg17
-  services:
-    - !reference [.db-services-with-auto-explain, services]
-    - name: clickhouse/clickhouse-server:23.11.3.23-alpine
-      alias: clickhouse
-  variables:
-    CLICKHOUSE_USER: default
-    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    CLICKHOUSE_DB: gitlab_clickhouse_test
-
-.use-pg17-clickhouse24:
-  extends: .use-pg17
-  services:
-    - !reference [.db-services-with-auto-explain, services]
-    - name: clickhouse/clickhouse-server:24.9.1.3278-alpine
-      alias: clickhouse
-  variables:
-    CLICKHOUSE_USER: default
-    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    CLICKHOUSE_DB: gitlab_clickhouse_test
-
 .use-pg17-clickhouse25:
   extends: .use-pg17
   services:
     - !reference [.db-services-with-auto-explain, services]
     - name: clickhouse/clickhouse-server:25.12.3-alpine
+      alias: clickhouse
+  variables:
+    CLICKHOUSE_USER: default
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    CLICKHOUSE_DB: gitlab_clickhouse_test
+
+.use-pg17-clickhouse26:
+  extends: .use-pg17
+  services:
+    - !reference [.db-services-with-auto-explain, services]
+    - name: clickhouse/clickhouse-server:26.2.13.2-alpine
       alias: clickhouse
   variables:
     CLICKHOUSE_USER: default
@@ -308,7 +312,7 @@
         docker run --rm --privileged ${QEMU_IMAGE} --install all;
         echo -e "section_end:`date +%s`:emulator_install\r\e[0K"
       fi
-    - docker buildx create --use --driver-opt network=host # creates and sets to active buildkit builder
+    - docker buildx create --use --driver-opt network=host  # creates and sets to active buildkit builder
 
 .use-buildx:
   extends: .use-docker-in-docker
@@ -468,22 +472,19 @@
   cache: !reference [.ruby-gems-cache]
 
 .ruby-cache-pull-push:
-  extends: .cache-analytics
   cache:
     key: !reference [.ruby-gems-cache, key]
     paths: !reference [.ruby-gems-cache, paths]
     policy: pull-push
 
 .setup-test-env-cache:
-  extends: .cache-analytics
   cache:
     - !reference [.ruby-gems-cache]
     - *gitaly-binaries-cache
     - *workhorse-cache
-    - *zoekt-elasticsearch-indexer-cache # gitlab-ci has a limit of max 4 caches, so these binaries are cached together
+    - *zoekt-elasticsearch-indexer-cache  # gitlab-ci has a limit of max 4 caches, so these binaries are cached together
 
 .static-analysis-cache:
-  extends: .cache-analytics
   cache:
     - !reference [.ruby-gems-cache]
     - *node-modules-cache
@@ -524,8 +525,6 @@
     policy: pull-push
 
 .assets-compile-cache:
-  extends:
-    - .cache-analytics
   cache:
     - !reference [.ruby-gems-cache]
     - *node-modules-cache
@@ -602,10 +601,18 @@
     - $CNG_HELM_REPOSITORY_CACHE
   policy: pull
 
+.qa-test-resources-cache: &qa-test-resources-cache
+  key: "qa-test-resources-${CI_PIPELINE_ID}-${CI_JOB_NAME}"
+  paths:
+    - qa/tmp/test-resources-*.json
+    - qa/tmp/failed-test-resources-*.json
+  policy: pull-push
+
 .qa-cache:
   variables: *qa-bundler-variables
   cache:
     - *qa-ruby-gems-cache
+    - *qa-test-resources-cache
 
 .qa-cache-pull-push:
   variables: *qa-bundler-variables
@@ -620,6 +627,7 @@
   cache:
     - *qa-ruby-gems-cache
     - *cng-helm-cache
+    - *qa-test-resources-cache
 
 .cng-qa-cache-push:
   variables:

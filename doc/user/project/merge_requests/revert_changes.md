@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: How to revert commits or merge requests in a GitLab project.
 title: Revert changes
 ---
@@ -39,15 +39,16 @@ Prerequisites:
 - Your project must use the [merge method](methods/_index.md#fast-forward-merge) **Merge Commit**,
   set in your project's **Settings** > **Merge requests**.
 
-  [In GitLab 16.9 and later](https://gitlab.com/gitlab-org/gitlab/-/issues/22236), you can revert
-  fast-forwarded commits from the GitLab UI if either:
+  In GitLab 16.9 and later, you can revert fast-forwarded commits from the GitLab UI if either:
 
   - The commits are squashed, or
   - The merge request contains a single commit.
 
+For more information, see [issue 22236](https://gitlab.com/gitlab-org/gitlab/-/issues/22236).
+
 To revert merge request `Example`:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**.
 1. From the secondary menu, select **Merged**, and select your merge request (here, `Example`).
 1. Scroll to the merge request reports area, and find the report showing the
@@ -78,7 +79,7 @@ Prerequisites:
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. If you know the merge request that contains the commit:
    1. In the left sidebar, select **Code** > **Merge requests**, then select your merge request.
    1. Select **Commits**, then select the title of the commit you want to revert.
@@ -103,7 +104,7 @@ To do this:
 
 When you revert a merge commit, the branch you merged to (often `main`) is always the
 first parent. To revert a merge commit to a different parent, you must revert the commit from
-the command line, see [Revert and undo changes with Git](../../../topics/git/undo.md#revert-a-merge-commit-to-a-different-parent).
+the command line, see [revert and undo changes with Git](../../../topics/git/undo.md#revert-a-merge-commit-to-a-different-parent).
 
 ## Redact text from repository
 

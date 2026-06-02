@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Rate limits for imports and exports of project and groups
 description: "Configure rate limit settings for your GitLab instance when importing or exporting projects or groups."
 ---
@@ -27,7 +27,7 @@ Prerequisites:
 To change a rate limit:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Import and export rate limits**.
 1. Change the value of any rate limit. The rate limits are per minute per user, not per IP address.
    Set to `0` to disable a rate limit.

@@ -66,6 +66,7 @@ describe('WorkItemChildrenWrapper', () => {
     disableContent = false,
     canUpdate = false,
     showClosed = true,
+    hiddenMetadataKeys = [],
     moveWorkItemMutationHandler = moveWorkItemMutationSuccessHandler,
     getWorkItemTypeConfigurationMock = getWorkItemTypeConfiguration,
   } = {}) => {
@@ -101,6 +102,7 @@ describe('WorkItemChildrenWrapper', () => {
         disableContent,
         canUpdate,
         showClosed,
+        hiddenMetadataKeys,
         parent: workItemByIidResponseFactory().data.namespace.workItem,
       },
       provide: {
@@ -120,6 +122,14 @@ describe('WorkItemChildrenWrapper', () => {
     expect(workItemLinkChildren.at(0).props().childItem.confidential).toBe(
       childrenWorkItems[0].confidential,
     );
+  });
+
+  it('passes hiddenMetadataKeys to child components', () => {
+    const hiddenKeys = ['weight', 'milestone', 'iteration'];
+    createComponent({ hiddenMetadataKeys: hiddenKeys });
+
+    const workItemLinkChildren = findWorkItemLinkChildItems();
+    expect(workItemLinkChildren.at(0).props('hiddenMetadataKeys')).toEqual(hiddenKeys);
   });
 
   it('does not render children when show closed toggle is off', async () => {
@@ -187,14 +197,13 @@ describe('WorkItemChildrenWrapper', () => {
       autoExpandTreeOnMove | workItemType   | expected | description
       ${true}              | ${'Task'}      | ${true}  | ${'returns true when autoExpandTreeOnMove flag is true'}
       ${false}             | ${'Task'}      | ${false} | ${'returns false when autoExpandTreeOnMove flag is false'}
-      ${null}              | ${'Epic'}      | ${true}  | ${'returns true for Epic when autoExpandTreeOnMove is null (fallback logic)'}
-      ${null}              | ${'Objective'} | ${true}  | ${'returns true for Objective when autoExpandTreeOnMove is null (fallback logic)'}
-      ${null}              | ${'Task'}      | ${false} | ${'returns false for other types when autoExpandTreeOnMove is null (fallback logic)'}
-      ${undefined}         | ${'Epic'}      | ${true}  | ${'returns true for Epic when widget definition is empty (fallback logic)'}
+      ${true}              | ${'Epic'}      | ${true}  | ${'returns true for Epic when autoExpandTreeOnMove is true'}
+      ${true}              | ${'Objective'} | ${true}  | ${'returns true for Objective when autoExpandTreeOnMove is true'}
+      ${null}              | ${'Epic'}      | ${null}  | ${'returns null for Epic when autoExpandTreeOnMove is null'}
+      ${null}              | ${'Task'}      | ${null}  | ${'returns null for other types when autoExpandTreeOnMove is null'}
     `('$description', ({ autoExpandTreeOnMove, workItemType, expected }) => {
       const mockGetWorkItemTypeConfiguration = jest.fn().mockReturnValue({
-        widgetDefinitions:
-          autoExpandTreeOnMove === undefined ? [] : [{ type: 'HIERARCHY', autoExpandTreeOnMove }],
+        widgetDefinitions: [{ type: 'HIERARCHY', autoExpandTreeOnMove }],
       });
       createComponent({ getWorkItemTypeConfigurationMock: mockGetWorkItemTypeConfiguration });
 
@@ -203,13 +212,13 @@ describe('WorkItemChildrenWrapper', () => {
 
     it.each`
       configValue  | description
-      ${null}      | ${'returns false when getWorkItemTypeConfiguration returns null'}
-      ${undefined} | ${'returns false when getWorkItemTypeConfiguration returns undefined'}
+      ${null}      | ${'returns undefined when getWorkItemTypeConfiguration returns null'}
+      ${undefined} | ${'returns undefined when getWorkItemTypeConfiguration returns undefined'}
     `('$description', ({ configValue }) => {
       const mockGetWorkItemTypeConfiguration = jest.fn().mockReturnValue(configValue);
       createComponent({ getWorkItemTypeConfigurationMock: mockGetWorkItemTypeConfiguration });
 
-      expect(wrapper.vm.shouldAutoExpandOnDrag('Task')).toBe(false);
+      expect(wrapper.vm.shouldAutoExpandOnDrag('Task')).toBeUndefined();
     });
   });
 
@@ -311,15 +320,17 @@ describe('WorkItemChildrenWrapper', () => {
       wrapper.findComponent(Draggable).vm.$emit('end', dragParams);
       await waitForPromises();
 
-      expect(moveWorkItemMutationSuccessHandler).toHaveBeenCalledWith({
-        input: {
-          id: 'gid://gitlab/WorkItem/6',
-          adjacentWorkItemId: 'gid://gitlab/WorkItem/5',
-          relativePosition: 'BEFORE',
-        },
-        endCursor: '',
-        pageSize: 2, // number of children
-      });
+      expect(moveWorkItemMutationSuccessHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            id: 'gid://gitlab/WorkItem/6',
+            adjacentWorkItemId: 'gid://gitlab/WorkItem/5',
+            relativePosition: 'BEFORE',
+          },
+          endCursor: '',
+          pageSize: 2, // number of children
+        }),
+      );
     });
 
     it('calls move mutation with hierarchy params when changing parent', async () => {
@@ -331,16 +342,18 @@ describe('WorkItemChildrenWrapper', () => {
       });
       await waitForPromises();
 
-      expect(moveWorkItemMutationSuccessHandler).toHaveBeenCalledWith({
-        input: {
-          id: 'gid://gitlab/WorkItem/6',
-          parentId: 'gid://gitlab/WorkItem/5',
-          adjacentWorkItemId: undefined,
-          relativePosition: undefined,
-        },
-        endCursor: '',
-        pageSize: 1, // number of children
-      });
+      expect(moveWorkItemMutationSuccessHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            id: 'gid://gitlab/WorkItem/6',
+            parentId: 'gid://gitlab/WorkItem/5',
+            adjacentWorkItemId: undefined,
+            relativePosition: undefined,
+          },
+          endCursor: '',
+          pageSize: 1, // number of children
+        }),
+      );
     });
 
     it('emits error and updates cache when change parent mutation fails', async () => {
@@ -461,6 +474,7 @@ describe('WorkItemChildrenWrapper', () => {
               parentId: null,
             },
           },
+          useWorkItemFeatures: false,
         });
       });
 

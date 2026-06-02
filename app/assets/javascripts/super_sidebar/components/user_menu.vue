@@ -19,12 +19,9 @@ import axios from '~/lib/utils/axios_utils';
 import { visitUrl } from '~/lib/utils/url_utility';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { logError } from '~/lib/logger';
-import { USER_MENU_TRACKING_DEFAULTS, DROPDOWN_Y_OFFSET } from '../constants';
+import { USER_MENU_TRACKING_DEFAULTS } from '../constants';
 import UserMenuProfileItem from './user_menu_profile_item.vue';
 import UserCounts from './user_counts.vue';
-
-// Left offset required for the dropdown to be aligned with the super sidebar
-const DROPDOWN_X_OFFSET_BASE = -192;
 
 export default {
   SET_STATUS_MODAL_ID,
@@ -226,12 +223,6 @@ export default {
     showNotificationDot() {
       return this.data.pipeline_minutes?.show_notification_dot;
     },
-    dropdownOffset() {
-      return {
-        mainAxis: DROPDOWN_Y_OFFSET,
-        crossAxis: DROPDOWN_X_OFFSET_BASE,
-      };
-    },
     hasEmoji() {
       return this.data?.status?.emoji;
     },
@@ -282,7 +273,8 @@ export default {
         await axios.post(dismissEndpoint, { feature_name: featureId });
       } catch (error) {
         logError(error);
-        Sentry.captureException(error);
+        // Override gon.feature_category as this code loads on all pages
+        Sentry.captureException(error, { tags: { feature_category: 'navigation' } });
       } finally {
         // visit the URL whether the callout notification is dismissed or not
         visitUrl(href);
@@ -315,7 +307,6 @@ export default {
 
     <gl-disclosure-dropdown
       ref="userDropdown"
-      :dropdown-offset="dropdownOffset"
       class="super-sidebar-user-dropdown gl-relative"
       data-testid="user-dropdown"
       :auto-close="false"
@@ -354,10 +345,7 @@ export default {
           class="gl-absolute -gl-bottom-1 -gl-right-1 gl-flex gl-h-5 gl-w-5 gl-cursor-pointer gl-items-center gl-justify-center gl-rounded-full gl-bg-neutral-0 gl-text-sm gl-shadow-sm"
           :title="data.status.message"
         >
-          <gl-emoji
-            :data-name="data.status.emoji"
-            class="super-topbar-status-emoji gl-pointer-events-none gl-text-[9px]"
-          />
+          <gl-emoji :data-name="data.status.emoji" class="gl-pointer-events-none gl-text-[9px]" />
         </div>
       </template>
 

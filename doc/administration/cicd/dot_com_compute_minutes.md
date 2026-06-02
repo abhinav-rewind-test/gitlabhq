@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure cost factor settings for compute minutes on GitLab.com.
 title: Compute minutes administration for GitLab.com
 ---
@@ -25,7 +25,7 @@ Prerequisites:
 To set cost factors for a runner:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **CI/CD** > **Runners**.
+1. In the left sidebar, select **CI/CD** > **Runners**.
 1. For the runner you want to update, select **Edit** ({{< icon name="pencil" >}}).
 1. In the **Public projects compute cost factor** text box, enter the public cost factor.
 1. In the **Private projects compute cost factor** text box, enter the private cost factor.

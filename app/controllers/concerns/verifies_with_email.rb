@@ -22,7 +22,7 @@ module VerifiesWithEmail
     return unless user = find_user || find_verification_user
     return unless user.active?
 
-    if session[:verification_user_id] && token = verification_params[:verification_token].presence
+    if session[:verifies_with_email_user_id] && token = verification_params[:verification_token].presence
       # The verification token is submitted, verify it
       verify_token(user, token)
     elsif require_email_verification_enabled?(user)
@@ -50,10 +50,10 @@ module VerifiesWithEmail
 
       # Both `send_` methods will regenerate the respective code, making
       # the old one invalid.
-      # Only send email OTP when they're not locked and the FF is still
-      # enabled.
+      # Only send email OTP when they're not locked and the feature is
+      # still available.
       if !treat_as_locked?(user)
-        if Feature.enabled?(:email_based_mfa, user)
+        if user.email_otp_available?
           send_otp_with_email(
             user,
             secondary_email: secondary_email,
@@ -65,7 +65,7 @@ module VerifiesWithEmail
             message: s_('IdentityVerification|Email Verification has ' \
               'been disabled and resending a code is not required. ' \
               'Log in again.')
-          }
+          }, status: :unprocessable_entity
           return
         end
       # Only lock & send when they are locked.
@@ -81,12 +81,12 @@ module VerifiesWithEmail
         send_notification_to_primary_email(primary_email, secondary_email)
       end
 
-      render json: { status: :success }
+      resend_after = treat_as_locked?(user) ? nil : show_email_otp_resend_after(user)
+      render json: { status: :success, show_resend_after: resend_after }
     end
   end
 
   def successful_verification
-    session.delete(:verification_user_id)
     @redirect_url = after_sign_in_path_for(current_user) # rubocop:disable Gitlab/ModuleWithInstanceVariables
 
     render layout: 'minimal'
@@ -94,12 +94,15 @@ module VerifiesWithEmail
 
   def skip_verification_for_now
     return respond_422 unless user = find_verification_user
-    return render_403 unless permitted_to_skip_email_otp_in_grace_period?(user)
+
+    unless permitted_to_skip_email_otp_in_warning_period?(user)
+      return render json: { status: :failure }, status: :forbidden
+    end
 
     handle_verification_success(
       user,
       :skipped,
-      'user chose to skip verification in grace period'
+      'user chose to skip verification in warning period'
     )
 
     render json: {
@@ -119,9 +122,9 @@ module VerifiesWithEmail
 
       # remove verification_user_id from session to indicate that skip verification workflow is done
       # this ensures the confirmation page cannot be visited by user manually navigating to this path
-      session.delete(:verification_user_id)
+      session.delete(:verifies_with_email_user_id)
     else
-      render json: { status: :failure }
+      render json: { status: :failure }, status: :forbidden
     end
   end
 
@@ -130,7 +133,7 @@ module VerifiesWithEmail
 
     if fallback_to_email_otp_permitted?(user)
       clear_two_factor_attempt!
-      session[:verification_user_id] = user.id
+      session[:verifies_with_email_user_id] = user.id
       resend_verification_code
     else
       render json: { success: false, message: _('Not permitted.') }, status: :bad_request
@@ -144,9 +147,9 @@ module VerifiesWithEmail
   end
 
   def find_verification_user
-    return unless session[:verification_user_id]
+    return unless session[:verifies_with_email_user_id]
 
-    User.find_by_id(session[:verification_user_id])
+    User.find_by_id(session[:verifies_with_email_user_id])
   end
 
   def lock_and_send_verification_instructions(user, secondary_email: nil, reason: nil)
@@ -231,52 +234,43 @@ module VerifiesWithEmail
   # Checks whether email-based OTP is required for the current sign-in
   # attempt.
   #
-  # This feature uses a two-part rollout mechanism:
-  #   - Feature Flag acts as a kill switch that can be quickly disabled
-  #     via ChatOps
-  #   - User enrollment is controlled by setting the attribute
-  #     email_otp_required_after
-  #
-  # This allows us to halt or revert the rollout immediately while
-  # preserving per-user enrollment dates.
-  #
-  # Later, the Feature Flag will be changed to an ApplicationSetting so
-  # that self-managed administrators can turn this feature on after
-  # validating that they have mail delivery correctly configured.
+  # Availability is gated by `User#email_otp_available?`.
+  # Per-user enrollment is tracked by `email_otp_required_after`.
   def require_email_based_otp?(user)
-    return false unless Feature.enabled?(:email_based_mfa, user)
-
-    # As a final time-of-use check, ensure that
-    # `email_otp_required_after` is set to a valid state
-    user.set_email_otp_required_after_based_on_restrictions(save: true)
+    return false unless user.email_otp_available?
 
     password_based_login? &&
       # Skip on first log in (which occurs for most during account
       # creation), to avoid double email verification with
       # Devise::Confirmable
       user.last_sign_in_at.present? &&
-      user.email_otp_required_after.present? &&
-      (user.email_otp_required_after <= Time.zone.now || in_email_otp_grace_period?(user))
+      (user.email_based_otp_required? || in_email_otp_warning_period?(user))
   end
 
   def verify_token(user, token)
-    # Account locks take precendent over Email-based OTP. If the account
+    # Account locks take precedence over Email-based OTP. If the account
     # is locked, they need to receive and enter their unlock token.
-    validation_attr = if treat_as_locked?(user)
-                        :unlock_token
-                      else
-                        :email_otp
-                      end
+    locked = treat_as_locked?(user)
+
+    if locked
+      validation_attr = :unlock_token
+      redirect_path = users_successful_verification_path
+    else
+      validation_attr = :email_otp
+      redirect_path = after_sign_in_path_for(user)
+    end
 
     service = Users::EmailVerification::ValidateTokenService.new(attr: validation_attr, user: user, token: token)
     result = service.execute
 
     if result[:status] == :success
       handle_verification_success(user, :successful)
-      render json: { status: :success, redirect_path: users_successful_verification_path }
+      session.delete(:verifies_with_email_user_id)
+      render json: { status: :success, redirect_path: redirect_path }
     else
       handle_verification_failure(user, result[:reason], result[:message])
-      render json: result
+      http_status = result[:reason] == :rate_limited ? :too_many_requests : :unauthorized
+      render json: result.slice(:status, :message), status: http_status
     end
   end
 
@@ -293,7 +287,7 @@ module VerifiesWithEmail
       s_("IdentityVerification|You've reached the maximum amount of resends. Wait %{interval} and try again."),
       interval: rate_limit_interval(:email_verification_code_send)
     )
-    render json: { status: :failure, message: message }
+    render json: { status: :failure, message: message }, status: :too_many_requests
   end
 
   def rate_limit_interval(rate_limit)
@@ -319,6 +313,7 @@ module VerifiesWithEmail
     log_verification(user, verification_result, log_message)
 
     sign_in(user)
+    remember_me(user) if session.delete(:remember_me_before_email_verification)
 
     log_audit_event(current_user, user, with: authentication_method)
     log_user_activity(user)
@@ -327,15 +322,17 @@ module VerifiesWithEmail
 
   def permitted_to_view_skip_verification_confirmation?
     current_user &&
-      Feature.enabled?(:email_based_mfa, current_user) &&
-      permitted_to_skip_email_otp_in_grace_period?(current_user) &&
+      current_user.email_otp_available? &&
+      permitted_to_skip_email_otp_in_warning_period?(current_user) &&
       # User should not be able to visit users_skip_verification_confirmation_path after
       # finishing token verification OR after completing the skip verification workflow
-      session[:verification_user_id]
+      session[:verifies_with_email_user_id]
   end
 
   def prompt_for_email_verification(user)
-    session[:verification_user_id] = user.id
+    session[:verifies_with_email_user_id] = user.id
+    session[:remember_me_before_email_verification] = Gitlab::Utils.to_boolean(user_params[:remember_me])
+
     self.resource = user
     add_gon_variables # Necessary to set the sprite_icons path, since we skip the ApplicationController before_filters
 
@@ -366,6 +363,9 @@ module VerifiesWithEmail
     )
   end
 
+  # NOTE: This predicate gates the entire `verify_email` subsystem
+  # (locked accounts, untrusted IPs, and email OTP)
+  # TODO: decouple these gates - see https://gitlab.com/gitlab-org/gitlab/-/work_items/600091
   def require_email_verification_enabled?(user)
     ::Gitlab::CurrentSettings.require_email_verification_on_account_locked &&
       Feature.disabled?(:skip_require_email_verification, user, type: :ops)

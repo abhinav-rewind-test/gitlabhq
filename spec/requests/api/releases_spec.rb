@@ -418,7 +418,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
       context 'when release is associated to mutiple milestones' do
         context 'milestones order' do
-          let_it_be(:project) { create(:project, :repository, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :repository, :public) }
           let_it_be_with_reload(:release_with_milestones) { create(:release, tag: 'v3.14', project: project) }
 
           let(:actual_milestone_title_order) do
@@ -1140,7 +1140,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
               .to match_array(%w[alpha beta])
             expect(json_response['assets']['links'].map { |h| h['url'] })
               .to match_array(%w[https://dosuken.example.com/alpha.exe
-                                 https://dosuken.example.com/beta.exe])
+                https://dosuken.example.com/beta.exe])
           end
 
           context 'when link names are duplicates' do
@@ -1348,7 +1348,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
         end
       end
 
-      context 'with a non-existant milestone' do
+      context 'with a non-existent milestone' do
         let(:milestone_params) { { milestones: ['xyz'] } }
 
         it 'returns a 400 error as milestone not found' do
@@ -1369,7 +1369,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
     end
 
     context 'when the project is a catalog resource' do
-      let_it_be(:project) { create(:project, :catalog_resource_with_components, create_tag: '6.0.0') }
+      let_it_be(:project, freeze: false) { create(:project, :catalog_resource_with_components, create_tag: '6.0.0') }
       let_it_be(:ci_catalog_resource) { create(:ci_catalog_resource, project: project) }
 
       let(:params) do
@@ -1865,11 +1865,11 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
     let_it_be(:admin) { create(:admin) }
     let_it_be(:group1) { create(:group) }
     let_it_be(:group2) { create(:group, :private) }
-    let_it_be(:project1) { create(:project, namespace: group1) }
+    let_it_be(:project1, freeze: false) { create(:project, namespace: group1) }
     let_it_be(:project2) { create(:project, namespace: group2) }
     let_it_be(:project3) { create(:project, namespace: group1, path: 'test', visibility_level: Gitlab::VisibilityLevel::PRIVATE) }
-    let_it_be(:release1) { create(:release, project: project1) }
-    let_it_be(:release2) { create(:release, project: project2) }
+    let_it_be(:release1, freeze: false) { create(:release, project: project1) }
+    let_it_be(:release2, freeze: false) { create(:release, project: project2) }
     let_it_be(:release3) { create(:release, project: project3) }
 
     it_behaves_like 'GET request permissions for admin mode' do
@@ -1890,7 +1890,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
         get api("/groups/#{group1.id}/releases", admin), params: { sort: 'desc' }
 
         expect(DateTime.parse(json_response[0]["released_at"]))
-          .to be > (DateTime.parse(json_response[1]["released_at"]))
+          .to be > DateTime.parse(json_response[1]["released_at"])
       end
 
       it 'respects the simple parameter' do
@@ -1957,6 +1957,68 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
       it_behaves_like 'avoids N+1 queries'
       it_behaves_like 'avoids N+1 queries', { simple: true }
+    end
+  end
+
+  context 'when authenticated with a token that has the ai_workflows scope' do
+    let(:oauth_token) { create(:oauth_access_token, user: maintainer, scopes: [:ai_workflows]) }
+    let!(:release) { create(:release, project: project, tag: 'v0.1', author: maintainer) }
+
+    it 'returns the project releases' do
+      get api("/projects/#{project.id}/releases", oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response).to be_an(Array)
+    end
+
+    it 'returns a single release by tag' do
+      get api("/projects/#{project.id}/releases/v0.1", oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response['tag_name']).to eq('v0.1')
+    end
+
+    it 'allows HEAD requests' do
+      head api("/projects/#{project.id}/releases", oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:ok)
+    end
+
+    context 'with group releases' do
+      let_it_be(:group) { create(:group) }
+      let_it_be(:group_project, freeze: false) { create(:project, :repository, namespace: group) }
+      let!(:group_release) { create(:release, project: group_project, tag: 'v0.2', author: maintainer) }
+
+      before do
+        group.add_maintainer(maintainer)
+      end
+
+      it 'returns the group releases' do
+        get api("/groups/#{group.id}/releases", oauth_access_token: oauth_token)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to be_an(Array)
+      end
+    end
+
+    it 'does not allow creating a release' do
+      post api("/projects/#{project.id}/releases", oauth_access_token: oauth_token),
+        params: { tag_name: 'v1.0', description: 'test' }
+
+      expect(response).to have_gitlab_http_status(:forbidden)
+    end
+
+    it 'does not allow updating a release' do
+      put api("/projects/#{project.id}/releases/v0.1", oauth_access_token: oauth_token),
+        params: { description: 'updated' }
+
+      expect(response).to have_gitlab_http_status(:forbidden)
+    end
+
+    it 'does not allow deleting a release' do
+      delete api("/projects/#{project.id}/releases/v0.1", oauth_access_token: oauth_token)
+
+      expect(response).to have_gitlab_http_status(:forbidden)
     end
   end
 end

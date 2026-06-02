@@ -15,6 +15,7 @@ module Projects
 
       before_action do
         push_frontend_feature_flag(:ci_variables_pages, current_user)
+        push_frontend_feature_flag(:allow_push_to_allowlisted_projects, @project)
         push_frontend_ability(ability: :admin_project, resource: @project, user: current_user)
         push_frontend_ability(ability: :admin_protected_environments, resource: @project, user: current_user)
       end
@@ -70,7 +71,7 @@ module Projects
       def reset_registration_token
         ::Ci::Runners::ResetRegistrationTokenService.new(@project, current_user).execute
 
-        flash[:toast] = _("New runners registration token has been generated!")
+        flash[:toast] = _("New runners registration token has been generated.")
         redirect_to namespace_project_settings_ci_cd_path
       end
 
@@ -112,7 +113,8 @@ module Projects
             project_id: project.id,
             ip_address: request.remote_ip,
             timestamp: Time.current.iso8601,
-            action: 'project_ci_cd_settings_page_viewed'
+            action: 'project_ci_cd_settings_page_viewed',
+            user_agent: Gitlab::Audit::Sanitizer.sanitize_user_agent(request.user_agent)
           }
         }
 
@@ -132,7 +134,7 @@ module Projects
         return if can_any?(current_user, [
           :admin_cicd_variables,
           :admin_protected_environments,
-          :admin_runners
+          :read_runners
         ], project)
 
         access_denied!
@@ -179,12 +181,16 @@ module Projects
         return unless service.run_auto_devops_pipeline?
 
         if @project.empty_repo?
-          flash[:notice] = _("This repository is currently empty. A new Auto DevOps pipeline will be created after a new file has been pushed to a branch.")
+          flash[:notice] = _(
+            "This repository is currently empty. " \
+              "A new Auto DevOps pipeline will be created after a new file has been pushed to a branch."
+          )
           return
         end
 
         # rubocop:disable CodeReuse/Worker
-        CreatePipelineWorker.perform_async(project.id, current_user.id, project.default_branch, :web, ignore_skip_ci: true, save_on_errors: false)
+        CreatePipelineWorker.perform_async(project.id, current_user.id, project.default_branch, :web,
+          ignore_skip_ci: true, save_on_errors: false)
         # rubocop:enable CodeReuse/Worker
 
         flash[:toast] = _("A new Auto DevOps pipeline has been created, go to the Pipelines page for details")

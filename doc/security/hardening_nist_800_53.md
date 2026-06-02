@@ -167,7 +167,7 @@ requirements:
   Administrators can remove, block, or trust users flagged in that
   area.
 
-- [Set password storage parameters](password_storage.md).
+- [Set password storage parameters](../user/profile/user_passwords.md).
   Stored secrets must satisfy FIPS 140-2 or 140-3 as outlined in
   SC-13. PBKDF2+SHA512 is supported with FIPS compliant ciphers when
   FIPS mode is enabled.
@@ -232,8 +232,9 @@ as WebAuthn, must be used (IA-2).
 
 **Personal access tokens**
 
-Personal access tokens for user access are disabled by default in FIPS
-enabled instances.
+GitLab [provides instructions](../user/profile/personal_access_tokens.md) on how to configure
+and manage personal access tokens. GitLab supports [fine-grained permissions](../auth/tokens/fine_grained_access_tokens.md),
+which can be used to scope tokens to only the permissions required for the applicable use case.
 
 #### Other Access Control Family Concepts
 

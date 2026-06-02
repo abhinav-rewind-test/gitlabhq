@@ -8,9 +8,68 @@ RSpec.describe DraftNote, feature_category: :code_review_workflow do
   let_it_be(:project)       { create(:project, :repository) }
   let_it_be(:merge_request) { create(:merge_request_with_diffs, target_project: project, source_project: project) }
 
+  describe 'associations' do
+    subject { build(:draft_note, merge_request: merge_request) }
+
+    it { is_expected.to belong_to(:author) }
+    it { is_expected.to belong_to(:project) }
+  end
+
   describe 'validations' do
-    it_behaves_like 'a valid diff positionable note' do
-      subject { build(:draft_note, merge_request: merge_request, commit_id: commit_id, position: position) }
+    describe '#for_commit?' do
+      let(:draft_note) { build(:draft_note, merge_request: merge_request) }
+
+      it 'returns false even when commit_id is present' do
+        draft_note.commit_id = 'abc123'
+        expect(draft_note.for_commit?).to be false
+      end
+
+      it 'returns false when commit_id is nil' do
+        draft_note.commit_id = nil
+        expect(draft_note.for_commit?).to be false
+      end
+    end
+
+    describe '#valid_commit_id' do
+      let(:draft_note) { build(:draft_note, merge_request: merge_request) }
+
+      it 'is valid when commit_id is nil' do
+        draft_note.commit_id = nil
+        expect(draft_note).to be_valid
+      end
+
+      it 'is valid when commit_id references a real commit' do
+        draft_note.commit_id = project.repository.commit.id
+        expect(draft_note).to be_valid
+      end
+
+      it 'is invalid when commit_id does not reference a real commit' do
+        draft_note.commit_id = 'bad0c1a0'
+        expect(draft_note).not_to be_valid
+        expect(draft_note.errors[:commit_id]).to include('is not a valid commit')
+      end
+    end
+
+    context 'for note' do
+      subject(:draft_note) { build(:draft_note, merge_request: merge_request) }
+
+      before do
+        allow(Gitlab::CurrentSettings).to receive(:description_and_note_max_size).and_return(1)
+      end
+
+      it 'validates size' do
+        is_expected.to validate_length_of(:note).is_at_most(Gitlab::CurrentSettings.description_and_note_max_size)
+          .with_message("is too long (2 B). The maximum size is 1 B.")
+      end
+
+      it 'skips validation when unchanged' do
+        draft_note.note = 'over limit'
+        is_expected.not_to be_valid
+
+        draft_note.save!(validate: false)
+
+        is_expected.to be_valid
+      end
     end
   end
 
@@ -116,6 +175,25 @@ RSpec.describe DraftNote, feature_category: :code_review_workflow do
         it 'returns "DiscussionNote" to make draft notes resolvable by default' do
           expect(draft_note.type).to eq('DiscussionNote')
         end
+      end
+    end
+  end
+
+  describe '#publish_params' do
+    context 'for a diff draft note' do
+      let(:draft_note) { create(:draft_note_on_text_diff, merge_request: merge_request) }
+
+      it 'includes line_code so set_line_code can short-circuit at publish time', :aggregate_failures do
+        expect(draft_note.publish_params).to include(:line_code)
+        expect(draft_note.publish_params[:line_code]).to eq(draft_note.line_code)
+      end
+    end
+
+    context 'for a non-diff draft note' do
+      let(:draft_note) { build(:draft_note, merge_request: merge_request) }
+
+      it 'does not include line_code' do
+        expect(draft_note.publish_params).not_to include(:line_code)
       end
     end
   end

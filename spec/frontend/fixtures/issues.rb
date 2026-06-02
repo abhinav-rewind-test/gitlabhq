@@ -2,46 +2,6 @@
 
 require 'spec_helper'
 
-RSpec.describe Projects::IssuesController, '(JavaScript fixtures)', :with_license, type: :controller, feature_category: :team_planning do
-  include JavaScriptFixturesHelpers
-
-  let(:user) { create(:user, feed_token: 'feedtoken:coldfeed') }
-  let(:namespace) { create(:namespace, name: 'frontend-fixtures') }
-  let(:project) { create(:project_empty_repo, namespace: namespace, path: 'issues-project') }
-
-  render_views
-
-  before do
-    stub_feature_flags(work_item_planning_view: false)
-    project.add_maintainer(user)
-    sign_in(user)
-  end
-
-  after do
-    remove_repository(project)
-  end
-
-  it 'issues/open-issue.html' do
-    render_issue(create(:issue, project: project))
-  end
-
-  it 'issues/closed-issue.html' do
-    render_issue(create(:closed_issue, project: project))
-  end
-
-  private
-
-  def render_issue(issue)
-    get :show, params: {
-      namespace_id: project.namespace.to_param,
-      project_id: project,
-      id: issue.to_param
-    }
-
-    expect(response).to be_successful
-  end
-end
-
 RSpec.describe API::Issues, '(JavaScript fixtures)', type: :request, feature_category: :team_planning do
   include ApiHelpers
   include JavaScriptFixturesHelpers
@@ -138,7 +98,41 @@ RSpec.describe GraphQL::Query, type: :request, feature_category: :team_planning 
       )
     )
 
-    post_graphql(query, current_user: user, variables: { fullPath: project.full_path, iid: issue.iid.to_s })
+    post_graphql(query, current_user: user, variables: {
+      fullPath: project.full_path,
+      iid: issue.iid.to_s,
+      useWorkItemFeatures: false
+    })
+
+    expect_graphql_errors_to_be_empty
+  end
+
+  it "graphql/#{issue_popover_query_path}_with_features.json" do
+    query = get_graphql_query_as_string(issue_popover_query_path, ee: Gitlab.ee?)
+
+    issue = create(
+      :work_item,
+      :issue,
+      project: project,
+      assignees: [user],
+      confidential: true,
+      created_at: Time.parse('2020-07-01T04:08:01Z'),
+      due_date: Date.new(2020, 7, 5),
+      start_date: Date.new(2020, 7, 3),
+      milestone: create(
+        :milestone,
+        project: project,
+        title: '15.2',
+        start_date: Date.new(2020, 7, 1),
+        due_date: Date.new(2020, 7, 30)
+      )
+    )
+
+    post_graphql(query, current_user: user, variables: {
+      fullPath: project.full_path,
+      iid: issue.iid.to_s,
+      useWorkItemFeatures: true
+    })
 
     expect_graphql_errors_to_be_empty
   end

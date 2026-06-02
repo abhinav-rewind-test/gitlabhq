@@ -588,8 +588,8 @@ RSpec.describe AuthHelper, feature_category: :system_access do
         expect(helper.delete_otp_authenticator_data(true)).to match(a_hash_including({
           button_text: _('Delete one-time password authenticator'),
           icon: 'remove',
-          message: _('Are you sure you want to delete this one-time password authenticator? ' \
-            'Enter your password to continue.'),
+          messages: [_('Are you sure you want to delete this one-time password authenticator?'),
+            _('Enter your password to continue.')],
           path: destroy_otp_profile_two_factor_auth_path,
           password_required: 'true'
         }))
@@ -600,7 +600,7 @@ RSpec.describe AuthHelper, feature_category: :system_access do
       it 'returns data to delete the OTP authenticator' do
         expect(helper.delete_otp_authenticator_data(false)).to match(a_hash_including({
           button_text: _('Delete one-time password authenticator'),
-          message: _('Are you sure you want to delete this one-time password authenticator?'),
+          messages: [_('Are you sure you want to delete this one-time password authenticator?')],
           path: destroy_otp_profile_two_factor_auth_path,
           password_required: 'false'
         }))
@@ -617,8 +617,8 @@ RSpec.describe AuthHelper, feature_category: :system_access do
           expect(helper.delete_passkey_data(true, path, 1)).to match(a_hash_including({
             button_text: s_('ProfilesAuthentication|Disable passkey sign-in'),
             icon: 'remove',
-            message: s_('ProfilesAuthentication|Are you sure you want to delete this passkey? ' \
-              'Enter your password to continue.'),
+            messages: [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?'),
+              _('Enter your password to continue.')],
             modal_title: s_('ProfilesAuthentication|Delete passkey and disable passkey sign-in?'),
             path: path,
             password_required: 'true'
@@ -631,7 +631,7 @@ RSpec.describe AuthHelper, feature_category: :system_access do
           expect(helper.delete_passkey_data(false, path, 1)).to match(a_hash_including({
             button_text: s_('ProfilesAuthentication|Disable passkey sign-in'),
             icon: 'remove',
-            message: s_('ProfilesAuthentication|Are you sure you want to delete this passkey?'),
+            messages: [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?')],
             modal_title: s_('ProfilesAuthentication|Delete passkey and disable passkey sign-in?'),
             path: path,
             password_required: 'false'
@@ -646,8 +646,8 @@ RSpec.describe AuthHelper, feature_category: :system_access do
           expect(helper.delete_passkey_data(true, path, 2)).to match(a_hash_including({
             button_text: s_('ProfilesAuthentication|Delete passkey'),
             icon: 'remove',
-            message: s_('ProfilesAuthentication|Are you sure you want to delete this passkey? ' \
-              'Enter your password to continue.'),
+            messages: [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?'),
+              _('Enter your password to continue.')],
             modal_title: s_('ProfilesAuthentication|Delete passkey'),
             path: path,
             password_required: 'true'
@@ -660,7 +660,7 @@ RSpec.describe AuthHelper, feature_category: :system_access do
           expect(helper.delete_passkey_data(false, path, 2)).to match(a_hash_including({
             button_text: s_('ProfilesAuthentication|Delete passkey'),
             icon: 'remove',
-            message: s_('ProfilesAuthentication|Are you sure you want to delete this passkey?'),
+            messages: [s_('ProfilesAuthentication|Are you sure you want to delete this passkey?')],
             modal_title: s_('ProfilesAuthentication|Delete passkey'),
             path: path,
             password_required: 'false'
@@ -678,8 +678,8 @@ RSpec.describe AuthHelper, feature_category: :system_access do
         expect(helper.delete_webauthn_device_data(true, path)).to match(a_hash_including({
           button_text: _('Delete WebAuthn device'),
           icon: 'remove',
-          message: _('Are you sure you want to delete this WebAuthn device? ' \
-            'Enter your password to continue.'),
+          messages: [_('Are you sure you want to delete this WebAuthn device?'),
+            _('Enter your password to continue.')],
           path: path,
           password_required: 'true'
         }))
@@ -691,7 +691,7 @@ RSpec.describe AuthHelper, feature_category: :system_access do
         expect(helper.delete_webauthn_device_data(false, path)).to match(a_hash_including({
           button_text: _('Delete WebAuthn device'),
           icon: 'remove',
-          message: _('Are you sure you want to delete this WebAuthn device?'),
+          messages: [_('Are you sure you want to delete this WebAuthn device?')],
           path: path,
           password_required: 'false'
         }))
@@ -700,26 +700,41 @@ RSpec.describe AuthHelper, feature_category: :system_access do
   end
 
   describe '#disable_two_factor_authentication_data' do
-    context 'when password is required' do
-      it 'returns data to disable two-factor authentication' do
-        expect(helper.disable_two_factor_authentication_data(true)).to match(a_hash_including({
-          button_text: _('Disable 2FA'),
-          message: _('Are you sure you want to invalidate your one-time password authenticator and WebAuthn devices? ' \
-            'Enter your password to continue. This action cannot be undone.'),
-          path: profile_two_factor_auth_path,
-          password_required: 'true'
-        }))
+    context 'when users has no passkeys' do
+      context 'when password is required' do
+        it 'returns data to disable two-factor authentication' do
+          expect(helper.disable_two_factor_authentication_data(true, false)).to match(a_hash_including({
+            button_text: _('Disable 2FA'),
+            messages: [_('This will delete all 2FA methods from your account. We recommend keeping 2FA enabled to ' \
+              'protect your account.')],
+            modal_title: _('Disabled two-factor authentication (2FA)?'),
+            path: profile_two_factor_auth_path,
+            password_required: 'true'
+          }))
+        end
       end
-    end
 
-    context 'when password is not required' do
-      it 'returns data to disable two-factor authentication' do
-        expect(helper.disable_two_factor_authentication_data(false)).to match(a_hash_including({
-          button_text: _('Disable 2FA'),
-          message: _('Are you sure you want to invalidate your one-time password authenticator and WebAuthn devices?'),
-          path: profile_two_factor_auth_path,
-          password_required: 'false'
-        }))
+      context 'when password is not required' do
+        it 'returns data to disable two-factor authentication' do
+          expect(helper.disable_two_factor_authentication_data(false, false)).to match(a_hash_including({
+            button_text: _('Disable 2FA'),
+            messages: [_('This will delete all 2FA methods from your account. We recommend keeping 2FA enabled to ' \
+              'protect your account.')],
+            modal_title: _('Disabled two-factor authentication (2FA)?'),
+            path: profile_two_factor_auth_path,
+            password_required: 'false'
+          }))
+        end
+      end
+
+      context 'when users has passkeys' do
+        it 'returns data to disable two-factor authentication' do
+          expect(helper.disable_two_factor_authentication_data(false, true)).to match(a_hash_including({
+            messages: [_('This will delete all 2FA methods from your account. We recommend keeping 2FA enabled to ' \
+              'protect your account.'),
+              _('Your passkey will only be eligible for passwordless sign-in.')]
+          }))
+        end
       end
     end
   end
@@ -729,8 +744,8 @@ RSpec.describe AuthHelper, feature_category: :system_access do
       it 'returns data to delete the OTP authenticator' do
         expect(helper.codes_two_factor_authentication_data(true)).to match(a_hash_including({
           button_text: _('Regenerate recovery codes'),
-          message: _('Are you sure you want to regenerate recovery codes? ' \
-            'Enter your password to continue.'),
+          messages: [_('Are you sure you want to regenerate recovery codes?'),
+            _('Enter your password to continue.')],
           method: 'post',
           path: codes_profile_two_factor_auth_path,
           password_required: 'true',
@@ -744,7 +759,7 @@ RSpec.describe AuthHelper, feature_category: :system_access do
       it 'returns data to delete the OTP authenticator' do
         expect(helper.codes_two_factor_authentication_data(false)).to match(a_hash_including({
           button_text: _('Regenerate recovery codes'),
-          message: _('Are you sure you want to regenerate recovery codes?'),
+          messages: [_('Are you sure you want to regenerate recovery codes?')],
           method: 'post',
           path: codes_profile_two_factor_auth_path,
           password_required: 'false',
@@ -792,49 +807,18 @@ RSpec.describe AuthHelper, feature_category: :system_access do
     let(:current_user) { instance_double('User', flipper_id: '1') }
 
     let(:oidc_setting_with_admin_mode_step_up) do
-      GitlabSettings::Options.new(
-        name: "openid_connect",
-        step_up_auth: {
-          admin_mode: {
-            params: {
-              claims: { acr_values: 'gold' },
-              prompt: 'login'
-            }
-          }
-        }
-      )
+      build(:omniauth_provider_config,
+        step_up_auth_params: { claims: { acr_values: 'gold' }, prompt: 'login' })
     end
 
     let(:oidc_setting_with_namespace_step_up) do
-      GitlabSettings::Options.new(
-        name: "openid_connect",
-        step_up_auth: {
-          namespace: {
-            params: {
-              claims: { acr_values: 'silver' },
-              prompt: 'login'
-            }
-          }
-        }
-      )
+      build(:omniauth_provider_config, :with_namespace_scope,
+        step_up_auth_params: { claims: { acr_values: 'silver' }, prompt: 'login' })
     end
 
-    let(:oidc_setting_without_step_up_params) do
-      GitlabSettings::Options.new(
-        name: "openid_connect",
-        step_up_auth: {
-          admin_mode: {
-            id_token: {
-              required: { acr: 'gold' }
-            }
-          }
-        }
-      )
-    end
+    let(:oidc_setting_without_step_up_params) { build(:omniauth_provider_config, step_up_auth_params: nil) }
 
-    let(:oidc_setting_without_step_up) do
-      GitlabSettings::Options.new(name: "openid_connect")
-    end
+    let(:oidc_setting_without_step_up) { build(:omniauth_provider_config, :no_step_up_auth) }
 
     subject { helper.step_up_auth_params(provider_name, scope) }
 
@@ -935,28 +919,6 @@ RSpec.describe AuthHelper, feature_category: :system_access do
         stub_application_setting(password_authentication_enabled_for_web: allow_password_authentication_for_web)
 
         expect(current_password_required).to eq(expectation)
-      end
-    end
-  end
-
-  describe "#iam_oauth_authorize_url" do
-    context "with FF iam_svc_login disabled" do
-      before do
-        stub_feature_flags(iam_svc_login: false)
-      end
-
-      it "returns nil" do
-        expect(helper.iam_oauth_authorize_url(:google_oauth2)).to be_nil
-      end
-    end
-
-    context "with missing IAM URL" do
-      before do
-        allow(Gitlab.config.authn.iam_service).to receive(:url).and_return(nil)
-      end
-
-      it "returns nil" do
-        expect(helper.iam_oauth_authorize_url(:google_oauth2)).to be_nil
       end
     end
   end

@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Instance Kubernetes clusters (certificate-based) (deprecated)
 ---
 
@@ -24,7 +24,7 @@ across multiple projects.
 To view Kubernetes clusters for your instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Kubernetes**.
+1. In the left sidebar, select **Kubernetes**.
 
 ## Cluster precedence
 

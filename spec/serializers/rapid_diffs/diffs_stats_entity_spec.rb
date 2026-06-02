@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe RapidDiffs::DiffsStatsEntity, feature_category: :code_review_workflow do
   let(:merge_request) { create(:merge_request_with_diffs) } # rubocop:disable RSpec/FactoryBot/AvoidCreate -- Needed to create diffs
-  let(:diffs_resource) { merge_request.latest_diffs }
+  let(:diffs_resource) { merge_request.diffs }
   let(:options) do
     {
       email_path: 'email_format_path',
@@ -23,9 +23,20 @@ RSpec.describe RapidDiffs::DiffsStatsEntity, feature_category: :code_review_work
           diffs_stats: {
             added_lines: 118,
             removed_lines: 9,
-            diffs_count: 20
+            diffs_count: 20,
+            real_size: '20'
           }
         })
+    end
+
+    context 'when the diff collection overflows hard limits' do
+      before do
+        allow(diffs_resource).to receive(:real_size).and_return('20+')
+      end
+
+      it 'exposes real_size with a "+" suffix' do
+        expect(diffs_stats[:diffs_stats]).to include(real_size: '20+')
+      end
     end
 
     where(:safe_lines, :safe_files, :safe_bytes, :safe_limits, :expected_overflow) do

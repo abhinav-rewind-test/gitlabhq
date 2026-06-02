@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn about file path patterns, owners, comments, sections, and how rules are evaluated.
 title: Syntax of `CODEOWNERS` file
 ---
@@ -107,7 +107,7 @@ internal/README.md @user2
 Each Code Owner in the merge request widget is listed under a label.
 The following image shows `Default`, `Frontend`, and `Technical Writing` sections:
 
-![MR widget - Sectional Code Owners](img/sectional_code_owners_v17_4.png)
+![The merge request widget displaying Code Owners grouped by section.](img/sectional_code_owners_v17_4.png)
 
 For more section configuration options, see:
 
@@ -123,7 +123,7 @@ For protected branches only, they can:
 
 - Require approval (default).
 - Be optional (prefixed with `^`).
-- Require a specific number of approvals. For more information, see [Group inheritance and eligibility](advanced.md#group-inheritance-and-eligibility) and [Approvals shown as optional](troubleshooting.md#approvals-shown-as-optional).
+- Require a specific number of approvals. For more information, see [group inheritance and eligibility](advanced.md#group-inheritance-and-eligibility) and [approvals shown as optional](troubleshooting.md#approvals-shown-as-optional).
 - Include default owners.
 
 Examples:
@@ -201,7 +201,7 @@ In this example, the `[Go]` section is optional:
 
 The optional Code Owners section displays in merge requests under the description:
 
-![MR widget - Optional Code Owners sections](img/optional_code_owners_sections_v17_4.png)
+![The merge request widget displaying optional Code Owners sections.](img/optional_code_owners_sections_v17_4.png)
 
 If a section is duplicated in the file, and one of them is marked as optional and the other isn't, the section is required.
 
@@ -254,8 +254,8 @@ When referencing a role (`@@role`), the following rules apply:
 - Roles are not inclusive of higher roles. For example, specifying `@@developer` does not include
   users with Maintainer or Owner roles.
 
-For more complex scenarios involving group inheritance and eligibility,
-see [Group inheritance and eligibility](advanced.md#group-inheritance-and-eligibility).
+For more information about complex group inheritance and eligibility,
+see [group inheritance and eligibility](advanced.md#group-inheritance-and-eligibility).
 
 ## Add a role as a Code Owner
 
@@ -292,7 +292,7 @@ role as Code Owners for `file.md`:
 ## Add a group as a Code Owner
 
 You can set direct members of a group or subgroup as a Code Owner.
-For more information about group membership, see [Membership types](../members/_index.md#membership-types).
+For more information about group membership, see [membership types](../members/_index.md#membership-types).
 
 Prerequisites:
 
@@ -329,16 +329,18 @@ In this example:
 - The group `group-name` is listed under the `[Maintainers]` section.
 - The `group-name` contains the following direct members:
 
-  ![List of group members.](img/direct_group_members_v17_9.png)
+  ![The group members list showing users eligible for Code Owner status.](img/direct_group_members_v17_9.png)
 
 - In the merge request approval widget, the same direct members are listed as `Maintainers`:
 
-  ![Merge request maintainers.](img/merge_request_maintainers_v17_9.png)
+  ![The merge request approval widget listing the group members as Maintainers.](img/merge_request_maintainers_v17_9.png)
 
 > [!note]
-> When [Global SAML group memberships lock](../../group/saml_sso/group_sync.md#global-saml-group-memberships-lock) is enabled, you cannot set a group or subgroup as a Code Owner. For more information, see [Incompatibility with Global SAML group memberships lock](troubleshooting.md#incompatibility-with-global-group-memberships-locks).
+> When [global SAML group memberships lock](../../group/saml_sso/group_sync.md#global-saml-group-memberships-lock)
+> is enabled, you cannot set a group or subgroup as a Code Owner.
+> For more information, see [incompatibility with Global SAML group memberships lock](troubleshooting.md#incompatibility-with-global-group-memberships-locks).
 
-If you encounter issues, refer to [User not shown as possible approver](troubleshooting.md#user-not-shown-as-possible-approver).
+If you encounter issues, see [user not shown as possible approver](troubleshooting.md#user-not-shown-as-possible-approver).
 
 ## Path matching
 
@@ -502,7 +504,7 @@ and users.
 /path/to/entry.rb @group @group/subgroup @user
 ```
 
-For more information on adding groups as Code Owners, see [Add a group as a Code Owner](#add-a-group-as-a-code-owner).
+For more information about adding groups as Code Owners, see [add a group as a Code Owner](#add-a-group-as-a-code-owner).
 
 ## Related topics
 

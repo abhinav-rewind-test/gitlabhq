@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe API::Issues, feature_category: :team_planning do
   using RSpec::Parameterized::TableSyntax
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:project, reload: true) { create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, reporters: user) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be_with_reload(:project) { create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, reporters: user) }
   let_it_be(:private_mrs_project) do
     create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, merge_requests_access_level: ProjectFeature::PRIVATE, reporters: user)
   end
@@ -20,11 +20,10 @@ RSpec.describe API::Issues, feature_category: :team_planning do
   let_it_be(:assignee)    { create(:assignee) }
   let_it_be(:admin) { create(:user, :admin) }
 
-  let_it_be(:milestone) { create(:milestone, title: '1.0.0', project: project) }
+  let_it_be(:milestone, freeze: false) { create(:milestone, title: '1.0.0', project: project) }
   let_it_be(:empty_milestone) { create(:milestone, title: '2.0.0', project: project) }
-  let_it_be(:objective) { create(:issue, :objective, author: user, project: project) }
 
-  let_it_be(:closed_issue) do
+  let_it_be(:closed_issue, freeze: false) do
     create(
       :closed_issue,
       author: user,
@@ -1130,7 +1129,7 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       let_it_be(:current_user) { create(:user) }
 
       let_it_be(:group) { create(:group) }
-      let_it_be(:project) { create(:project, namespace: group, developers: [current_user]) }
+      let_it_be(:project, freeze: false) { create(:project, namespace: group, developers: [current_user]) }
 
       let_it_be(:restricted_issue) { create(:issue, project: project, assignees: [current_user]) }
       let_it_be(:unrestricted_issue) { create(:issue, project: project, assignees: [current_user]) }
@@ -1489,7 +1488,7 @@ RSpec.describe API::Issues, feature_category: :team_planning do
   end
 
   describe 'DELETE /projects/:id/issues/:issue_iid' do
-    let(:issue_for_deletion) { create(:issue, author: user, assignees: [user], project: project) }
+    let(:issue_for_deletion) { create(:issue, author: author, assignees: [user], project: project) }
 
     it 'rejects a non member from deleting an issue' do
       delete api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", non_member)
@@ -1497,7 +1496,9 @@ RSpec.describe API::Issues, feature_category: :team_planning do
     end
 
     it 'rejects a developer from deleting an issue' do
-      delete api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", author)
+      developer = create(:user, developer_of: project)
+
+      delete api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", developer)
       expect(response).to have_gitlab_http_status(:forbidden)
     end
 
@@ -1510,6 +1511,25 @@ RSpec.describe API::Issues, feature_category: :team_planning do
 
       it_behaves_like '412 response' do
         let(:request) { api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", owner) }
+      end
+    end
+
+    context 'when the user is also the author' do
+      let(:issue_for_deletion_author) { create(:user) }
+      let(:issue_for_deletion) { create(:issue, author: issue_for_deletion_author, project: project) }
+
+      it 'rejects a non member from deleting an issue' do
+        delete api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", issue_for_deletion_author)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+
+      it 'allows members to delete their own issues' do
+        project.add_guest(issue_for_deletion_author)
+
+        delete api("/projects/#{project.id}/issues/#{issue_for_deletion.iid}", issue_for_deletion_author)
+
+        expect(response).to have_gitlab_http_status(:no_content)
       end
     end
 
@@ -1561,7 +1581,7 @@ RSpec.describe API::Issues, feature_category: :team_planning do
 
   describe 'PUT /projects/:id/issues/:issue_iid/reorder' do
     let_it_be(:group) { create(:group) }
-    let_it_be(:project) { create(:project, group: group) }
+    let_it_be(:project, freeze: false) { create(:project, group: group) }
     let_it_be(:issue1) { create(:issue, project: project, relative_position: 10) }
     let_it_be(:issue2) { create(:issue, project: project, relative_position: 20) }
     let_it_be(:issue3) { create(:issue, project: project, relative_position: 30) }

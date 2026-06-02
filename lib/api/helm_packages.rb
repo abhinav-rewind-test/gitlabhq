@@ -132,7 +132,7 @@ module API
           requires :channel, type: String, desc: 'Helm channel', regexp: Gitlab::Regex.helm_channel_regex, documentation: { example: 'stable' }
         end
 
-        route_setting :authorization, permissions: :authorize_helm_chart, boundary_type: :project
+        route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
         post "api/:channel/charts/authorize" do
           authorize_workhorse!(
             subject: authorized_user_project,
@@ -170,9 +170,14 @@ module API
             file_name: PACKAGE_FILENAME
           }
 
-          chart_package_file = ::Packages::CreatePackageFileService.new(
+          result = ::Packages::Helm::CreatePackageFileService.new(
             package, chart_params.merge(build: current_authenticated_job)
           ).execute
+
+          forbidden!(result.message) if result.reason == :package_protected
+          bad_request!(result.message) if result.reason == :extraction_error
+
+          chart_package_file = result.payload[:package_file]
 
           track_package_event('push_package', :helm, project: authorized_user_project, namespace: authorized_user_project.namespace,
             property: 'i_package_helm_user')

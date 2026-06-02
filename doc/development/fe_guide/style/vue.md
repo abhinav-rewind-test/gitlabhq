@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Vue.js style guide
 ---
 
@@ -87,6 +87,19 @@ Check the [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules) for mor
    // good
    <my-component />
    ```
+
+## Component `name` property
+
+Every Vue component should have a `name` property. Use PascalCase derived from the filename.
+For example, `board_app.vue` becomes `name: 'BoardApp'`.
+
+For generic filenames like `app.vue` or `index.vue`, prefix with context from the directory path
+to create a unique name. For example, `admin/users/components/app.vue` becomes
+`name: 'AdminUsersApp'`.
+
+When an EE component shares a name with a CE component, add an `EE` suffix to the EE component
+name. For example, if both `app/` and `ee/app/` contain a `BranchSelector` component,
+the EE version should use `name: 'BranchSelectorEE'`.
 
 ## `<style>` tags
 
@@ -288,7 +301,6 @@ describe('MyComponent', () => {
    The exception here is when you wish to test component reactivity in some way.
    For example, you may want to test the output of a component when after a particular watcher has
    executed. Using `setProps` to test such behavior is okay.
-
 1. Avoid using [`setData`](https://v1.test-utils.vuejs.org/api/wrapper/#setdata) which sets the
    component's internal state and circumvents testing the actual I/O of the component.
    Instead, trigger events on the component's children or other side-effects to force state changes.

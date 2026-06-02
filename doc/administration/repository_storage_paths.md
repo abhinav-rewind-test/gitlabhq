@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: no
 title: Repository storage
 description: How GitLab stores repository data.
@@ -79,7 +79,7 @@ Administrators can look up a project's hashed path from its name or ID using:
 To look up a project's hash path in the **Admin** area:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Projects** and select the project.
+1. In the left sidebar, select **Overview** > **Projects** and select the project.
 1. Locate the **Relative path** field. The value is similar to:
 
    ```plaintext
@@ -316,7 +316,7 @@ LFS objects are also [S3-compatible](lfs/_index.md#storing-lfs-objects-in-remote
 After you [configure multiple repository storages](https://docs.gitlab.com/omnibus/settings/configuration/#store-git-data-in-an-alternative-directory), you can choose where new repositories are stored:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Repository**.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Repository storage**.
 1. Enter values in the **Storage nodes for new repositories** fields.
 1. Select **Save changes**.

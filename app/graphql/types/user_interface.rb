@@ -111,6 +111,9 @@ module Types
     field :contributed_projects,
       description: 'Projects the user has contributed to.',
       resolver: Resolvers::Projects::UserContributedProjectsResolver
+    field :events,
+      description: 'Activity events visible to the current user, most recent first.',
+      resolver: Resolvers::Users::EventsResolver
     field :namespace,
       type: Types::NamespaceType,
       null: true,
@@ -226,7 +229,7 @@ module Types
       type: ::GraphQL::Types::String,
       null: true,
       description: 'Who the user represents or works for.',
-      method: :user_detail_organization
+      method: :company
 
     field :job_title,
       type: ::GraphQL::Types::String,
@@ -292,3 +295,5 @@ module Types
     end
   end
 end
+
+Types::UserInterface.prepend_mod

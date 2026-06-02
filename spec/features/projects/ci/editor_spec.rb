@@ -65,19 +65,20 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
     end
   end
 
-  describe 'when there are no CI config file' do
+  describe 'when there are no CI config files' do
     before do
       visit project_ci_pipeline_editor_path(project, branch_name: branch_without_ci)
     end
 
     it 'renders the empty page', :aggregate_failures do
-      expect(page).to have_content 'Configure a pipeline to automate your builds, tests, and deployments'
-      expect(page).to have_selector '[data-testid="create-new-ci-button"]'
+      expect(page).to have_content 'Get up and running with GitLab CI/CD'
+      expect(page).to have_content 'Streamline your development process effortlessly with robust CI/CD pipelines.'
+      expect(page).to have_selector '[data-testid="browse-catalog-button"]'
     end
 
-    context 'when clicking on the create new CI button' do
+    context 'when clicking on the Start building button' do
       before do
-        click_button 'Configure pipeline'
+        click_button 'Start building'
       end
 
       it 'renders the source editor with default content', :aggregate_failures do
@@ -250,30 +251,12 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
       before do
         page.within('#source-editor-') do
           find('textarea').send_keys '123'
-          # It takes some time after sending keys for the vue
-          # component to update
-          sleep 1
         end
-      end
 
-      it 'user who tries to navigate away can cancel the action and keep their changes', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9336' do
-        click_link 'Pipelines'
-
-        page.driver.browser.switch_to.alert.dismiss
-
-        expect(page).to have_content('Pipeline editor')
-
-        page.within('#source-editor-') do
-          expect(page).to have_content("#{default_content}123")
-        end
-      end
-
-      it 'user who tries to navigate away can confirm the action and discard their change', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9336' do
-        click_link 'Pipelines'
-
-        page.driver.browser.switch_to.alert.accept
-
-        expect(page).not_to have_content('Pipeline editor')
+        # The source editor debounces input before emitting to the Vue model.
+        # Wait for the "Commit changes" button to enable as the signal that
+        # the typed change has propagated to hasUnsavedChanges.
+        find("[data-testid='commit-changes-button']:not([disabled])")
       end
 
       it 'user who creates a MR is taken to the merge request page without warnings' do

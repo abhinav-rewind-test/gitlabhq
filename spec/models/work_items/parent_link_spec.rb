@@ -8,6 +8,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
   describe 'associations' do
     it { is_expected.to belong_to(:work_item) }
     it { is_expected.to belong_to(:work_item_parent).class_name('WorkItem') }
+    it { is_expected.to belong_to(:namespace) }
   end
 
   describe 'validations' do
@@ -18,9 +19,9 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
     it { is_expected.to validate_uniqueness_of(:work_item) }
 
     describe 'hierarchy validations' do
-      let_it_be(:issue) { create(:work_item, project: project) }
-      let_it_be(:task1) { create(:work_item, :task, project: project) }
-      let_it_be(:task2) { build(:work_item, :task, project: project) }
+      let_it_be(:issue, freeze: false) { create(:work_item, project: project) }
+      let_it_be(:task1, freeze: false) { create(:work_item, :task, project: project) }
+      let_it_be(:task2, freeze: false) { build(:work_item, :task, project: project) }
 
       describe '#validate_hierarchy_restrictions' do
         it 'prevents invalid parent-child type combinations' do
@@ -30,53 +31,6 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
 
           expect(link).not_to be_valid
           expect(link.errors[:work_item]).to include("it's not allowed to add this type of parent item")
-        end
-      end
-
-      describe '#validate_depth' do
-        it_behaves_like 'validates hierarchy depth', :epic, 7
-        it_behaves_like 'validates hierarchy depth', :objective, 9
-
-        context 'with cross-type hierarchies (objective to key_result)' do
-          let_it_be(:objective1) { create(:work_item, :objective, project: project) }
-          let_it_be(:key_result) { create(:work_item, :key_result, project: project) }
-          let_it_be(:objective3) { create(:work_item, :objective, project: project) }
-
-          it 'validates maximum depth of 1 for key_results under objectives' do
-            create(:parent_link, work_item_parent: objective1, work_item: key_result)
-
-            key_result2 = create(:work_item, :key_result, project: project)
-            link = build(:parent_link, work_item_parent: key_result, work_item: key_result2)
-
-            expect(link).not_to be_valid
-          end
-        end
-      end
-
-      describe '#validate_cyclic_reference' do
-        let_it_be(:epic_a) { create(:work_item, :epic, project: project) }
-        let_it_be(:epic_b) { create(:work_item, :epic, project: project) }
-        let_it_be(:epic_c) { create(:work_item, :epic, project: project) }
-
-        before do
-          # Create a chain: epic_a -> epic_b -> epic_c
-          create(:parent_link, work_item_parent: epic_a, work_item: epic_b)
-          create(:parent_link, work_item_parent: epic_b, work_item: epic_c)
-        end
-
-        it 'is not valid if parent and child are same' do
-          link = build(:parent_link, work_item_parent: epic_a, work_item: epic_a)
-
-          expect(link).not_to be_valid
-          expect(link.errors[:work_item]).to include('is not allowed to point to itself')
-        end
-
-        it 'is not valid if child is already in ancestors' do
-          # epic_c is a descendant of epic_a, so epic_a cannot be a child of epic_c
-          link = build(:parent_link, work_item_parent: epic_c, work_item: epic_a)
-
-          expect(link).not_to be_valid
-          expect(link.errors[:work_item]).to include("it's already present in this item's hierarchy")
         end
       end
 
@@ -100,7 +54,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
 
         context 'when parent already exceeds maximum number of links' do
           let_it_be(:task3) { create(:work_item, :task, project: project) }
-          let_it_be(:link2) { create(:parent_link, work_item_parent: issue, work_item: task2) }
+          let_it_be(:link2, freeze: false) { create(:parent_link, work_item_parent: issue, work_item: task2) }
 
           it 'only invalidates new links' do
             link3 = build(:parent_link, work_item_parent: issue, work_item: task3)
@@ -116,7 +70,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
 
       describe '#check_existing_related_link' do
         shared_examples 'invalid link' do |link_factory|
-          let_it_be(:parent_link) { build(:parent_link, work_item_parent: issue, work_item: task1) }
+          let_it_be(:parent_link, freeze: false) { build(:parent_link, work_item_parent: issue, work_item: task1) }
           let(:error_msg) { 'cannot assign a linked work item as a parent' }
 
           context 'when creating new link' do
@@ -125,7 +79,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
                 create(link_factory, source_id: task1.id, target_id: issue.id)
               end
 
-              it do
+              it 'is invalid' do
                 expect(parent_link).not_to be_valid
                 expect(parent_link.errors[:work_item]).to include(error_msg)
               end
@@ -136,7 +90,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
                 create(link_factory, source_id: issue.id, target_id: task1.id)
               end
 
-              it do
+              it 'is invalid' do
                 expect(parent_link).not_to be_valid
                 expect(parent_link.errors[:work_item]).to include(error_msg)
               end
@@ -150,7 +104,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
                 parent_link.save!(validate: false)
               end
 
-              it do
+              it 'is valid' do
                 expect(parent_link).to be_valid
                 expect(parent_link.errors[:work_item]).not_to include(error_msg)
               end
@@ -162,7 +116,7 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
                 parent_link.save!(validate: false)
               end
 
-              it do
+              it 'is valid' do
                 expect(parent_link).to be_valid
                 expect(parent_link.errors[:work_item]).not_to include(error_msg)
               end
@@ -219,13 +173,13 @@ RSpec.describe WorkItems::ParentLink, feature_category: :portfolio_management do
 
   describe 'scopes' do
     let_it_be(:project) { create(:project) }
-    let_it_be(:issue1) { build(:work_item, project: project) }
-    let_it_be(:issue2) { build(:work_item, project: project) }
-    let_it_be(:issue3) { build(:work_item, project: project) }
-    let_it_be(:task1) { build(:work_item, :task, project: project) }
-    let_it_be(:task2) { build(:work_item, :task, project: project) }
+    let_it_be(:issue1) { create(:work_item, project: project) }
+    let_it_be(:issue2, freeze: false) { create(:work_item, project: project) }
+    let_it_be(:issue3) { create(:work_item, project: project) }
+    let_it_be(:task1, freeze: false) { create(:work_item, :task, project: project) }
+    let_it_be(:task2, freeze: false) { create(:work_item, :task, project: project) }
     let_it_be(:link1) { create(:parent_link, work_item_parent: issue1, work_item: task1) }
-    let_it_be(:link2) { create(:parent_link, work_item_parent: issue2, work_item: task2) }
+    let_it_be(:link2, freeze: false) { create(:parent_link, work_item_parent: issue2, work_item: task2) }
 
     describe 'for_parents' do
       it 'includes the correct records' do

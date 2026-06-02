@@ -40,12 +40,10 @@ tree:
       - design_versions:
         - actions:
           - :design # Duplicate export of issues.designs in order to link the record to both Issue and Action
-      - :work_item_description
       - :issue_assignees
       - :zoom_meetings
       - :sentry_issue
       - :award_emoji
-      - :work_item_type
     - snippets:
       - :award_emoji
       - notes:
@@ -708,15 +706,14 @@ included_attributes:
     - :autoclose_referenced_issues
     - :build_allow_git_fetch
     - :build_timeout
-    - :delete_error
     - :description
     - :disable_overriding_approvers_per_merge_request
     - :external_authorization_classification_label
-    - :has_external_issue_tracker
     - :has_external_wiki
     - :issues_template
     - :jobs_cache_index
     - :last_repository_check_failed
+    - :name
     - :merge_requests_author_approval
     - :merge_requests_disable_committers_approval
     - :merge_requests_ff_only_enabled
@@ -790,12 +787,6 @@ included_attributes:
     - :source_commit
     - :close_after_error_tracking_resolve
     - :close_auto_resolve_prometheus_alert
-  work_item_type:
-    - :base_type
-  work_item_description:
-    - :description
-    - :last_edited_at
-    - :last_edited_by_id
   note_diff_file:
     - :new_file
     - :renamed_file
@@ -808,7 +799,6 @@ included_attributes:
 # Do not include the following attributes for the models specified.
 excluded_attributes:
   project:
-    - :name
     - :path
     - :namespace_id
     - :project_namespace_id
@@ -874,6 +864,7 @@ excluded_attributes:
     - :enforce_auth_checks_on_uploads
     - :services
     - :exported_protected_branches
+    - :has_external_issue_tracker
     - :repository_size_limit
     - :external_webhook_token
     - :incident_management_issuable_escalation_statuses
@@ -1153,15 +1144,6 @@ excluded_attributes:
     - :roll_over
     - :description
     - :sequence
-  work_item_type:
-    - :id
-    - :cached_markdown_version
-    - :name
-    - :description
-    - :description_html
-    - :icon_name
-    - :namespace_id
-    - :updated_at
   current_status:
     - :id
     - :namespace_id
@@ -1208,6 +1190,7 @@ methods:
     - :list_type
   issues:
     - :state
+    - :exported_work_item_type
   note_diff_file:
     - :diff_export
 
@@ -1424,6 +1407,12 @@ ee:
     approval_rules:
       - :created_at
       - :updated_at
+    merge_access_levels:
+      - :member_role_id
+    push_access_levels:
+      - :member_role_id
+    unprotect_access_levels:
+      - :member_role_id
   methods:
     approval_project_rules_protected_branches:
       - :branch_name

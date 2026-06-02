@@ -239,38 +239,54 @@ RSpec.describe '1_settings', feature_category: :settings do
     end
   end
 
-  describe 'IAM Service configuration' do
-    let(:config) do
-      {
-        url: 'http://iam-service-host:9000',
-        audience: 'custom-audience'
-      }
-    end
-
+  describe 'IAM Auth Service configuration' do
     context 'with default configuration' do
       before do
-        stub_config(authn: { iam_service: {} })
+        stub_config(iam_auth_service: { http: {}, grpc: {} })
         load_settings
       end
 
-      it { expect(Settings.authn.iam_service.enabled).to be(false) }
-      it { expect(Settings.authn.iam_service.url).to eq('http://localhost:8084') }
-      it { expect(Settings.authn.iam_service.audience).to eq('gitlab-rails') }
+      it { expect(Settings.iam_auth_service.enabled).to be(false) }
+      it { expect(Settings.iam_auth_service.secret_file).to be_nil }
+      it { expect(Settings.iam_auth_service.http.host).to eq('localhost') }
+      it { expect(Settings.iam_auth_service.http.port).to eq(8084) }
+      it { expect(Settings.iam_auth_service.grpc.host).to eq('localhost') }
+      it { expect(Settings.iam_auth_service.grpc.port).to eq(8085) }
+      it { expect(Settings.iam_auth_service.jwt_audience).to eq('gitlab-rails') }
+      it { expect(Settings.iam_auth_service.jwt_issuer).to eq('http://localhost') }
     end
 
     context 'with custom configuration' do
       before do
-        stub_config(authn: { iam_service: { enabled: true }.merge(config) })
+        stub_config(iam_auth_service: {
+          enabled: true,
+          secret_file: '/etc/gitlab/iam-auth/.gitlab_iam_auth_secret',
+          http: { host: 'iam.example.com', port: 443 },
+          grpc: { host: 'iam.example.com', port: 443 },
+          jwt_audience: 'custom-audience',
+          jwt_issuer: 'https://iam.example.com'
+        })
         load_settings
       end
 
-      it { expect(Settings.authn.iam_service.enabled).to be(true) }
-      it { expect(Settings.authn.iam_service.url).to eq(config[:url]) }
-      it { expect(Settings.authn.iam_service.audience).to eq(config[:audience]) }
+      it { expect(Settings.iam_auth_service.enabled).to be(true) }
+      it { expect(Settings.iam_auth_service.secret_file).to eq('/etc/gitlab/iam-auth/.gitlab_iam_auth_secret') }
+      it { expect(Settings.iam_auth_service.http.host).to eq('iam.example.com') }
+      it { expect(Settings.iam_auth_service.http.port).to eq(443) }
+      it { expect(Settings.iam_auth_service.grpc.host).to eq('iam.example.com') }
+      it { expect(Settings.iam_auth_service.grpc.port).to eq(443) }
+      it { expect(Settings.iam_auth_service.jwt_audience).to eq('custom-audience') }
+      it { expect(Settings.iam_auth_service.jwt_issuer).to eq('https://iam.example.com') }
     end
   end
 
   describe 'cron jobs', unless: Gitlab.ee? do
+    around do |example|
+      Gitlab::SidekiqConfig::CronJobs.reset!
+      example.run
+      Gitlab::SidekiqConfig::CronJobs.reset!
+    end
+
     let(:expected_jobs) do
       %w[
         adjourned_group_deletion_worker
@@ -291,8 +307,10 @@ RSpec.describe '1_settings', feature_category: :settings do
         batched_background_migration_worker_ci_database
         batched_background_migration_worker_sec_database
         batched_git_ref_updates_cleanup_scheduler_worker
+        background_operation_environments_auto_delete
         bbo_users_delete_unconfirmed_secondary
         bulk_imports_stale_import_worker
+        cells_schedule_claims_verification_worker
         ci_archive_traces_cron_worker
         ci_catalog_resources_aggregate_last30_day_usage_worker
         ci_catalog_resources_cleanup_last_usages_worker
@@ -311,6 +329,7 @@ RSpec.describe '1_settings', feature_category: :settings do
         cleanup_dangling_debian_package_files_worker
         cleanup_dependency_proxy_worker
         cleanup_package_registry_worker
+        concurrency_limit_resume_worker
         container_expiration_policy_worker
         database_monitor_locked_tables_cron_worker
         deactivated_pages_deployments_delete_cron_worker
@@ -318,9 +337,7 @@ RSpec.describe '1_settings', feature_category: :settings do
         delete_expired_trigger_token_worker
         deploy_tokens_expiring_worker
         drop_timed_out_worker
-        environments_auto_delete_cron_worker
         environments_auto_stop_cron_worker
-        expire_build_artifacts_worker
         gitlab_export_prune_project_export_jobs_worker
         gitlab_import_import_file_cleanup_worker
         gitlab_service_ping_worker
@@ -343,6 +360,7 @@ RSpec.describe '1_settings', feature_category: :settings do
         merge_requests_process_scheduled_merge
         namespaces_process_outdated_namespace_descendants_cron_worker
         namespaces_prune_aggregation_schedules_worker
+        namespaces_stuck_transfers_cancel_cron_worker
         object_storage_delete_stale_direct_uploads_worker
         packages_cleanup_delete_orphaned_dependencies_worker
         pages_domain_removal_cron_worker
@@ -352,7 +370,6 @@ RSpec.describe '1_settings', feature_category: :settings do
         personal_access_tokens_expired_notification_worker
         personal_access_tokens_expiring_worker
         pipeline_schedule_worker
-        poll_interval
         postgres_dynamic_partitions_dropper
         postgres_dynamic_partitions_manager
         projects_schedule_refresh_build_artifacts_size_statistics_worker
@@ -379,14 +396,34 @@ RSpec.describe '1_settings', feature_category: :settings do
         users_create_statistics_worker
         users_deactivate_dormant_users_worker
         users_migrate_records_to_ghost_user_in_batches_worker
+        users_migrate_human_records_to_ghost_user_in_batches_worker
+        users_migrate_non_human_records_to_ghost_user_in_batches_worker
         user_status_cleanup_batch_worker
         version_version_check_cron
+        work_items_traversal_ids_healing_cron_worker
         x509_issuer_crl_check_worker
       ]
     end
 
     it 'configures the expected jobs' do
-      expect(Settings.cron_jobs.keys).to match_array(expected_jobs)
+      expect(Gitlab::SidekiqConfig.cron_jobs.keys).to match_array(expected_jobs)
+    end
+  end
+
+  describe 'cron_jobs poll_interval' do
+    it 'is nil by default' do
+      expect(Settings.cron_jobs['poll_interval']).to be_nil
+    end
+
+    context 'when GITLAB_CRON_JOBS_POLL_INTERVAL is set' do
+      before do
+        stub_env('GITLAB_CRON_JOBS_POLL_INTERVAL', '30')
+        load_settings
+      end
+
+      it 'is set from the environment variable' do
+        expect(Settings.cron_jobs['poll_interval']).to eq(30)
+      end
     end
   end
 end

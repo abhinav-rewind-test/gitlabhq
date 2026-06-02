@@ -90,6 +90,17 @@ RSpec.describe Ci::CreateCommitStatusService, :clean_gitlab_redis_cache, feature
             expect(job.pipeline_id).to be_present
             expect(job.pipeline_id).not_to eq(pipeline.id)
           end
+
+          context 'when ci_pipeline_archival_setting feature flag is disabled for the project' do
+            before do
+              stub_feature_flags(ci_pipeline_archival_setting: false)
+            end
+
+            it 'reuses the existing archived pipeline' do
+              expect(response).to be_success
+              expect(job.pipeline_id).to eq(pipeline.id)
+            end
+          end
         end
 
         context 'when the pipeline size is exceeded' do
@@ -108,6 +119,48 @@ RSpec.describe Ci::CreateCommitStatusService, :clean_gitlab_redis_cache, feature
             expect(job.pipeline_id).not_to eq(pipeline.id)
           end
         end
+      end
+    end
+
+    context 'when the existing pipeline has a config error' do
+      let_it_be(:pipeline) do
+        create(
+          :ci_pipeline,
+          :invalid_config_error,
+          project: project,
+          sha: commit.id,
+          ref: 'master',
+          created_at: 1.day.ago
+        )
+      end
+
+      let(:params) do
+        {
+          sha: sha,
+          state: 'success',
+          ref: 'master',
+          context: 'External',
+          target_url: 'https://example.com/external'
+        }
+      end
+
+      it 'creates the external commit status on a new pipeline and keeps the existing config-error pipeline failed',
+        :sidekiq_inline do
+        expect { response }
+          .to change { ::Ci::Pipeline.count }.by(1)
+          .and change { ::Ci::Stage.count }.by(1)
+          .and change { ::CommitStatus.count }.by(1)
+
+        expect(response).to be_success
+
+        new_pipeline = ::Ci::Pipeline.find(job.pipeline_id)
+
+        expect(new_pipeline.id).not_to eq(pipeline.id)
+        expect(new_pipeline.source).to eq('external')
+        expect(new_pipeline.status).to eq('success')
+
+        expect(pipeline.reload.status).to eq('failed')
+        expect(pipeline.failure_reason).to eq('config_error')
       end
     end
   end
@@ -426,6 +479,29 @@ RSpec.describe Ci::CreateCommitStatusService, :clean_gitlab_redis_cache, feature
         end
       end
 
+      context 'when the specified pipeline has configuration errors' do
+        let!(:other_pipeline) do
+          create(
+            :ci_pipeline,
+            :invalid_config_error,
+            project: project,
+            sha: commit.id,
+            ref: 'master'
+          )
+        end
+
+        it 'returns a bad request error' do
+          expect { response }
+            .to not_change { ::Ci::Pipeline.count }.from(2)
+            .and not_change { ::Ci::Stage.count }.from(0)
+            .and not_change { ::CommitStatus.count }.from(0)
+
+          expect(response).to be_error
+          expect(response.http_status).to eq(:bad_request)
+          expect(response.message).to eq("Cannot add status to pipeline with configuration errors")
+        end
+      end
+
       context 'when the specified pipeline has too many jobs' do
         before do
           plan_limits.update!(ci_pipeline_size: 1)
@@ -651,6 +727,46 @@ RSpec.describe Ci::CreateCommitStatusService, :clean_gitlab_redis_cache, feature
         .to change { ::Ci::Pipeline.count }.by(1)
         .and change { ::Ci::Stage.count }.by(1)
         .and change { ::CommitStatus.count }.by(2)
+    end
+  end
+
+  context 'for tag property' do
+    context 'when creating a commit status with a tag ref' do
+      let(:params) do
+        {
+          sha: sha,
+          state: 'success',
+          ref: 'v1.0.0'
+        }
+      end
+
+      before do
+        allow(project.repository).to receive(:tag_exists?).and_return(true)
+      end
+
+      it 'creates a tag pipeline with tag: true' do
+        expect(response).to be_success
+        expect(::Ci::Pipeline.last.tag).to be true
+      end
+    end
+
+    context 'when creating a commit status with a branch ref' do
+      let(:params) do
+        {
+          sha: sha,
+          state: 'success',
+          ref: 'main'
+        }
+      end
+
+      before do
+        allow(project.repository).to receive(:tag_exists?).and_return(false)
+      end
+
+      it 'creates a branch pipeline with tag: false' do
+        expect(response).to be_success
+        expect(::Ci::Pipeline.last.tag).to be false
+      end
     end
   end
 

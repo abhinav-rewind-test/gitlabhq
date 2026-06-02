@@ -5,7 +5,10 @@ require 'spec_helper'
 RSpec.describe 'Mailer previews', :with_trial_types, feature_category: :shared do
   # Setup needed for email previews
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :repository, :import_failed, group: group, import_last_error: 'some error') }
+  let_it_be(:project, freeze: false) do
+    create(:project, :repository, :import_failed, group: group, import_last_error: 'some error')
+  end
+
   let_it_be(:user) { create(:user) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
   let_it_be(:pipeline_schedule) { create(:ci_pipeline_schedule, :nightly, project: project, owner: user) }
@@ -17,6 +20,7 @@ RSpec.describe 'Mailer previews', :with_trial_types, feature_category: :shared d
   let_it_be(:key) { create(:key, user: user) }
   let_it_be(:gpg_key) { create(:gpg_key, user: user) }
   let_it_be(:bulk_import) { create(:bulk_import, :finished, :with_configuration) }
+  let_it_be(:offline_export) { create(:offline_export, :finished, :with_configuration) }
   let_it_be(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
   let_it_be(:source_user) do
     create(:import_source_user, :awaiting_approval, :with_reassigned_by_user, namespace: group, reassign_to_user: user)

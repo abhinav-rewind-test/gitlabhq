@@ -1,3 +1,6 @@
-import Vue from 'vue';
+import { observable } from '~/lib/utils/observable';
 
-export const staticBreadcrumbs = Vue.observable({ items: [] });
+export const staticBreadcrumbs = observable('static_breadcrumbs', {
+  items: [],
+  hasInjectedBreadcrumbs: false,
+});

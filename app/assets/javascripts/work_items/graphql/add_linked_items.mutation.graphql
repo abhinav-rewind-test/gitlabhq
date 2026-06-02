@@ -1,11 +1,23 @@
 #import "ee_else_ce/work_items/graphql/work_item.fragment.graphql"
-#import "./work_item_linked_items.fragment.graphql"
 
-mutation addLinkedItems($input: WorkItemAddLinkedItemsInput!) {
+mutation addLinkedItems(
+  $input: WorkItemAddLinkedItemsInput!
+  $useWorkItemFeatures: Boolean = false
+) {
   workItemAddLinkedItems(input: $input) {
     workItem {
       ...WorkItem
-      ...WorkItemLinkedItemsFragment
+      widgets {
+        ... on WorkItemWidgetLinkedItems {
+          type
+          linkedItems {
+            nodes {
+              linkId
+              linkType
+            }
+          }
+        }
+      }
     }
     errors
   }

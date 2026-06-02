@@ -28,6 +28,11 @@ export default {
       default: false,
     },
   },
+  data() {
+    return {
+      suppressTooltip: false,
+    };
+  },
   computed: {
     ...mapState(useFileTreeBrowserVisibility, [
       'fileTreeBrowserIsVisible',
@@ -40,9 +45,6 @@ export default {
     },
     shortcutsEnabled() {
       return !shouldDisableShortcuts();
-    },
-    showTooltip() {
-      return this.shortcutsEnabled && !this.isAnimating;
     },
     target() {
       return () => this.$refs.toggle?.$el;
@@ -64,6 +66,11 @@ export default {
     restoreToggleFocus() {
       this.$refs.toggle?.$el?.focus();
       this.clearRestoreFocusFlag();
+
+      this.suppressTooltip = true;
+      setTimeout(() => {
+        this.suppressTooltip = false;
+      }, 0);
     },
     onClickToggle() {
       this.handleFileTreeBrowserToggleClick();
@@ -90,23 +97,23 @@ export default {
     @click="onClickToggle"
   >
     <gl-tooltip
-      v-if="showTooltip"
-      custom-class="file-browser-toggle-tooltip"
+      v-if="!isAnimating && !suppressTooltip"
+      custom-class="gl-tooltip file-browser-toggle-tooltip"
       :target="target"
       placement="left"
       triggers="hover focus"
     >
       {{ toggleFileBrowserTitle }}
       <shortcut
-        class="gl-whitespace-nowrap"
+        v-if="shortcutsEnabled"
         :shortcuts="$options.TOGGLE_FILE_TREE_BROWSER_VISIBILITY.defaultKeys"
       />
     </gl-tooltip>
   </gl-button>
 </template>
 
-<style scoped>
+<style>
 .file-browser-toggle-tooltip .tooltip-inner {
-  max-width: 210px;
+  max-width: none;
 }
 </style>

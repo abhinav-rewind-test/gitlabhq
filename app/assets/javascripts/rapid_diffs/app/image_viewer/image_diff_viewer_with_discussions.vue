@@ -1,13 +1,12 @@
 <script>
 import ImageViewer from '~/rapid_diffs/app/image_viewer/image_viewer.vue';
 import DiffDiscussions from '~/rapid_diffs/app/discussions/diff_discussions.vue';
-import { useDiffDiscussions } from '~/rapid_diffs/stores/diff_discussions';
 import BaseImageDiffOverlay from '~/diffs/components/base_image_diff_overlay.vue';
 import NoteForm from '~/rapid_diffs/app/discussions/note_form.vue';
-import axios from '~/lib/utils/axios_utils';
 import { clearDraft } from '~/lib/utils/autosave';
 import { createAlert } from '~/alert';
-import { __ } from '~/locale';
+import { sprintf } from '~/locale';
+import { SOMETHING_WENT_WRONG, SAVING_THE_COMMENT_FAILED } from '~/diffs/i18n';
 
 export default {
   name: 'ImageDiffViewerWithDiscussions',
@@ -18,6 +17,7 @@ export default {
     ImageViewer,
   },
   inject: {
+    store: { type: Object },
     userPermissions: {
       type: Object,
     },
@@ -51,7 +51,7 @@ export default {
       return `${window.location.pathname}-image-${[this.oldPath || '-', this.newPath || '-'].join('-')}`;
     },
     discussions() {
-      return useDiffDiscussions().getImageDiscussions(this.oldPath, this.newPath);
+      return this.store.findAllImageDiscussionsForFile(this.oldPath, this.newPath);
     },
   },
   methods: {
@@ -60,30 +60,28 @@ export default {
     },
     async saveNote(noteBody) {
       try {
-        const {
-          data: { discussion },
-        } = await axios.post(this.endpoints.discussions, {
-          note: {
-            position: {
-              old_path: this.oldPath,
-              new_path: this.newPath,
-              position_type: 'image',
-              width: this.commentForm.width,
-              height: this.commentForm.height,
-              x: this.commentForm.x,
-              y: this.commentForm.y,
-            },
-            note: noteBody,
+        await this.store.createNewDiscussion({
+          position: {
+            old_path: this.oldPath,
+            new_path: this.newPath,
+            position_type: 'image',
+            width: this.commentForm.width,
+            height: this.commentForm.height,
+            x: this.commentForm.x,
+            y: this.commentForm.y,
           },
+          note: noteBody,
         });
         clearDraft(this.autosaveKey);
-        useDiffDiscussions().addDiscussion(discussion);
         this.commentForm = null;
-      } catch (error) {
+      } catch (e) {
+        const reason = e.response?.data?.errors;
+        const errorMessage = reason
+          ? sprintf(SAVING_THE_COMMENT_FAILED, { reason })
+          : SOMETHING_WENT_WRONG;
         createAlert({
-          message: __('Failed to submit your comment. Please try again.'),
+          message: errorMessage,
           parent: this.$refs.formRoot,
-          error,
         });
       }
     },

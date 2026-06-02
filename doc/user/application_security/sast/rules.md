@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Static Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: SAST rules
 ---
 
@@ -47,6 +47,8 @@ The GitLab Advanced SAST ruleset is not open source, and is not the same ruleset
 
 For details of which types of vulnerabilities GitLab Advanced SAST detects, see [Vulnerability detection criteria](gitlab_advanced_sast.md#vulnerability-detection-criteria).
 
+For a list of all rules used by GitLab Advanced SAST, see [GitLab Advanced SAST rules](glas_rules_docs/_index.md).
+
 ### Semgrep-based analyzer
 
 GitLab creates, maintains, and supports the rules that are used in the Semgrep-based GitLab SAST analyzer.
@@ -66,7 +68,7 @@ The rules for these scans are defined in the upstream projects for each scanner.
 
 GitLab updates rules regularly based on customer feedback and internal research.
 Rules are released as part of the container image for each analyzer.
-You automatically receive updated analyzers and rules unless you [manually pin analyzers to a specific version](_index.md#pinning-to-minor-image-version).
+You automatically receive updated analyzers and rules unless you [manually pin analyzers to a specific version](_index.md#pin-analyzer-image-version).
 
 Analyzers and their rules are updated [at least monthly](../detect/vulnerability_scanner_maintenance.md) if relevant updates are available.
 
@@ -101,7 +103,7 @@ If your customization would benefit other users, consider [reporting a problem t
 
 ### Coordinate rule rollouts
 
-To control the rollout of rule changes, you can [pin SAST analyzers to a specific version](_index.md#pinning-to-minor-image-version).
+To control the rollout of rule changes, you can [pin SAST analyzers to a specific version](_index.md#pin-analyzer-image-version).
 
 If you want to make these changes at the same time across multiple projects, consider setting the variables in:
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Admin Mode Logout', :js, feature_category: :system_access do
+RSpec.describe 'Admin mode logout', :js, feature_category: :system_access do
   include TermsHelper
   include UserLoginHelper
 
@@ -10,14 +10,13 @@ RSpec.describe 'Admin Mode Logout', :js, feature_category: :system_access do
   let(:current_organization) { user.organization }
 
   before do
-    gitlab_sign_in(user)
-    enable_admin_mode!(user, use_ui: true)
-    visit admin_root_path
+    sign_in(user)
+    enter_admin_mode(user)
   end
 
-  with_and_without_sign_in_form_vue do
-    it 'disable removes admin mode and redirects to root page' do
-      gitlab_disable_admin_mode
+  context 'when leaving the admin mode' do
+    it 'removes admin mode and redirects to root page' do
+      leave_admin_mode
 
       expect(page).to have_current_path root_path, ignore_query: true
 
@@ -26,19 +25,13 @@ RSpec.describe 'Admin Mode Logout', :js, feature_category: :system_access do
       expect(page).to have_link(href: new_admin_session_path)
     end
 
-    it 'disable shows flash notice' do
-      gitlab_disable_admin_mode
-
-      expect(page).to have_selector('[data-testid="alert-info"]', text: _('Admin mode disabled'))
-    end
-
     context 'on a read-only instance' do
       before do
         allow(Gitlab::Database).to receive(:read_only?).and_return(true)
       end
 
-      it 'disable removes admin mode and redirects to root page' do
-        gitlab_disable_admin_mode
+      it 'removes admin mode and redirects to root page' do
+        leave_admin_mode
 
         expect(page).to have_current_path root_path, ignore_query: true
 

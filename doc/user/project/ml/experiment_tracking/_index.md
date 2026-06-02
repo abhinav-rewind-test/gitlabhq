@@ -1,7 +1,7 @@
 ---
 stage: ModelOps
 group: MLOps
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Machine learning model experiments
 ---
 
@@ -61,10 +61,10 @@ on how to use GitLab as a backend for the MLflow Client.
 
 ## Explore model runs
 
-To list the current active experiments, either go to `https/-/ml/experiments` or:
+To list the current active experiments:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Analyze** > **Model experiments**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Analyze** > **Model experiments**.
 1. To display all runs that have been logged, along with their metrics, parameters, and metadata, select an experiment.
 1. To display details for a run, select **Details**.
 
@@ -84,8 +84,8 @@ When you run an experiment, GitLab logs certain related data, including its metr
 
 To view logged metrics:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Analyze** > **Model experiments**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Analyze** > **Model experiments**.
 1. Select the experiment you want to view.
 1. Select the **Performance** tab.
 

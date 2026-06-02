@@ -18,7 +18,12 @@ module MergeRequests
     end
 
     def hook_data(merge_request, action, old_rev: nil, old_associations: {}, system: false, system_action: nil)
-      hook_data = merge_request.to_hook_data(current_user, old_associations: old_associations, action: action)
+      # NOTE: actioned_at represents when the webhook action occurred.
+      #   Setting it to Time.current to capture when the webhook was fired for now, but we can consider allowing each service
+      #   to provide relevant timestamps to override this later if more precision is required (e.g., approved_at, merged_at, closed_at).
+      actioned_at = Time.current
+
+      hook_data = merge_request.to_hook_data(current_user, old_associations: old_associations, action: action, actioned_at: actioned_at)
 
       if old_rev && !Gitlab::Git.blank_ref?(old_rev)
         hook_data[:object_attributes][:oldrev] = old_rev
@@ -95,6 +100,7 @@ module MergeRequests
       set_reviewers_approved(merge_request, new_reviewers) if new_reviewers.any?
       set_first_reviewer_assigned_at_metrics(merge_request) if new_reviewers.any?
       trigger_user_merge_request_updated(merge_request)
+      publish_assigned_reviewers_event(merge_request, new_reviewers) if new_reviewers.any?
     end
 
     def cleanup_environments(merge_request)
@@ -178,7 +184,7 @@ module MergeRequests
     end
 
     def request_duo_code_review(merge_request)
-      # Overriden in EE
+      # Overridden in EE
     end
 
     def filter_params(merge_request)
@@ -294,6 +300,18 @@ module MergeRequests
       end
     end
 
+    def publish_assigned_reviewers_event(merge_request, new_reviewers)
+      # No consumers for this event yet. See here for more information
+      # See here: https://gitlab.com/gitlab-org/gitlab/-/work_items/599509
+
+      assigned_reviewers_event = AssignedReviewersEvent.build(
+        current_user: current_user,
+        merge_request: merge_request,
+        new_reviewers: new_reviewers
+      )
+      Gitlab::EventStore.publish(assigned_reviewers_event)
+    end
+
     def set_first_reviewer_assigned_at_metrics(merge_request)
       metrics = merge_request.metrics
       return unless metrics
@@ -323,11 +341,6 @@ module MergeRequests
 
       todo_service.merge_request_became_unmergeable(merge_request)
     end
-
-    def duo_code_review_bot
-      ::Users::Internal.duo_code_review_bot
-    end
-    strong_memoize_attr :duo_code_review_bot
 
     def invalidate_all_users_cache_count(merge_request)
       invalidate_cache_counts(merge_request, users: [*merge_request.assignees, *merge_request.reviewers, merge_request.author].uniq)

@@ -70,6 +70,7 @@ export default {
       default: null,
     },
   },
+  emits: ['select-project', 'set-date-range', 'set-predefined-date-range'],
   computed: {
     projectsQueryParams() {
       return {
@@ -114,11 +115,12 @@ export default {
   },
   methods: {
     onSelectPredefinedDateRange({ value, startDate, endDate }) {
-      this.$emit('setPredefinedDateRange', value);
-      this.$emit('setDateRange', { startDate, endDate });
+      this.$emit('set-predefined-date-range', value);
+      this.$emit('set-date-range', { startDate, endDate });
     },
+
     onSelectCustomDateRange() {
-      this.$emit('setPredefinedDateRange', DATE_RANGE_CUSTOM_VALUE);
+      this.$emit('set-predefined-date-range', DATE_RANGE_CUSTOM_VALUE);
     },
   },
   multiProjectSelect: true,
@@ -147,7 +149,7 @@ export default {
         :query-params="projectsQueryParams"
         :multi-select="$options.multiProjectSelect"
         :default-projects="selectedProjects"
-        @selected="$emit('selectProject', $event)"
+        @selected="$emit('select-project', $event)"
       />
       <div
         v-if="shouldShowDateRangeFilters"
@@ -161,7 +163,7 @@ export default {
           :tooltip="maxDateRangeTooltip"
           :include-custom-date-range-option="hasDateRangeFilter"
           @selected="onSelectPredefinedDateRange"
-          @customDateRangeSelected="onSelectCustomDateRange"
+          @custom-date-range-selected="onSelectCustomDateRange"
         />
         <date-range
           v-if="shouldShowDateRangePicker"
@@ -172,7 +174,7 @@ export default {
           :max-date-range="$options.maxDateRange"
           include-selected-date
           class="js-daterange-picker"
-          @change="$emit('setDateRange', $event)"
+          @change="$emit('set-date-range', $event)"
         />
       </div>
     </div>

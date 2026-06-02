@@ -46,15 +46,6 @@ RSpec.describe Banzai::Filter::MarkdownEngines::GlfmMarkdown, feature_category: 
     expect(engine.render('`code`')).to eq expected
   end
 
-  it 'turns on minimal markdown options' do
-    engine = described_class.new({ minimum_markdown: true })
-    expected = <<~HTML
-      <p><a href="http://example.com">http://example.com</a> <em>emphasis</em> $x + y$</p>
-    HTML
-
-    expect(engine.render('http://example.com _emphasis_ $x + y$')).to eq expected
-  end
-
   describe 'placeholder detection' do
     let_it_be(:project) { create(:project) }
     let_it_be(:group_project) { create(:project, :in_group) }
@@ -107,6 +98,29 @@ RSpec.describe Banzai::Filter::MarkdownEngines::GlfmMarkdown, feature_category: 
       HTML
 
       expect(engine.render('%{test}')).to eq expected
+    end
+  end
+
+  describe 'input encoding' do
+    let(:engine) { described_class.new({ no_sourcepos: true }) }
+
+    it 'renders UTF-8 input' do
+      expect(engine.render('hello')).to include('hello')
+    end
+
+    it 'renders US-ASCII input' do
+      text = 'hello'.encode(Encoding::US_ASCII)
+      expect(engine.render(text)).to include('hello')
+    end
+
+    it 'renders Shift_JIS input' do
+      text = 'こんにちは'.encode(Encoding::Shift_JIS)
+      expect(engine.render(text)).to include('こんにちは')
+    end
+
+    it 'raises on invalid encoding' do
+      text = (+"\xFF\xFE").force_encoding(Encoding::Shift_JIS)
+      expect { engine.render(text) }.to raise_error(Encoding::InvalidByteSequenceError)
     end
   end
 

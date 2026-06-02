@@ -1,9 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab.comの設定
-description: インスタンスの設定。
+description: GitLab.comインスタンスの構成。
 ---
 
 {{< details >}}
@@ -19,7 +19,7 @@ description: インスタンスの設定。
 
 ## アカウントと制限の設定 {#account-and-limit-settings}
 
-GitLab.comでは、これらのアカウント制限を使用します。設定がリストにない場合、デフォルト値は[GitLab Self-Managedインスタンスと同じ](../../administration/settings/account_and_limit_settings.md)です:
+GitLab.comでは、これらのアカウント制限を使用します。設定がリストにない場合、デフォルト値は[GitLab Self-Managedインスタンスと同じ](../../administration/settings/account_and_limit_settings.md)です。
 
 | 設定                                                                                                                                                                                                            | GitLab.comのデフォルト |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|
@@ -32,20 +32,17 @@ GitLab.comでは、これらのアカウント制限を使用します。設定�
 | [インポートされたアーカイブの最大解凍ファイルサイズ](../../administration/settings/import_and_export_settings.md#maximum-decompressed-file-size-for-imported-archives)                                           | 25 GiB             |
 | [最大プッシュサイズ](../../administration/settings/account_and_limit_settings.md#max-push-size)                                                                                                                     | 5 GiB              |
 
-リポジトリのサイズ制限に近い場合、または制限を超えている場合は、次のいずれかを実行できます:
+リポジトリのサイズ制限に近い場合、または制限を超えている場合は、次のいずれかを実行できます。
 
 - [Gitでリポジトリのサイズを縮小する](../project/repository/repository_size.md#methods-to-reduce-repository-size)。
 - [ストレージを追加購入する](https://about.gitlab.com/pricing/licensing-faq/#can-i-buy-more-storage)。
 
-{{< alert type="note" >}}
-
-`git push`とGitLabプロジェクトのインポートは、Cloudflareを介したリクエストごとに5 GiBに制限されています。ファイルアップロード以外のインポートは、この制限の影響を受けません。リポジトリの制限は、パブリックプロジェクトとプライベートプロジェクトの両方に適用されます。
-
-{{< /alert >}}
+> [!note]
+> `git push`およびGitLabプロジェクトのインポートは、Cloudflare経由のリクエストごとに5 GiBに制限されています。ファイルアップロード以外のインポートは、この制限の影響を受けません。リポジトリの制限は、パブリックプロジェクトとプライベートプロジェクトの両方に適用されます。
 
 ## バックアップ {#backups}
 
-GitLab.comでプロジェクト全体をバックアップするには、次のいずれかの方法でエクスポートできます:
+GitLab.comでプロジェクト全体をバックアップするには、次のいずれかの方法でエクスポートできます。
 
 - [UI経由](../project/settings/import_export.md)。
 - [API経由](../../api/project_import_export.md#schedule-an-export)。APIを使用して、エクスポートをAmazon S3などのストレージプラットフォームにプログラムでアップロードすることもできます。
@@ -56,7 +53,7 @@ GitLab.comでプロジェクト全体をバックアップするには、次の�
 
 ## CI/CD {#cicd}
 
-GitLab.comでは、これらの[GitLab CI/CD](../../ci/_index.md)設定を使用します。ここに記載されていない設定または機能の制限はすべて、関連ドキュメントに記載されているデフォルトを使用しています:
+GitLab.comでは、これらの[GitLab CI/CD](../../ci/_index.md)設定を使用します。ここに記載されていない設定または機能の制限はすべて、関連ドキュメントに記載されているデフォルトを使用しています。
 
 | 設定                                                                          | GitLab.com                                                                                                 | デフォルト（GitLab Self-Managed） |
 |----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|------------------------|
@@ -64,7 +61,7 @@ GitLab.comでは、これらの[GitLab CI/CD](../../ci/_index.md)設定を使用
 | アーティファクトの[有効期限](../../ci/yaml/_index.md#artifactsexpire_in)               | 特に指定がない限り30日間                                                                         | [アーティファクトのデフォルトの有効期限](../../administration/settings/continuous_integration.md#set-default-artifacts-expiration)を参照してください。2020年6月22日より前に作成されたアーティファクトには、有効期限はありません。 |
 | スケジュールされたパイプラインCron                                                          | `*/5 * * * *`                                                                                              | [パイプラインスケジュールの詳細設定](../../administration/cicd/_index.md#change-maximum-scheduled-pipeline-frequency)を参照してください。 |
 | パイプライン毎の最大ジョブ数                                                | Freeプランの場合は`500`、すべてのトライアルプランの場合は`1000`、Premiumの場合は`1500`、Ultimateの場合は`2000`              | [パイプライン毎の最大ジョブ数](../../administration/instance_limits.md#maximum-number-of-jobs-in-a-pipeline)を参照してください。 |
-| アクティブなパイプラインの最大ジョブ数                                                 | Freeプランの場合は`500`、すべてのトライアルプランの場合は`1000`、Premiumの場合は`20000`、Ultimateの場合は`100000`           | [アクティブなパイプライン内のジョブ数](../../administration/instance_limits.md#number-of-jobs-in-active-pipelines)を参照してください。 |
+| アクティブなパイプラインの最大ジョブ数                                                 | Freeプランの場合は`500`、すべてのトライアルプランの場合は`1000`、Premiumの場合は`20000`、Ultimateの場合は`60000`            | [アクティブなパイプライン内のジョブ数](../../administration/instance_limits.md#number-of-jobs-in-active-pipelines)を参照してください。 |
 | プロジェクトに対するCI/CDサブスクリプションの最大数                                         | `2`                                                                                                        | [プロジェクトに対するCI/CDサブスクリプションの数](../../administration/instance_limits.md#number-of-cicd-subscriptions-to-a-project)を参照してください。 |
 | プロジェクト内のパイプライントリガーの最大数                                 | `25000`                                                                                                    | [パイプライントリガー数を制限する](../../administration/instance_limits.md#limit-the-number-of-pipeline-triggers)を参照してください。 |
 | プロジェクト内のパイプラインスケジュールの最大数                                           | Freeプランの場合は`10`、すべての有料プランの場合は`50`                                                                | [パイプラインスケジュール数](../../administration/instance_limits.md#number-of-pipeline-schedules)を参照してください。 |
@@ -87,10 +84,10 @@ GitLab.comでは、これらの[GitLab CI/CD](../../ci/_index.md)設定を使用
 | CDN IPアドレス                         | `34.149.22.116`                  |                        |
 | 認証トークンの有効期間（分） | `15`                             | [コンテナレジストリトークンの有効期間の延長](../../administration/packages/container_registry.md#increase-token-duration)を参照してください。 |
 
-GitLabコンテナレジストリを使用するには、Dockerクライアントが以下にアクセスできる必要があります:
+GitLabコンテナレジストリを使用するには、Dockerクライアントが以下にアクセスできる必要があります。
 
 - 認証用のレジストリエンドポイントとGitLab.com
-- イメージをダウンロードするためのGoogle Cloud StorageまたはGoogle Cloud Content Delivery Network
+- Google Cloud Storage（[Googleがインターネットユーザーに提供するIP範囲](https://knowledge.workspace.google.com/admin/security/obtain-google-ip-address-ranges)を参照）またはGoogle Cloud Content Delivery Networkを使用して画像をダウンロードします。
 
 GitLab.comはCloudflareによって保護されています。GitLab.comへの受信接続については、CloudflareのCIDRブロック（[IPv4](https://www.cloudflare.com/ips-v4/)および[IPv6](https://www.cloudflare.com/ips-v6/)）を許可する必要がある場合があります。
 
@@ -112,14 +109,14 @@ GitLab Self-Managedでは、[差分の制限を変更できます](../../adminis
 
 ### 確認設定 {#confirmation-settings}
 
-GitLab.comでは、次のメール確認設定が使用されます:
+GitLab.comでは、次のメール確認設定が使用されます。
 
 - [`email_confirmation_setting`](../../administration/settings/sign_up_restrictions.md#confirm-user-email)は**ハード**に設定されています。
 - [`unconfirmed_users_delete_after_days`](../../administration/moderate_users.md#automatically-delete-unconfirmed-users)は3日に設定されています。
 
 ### IPアドレス {#ip-addresses}
 
-GitLab.comは、`mg.gitlab.com`ドメインからメールを送信するために[Mailgun](https://www.mailgun.com/)を使用しており、独自の専用IPアドレスを持っています:
+GitLab.comは、`mg.gitlab.com`ドメインからメールを送信するために[Mailgun](https://www.mailgun.com/)を使用しており、独自の専用IPアドレスを持っています。
 
 - `23.253.183.236`
 - `69.72.35.190`
@@ -153,14 +150,14 @@ GitLab.comには、メールアドレス`contact-project+%{key}@incoming.gitlab.
 
 ## GitLab Pages {#gitlab-pages}
 
-[GitLab Pages](../project/pages/_index.md)の一部の設定は、[GitLab Self-Managed](../../administration/pages/_index.md)のデフォルトとは異なります:
+[GitLab Pages](../project/pages/_index.md)の一部の設定は、[GitLab Self-Managed](../../administration/pages/_index.md)のデフォルトとは異なります。
 
 | 設定                                                | GitLab.com |
 |--------------------------------------------------------|------------|
 | ドメイン名                                            | `gitlab.io` |
 | IPアドレス                                             | `35.185.44.232` |
-| カスタムドメインのサポート                             | {{< icon name="check-circle" >}}あり |
-| TLS証明書のサポート                           | {{< icon name="check-circle" >}}あり |
+| カスタムドメインのサポート                             | {{< yes >}} |
+| TLS証明書のサポート                           | {{< yes >}} |
 | サイトの最大サイズ                                      | 1 GB       |
 | GitLab Pages Webサイトごとのカスタムドメインの数 | 150        |
 
@@ -180,14 +177,14 @@ GitLab.comでは、GitLab Enterprise EditionのLinuxパッケージのインス�
 
 ### Elasticクラスター {#elastic-cluster}
 
-ElasticsearchとKibanaをモニタリングソリューションの一部として使用しています:
+ElasticsearchとKibanaをモニタリングソリューションの一部として使用しています。
 
 - [`gitlab-cookbooks` / `gitlab-elk` · GitLab](https://gitlab.com/gitlab-cookbooks/gitlab-elk)
 - [`gitlab-cookbooks` / `gitlab_elasticsearch` · GitLab](https://gitlab.com/gitlab-cookbooks/gitlab_elasticsearch)
 
 ### Fluentd {#fluentd}
 
-Fluentdを使用してGitLab logを統合しています: 
+Fluentdを使用してGitLabログを統合しています: 
 
 - [`gitlab-cookbooks` / `gitlab_fluentd` · GitLab](https://gitlab.com/gitlab-cookbooks/gitlab_fluentd)
 
@@ -205,7 +202,7 @@ Fluentdを使用してGitLab logを統合しています:
 
 ### Prometheus {#prometheus}
 
-Prometheusはモニタリングスタックを完了します:
+Prometheusはモニタリングスタックを完了します。
 
 - [`gitlab-cookbooks` / `gitlab-prometheus` · GitLab](https://gitlab.com/gitlab-cookbooks/gitlab-prometheus)
 
@@ -215,15 +212,15 @@ Prometheusはモニタリングスタックを完了します:
 
 - [`gitlab-cookbooks` / `gitlab-sentry` · GitLab](https://gitlab.com/gitlab-cookbooks/gitlab-sentry)
 
-## GitLabでホストされるRunner {#gitlab-hosted-runners}
+## GitLabホストRunner {#gitlab-hosted-runners}
 
 GitLabでホストされるRunnerを使用して、GitLab.comおよびGitLab DedicatedでCI/CDジョブを実行し、さまざまな環境でアプリケーションをシームレスにビルド、テスト、デプロイできます。
 
-詳細については、[GitLabでホストされるRunner](../../ci/runners/_index.md)を参照してください。
+詳細については、[GitLabホストRunner](../../ci/runners/_index.md)を参照してください。
 
 ## ホスト名リスト {#hostname-list}
 
-ローカルHTTP(S)プロキシまたはエンドユーザーのコンピューターを管理するその他のWebブロックソフトウェアで許可リストを設定する際は、次のホスト名を追加してください。GitLab.comのPagesは、次のホスト名からコンテンツを読み込みます:
+ローカルHTTP(S)プロキシまたはエンドユーザーのコンピューターを管理するその他のWebブロックソフトウェアで許可リストを設定する際は、次のホスト名を追加してください。GitLab.comのPagesは、次のホスト名からコンテンツを読み込みます。
 
 - `gitlab.com`
 - `*.gitlab.com`
@@ -233,9 +230,9 @@ GitLabでホストされるRunnerを使用して、GitLab.comおよびGitLab Ded
 
 `docs.gitlab.com`および`about.gitlab.com`経由で提供されるドキュメントおよびGitLab企業ページも、一般的なパブリックCDNホスト名から特定のページコンテンツを直接読み込みます。
 
-### コンテナレジストリホスト名リスト {#container-registry-hostname-list}
+### コンテナレジストリのホスト名リスト {#container-registry-hostname-list}
 
-`registry.gitlab.com`からイメージをプルする場合は、これらのホスト名を許可リストに追加してください:
+`registry.gitlab.com`から画像をプルする場合、これらの追加のホスト名を許可リストに追加します:
 
 - `*.storage.googleapis.com`
 - `*.cdn.registry.gitlab-static.net`
@@ -246,14 +243,14 @@ GitLab.comでは、GitLabへのデータのインポートを制限する設定�
 
 ### デフォルトのインポートソース {#default-import-sources}
 
-デフォルトで使用できる[インポートソース](../project/import/_index.md#supported-import-sources)は、使用するGitLabによって異なります:
+[インポート元](../import/_index.md)（移行ツール）は、使用するGitLabの種類によってデフォルトで異なります:
 
 - GitLab.com: デフォルトでは、使用可能なすべてのインポートソースが有効になっています。
 - GitLab Self-Managed: デフォルトでは、インポートソースは有効になっていないため、[有効](../../administration/settings/import_and_export_settings.md#configure-allowed-import-sources)にする必要があります。
 
 ### インポート時のプレースホルダユーザー制限 {#import-placeholder-user-limits}
 
-GitLab.comへのインポートでは、各トップレベルネームスペースの[プレースホルダユーザー](../project/import/_index.md#placeholder-users)数が制限されます。制限は、プランとシート数によって異なります。詳細については、[GitLab.comのプレースホルダーユーザー制限の表](../project/import/_index.md#placeholder-user-limits)を参照してください。
+GitLab.comへのインポートでは、各トップレベルネームスペースの[プレースホルダユーザー](../import/mapping.md#placeholder-users)数が制限されます。制限は、プランとシート数によって異なります。詳細については、[GitLab.comのプレースホルダーユーザー制限の表](../import/mapping.md#placeholder-user-limits)を参照してください。
 
 ## IP範囲 {#ip-range}
 
@@ -261,7 +258,7 @@ GitLab.comは、Web/APIフリートからのトラフィックにIP範囲`34.74.
 
 - 受信接続 - GitLab.comはCloudflareによって保護されています。GitLab.comへの受信接続については、CloudflareのCIDRブロック（[IPv4](https://www.cloudflare.com/ips-v4/)および[IPv6](https://www.cloudflare.com/ips-v6/)）を許可してください。
 
-- CI/CD Runnerからの送信接続 - CI/CD Runnerからの送信接続用の静的なIPアドレスは用意されていません。ただし、次のガイドラインが役立ちます:
+- CI/CD Runnerからの送信接続 - CI/CD Runnerからの送信接続用の静的なIPアドレスは用意されていません。ただし、次のガイドラインが役立ちます。
   - Linux GPU対応およびLinux Arm64 Runnerは、Google Cloudの`us-central1`にデプロイされます。
   - その他のGitLab.comインスタンスRunnerは、Google Cloudの`us-east1`にデプロイされます。
   - macOS Runnerは、`us-east-1`リージョンのAWSでホストされ、RunnerマネージャーはGoogle Cloudでホストされます。
@@ -279,7 +276,7 @@ IPベースのファイアウォールを設定するには、[AWS IPアドレ�
 
 {{< /history >}}
 
-マージリクエストでは、次の最大数が適用されます:
+マージリクエストでは、次の最大数が適用されます。
 
 - 担当者の最大数: 200
 - レビュアーの最大数: 200
@@ -293,11 +290,8 @@ IPベースのファイアウォールを設定するには、[AWS IPアドレ�
 
 {{< /history >}}
 
-{{< alert type="flag" >}}
-
-この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。
-
-{{< /alert >}}
+> [!flag]
+> この機能の利用は機能フラグによって制御されています。詳細については、履歴を参照してください。
 
 GitLabでは、各マージリクエストを1,000件の差分[バージョン](../project/merge_requests/versions.md)に制限しています。この制限に達したマージリクエストは、それ以上更新できません。代わりに、影響を受けたマージリクエストを完了し、新しいマージリクエストを作成してください。
 
@@ -309,17 +303,14 @@ GitLabでは、各マージリクエストを1,000件の差分[バージョン](
 
 {{< /history >}}
 
-{{< alert type="flag" >}}
-
-この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。
-
-{{< /alert >}}
+> [!flag]
+> この機能の利用は機能フラグによって制御されています。詳細については、履歴を参照してください。
 
 GitLabでは、各マージリクエストが1,000,000件の差分コミットに制限されています。この制限に達したマージリクエストは、それ以上更新できません。代わりに、影響を受けたマージリクエストを完了し、新しいマージリクエストを作成してください。
 
 ## パスワードの要件 {#password-requirements}
 
-GitLab.comでは、新規アカウントおよびパスワード変更時のパスワードについて、次の要件を設けています:
+GitLab.comでは、新規アカウントおよびパスワード変更時のパスワードについて、次の要件を設けています。
 
 - 最小文字数8文字。
 - 最大文字数128文字。
@@ -329,8 +320,8 @@ GitLab.comでは、新規アカウントおよびパスワード変更時のパ�
 
 {{< history >}}
 
-- [導入](https://gitlab.com/gitlab-org/gitlab/-/issues/506673)されたGitLab 18.0。
-- GitLab 18.5でGitLab SaaS管理者例外が[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/560840)されました。
+- [GitLab](https://gitlab.com/gitlab-org/gitlab/-/issues/506673) 18.0で導入
+- [GitLab SaaS](https://gitlab.com/gitlab-org/gitlab/-/issues/560840)管理者の例外をGitLab 18.5で導入
 
 {{< /history >}}
 
@@ -374,7 +365,7 @@ GitLab.comでは、[休止プロジェクトの削除](../../administration/dorm
 
 ## パッケージレジストリの制限 {#package-registry-limits}
 
-[GitLabパッケージレジストリ](../packages/package_registry/_index.md)にアップロードされるパッケージの[最大ファイルサイズ](../../administration/instance_limits.md#file-size-limits)は、形式によって異なります:
+[GitLabパッケージレジストリ](../packages/package_registry/_index.md)にアップロードされるパッケージの[最大ファイルサイズ](../../administration/instance_limits.md#file-size-limits)は、形式によって異なります。
 
 | パッケージの種類           | GitLab.com                         |
 |------------------------|------------------------------------|
@@ -394,57 +385,54 @@ GitLab.comでは、[Pumaリクエストタイムアウト](../../administration/
 
 ## GitLab.comのレート制限 {#rate-limits-on-gitlabcom}
 
-{{< alert type="note" >}}
-
-管理者ドキュメントについては、[レート制限](../../security/rate_limits.md)を参照してください。
-
-{{< /alert >}}
+> [!note]
+> 管理者のドキュメントについては、[レート制限](../../security/rate_limits.md)を参照してください。
 
 リクエストがレート制限されている場合、GitLabは`429`ステータスコードで応答します。クライアントは、リクエストを再度試行する前に待機する必要があります。この応答には、[レート制限の応答](#rate-limiting-responses)で詳しく説明されている情報ヘッダーも含まれる場合があります。プロジェクト、グループ、およびユーザーAPIのレート制限レスポンスには、情報ヘッダーは含まれていません。
 
-次の表は、GitLab.comのレート制限について説明しています:
+次の表は、GitLab.comのレート制限について説明しています。
 
-| レート制限                                                       | 設定                       |
-|:-----------------------------------------------------------------|:------------------------------|
-| IPアドレスの保護されたパス                                | 毎分10件のリクエスト        |
-| プロジェクト、コミット、またはファイルパスのrawエンドポイントトラフィック         | 毎分300件のリクエスト       |
-| IPアドレスからの認証されていないトラフィック                       | 毎分500件のリクエスト       |
-| ユーザーの認証済みAPIトラフィック                             | 毎分2,000件のリクエスト     |
-| ユーザーの認証済み非API HTTPトラフィック                    | 毎分1,000件のリクエスト     |
-| IPアドレスからのすべてのトラフィック                                   | 毎分2,000件のリクエスト     |
-| イシューの作成                                                   | 毎分200件のリクエスト       |
-| イシューおよびマージリクエストに関するノートの作成                       | 毎分60件のリクエスト        |
-| IPアドレスの高度な検索、プロジェクト検索、またはグループ検索のAPI         | 毎分10件のリクエスト        |
+| レート制限                                                       | 設定                         |
+|:-----------------------------------------------------------------|:--------------------------------|
+| IPアドレスの保護されたパス                                | 毎分10件のリクエスト         |
+| プロジェクト、コミット、またはファイルパスのrawエンドポイントトラフィック         | 毎分300件のリクエスト        |
+| IPアドレスからの認証されていないトラフィック                       | 毎分500件のリクエスト        |
+| ユーザーの認証済みAPIトラフィック                             | 毎分2,000件のリクエスト      |
+| ユーザーの認証済み非API HTTPトラフィック                    | 毎分1,000件のリクエスト      |
+| IPアドレスからのすべてのトラフィック                                   | 毎分2,000件のリクエスト      |
+| イシューの作成                                                   | 毎分200件のリクエスト        |
+| イシューおよびマージリクエストに関するノートの作成                       | 毎分60件のリクエスト         |
+| IPアドレスの高度な検索、プロジェクト検索、またはグループ検索のAPI         | 毎分10件のリクエスト         |
 | IPアドレスのGitLab Pagesリクエスト                          | 50秒ごとに1,000件のリクエスト |
 | GitLab PagesドメインのGitLab Pagesリクエスト                  | 10秒ごとに5,000件のリクエスト |
 | IPアドレスのGitLab Pages TLS接続                   | 50秒ごとに1,000件のリクエスト |
 | GitLab PagesドメインのGitLab Pages TLS接続           | 10秒ごとに400件のリクエスト   |
-| プロジェクト、ユーザー、またはコミットのパイプライン作成リクエスト        | 毎分25件のリクエスト        |
+| プロジェクト、ユーザー、またはコミットのパイプライン作成リクエスト        | 毎分25件のリクエスト         |
 | プロジェクトのアラートインテグレーションエンドポイントのリクエスト                | 1時間あたり3,600件のリクエスト       |
 | GitLab Duo `aiAction`のリクエスト                                  | 8時間ごとに160件のリクエスト      |
-| [プルミラーリング](../project/repository/mirror/pull.md)の間隔 | 5分                     |
+| [プルミラーリング](../project/repository/mirror/pull.md)の間隔 | 5分                       |
 | ユーザーから`/api/v4/users/:id`へのAPIリクエスト                  | 10分ごとに300件のリクエスト   |
-| IPアドレスのGitLabパッケージクラウドのリクエスト（GitLab 16.11で[導入](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/24083)） | 毎分3,000件のリクエスト |
-| GitLabリポジトリファイル | 毎分500件のリクエスト |
-| ユーザーフォロワーのリクエスト（`/api/v4/users/:id/followers`）            | 毎分100件のリクエスト       |
-| ユーザーのフォローリクエスト（`/api/v4/users/:id/following`）            | 毎分100件のリクエスト       |
-| ユーザーステータスのリクエスト（`/api/v4/users/:user_id/status`）             | 毎分240件のリクエスト       |
-| ユーザーSSHキーのリクエスト（`/api/v4/users/:user_id/keys`）             | 毎分120件のリクエスト       |
-| 単一SSHキーのリクエスト（`/api/v4/users/:id/keys/:key_id`）         | 毎分120件のリクエスト       |
-| ユーザーGPGキーリクエスト（`/api/v4/users/:id/gpg_keys`）              | 毎分120件のリクエスト       |
-| 単一のGPGキーリクエスト（`/api/v4/users/:id/gpg_keys/:key_id`）     | 毎分120件のリクエスト       |
-| ユーザープロジェクトリクエスト（`/api/v4/users/:user_id/projects`）         | 毎分300件のリクエスト       |
-| ユーザーがコントリビュートしたプロジェクトのリクエスト（`/api/v4/users/:user_id/contributed_projects`） | 毎分100件のリクエスト |
-| ユーザーのStar付きプロジェクトのリクエスト（`/api/v4/users/:user_id/starred_projects`） | 毎分100件のリクエスト      |
+| IPアドレスのGitLabパッケージクラウドのリクエスト（GitLab 16.11で[導入](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/24083)） | 毎分3,000件のリクエスト      |
+| GitLabリポジトリファイル | 毎分500件のリクエスト        |
+| ユーザーフォロワーのリクエスト（`/api/v4/users/:id/followers`）            | 毎分100件のリクエスト        |
+| ユーザーのフォローリクエスト（`/api/v4/users/:id/following`）            | 毎分100件のリクエスト        |
+| ユーザーステータスのリクエスト（`/api/v4/users/:user_id/status`）             | 毎分240件のリクエスト        |
+| ユーザーSSHキーのリクエスト（`/api/v4/users/:user_id/keys`）             | 毎分120件のリクエスト        |
+| 単一SSHキーのリクエスト（`/api/v4/users/:id/keys/:key_id`）         | 毎分120件のリクエスト        |
+| ユーザーGPGキーリクエスト（`/api/v4/users/:id/gpg_keys`）              | 毎分120件のリクエスト        |
+| 単一のGPGキーリクエスト（`/api/v4/users/:id/gpg_keys/:key_id`）     | 毎分120件のリクエスト        |
+| ユーザープロジェクトリクエスト（`/api/v4/users/:user_id/projects`）         | 毎分300件のリクエスト        |
+| ユーザーがコントリビュートしたプロジェクトのリクエスト（`/api/v4/users/:user_id/contributed_projects`） | 毎分100件のリクエスト        |
+| ユーザーのStar付きプロジェクトのリクエスト（`/api/v4/users/:user_id/starred_projects`） | 毎分100件のリクエスト        |
 | プロジェクトリストのリクエスト（`/api/v4/projects`）                        | 10分ごとに2,000件のリクエスト |
-| グループプロジェクトのリクエスト（`/api/v4/groups/:id/projects`）            | 毎分600件のリクエスト       |
-| 単一プロジェクトのリクエスト（`/api/v4/projects/:id`）                   | 毎分400件のリクエスト       |
-| グループリストのリクエスト（`/api/v4/groups`）                            | 毎分200件のリクエスト       |
-| 単一グループのリクエスト（`/api/v4/groups/:id`）                       | 毎分400件のリクエスト       |
-| Runnerトークンを使用してジョブをリクエストするRunnerジョブ (`/api/v4/jobs/request`) | 毎分2,000件のリクエスト     |
-| ジョブトークンを使用してRunnerジョブトレースパッチをリクエストする (`/api/v4/jobs/trace`) | 毎分2,000件のリクエスト     |
-| ジョブトークンを使用してRunnerジョブをリクエストする (`/api/v4/jobs/*`)          | 毎分200件のリクエスト       |
-| プロジェクト内のすべてのプロジェクトメンバーをリストします                              | 毎分60件のリクエスト        |
+| グループプロジェクトのリクエスト（`/api/v4/groups/:id/projects`）            | 毎分600件のリクエスト        |
+| 単一プロジェクトのリクエスト（`/api/v4/projects/:id`）                   | 毎分400件のリクエスト        |
+| グループリストのリクエスト（`/api/v4/groups`）                            | 毎分200件のリクエスト        |
+| 単一グループのリクエスト（`/api/v4/groups/:id`）                       | 毎分400件のリクエスト        |
+| Runnerジョブリクエスト (Runnerトークンを使用する`/api/v4/jobs/request`) | 毎分2,000件のリクエスト      |
+| Runnerジョブトレースパッチリクエスト (ジョブトークンを使用する`/api/v4/jobs/trace`) | 毎分200件のリクエスト      |
+| Runnerジョブリクエスト (ジョブトークンを使用する`/api/v4/jobs/*`)          | 毎分200件のリクエスト        |
+| すべてのプロジェクトメンバーをプロジェクト内で一覧表示                              | 毎分200件のリクエスト        |
 
 [保護パス](#protected-paths-throttle)および[rawエンドポイント](../../administration/settings/rate_limits_on_raw_endpoints.md)のレート制限の詳細については、リンク先をご覧ください。
 
@@ -452,13 +440,13 @@ GitLabは、いくつかのレイヤーでリクエストのレート制限を�
 
 ### エクスポートファイルをアップロードすることによるグループとプロジェクトのインポート {#group-and-project-import-by-uploading-export-files}
 
-不正行為の防止のため、GitLab.comはレート制限を使用します:
+不正行為の防止のため、GitLab.comはレート制限を使用します。
 
 - プロジェクトとグループのインポート
 - ファイルを使用するグループおよびプロジェクトのエクスポート
 - エクスポートのダウンロード
 
-詳細については、以下を参照してください:
+詳細については、以下を参照してください。
 
 - [プロジェクトのインポート/エクスポートのレート制限](../project/settings/import_export.md#rate-limits)
 - [グループのインポート/エクスポートのレート制限](../project/settings/import_export.md#rate-limits-1)
@@ -475,7 +463,7 @@ GitLab.comへのすべてのリクエストに対して`403 Forbidden`エラー�
 
 これは、Gitリクエストおよびコンテナレジストリ（`/jwt/auth`）リクエスト（結合）にのみ適用されます。
 
-この制限は、次のようになります:
+この制限は、次のようになります。
 
 - 認証に成功したリクエストでリセットされます。たとえば、299件の認証失敗リクエストの後に1件の成功リクエストがあり、その後に299件の認証失敗リクエストが続いても、BANはトリガーされません。
 - `gitlab-ci-token`で認証されたJSON Webトークンリクエストには適用されません。
@@ -504,7 +492,7 @@ GitLab.comで使用されている設定不能なレート制限の詳細につ�
 
 ### レート制限の応答 {#rate-limiting-responses}
 
-レート制限の応答については、以下を参照してください:
+レート制限の応答については、以下を参照してください。
 
 - [ブロックされたリクエストに対する応答のヘッダーリスト](../../administration/settings/user_and_ip_rate_limits.md#response-headers)
 - [カスタマイズ可能な応答テキスト](../../administration/settings/user_and_ip_rate_limits.md#use-a-custom-rate-limit-response)
@@ -515,7 +503,7 @@ GitLab.comは、[`MaxStartups`設定](https://man.openbsd.org/sshd_config.5#MaxS
 
 ### 表示レベル設定 {#visibility-settings}
 
-プロジェクト、グループ、スニペットには、GitLab.comで[無効になっている](https://gitlab.com/gitlab-org/gitlab/-/issues/12388) [内部表示レベル](../public_access.md#internal-projects-and-groups)設定があります。
+プロジェクト、グループ、スニペットには、[内部表示レベル](../public_access.md#internal-projects-and-groups)設定がありますが、[GitLab.comでは無効になっている](https://gitlab.com/gitlab-org/gitlab/-/issues/12388)ものがあります。
 
 ## Sidekiq {#sidekiq}
 
@@ -529,14 +517,14 @@ SSHでの認証に関連する設定。最大接続数については、[SSHの�
 
 ### 代替SSHポート {#alternative-ssh-port}
 
-GitLab.comには、`git+ssh`に対して[別のSSHポート](https://about.gitlab.com/blog/2016/02/18/gitlab-dot-com-now-supports-an-alternate-git-plus-ssh-port/)を使用してアクセスできます。
+GitLab.comには、`git+ssh`に対して[別のSSHポート](https://about.gitlab.com/blog/gitlab-dot-com-now-supports-an-alternate-git-plus-ssh-port/)を使用してアクセスできます。
 
 | 設定    | 値               |
 |------------|---------------------|
 | `Hostname` | `altssh.gitlab.com` |
 | `Port`     | `443`               |
 
-次に、`~/.ssh/config`の例を示します:
+次に、`~/.ssh/config`の例を示します。
 
 ```plaintext
 Host gitlab.com
@@ -553,9 +541,9 @@ Host gitlab.com
 
 1. GitLabにサインインします。
 1. 左側のサイドバーで、**ヘルプ**（{{< icon name="question-o" >}}） > **ヘルプ**を選択します。
-1. ヘルプページで、**Check the current instance configuration**（現在のインスタンス設定を確認する）を選択します。
+1. ヘルプページで、**現在のインスタンス設定を確認する**を選択します。
 
-インスタンス設定では、**SSHホストキーのフィンガープリント**が表示されます:
+インスタンス設定では、**SSHホストキーのフィンガープリント**が表示されます。
 
 | アルゴリズム        | MD5（非推奨） | SHA256  |
 |------------------|------------------|---------|
@@ -571,7 +559,7 @@ GitLab.comは、デフォルトの[SSHキー制限](../../security/ssh_keys_rest
 
 ### SSH `known_hosts`エントリ {#ssh-known_hosts-entries}
 
-SSHで手動フィンガープリントの確認をスキップするには、以下を`.ssh/known_hosts`に追加します:
+SSHで手動フィンガープリントの確認をスキップするには、以下を`.ssh/known_hosts`に追加します。
 
 ```plaintext
 gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf
@@ -585,7 +573,7 @@ gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAA
 
 ### レート制限 {#rate-limits}
 
-トップレベルのネームスペースごとに、Webhookを呼び出すことができる1分あたりの回数は制限されます。この制限は、プランとサブスクリプションのシート数によって異なります。
+トップレベルネームスペースのWebhookが1分間に呼び出せる回数。ネームスペース内のすべてのプロジェクトおよびグループWebhookがこの制限を共有します。この制限は、プランとサブスクリプションのシート数によって異なります。
 
 | プラン                                                   | GitLab.comのデフォルト |
 |--------------------------------------------------------|------------------------|
@@ -596,6 +584,8 @@ gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAA
 | GitLab Ultimateとオープンソース、`999`シート以下  | `6,000`                |
 | GitLab Ultimateとオープンソース、`1,000-4,999`シート   | `9,000`                |
 | GitLab Ultimateとオープンソース、`5,000`シート以上 | `13,000`               |
+
+レート制限に達すると、ネームスペース内のすべてのWebhookは一時的に無効になり、次の1分で自動的に再有効化されます。
 
 ### セキュリティポリシーの制限 {#security-policy-limits}
 
@@ -617,9 +607,9 @@ gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAA
 | タイムアウト                                                             | 10秒             |
 | [Pagesの並列デプロイ](../project/pages/parallel_deployments.md#limits) | 100件の追加のデプロイ（Premiumプラン）、500件の追加のデプロイ（Ultimateプラン） |
 
-GitLab Self-Managedインスタンス制限については、以下を参照してください:
+GitLab Self-Managedインスタンス制限については、以下を参照してください。
 
 - [Webhookのレート制限](../../administration/instance_limits.md#webhook-rate-limit)。
 - [Webhookの数](../../administration/instance_limits.md#number-of-webhooks)。
 - [Webhookのタイムアウト](../../administration/instance_limits.md#webhook-timeout)。
-- [Parallel Pages deployments](../../administration/instance_limits.md#number-of-parallel-pages-deployments)。
+- [並行Pagesデプロイ](../../administration/instance_limits.md#number-of-parallel-pages-deployments)。

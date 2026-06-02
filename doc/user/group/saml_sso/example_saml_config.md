@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Example group SAML and SCIM configurations
 ---
 
@@ -25,14 +25,15 @@ They may then set up a test configuration of the desired identity provider. We i
 This section includes relevant screenshots of the following example configurations of [Group SAML](_index.md) and [Group SCIM](scim_setup.md):
 
 - [Azure Active Directory](#azure-active-directory)
+- [AWS IAM Identity Center](#aws-iam-identity-center)
 - [Google Workspace](#google-workspace)
 - [Okta](#okta)
 - [OneLogin](#onelogin)
 
 > [!warning]
-> These screenshots are updated only as needed by GitLab Support. They are **not** official documentation.
+> These screenshots are updated only as needed by GitLab Support. They are not official documentation.
 
-If you are currently having an issue with GitLab, you may want to check your [support options](https://about.gitlab.com/support/).
+If you are currently having an issue with GitLab, you may want to check your [support options](https://support.gitlab.com/).
 
 ## Azure Active Directory
 
@@ -40,25 +41,25 @@ This section has screenshots for the elements of Azure Active Directory configur
 
 ### Basic SAML app configuration
 
-![Azure AD basic SAML](img/AzureAD-basic_SAML_v14_1.png)
+![The basic SAML configuration settings in Azure Active Directory.](img/AzureAD-basic_SAML_v14_1.png)
 
 ### User claims and attributes
 
-![Azure AD user claims](img/AzureAD-claims_v14_1.png)
+![The user claims and attributes configuration in Azure Active Directory.](img/AzureAD-claims_v14_1.png)
 
 ### SCIM mapping
 
 Provisioning:
 
-![Azure AD SCIM Provisioning](img/AzureAD-scim_provisioning_v14_8.png)
+![The SCIM provisioning settings in Azure Active Directory.](img/AzureAD-scim_provisioning_v14_8.png)
 
 ### Attribute mapping
 
-![Azure AD SCIM Attribute Mapping](img/AzureAD-scim_attribute_mapping_v12_2.png)
+![The SCIM attribute mapping configuration in Azure Active Directory.](img/AzureAD-scim_attribute_mapping_v12_2.png)
 
 ### Group Sync
 
-![Azure Group Claims](img/azure_configure_group_claim_v14_0.png)
+![The group claims configuration for SAML in Azure Active Directory.](img/azure_configure_group_claim_v14_0.png)
 
 Using the **Group ID** source attribute requires users to enter the group ID or object ID when configuring SAML group links.
 
@@ -74,69 +75,110 @@ If available, you can add user-friendly group names instead. When setting up Azu
 
 ### Basic SAML app configuration
 
-![Google Workspace basic SAML](img/GoogleWorkspace-basic-SAML_v14_10.png)
+![The basic SAML app configuration settings in Google Workspace.](img/GoogleWorkspace-basic-SAML_v14_10.png)
 
 ### User claims and attributes
 
-![Google Workspace user claims](img/GoogleWorkspace-claims_v14_10.png)
+![The user claims and attributes configuration in Google Workspace.](img/GoogleWorkspace-claims_v14_10.png)
 
 ### IdP links and certificate
 
-![Google Workspace Links and Certificate](img/GoogleWorkspace-linkscert_v14_10.png)
+![The identity provider links and certificate settings in Google Workspace.](img/GoogleWorkspace-linkscert_v14_10.png)
 
 ## Okta
 
 ### Basic SAML app configuration for GitLab.com groups
 
-![Okta basic SAML](img/Okta-GroupSAML_v15_3.png)
+![The basic SAML app configuration settings for GitLab.com groups in Okta.](img/Okta-GroupSAML_v15_3.png)
 
 ### Basic SAML app configuration for GitLab Self-Managed
 
-![Okta admin panel view](img/Okta-SM_v15_3.png)
+![The basic SAML app configuration settings for GitLab Self-Managed in the Okta admin panel.](img/Okta-SM_v15_3.png)
 
 ### User claims and attributes
 
-![Okta Attributes](img/Okta-attributes_v15_3.png)
+![The user claims and attributes configuration in Okta.](img/Okta-attributes_v15_3.png)
 
 ### Group Sync
 
-![Okta Group attribute](img/Okta-GroupAttribute_v15_3.png)
+![The group attribute configuration for group sync in Okta.](img/Okta-GroupAttribute_v15_3.png)
 
 ### Advanced SAML app settings (defaults)
 
-![Okta Advanced Settings](img/Okta-advancedsettings_v15_3.png)
+![The advanced SAML app settings and their default values in Okta.](img/Okta-advancedsettings_v15_3.png)
 
 ### IdP links and certificate
 
-![Okta Links and Certificate](img/Okta-linkscert_v15_3.png)
+![The identity provider links and certificate settings in Okta.](img/Okta-linkscert_v15_3.png)
 
 ### SAML sign on settings
 
-![Okta SAML settings](img/okta_saml_settings_v15_3.png)
+![The SAML sign-on settings in the Okta configuration.](img/okta_saml_settings_v15_3.png)
 
 ### SCIM settings
 
 Setting the username for the newly provisioned users when assigning them the SCIM app:
 
-![Assigning SCIM app to users on Okta](img/okta_setting_username_v14_6.png)
+![The interface for assigning a SCIM application to users and setting their username in Okta.](img/okta_setting_username_v14_6.png)
 
 ## OneLogin
 
 ### Basic SAML app configuration
 
-![OneLogin application details](img/OneLogin-app_details_v12_8.png)
+![The basic application details and configuration settings in OneLogin.](img/OneLogin-app_details_v12_8.png)
 
 ### Parameters
 
-![OneLogin application details](img/OneLogin-parameters_v12_8.png)
+![The application parameters and attribute mapping settings in OneLogin.](img/OneLogin-parameters_v12_8.png)
 
 ### Adding a user
 
-![OneLogin user add](img/OneLogin-userAdd_v12_8.png)
+![The interface for adding a user to an application in OneLogin.](img/OneLogin-userAdd_v12_8.png)
 
 ### SSO settings
 
-![OneLogin SSO settings](img/OneLogin-SSOsettings_v12_8.png)
+![The single sign-on settings and certificate configuration in OneLogin.](img/OneLogin-SSOsettings_v12_8.png)
+
+## AWS IAM Identity Center
+
+Configure AWS IAM Identity Center with the values in the following tables.
+For the full setup instructions, see [AWS IAM Identity Center](_index.md#aws-iam-identity-center).
+
+### Application properties
+
+When setting up your own SAML 2.0 application in AWS IAM Identity Center,
+configure the following application properties:
+
+| AWS Identity Center field       | Value                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Application ACS URL**         | Your group's **Assertion consumer service URL** (from GitLab **SAML SSO** settings)           |
+| **Application SAML audience**   | Your group's **Identifier** (from GitLab **SAML SSO** settings)                               |
+| **Application start URL**       | Your group's **GitLab single sign-on URL** (from GitLab **SAML SSO** settings)                |
+
+Set the **Application start URL** for SP-initiated login.
+Without it, existing users cannot link their accounts.
+
+### Attribute mappings
+
+| Attribute      | Value                | Format        |
+| -------------- | -------------------- | ------------- |
+| **Subject**    | `${user:email}`      | `unspecified` |
+| **email**      | `${user:email}`      | `unspecified` |
+| **first_name** | `${user:givenName}`  | `unspecified` |
+| **last_name**  | `${user:familyName}` | `unspecified` |
+
+> [!warning]
+> You must set the **Subject** (NameID) format to `unspecified`. If you set the format to
+> `persistent` or `transient`, existing GitLab users receive a `403` error when they attempt
+> to link their accounts through SAML. This error only occurs during account linking and does
+> not affect new users provisioned through AWS IAM Identity Center.
+
+### GitLab SAML SSO settings
+
+| GitLab field                             | Value                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| **Identity provider single sign-on URL** | **IAM Identity Center sign-in URL** (from the application's **IAM Identity Center SAML metadata** section)|
+| **Certificate fingerprint**              | SHA1 fingerprint of the certificate downloaded from AWS Identity Center         |
 
 ## SAML response example
 
@@ -189,7 +231,7 @@ searching for `SAMLResponse`. The decoded SAML response is in XML format. For ex
          <ds:DigestValue>MaIsoi8hbT9gsi/mNZsz449mUuAcuEWY0q3bc4asOQs=</ds:DigestValue>
        </ds:Reference>
      </ds:SignedInfo>
-     <ds:SignatureValue>dMsQX8ivi...HMuKGhyLRvabGU6CuPrf7==<</ds:SignatureValue>
+     <ds:SignatureValue>dMsQX8ivi...HMuKGhyLRvabGU6CuPrf7==</ds:SignatureValue>
      <ds:KeyInfo>
        <ds:X509Data>
          <ds:X509Certificate>MIIDq...cptGr3vN9TQ==</ds:X509Certificate>

@@ -35,7 +35,7 @@ module API
             end
           }
 
-          Rack::Multipart.parse_multipart(env).deep_symbolize_keys!
+          Gitlab::Repositories::LargeMultipartParser.parse_multipart(env).deep_symbolize_keys!
         elsif media_type == 'application/x-www-form-urlencoded'
           begin
             Rack::Utils.parse_nested_query(File.read(file_path)).deep_symbolize_keys!
@@ -59,6 +59,19 @@ module API
         if file_size_bytes.blank? || file_size_bytes > ::Repositories::CommitsUploader::MAX_RATE_LIMITED_REQUEST_SIZE
           check_rate_limit!(:user_large_commit_request, scope: current_user)
         end
+      end
+
+      # Validates that a parameter value is a string if present.
+      # Does not validate presence - use existing blank? checks for that.
+      def validate_string_param!(params, key, prefix: nil)
+        return unless params.key?(key)
+
+        value = params[key]
+        return if value.nil?
+        return if value.is_a?(String)
+
+        param_name = prefix ? "#{prefix}[#{key}]" : key.to_s
+        bad_request!("#{param_name} must be a string")
       end
     end
   end

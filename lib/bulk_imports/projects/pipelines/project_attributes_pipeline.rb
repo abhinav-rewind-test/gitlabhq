@@ -22,9 +22,14 @@ module BulkImports
             relation_class: Project,
             excluded_keys: config.relation_excluded_keys(:project)
           ).except(*subrelations)
+          .except('name') # name is migrated in the ProjectPipeline
         end
 
         def load(_context, data)
+          # Mark project as importing so default_branch= setter applies
+          # the desired branch (it guards on importing? being true).
+          portable.importing = true
+
           portable.assign_attributes(data)
           portable.reconcile_shared_runners_setting!
           portable.drop_visibility_level!

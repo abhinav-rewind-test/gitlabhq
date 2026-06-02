@@ -15,7 +15,6 @@
 - @themes = Gitlab::Themes::available_themes.to_json
 - extensions_marketplace_url = ::WebIde::ExtensionMarketplace.marketplace_home_url(user: current_user)
 - data_attributes = { color_modes: @color_modes, themes: @themes, integration_views: integration_views.to_json, user_fields: user_fields, body_classes: Gitlab::Themes.body_classes, profile_preferences_path: profile_preferences_path, extensions_marketplace_url: extensions_marketplace_url }
-- @force_desktop_expanded_sidebar = true
 
 = gitlab_ui_form_for @user, url: profile_preferences_path, remote: true, method: :put, html: { id: "profile-preferences-form" } do |f|
   = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Mode'),
@@ -29,34 +28,19 @@
           mode.name,
           radio_options: { checked: user_color_mode_id == mode.id }
 
-  - if project_studio_enabled?
-    = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Theme'),
-      id: 'application-theme',
-      options: { class: 'js-preferences-form application-theme' }) do |c|
-      - c.with_description do
-        = s_('Preferences|Select the accent color for the application interface.')
-      - c.with_body do
-        .application-theme.gl-grid.gl-grid-cols-2.gl-gap-5{ class: '@sm/panel:gl-grid-cols-3 @lg/panel:gl-grid-cols-6' }
-          - Gitlab::Themes.each do |theme|
-            %label
-              .preview{ class: theme.css_class }
-              = f.gitlab_ui_radio_component :theme_id, theme.id,
-                theme.name,
-                radio_options: { checked: user_theme_id == theme.id }
-  - else
-    = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Navigation'),
-      id: 'navigation-theme',
-      options: { class: 'js-preferences-form application-theme' }) do |c|
-      - c.with_description do
-        = s_('Preferences|Choose the navigation theme.')
-      - c.with_body do
-        .application-theme.gl-grid.gl-grid-cols-2.gl-gap-5{ class: '@sm/panel:gl-grid-cols-3 @lg/panel:gl-grid-cols-6' }
-          - Gitlab::Themes.each do |theme|
-            %label
-              .preview{ class: theme.css_class }
-              = f.gitlab_ui_radio_component :theme_id, theme.id,
-                theme.name,
-                radio_options: { checked: user_theme_id == theme.id }
+  = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Theme'),
+    id: 'application-theme',
+    options: { class: 'js-preferences-form application-theme' }) do |c|
+    - c.with_description do
+      = s_('Preferences|Select the accent color for the application interface.')
+    - c.with_body do
+      .application-theme.gl-grid.gl-grid-cols-2.gl-gap-5{ class: '@sm/panel:gl-grid-cols-3 @lg/panel:gl-grid-cols-6' }
+        - Gitlab::Themes.each do |theme|
+          %label
+            .preview{ class: theme.css_class }
+            = f.gitlab_ui_radio_component :theme_id, theme.id,
+              theme.name,
+              radio_options: { checked: user_theme_id == theme.id }
 
   = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Syntax highlighting'),
     id: 'syntax-highlighting-theme',
@@ -140,6 +124,8 @@
 
 
       = render_if_exists 'profiles/preferences/default_duo_group', f: f # EE-specific
+      = render_if_exists 'profiles/preferences/orbit_settings', f: f # EE-specific
+      = render_if_exists 'profiles/preferences/knowledge_graph_governing_group', f: f # EE-specific
 
       .form-group
         = f.gitlab_ui_checkbox_component :project_shortcut_buttons, s_('Preferences|Show shortcut buttons above files on project overview')
@@ -209,7 +195,6 @@
         = f.label :time_display_format, class: 'label-bold' do
           = s_('Preferences|Time format')
         - time_display_format_choices.each_entry do |time_display_format_option|
-          .gl-mb-4
           = f.gitlab_ui_radio_component :time_display_format, time_display_format_option[1], time_display_format_option[0]
 
   = render ::Layouts::SettingsSectionComponent.new(s_('Preferences|Enable follow users feature'),

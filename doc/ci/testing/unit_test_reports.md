@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: View and debug unit test results without searching through job logs.
 title: Unit test reports
 ---
@@ -119,7 +119,15 @@ To configure unit test reports:
    For configuration details, review your testing framework's documentation.
 1. In your `.gitlab-ci.yml` file, add
    [`artifacts:reports:junit`](../yaml/artifacts_reports.md#artifactsreportsjunit) to your test job.
-1. Specify the path to your XML test report files.
+1. Specify the path to your XML test report files. The `junit` property accepts:
+
+   - A single filename: `junit: report.xml`
+   - A filename pattern: `junit: test-results/**/*.xml`
+   - An array of filenames: `junit: [rspec-1.xml, rspec-2.xml, rspec-3.xml]`
+   - A combination of both: `junit: [rspec.xml, test-results/TEST-*.xml]`
+
+   Directories are not supported (for example, `junit: test-results` or `junit: test-results/**`).
+
 1. Optional. To make report files browsable, include them with [`artifacts:paths`](../yaml/_index.md#artifactspaths).
 1. Optional. To upload reports even when jobs fail, use [`artifacts:when:always`](../yaml/_index.md#artifactswhen).
 

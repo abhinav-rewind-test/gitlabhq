@@ -6,7 +6,7 @@ RSpec.describe SearchController, feature_category: :global_search do
   include ExternalAuthorizationServiceHelpers
 
   context 'for authorized user' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
 
     before do
       sign_in(user)
@@ -34,7 +34,7 @@ RSpec.describe SearchController, feature_category: :global_search do
           expect(payload[:metadata]['meta.search.group_id']).to eq('123')
           expect(payload[:metadata]['meta.search.project_id']).to eq('456')
           expect(payload[:metadata]).not_to have_key('meta.search.search')
-          expect(payload[:metadata]['meta.search.scope']).to eq('issues')
+          expect(payload[:metadata]['meta.search.scope']).to eq('work_items')
           expect(payload[:metadata]['meta.search.force_search_results']).to eq('true')
           expect(payload[:metadata]['meta.search.filters.confidential']).to eq('true')
           expect(payload[:metadata]['meta.search.filters.state']).to eq('true')
@@ -45,7 +45,7 @@ RSpec.describe SearchController, feature_category: :global_search do
           expect(payload[:metadata][:global_search_duration_s]).to be_a_kind_of(Numeric)
         end
         params = {
-          scope: 'issues', search: 'hello world', group_id: '123', page: '2', project_id: '456', language: ['ruby'],
+          scope: 'work_items', search: 'hello world', group_id: '123', page: '2', project_id: '456', language: ['ruby'],
           confidential: true, include_archived: true, state: true, force_search_results: true
         }
         get action, params: params
@@ -68,7 +68,7 @@ RSpec.describe SearchController, feature_category: :global_search do
     shared_examples_for 'rate limit scope handling' do |action, base_params|
       describe 'rate limit scope' do
         it 'uses current_user and search scope' do
-          %w[projects blobs users issues merge_requests].each do |scope|
+          %w[blobs merge_requests projects users work_items].each do |scope|
             expect(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).with(:search_rate_limit,
               scope: [user, scope], users_allowlist: [])
             get action, params: base_params.merge(scope: scope)
@@ -144,9 +144,9 @@ RSpec.describe SearchController, feature_category: :global_search do
       end
 
       context 'when search_type is not included in params' do
-        it 'does not verifies search type' do
+        it 'still checks for search errors' do
           expect_next_instance_of(SearchService) do |service|
-            expect(service).not_to receive(:search_type_errors)
+            expect(service).to receive(:search_type_errors)
           end
 
           get :show, params: { search: 'hello', scope: 'blobs' }
@@ -165,7 +165,7 @@ RSpec.describe SearchController, feature_category: :global_search do
         using RSpec::Parameterized::TableSyntax
         render_views
 
-        let_it_be(:project) { create(:project, :public, :repository, :wiki_repo) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :repository, :wiki_repo) }
 
         subject(:request) { get(:show, params: { project_id: project.id, scope: scope, search: 'merge' }) }
 
@@ -207,8 +207,8 @@ RSpec.describe SearchController, feature_category: :global_search do
 
           context 'when checking search term length' do
             let(:search_queries) do
-              char_limit = Gitlab::Search::Params::SEARCH_CHAR_LIMIT
-              term_limit = Gitlab::Search::Params::SEARCH_TERM_LIMIT
+              char_limit = Search::Params::SEARCH_CHAR_LIMIT
+              term_limit = Search::Params::SEARCH_TERM_LIMIT
               term_char_limit = Gitlab::Search::AbuseDetection::ABUSIVE_TERM_SIZE
               {
                 chars_under_limit: ("#{'a' * (term_char_limit - 1)} " * (term_limit - 1))[0, char_limit],
@@ -312,7 +312,7 @@ RSpec.describe SearchController, feature_category: :global_search do
           subject(:show) { get :show, params: { scope: scope, search: 'term' }, format: :html }
 
           where(:admin_setting, :scope) do
-            :global_search_issues_enabled         | 'issues'
+            :global_search_work_items_enabled     | 'work_items'
             :global_search_merge_requests_enabled | 'merge_requests'
             :global_search_users_enabled          | 'users'
           end
@@ -338,13 +338,15 @@ RSpec.describe SearchController, feature_category: :global_search do
         end
       end
 
-      it 'finds issue comments' do
-        project = create(:project, :public)
-        note = create(:note_on_issue, project: project)
+      context 'when finding issue comments' do
+        let_it_be(:project, freeze: false) { create(:project, :public) }
+        let_it_be(:note, freeze: false) { create(:note_on_issue, project: project) }
 
-        get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
+        it 'finds issue comments' do
+          get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
 
-        expect(assigns[:search_objects].first).to eq note
+          expect(assigns[:search_objects].first).to eq note
+        end
       end
 
       context 'with unique users tracking' do
@@ -372,41 +374,45 @@ RSpec.describe SearchController, feature_category: :global_search do
           [Gitlab::Tracking::ServicePingContext.new(data_source: :redis_hll, event: property).to_context]
         end
 
-        let_it_be(:namespace) { create(:group) }
+        let_it_be(:namespace, freeze: false) { create(:group) }
       end
 
       context 'on restricted projects' do
         context 'when signed out' do
+          let_it_be(:project, freeze: false) { create(:project, :public, :issues_private) }
+          let_it_be(:note, freeze: false) { create(:note_on_issue, project: project) }
+
           before do
             sign_out(user)
           end
 
           it "doesn't expose comments on issues" do
-            project = create(:project, :public, :issues_private)
-            note = create(:note_on_issue, project: project)
-
             get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
 
             expect(assigns[:search_objects].count).to eq(0)
           end
         end
 
-        it "doesn't expose comments on merge_requests" do
-          project = create(:project, :public, :merge_requests_private)
-          note = create(:note_on_merge_request, project: project)
+        context "when hiding merge request comments" do
+          let_it_be(:project, freeze: false) { create(:project, :public, :merge_requests_private) }
+          let_it_be(:note, freeze: false) { create(:note_on_merge_request, project: project) }
 
-          get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
+          it "doesn't expose comments on merge_requests" do
+            get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
 
-          expect(assigns[:search_objects].count).to eq(0)
+            expect(assigns[:search_objects].count).to eq(0)
+          end
         end
 
-        it "doesn't expose comments on snippets" do
-          project = create(:project, :public, :snippets_private)
-          note = create(:note_on_project_snippet, project: project)
+        context "when hiding snippet comments" do
+          let_it_be(:project, freeze: false) { create(:project, :public, :snippets_private) }
+          let_it_be(:note, freeze: false) { create(:note_on_project_snippet, project: project) }
 
-          get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
+          it "doesn't expose comments on snippets" do
+            get :show, params: { project_id: project.id, scope: 'notes', search: note.note }
 
-          expect(assigns[:search_objects].count).to eq(0)
+            expect(assigns[:search_objects].count).to eq(0)
+          end
         end
       end
 
@@ -433,12 +439,12 @@ RSpec.describe SearchController, feature_category: :global_search do
       it 'increments the custom search sli apdex' do
         expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_apdex).with(
           elapsed: a_kind_of(Numeric),
-          search_scope: 'issues',
+          search_scope: 'work_items',
           search_type: 'basic',
           search_level: 'global'
         )
 
-        get :show, params: { scope: 'issues', search: 'hello world' }
+        get :show, params: { scope: 'work_items', search: 'hello world' }
       end
 
       context 'with custom search sli error rate' do
@@ -446,12 +452,12 @@ RSpec.describe SearchController, feature_category: :global_search do
           it 'increments the custom search sli error rate with error: false' do
             expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
               error: false,
-              search_scope: 'issues',
+              search_scope: 'work_items',
               search_type: 'basic',
               search_level: 'global'
             )
 
-            get :show, params: { scope: 'issues', search: 'hello world' }
+            get :show, params: { scope: 'work_items', search: 'hello world' }
           end
         end
 
@@ -465,12 +471,27 @@ RSpec.describe SearchController, feature_category: :global_search do
           it 'increments the custom search sli error rate with error: true' do
             expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
               error: true,
-              search_scope: 'issues',
+              search_scope: 'work_items',
               search_type: 'basic',
               search_level: 'global'
             )
 
-            get :show, params: { scope: 'issues', search: 'hello world' }
+            get :show, params: { scope: 'work_items', search: 'hello world' }
+          end
+        end
+
+        context 'when the response status is 400' do
+          it 'increments the custom search sli error rate with error: false' do
+            allow(controller).to receive(:status).and_return(400)
+
+            expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
+              error: false,
+              search_scope: 'work_items',
+              search_type: 'basic',
+              search_level: 'global'
+            )
+
+            get :show, params: { scope: 'work_items', search: 'hello world' }
           end
         end
 
@@ -478,26 +499,26 @@ RSpec.describe SearchController, feature_category: :global_search do
           it 'does not increment the error rate' do
             expect(Gitlab::Metrics::GlobalSearchSlis).not_to receive(:record_error_rate)
 
-            get :show, params: { scope: 'issues' } # no search query
+            get :show, params: { scope: 'work_items' } # no search query
           end
         end
       end
 
       context 'when search term is invalid' do
         it 'sets @scope even when search_term_valid? returns false' do
-          long_search_term = 'a' * (Gitlab::Search::Params::SEARCH_CHAR_LIMIT + 1)
+          long_search_term = 'a' * (Search::Params::SEARCH_CHAR_LIMIT + 1)
 
-          get :show, params: { search: long_search_term, scope: 'issues' }
+          get :show, params: { search: long_search_term, scope: 'work_items' }
 
           expect(assigns(:scope)).to be_present
           expect(assigns(:search_type)).to be_present
-          expect(assigns(:scope)).to eq('issues')
+          expect(assigns(:scope)).to eq('work_items')
 
           expect(flash[:alert]).to include('characters')
         end
 
         it 'sets @scope even when terms count is invalid' do
-          too_many_terms = Array.new(Gitlab::Search::Params::SEARCH_TERM_LIMIT + 1, 'term').join(' ')
+          too_many_terms = Array.new(Search::Params::SEARCH_TERM_LIMIT + 1, 'term').join(' ')
 
           get :show, params: { search: too_many_terms, scope: 'projects' }
           expect(assigns(:scope)).to be_present
@@ -663,6 +684,21 @@ RSpec.describe SearchController, feature_category: :global_search do
             get :count, params: { search: 'hello', scope: 'projects', filter: 'search' }
           end
         end
+
+        context 'when the response status is 400' do
+          it 'increments the custom search sli error rate with error: false' do
+            allow(controller).to receive(:status).and_return(400)
+
+            expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
+              error: false,
+              search_scope: 'projects',
+              search_type: 'basic',
+              search_level: 'global'
+            )
+
+            get :count, params: { search: 'hello', scope: 'projects', filter: 'search' }
+          end
+        end
       end
     end
 
@@ -751,15 +787,15 @@ RSpec.describe SearchController, feature_category: :global_search do
           [Gitlab::Tracking::ServicePingContext.new(data_source: :redis_hll, event: property).to_context]
         end
 
-        let_it_be(:namespace) { create(:group) }
+        let_it_be(:namespace, freeze: false) { create(:group) }
       end
 
-      it 'increments the custom search sli apdex' do
+      it 'records SLI apdex without search context' do
         expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_apdex).with(
           elapsed: a_kind_of(Numeric),
-          search_scope: 'projects',
-          search_type: 'basic',
-          search_level: 'global'
+          search_scope: nil,
+          search_type: nil,
+          search_level: nil
         )
 
         get :autocomplete, params: { term: 'setting', scope: 'projects' }
@@ -767,12 +803,12 @@ RSpec.describe SearchController, feature_category: :global_search do
 
       context 'with custom search sli error rate' do
         context 'when the search is successful' do
-          it 'increments the custom search sli error rate with error: false' do
+          it 'records SLI error rate without search context' do
             expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
               error: false,
-              search_scope: 'projects',
-              search_type: 'basic',
-              search_level: 'global'
+              search_scope: nil,
+              search_type: nil,
+              search_level: nil
             )
 
             get :autocomplete, params: { term: 'setting', scope: 'projects', filter: 'search' }
@@ -784,12 +820,12 @@ RSpec.describe SearchController, feature_category: :global_search do
             allow(controller).to receive(:search_autocomplete_opts).and_raise(ActiveRecord::QueryCanceled)
           end
 
-          it 'increments the custom search sli error rate with error: true' do
+          it 'records SLI error rate with error: true and without search context' do
             expect(Gitlab::Metrics::GlobalSearchSlis).to receive(:record_error_rate).with(
               error: true,
-              search_scope: 'projects',
-              search_type: 'basic',
-              search_level: 'global'
+              search_scope: nil,
+              search_type: nil,
+              search_level: nil
             )
 
             get :autocomplete, params: { term: 'setting', scope: 'projects', filter: 'search' }
@@ -818,7 +854,7 @@ RSpec.describe SearchController, feature_category: :global_search do
           expect(payload[:metadata]['meta.search.group_id']).to eq('123')
           expect(payload[:metadata]['meta.search.project_id']).to eq('456')
           expect(payload[:metadata]).not_to have_key('meta.search.search')
-          expect(payload[:metadata]['meta.search.scope']).to eq('issues')
+          expect(payload[:metadata]['meta.search.scope']).to eq('work_items')
           expect(payload[:metadata]['meta.search.force_search_results']).to eq('true')
           expect(payload[:metadata]['meta.search.filters.confidential']).to eq('true')
           expect(payload[:metadata]['meta.search.filters.state']).to eq('true')
@@ -829,7 +865,7 @@ RSpec.describe SearchController, feature_category: :global_search do
         end
 
         get :show, params: {
-          scope: 'issues',
+          scope: 'work_items',
           search: 'hello world',
           group_id: '123',
           page: '2',
@@ -861,10 +897,86 @@ RSpec.describe SearchController, feature_category: :global_search do
 
         get :show, params: { search: 'hello world', group_id: '123', project_id: '456' }
       end
+
+      context 'on the autocomplete action' do
+        let(:search_only_keys) do
+          [
+            'meta.search.scope',
+            'meta.search.page',
+            'meta.search.type',
+            'meta.search.level',
+            'meta.search.force_search_results',
+            'meta.search.filters.confidential',
+            'meta.search.filters.state',
+            'meta.search.filters.language'
+          ]
+        end
+
+        it 'appends only autocomplete-specific metadata' do
+          expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
+            method.call(payload)
+
+            expect(payload[:metadata]['meta.search.autocomplete.filter']).to eq('generic')
+            expect(payload[:metadata]['meta.search.autocomplete.scope']).to eq('projects')
+            expect(payload[:metadata]['meta.search.group_id']).to eq('123')
+            expect(payload[:metadata]['meta.search.project_id']).to eq('456')
+            expect(payload[:metadata][:global_search_duration_s]).to be_a_kind_of(Numeric)
+
+            search_only_keys.each do |key|
+              expect(payload[:metadata]).not_to have_key(key)
+            end
+          end
+
+          get :autocomplete, params: {
+            term: 'hello',
+            filter: 'generic',
+            group_id: '123',
+            project_id: '456',
+            scope: 'projects',
+            page: '2',
+            confidential: true,
+            state: true,
+            language: ['ruby'],
+            force_search_results: true
+          }
+        end
+      end
+
+      context 'on actions that do not perform searches' do
+        let(:search_metadata_keys_pattern) { /^meta\.search\./ }
+
+        it 'does not append search metadata on settings' do
+          expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
+            method.call(payload)
+
+            search_keys = payload[:metadata].keys.select do |key|
+              key.is_a?(String) && key.match?(search_metadata_keys_pattern)
+            end
+            expect(search_keys).to be_empty
+            expect(payload[:metadata]).not_to have_key(:global_search_duration_s)
+          end
+
+          get :settings
+        end
+
+        it 'does not append search metadata on opensearch' do
+          expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
+            method.call(payload)
+
+            search_keys = payload[:metadata].keys.select do |key|
+              key.is_a?(String) && key.match?(search_metadata_keys_pattern)
+            end
+            expect(search_keys).to be_empty
+            expect(payload[:metadata]).not_to have_key(:global_search_duration_s)
+          end
+
+          get :opensearch
+        end
+      end
     end
 
     context 'for abusive searches', :aggregate_failures do
-      let(:project) { create(:project, :public, name: 'hello world') }
+      let_it_be(:project, freeze: false) { create(:project, :public, name: 'hello world') }
       let(:make_abusive_request) do
         get :show, params: { scope: '1;drop%20tables;boom', search: 'hello world', project_id: project.id }
       end
@@ -877,6 +989,30 @@ RSpec.describe SearchController, feature_category: :global_search do
         expect(::Search::EmptySearchResults).to receive(:new).and_call_original
         make_abusive_request
         expect(response).to have_gitlab_http_status(:ok)
+      end
+
+      it 'merges abuse metadata into the log payload' do
+        expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
+          method.call(payload)
+
+          expect(payload[:metadata]['abuse.confidence']).to eq(Gitlab::Abuse.confidence(:certain))
+          expect(payload[:metadata]['abuse.messages']).to be_present
+        end
+
+        make_abusive_request
+      end
+    end
+
+    context 'for non-abusive searches' do
+      it 'does not add abuse metadata to the log payload' do
+        expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
+          method.call(payload)
+
+          expect(payload[:metadata]).not_to have_key('abuse.confidence')
+          expect(payload[:metadata]).not_to have_key('abuse.messages')
+        end
+
+        get :show, params: { search: 'hello', scope: 'projects' }
       end
     end
   end
@@ -922,7 +1058,7 @@ RSpec.describe SearchController, feature_category: :global_search do
     describe 'search rate limits' do
       using RSpec::Parameterized::TableSyntax
 
-      let_it_be(:project) { create(:project, :public) }
+      let_it_be(:project, freeze: false) { create(:project, :public) }
 
       where(:endpoint, :params) do
         :show         | { search: 'hello', scope: 'projects' }
@@ -970,9 +1106,9 @@ RSpec.describe SearchController, feature_category: :global_search do
         'basic'    | 'blobs'
         'advanced' | 'blobs'
         'zoekt'    | 'blobs'
-        'basic'    | 'issues'
-        'advanced' | 'issues'
-        'zoekt'    | 'issues'
+        'basic'    | 'work_items'
+        'advanced' | 'work_items'
+        'zoekt'    | 'work_items'
       end
 
       with_them do

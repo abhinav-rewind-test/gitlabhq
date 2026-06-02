@@ -1,5 +1,5 @@
 import { GlFilteredSearchToken } from '@gitlab/ui';
-import { range } from 'lodash';
+import { range } from 'lodash-es';
 import { OPERATORS_IS } from '~/vue_shared/components/filtered_search_bar/constants';
 import { OBSTACLE_TYPES } from '~/vue_shared/components/user_deletion_obstacles/constants';
 import { SOLO_OWNED_ORGANIZATIONS_REQUESTED_COUNT } from '~/admin/users/constants';
@@ -79,7 +79,7 @@ export const userStatus = {
 const organization = (index) => ({
   id: `gid://gitlab/Organizations::Organization/${index}`,
   name: `Foo ${index}`,
-  webUrl: `http://gdk.test:3000/-/organizations/foo-${index}`,
+  webUrl: `http://gdk.test:3000/o/foo-${index}/-/overview`,
 });
 
 export const oneSoloOwnedOrganization = {

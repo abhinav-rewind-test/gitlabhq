@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Engineering Productivity
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Pipelines for the GitLab project
 ---
 
@@ -119,6 +119,41 @@ In addition, there are a few circumstances where we would always run the full RS
 #### Have you encountered a problem with backend predictive tests?
 
 If so, have a look at [the Development Analytics RUNBOOK on predictive tests](https://gitlab.com/gitlab-org/quality/analytics/team/-/blob/main/runbooks/predictive-test-selection.md) for instructions on how to act upon predictive tests issues. Additionally, if you identified any test selection gaps, let `@gl-dx/development-analytics` know so that we can take the necessary steps to optimize test selections.
+
+### GitLab Duo system test selection
+
+On [tier-2](#pipeline-tiers) pipelines, GitLab Duo predicts which system specs are relevant to
+the MR changes. This runs in addition to the `detect-tests` job and is specific to system specs
+(`spec/features/` and `ee/spec/features/`).
+
+#### How it works
+
+The `detect-system-tests-duo-experiment` job invokes the GitLab Duo CLI against the MR diff.
+The `PreparePredictiveSystemPipeline` script then processes the output and prepares the pipeline inputs:
+
+- **GitLab Duo is confident**: GitLab Duo predictions are merged with `detect-tests`-selected system
+  tests (union). The predictive pipeline runs the combined set. If GitLab Duo predicts no system
+  tests are needed, only the `detect-tests`-selected tests run.
+- **GitLab Duo is not confident or fails**: System tests are stripped from the predictive pipeline.
+  The full system test suite runs in a dedicated child pipeline (`rspec-predictive-system-full`).
+
+#### Scope
+
+GitLab Duo system test selection runs only on `gitlab-org/gitlab` tier-2 pipelines. It is
+skipped when:
+
+- The `pipeline:run-all-rspec` label is set (full suite already runs).
+- The `pipeline:spec-only` label is set (`detect-tests` already identifies the spec files directly).
+- The changes match core-backend or workhorse patterns (all system tests already run in the
+  main pipeline for these changes).
+
+On tier-3 pipelines, the job runs for metrics collection but its output does not influence test
+selection.
+
+To disable GitLab Duo system test selection without a code change, set the
+`GLCI_DUO_SYSTEM_TESTS_DISABLED` CI/CD project variable to `"true"`. When disabled,
+the `detect-system-tests-duo-experiment` job is skipped and the full system test suite runs
+as the fallback on tier-2.
 
 ### Jest predictive jobs
 
@@ -342,6 +377,8 @@ project, which should be even closer to an actual FOSS environment.
 We run them in the following cases:
 
 - when the `pipeline:run-as-if-foss` label is set on the merge request
+- when the `pipeline:as-if-foss-run-predictive` label is set on the merge request
+  (runs only predictive tests, RuboCop, eslint, and static analysis in the FOSS pipeline)
 - when the merge request is created in the `gitlab-org/security/gitlab` project
 - when CI configuration file is changed (for example, `.gitlab-ci.yml` or `.gitlab/ci/**/*`)
 
@@ -580,7 +617,6 @@ We have separate projects for a several reasons.
   keep the repository up-to-date with all the default branches so that when
   we push changes from the merge request, we only need to push changes from
   the merge request, which can be more efficient.
-
 - Separation of concerns:
   - Validation project only has the following branches:
     - `master` and `main-jh` to keep changes up-to-date.
@@ -733,8 +769,6 @@ For detailed documentation on coverage collection, data flow, and ClickHouse sto
 
 Backend tests that fail are automatically retried once in a separate RSpec process. This helps detect flaky tests, defined as tests that fail then pass with the same commit SHA.
 
-On our CI, we use [`RSpec::Retry`](https://github.com/NoRedInk/rspec-retry) to automatically retry a failing example a few times (see [`spec/spec_helper.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/spec/spec_helper.rb) for the precise retries count).
-
 The "retrying failed tests in a new RSpec process" can be disabled by setting the `$RETRY_FAILED_TESTS_IN_NEW_PROCESS` variable to `false`.
 
 ### Quarantined tests
@@ -776,7 +810,9 @@ Our test suite runs against PostgreSQL 16 as GitLab.com runs on PostgreSQL 16 an
 
 We run our test suite against PostgreSQL 16, 17 and 18 on nightly scheduled pipelines.
 
-NOTE: With the addition of PG17, we are close to the limit of nightly jobs, with 1946 out of 2000 jobs per pipeline. Adding new job families could cause the nightly pipeline to fail.
+> [!note]
+> With the addition of PG17, we are close to the limit of nightly jobs, with 1946 out of 2000 jobs per pipeline.
+> Adding new job families could cause the nightly pipeline to fail.
 
 #### Current versions testing
 
@@ -794,14 +830,56 @@ maintenance scheduled pipelines every 2 hours on the `ruby-next` branch.
 `ruby-next` must not have any changes. The branch is only there to run
 pipelines with another Ruby version in the scheduled maintenance pipelines.
 
-Additionally, we have scheduled pipelines running on `ruby-sync` branch also
-every 2 hours, updating all next branches to be up-to-date with
-the default branch `master`. No pipelines will be triggered by this push.
+#### The `ruby-sync` branch
 
-The `gitlab` job in the `ruby-sync` branch uses a `gitlab-org/gitlab` project
-token named `RUBY_SYNC` with `write_repository` scope and `Maintainer` role,
-expiring on 2025-12-02. The token is stored in the `RUBY_SYNC_TOKEN` variable
-in the pipeline schedule for `ruby-sync` branch.
+The [`ruby-sync`](https://gitlab.com/gitlab-org/gitlab/-/tree/ruby-sync) branch
+keeps the `ruby-next` and `rails-next` branches up-to-date with `master`.
+It is an **orphan branch** (not derived from `master`) that contains only its own
+`.gitlab-ci.yml`, a `scripts/slack` helper, and a `README.md`.
+
+A [scheduled pipeline](https://gitlab.com/gitlab-org/gitlab/-/pipeline_schedules)
+runs on `ruby-sync` every 2 hours. The `gitlab` job:
+
+1. Clones the full `gitlab-org/gitlab` repository.
+1. For each of `ruby-next` and `rails-next`:
+   checks out the branch, merges `origin/master`, and pushes the result.
+
+No downstream pipelines are triggered by these pushes. The `ruby-next` and
+`rails-next` branches run their own scheduled maintenance pipelines independently.
+
+##### Authentication
+
+The `gitlab` job authenticates with a project token (`RUBY_SYNC_TOKEN`)
+that has `write_repository` scope and `Maintainer` role. The token is
+stored in the pipeline schedule variables for the `ruby-sync` branch.
+
+##### Retry and failure notifications
+
+The `gitlab` job retries once on script failure to handle transient errors.
+If it still fails, a `notify` job sends a message to the `#backend` Slack
+channel (username `ruby-sync`) through `CI_SLACK_WEBHOOK_URL`:
+
+```plaintext
+☠️ ruby-sync failed to merge master into the ruby-next/rails-next branches
+in gitlab-org/gitlab. Pipeline: <pipeline_url> — Docs: <docs_url>
+```
+
+##### Troubleshoot `ruby-sync` failures
+
+Common causes of failure:
+
+- **Transient GitLab load errors**: The job clones the full repository, which
+  can fail during high-load periods. Retry the failed pipeline.
+- **Merge conflicts**: If `ruby-next` or `rails-next` has diverged from
+  `master` in a way that causes conflicts, the `git merge` step fails.
+  Manually resolve the conflict on the affected branch and retry.
+- **Authentication errors**: Verify that the `RUBY_SYNC_TOKEN` project token
+  has not expired. Check the pipeline schedule configuration.
+
+To retry, go to the
+[pipeline schedules](https://gitlab.com/gitlab-org/gitlab/-/pipeline_schedules)
+page and run the `ruby-sync` schedule, or retry the failed job from the
+pipeline page.
 
 ### Redis versions testing
 
@@ -835,16 +913,16 @@ If you want to force tests to run with a single database, you can add the `pipel
 
 ### Elasticsearch and OpenSearch versions testing
 
-Our test suite runs against Elasticsearch 8 as GitLab.com runs on Elasticsearch 8 when certain conditions are met.
+Our test suite runs against Elasticsearch 9 as GitLab.com runs on Elasticsearch 9 when certain conditions are met.
 
-We run our test suite against Elasticsearch 7, 8 and OpenSearch 1, 2 on nightly scheduled pipelines. All
-test suites use PostgreSQL 16 because there is no dependency between the database and search backend.
+We run our test suite against Elasticsearch 8, 9 and OpenSearch 1, 2 on nightly scheduled pipelines. All
+test suites use PostgreSQL 17 because there is no dependency between the database and search backend.
 
 | Where?                                                                                          | Elasticsearch version | OpenSearch Version   | PostgreSQL version   |
 |-------------------------------------------------------------------------------------------------|-----------------------|----------------------|----------------------|
-| Merge requests with label `~group::global search` or `~pipeline:run-search-tests`               | 8.X (production)      |                      | 16 (default version) |
-| `nightly` scheduled pipelines for the `master` branch                                           | 7.X, 8.X (production) | 1.X, 2.X             | 16 (default version) |
-| `weekly` scheduled pipelines for the `master` branch                                            | 9.X                   | latest               | 16 (default version) |
+| Merge requests with label `~group::global search` or `~pipeline:run-search-tests`               | 9.X (production)      |                      | 17 (default version) |
+| `nightly` scheduled pipelines for the `master` branch                                           | 7.X, 9.X (production) | 1.X, 2.X             | 17 (default version) |
+| `weekly` scheduled pipelines for the `master` branch                                            | 8.X                   | latest               | 17 (default version) |
 
 ## Monitoring
 

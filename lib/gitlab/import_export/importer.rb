@@ -19,7 +19,7 @@ module Gitlab
 
       def execute
         project.importing = true
-        if import_file && check_version! && restorers.all?(&:restore) && overwrite_project
+        if import_file && check_version! && preallocate_iids && restorers.all?(&:restore) && overwrite_project
           remove_import_file
 
           project
@@ -42,8 +42,38 @@ module Gitlab
       attr_accessor :archive_file, :current_user, :project, :shared
 
       def restorers
-        [repo_restorer, wiki_restorer, project_tree, avatar_restorer, design_repo_restorer,
-          uploads_restorer, lfs_restorer, statistics_restorer, snippets_repo_restorer]
+        [
+          repo_restorer,
+          *post_repo_restorers,
+          wiki_restorer,
+          project_tree,
+          avatar_restorer,
+          design_repo_restorer,
+          uploads_restorer,
+          lfs_restorer,
+          statistics_restorer,
+          snippets_repo_restorer,
+          *final_restorers
+        ]
+      end
+
+      # Extension point for EE to add restorers that must run immediately after repo_restorer.
+      def post_repo_restorers
+        []
+      end
+
+      # Extension point for EE to add restorers that must run at the end.
+      def final_restorers
+        []
+      end
+
+      def preallocate_iids
+        Gitlab::Import::IidPreallocator.from_file(
+          project,
+          File.join(shared.export_path, 'max_iids.json')
+        )
+
+        true
       end
 
       def import_file

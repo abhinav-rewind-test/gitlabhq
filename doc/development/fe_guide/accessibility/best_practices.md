@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Accessibility best practices
 ---
 
@@ -310,7 +310,7 @@ unnecessary when using `gl-icon`.
 
 <svg role="img" alt="" />
 
-<gl-icon name="epic" />
+<gl-icon name="work-item-epic" />
 ```
 
 ## When to use ARIA

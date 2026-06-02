@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Event definition guide
 ---
 
@@ -12,7 +12,7 @@ This guide describes the event dictionary and how it's implemented.
 
 ## Event definition and validation
 
-This process is meant to document all internal events and ensure consistency. Every internal event needs to have such a definition. Event definitions must comply with the [JSON Schema](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/events/schema.json).
+This process is meant to document all internal events and ensure consistency. Every internal event needs to have such a definition. Event definitions must comply with the [JSON Schema](https://gitlab.com/gitlab-org/analytics-section/analytics-instrumentation/event-definitions-validator/-/blob/main/lib/schemas/schema.json).
 
 All event definitions are stored in the following directories:
 
@@ -50,7 +50,6 @@ Each event is defined in a separate YAML file consisting of the following fields
 When considering changing the `action` field in an event definition, it is important to know that:
 
 - Renaming an event is equivalent to deleting the existing event and creating a new one. This is acceptable if the event is not used in any metrics.
-
 - Ensure that the YAML file's name matches the new `action` name to avoid confusion. This helps maintain clarity and consistency in the event definitions.
 
 ### Example event definition

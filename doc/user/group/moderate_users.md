@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Moderate users
 ---
 
@@ -49,7 +49,7 @@ Prerequisites:
 To manually ban a user:
 
 1. Go to the top-level group.
-1. On the left sidebar, select **Manage** > **Members**.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Next to the member you want to ban, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}).
 1. From the dropdown list, select **Ban member**.
 
@@ -67,7 +67,7 @@ Prerequisites:
 To unban a user:
 
 1. Go to the top-level group.
-1. On the left sidebar, select **Manage** > **Members**.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Select the **Banned** tab.
 1. For the account you want to unban, select **Unban**.
 
@@ -103,12 +103,19 @@ The following actions count as activity:
 > Activity has not been recorded for members added before 2025-01-22. These members will not be removed until 2025-04-22, even if they have been dormant for over 90 days.
 
 - Dormant group owners are neither deactivated nor removed from the group.
-- Dormant [enterprise users](../enterprise_user/_index.md) are not removed, but [deactivated](../../administration/moderate_users.md#deactivate-and-reactivate-users). When these users sign back in, their accounts are reactivated and their access is restored.
+- Dormant [enterprise users](../enterprise_user/_index.md) are not removed, but
+  [deactivated](../../administration/moderate_users.md#deactivate-and-reactivate-users).
+  When these users sign back in, their accounts are reactivated and their access
+  is restored. However, when
+  [restricted access](manage.md#restricted-access) is active on the enterprise
+  group and no seats are available, the user is set to pending approval instead
+  of being reactivated. For more information, see
+  [dormant enterprise user reactivation](manage.md#dormant-enterprise-user-reactivation).
 
 To turn on automatic dormant member removal:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Permissions and group features**.
 1. Scroll to **Dormant members**.
 1. Select the **Remove dormant members after a period of inactivity** checkbox.

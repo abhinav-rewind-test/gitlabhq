@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 description: Configure rate limits for the repository files API.
 title: Rate limits on Repository files API
@@ -35,7 +35,7 @@ Prerequisites:
 To override the general user and IP rate limits for requests to the Repository files API:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Files API Rate Limits**.
 1. Select the checkboxes for the types of rate limits you want to enable:
    - **Unauthenticated API request rate limit**

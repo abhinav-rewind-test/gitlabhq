@@ -8,10 +8,6 @@ class Groups::LabelsController < Groups::ApplicationController
   before_action :authorize_label_for_admin_label!, only: [:edit, :update, :destroy]
   before_action :save_previous_label_path, only: [:edit]
 
-  before_action only: [:index] do
-    push_frontend_feature_flag(:labels_archive, group)
-  end
-
   respond_to :html
 
   feature_category :team_planning
@@ -22,7 +18,8 @@ class Groups::LabelsController < Groups::ApplicationController
       format.html do
         # at group level we do not want to list project labels,
         # we only want `only_group_labels = false` when pulling labels for label filter dropdowns, fetched through json
-        @labels = available_labels(params.merge(only_group_labels: true)).page(params[:page])
+        @labels = available_labels(labels_finder_params.merge(only_group_labels: true))
+          .page(labels_finder_params[:page])
         Preloaders::LabelsPreloader.new(@labels, current_user).preload_all
       end
       format.json do
@@ -37,7 +34,7 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def create
-    @label = Labels::CreateService.new(label_params).execute(group: group)
+    @label = Labels::CreateService.new(current_user, label_params).execute(group: group)
 
     respond_to do |format|
       format.html do
@@ -59,7 +56,7 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def update
-    @label = Labels::UpdateService.new(label_params).execute(@label)
+    @label = Labels::UpdateService.new(current_user, label_params).execute(@label)
 
     if @label.valid?
       redirect_back_or_group_labels_path
@@ -69,12 +66,14 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def destroy
-    if @label.destroy
+    label = Labels::DestroyService.new(current_user, @label).execute
+
+    if label.destroyed?
       redirect_to group_labels_path(@group), status: :found,
-        notice: format(_('%{label_name} was removed'), label_name: @label.name)
+        notice: format(_('%{label_name} was removed'), label_name: label.name)
     else
       redirect_to group_labels_path(@group), status: :found,
-        alert: @label.errors.full_messages.to_sentence
+        alert: label.errors.full_messages.to_sentence
     end
   end
 
@@ -93,7 +92,8 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def label
-    @label ||= available_labels(params.merge(only_group_labels: true, ignore_archived: true)).find(params[:id])
+    @label ||= available_labels(labels_finder_params.merge(only_group_labels: true, ignore_archived: true))
+      .find(labels_finder_params[:id])
   end
   alias_method :subscribable_resource, :label
 
@@ -102,8 +102,7 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def label_params
-    allowed = [:title, :description, :color]
-    allowed << :archived if Feature.enabled?(:labels_archive, group)
+    allowed = [:title, :description, :color, :archived]
     allowed << :lock_on_merge if @group.supports_lock_on_merge?
 
     params.require(:label).permit(allowed)
@@ -125,10 +124,8 @@ class Groups::LabelsController < Groups::ApplicationController
     session[:previous_labels_path] = URI(request.referer || '').path
   end
 
-  def available_labels(options = params)
-    archived_param = if Feature.enabled?(:labels_archive, group) && !options[:ignore_archived]
-                       options[:archived].nil? ? false : options[:archived]
-                     end
+  def available_labels(options = labels_finder_params)
+    archived_param = options[:archived].nil? ? false : options[:archived] unless options[:ignore_archived]
 
     @available_labels ||=
       LabelsFinder.new(
@@ -145,6 +142,10 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def sort
-    @sort ||= params[:sort] || 'name_asc'
+    @sort ||= labels_finder_params[:sort] || 'name_asc'
+  end
+
+  def labels_finder_params
+    params.permit(:archived, :id, :include_descendant_groups, :only_group_labels, :page, :search, :sort, :subscribed)
   end
 end

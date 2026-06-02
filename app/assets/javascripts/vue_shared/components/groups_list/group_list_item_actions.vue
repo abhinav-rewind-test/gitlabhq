@@ -1,6 +1,6 @@
 <script>
 import { GlLoadingIcon } from '@gitlab/ui';
-import uniqueId from 'lodash/uniqueId';
+import { uniqueId } from 'lodash-es';
 import { s__, __, sprintf } from '~/locale';
 import { copyToClipboard } from '~/lib/utils/copy_to_clipboard';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
@@ -9,6 +9,7 @@ import ListActions from '~/vue_shared/components/list_actions/list_actions.vue';
 import GroupListItemLeaveModal from '~/vue_shared/components/groups_list/group_list_item_leave_modal.vue';
 import GroupDeleteModal from '~/groups/components/delete_modal.vue';
 import GroupListItemPreventDeleteModal from '~/vue_shared/components/groups_list/group_list_item_prevent_delete_modal.vue';
+import TransferModal from '~/groups/components/transfer_modal.vue';
 import {
   ACTION_COPY_ID,
   ACTION_ARCHIVE,
@@ -17,6 +18,7 @@ import {
   ACTION_EDIT,
   ACTION_LEAVE,
   ACTION_RESTORE,
+  ACTION_TRANSFER,
   ACTION_UNARCHIVE,
   ACTION_REQUEST_ACCESS,
   ACTION_WITHDRAW_ACCESS_REQUEST,
@@ -30,6 +32,7 @@ import {
   renderRestoreSuccessToast,
   renderUnarchiveSuccessToast,
   renderDeleteSuccessToast,
+  renderTransferSuccessToast,
   deleteParams,
 } from './utils';
 
@@ -41,20 +44,24 @@ export default {
     GroupListItemLeaveModal,
     GroupListItemPreventDeleteModal,
     GroupDeleteModal,
+    TransferModal,
   },
   mixins: [InternalEvents.mixin()],
+  inject: ['triggerRestoreLocation'],
   props: {
     group: {
       type: Object,
       required: true,
     },
   },
+  emits: ['action'],
   data() {
     return {
       actionsLoading: false,
       isDeleteModalVisible: false,
       isDeleteModalLoading: false,
       isLeaveModalVisible: false,
+      isTransferModalVisible: false,
       leaveModalId: uniqueId('groups-list-item-leave-modal-id-'),
       deleteModalId: uniqueId('groups-list-item-delete-modal-id-'),
     };
@@ -108,6 +115,13 @@ export default {
         [ACTION_LEAVE]: {
           text: __('Leave group'),
           action: this.onActionLeave,
+          extraAttrs: {
+            'data-testid': 'leave-group-link',
+            class: 'js-leave-link',
+          },
+        },
+        [ACTION_TRANSFER]: {
+          action: this.onActionTransfer,
         },
       };
 
@@ -150,14 +164,14 @@ export default {
     hasActionLeave() {
       return this.group.availableActions?.includes(ACTION_LEAVE);
     },
+    hasActionTransfer() {
+      return this.group.availableActions?.includes(ACTION_TRANSFER);
+    },
   },
   methods: {
-    refetch() {
-      this.$emit('refetch');
-    },
     async archive() {
       await archiveGroup(this.group.id);
-      this.refetch();
+      this.$emit('action', ACTION_ARCHIVE);
       renderArchiveSuccessToast(this.group);
 
       this.trackEvent('archive_namespace_in_quick_action', {
@@ -167,7 +181,7 @@ export default {
     },
     async unarchive() {
       await unarchiveGroup(this.group.id);
-      this.refetch();
+      this.$emit('action', ACTION_UNARCHIVE);
       renderUnarchiveSuccessToast(this.group);
 
       this.trackEvent('archive_namespace_in_quick_action', {
@@ -177,8 +191,12 @@ export default {
     },
     async restore() {
       await restoreGroup(this.group.id);
-      this.refetch();
+      this.$emit('action', ACTION_RESTORE);
       renderRestoreSuccessToast(this.group);
+
+      this.trackEvent('trigger_restore_on_group', {
+        label: this.triggerRestoreLocation,
+      });
     },
     async onActionWithLoading({ action, errorMessage }) {
       this.actionsLoading = true;
@@ -207,6 +225,9 @@ export default {
     onDeleteModalChange(isVisible) {
       this.isDeleteModalVisible = isVisible;
     },
+    onLeaveSuccess() {
+      this.$emit('action', ACTION_LEAVE);
+    },
     async onDeleteModalPrimary() {
       this.isDeleteModalLoading = true;
 
@@ -214,7 +235,11 @@ export default {
         await axios.delete(this.group.relativeWebUrl, {
           params: deleteParams(this.group),
         });
-        this.refetch();
+
+        this.$emit(
+          'action',
+          this.group.markedForDeletion ? ACTION_DELETE_IMMEDIATELY : ACTION_DELETE,
+        );
         renderDeleteSuccessToast(this.group);
       } catch (error) {
         createAlert({
@@ -231,12 +256,19 @@ export default {
     onActionLeave() {
       this.isLeaveModalVisible = true;
     },
+    onActionTransfer() {
+      this.isTransferModalVisible = true;
+    },
+    onTransferSuccess() {
+      this.$emit('action', ACTION_TRANSFER);
+      renderTransferSuccessToast(this.group);
+    },
   },
 };
 </script>
 
 <template>
-  <div>
+  <div v-bind="$attrs">
     <gl-loading-icon v-if="actionsLoading" size="sm" class="gl-p-3" />
     <list-actions
       v-else
@@ -270,7 +302,15 @@ export default {
         v-model="isLeaveModalVisible"
         :modal-id="leaveModalId"
         :group="group"
-        @success="refetch"
+        @success="onLeaveSuccess"
+      />
+    </template>
+
+    <template v-if="hasActionTransfer">
+      <transfer-modal
+        v-model="isTransferModalVisible"
+        :group="group"
+        @success="onTransferSuccess"
       />
     </template>
   </div>

@@ -5,6 +5,8 @@ require 'spec_helper'
 RSpec.describe UserDetail, feature_category: :system_access do
   it { is_expected.to belong_to(:user) }
   it { is_expected.to belong_to(:bot_namespace).inverse_of(:bot_user_details) }
+  it { is_expected.to belong_to(:provisioned_by_group) }
+  it { is_expected.to belong_to(:provisioned_by_project) }
 
   describe 'validations' do
     context 'for onboarding_status json schema' do
@@ -340,8 +342,22 @@ RSpec.describe UserDetail, feature_category: :system_access do
       it { is_expected.to validate_length_of(:location).is_at_most(500) }
     end
 
-    describe '#organization' do
-      it { is_expected.to validate_length_of(:organization).is_at_most(500) }
+    describe '#company' do
+      context 'when too long' do
+        subject(:company_validation) { build(:user_detail, company: 'a' * 501) }
+
+        it 'is invalid' do
+          expect(company_validation).not_to be_valid
+        end
+
+        it 'adds error to organization' do
+          company_validation.validate
+
+          expect(company_validation.errors[:base]).to include('Organization is too long (maximum is 500 characters)')
+        end
+      end
+
+      it { is_expected.to allow_value('a' * 500).for(:company) }
     end
 
     describe '#website_url' do
@@ -380,7 +396,7 @@ RSpec.describe UserDetail, feature_category: :system_access do
         bluesky: 'did:plc:ewvi7nxzyoun6zhxrhs64oiz',
         orcid: '1234-1234-1234-1234',
         mastodon: '@robin@example.com',
-        user_detail_organization: 'organization',
+        company: 'organization',
         twitter: 'twitter',
         website_url: 'https://example.com'
       }
@@ -389,11 +405,11 @@ RSpec.describe UserDetail, feature_category: :system_access do
     end
 
     shared_examples 'prevents `nil` value' do |attr|
-      it 'converts `nil` to the empty string' do
+      it 'converts `nil` to the empty string', :unlimited_max_formatted_output_length do
         user_detail[attr] = nil
         expect { user_detail.save! }
           .to change { user_detail[attr] }.to('')
-          .and not_change { user_detail.attributes.except(attr.to_s) }
+          .and not_change { user_detail.attributes.except('company', attr.to_s) }
       end
     end
 
@@ -404,7 +420,7 @@ RSpec.describe UserDetail, feature_category: :system_access do
     it_behaves_like 'prevents `nil` value', :bluesky
     it_behaves_like 'prevents `nil` value', :orcid
     it_behaves_like 'prevents `nil` value', :mastodon
-    it_behaves_like 'prevents `nil` value', :organization
+    it_behaves_like 'prevents `nil` value', :company
     it_behaves_like 'prevents `nil` value', :twitter
     it_behaves_like 'prevents `nil` value', :website_url
   end
@@ -427,7 +443,7 @@ RSpec.describe UserDetail, feature_category: :system_access do
         :website_url  | '<a href="//evil.com">https://example.com<a>'                | 'https://example.com'
         :github       | '<a href="//evil.com">https://example.com<a>'                | 'https://example.com'
         :location     | '<a href="//evil.com">https://example.com<a>'                | 'https://example.com'
-        :organization | '<a href="//evil.com">https://example.com<a>'                | 'https://example.com'
+        :company      | '<a href="//evil.com">https://example.com<a>'                | 'https://example.com'
 
         # iframe scripts sanitization
         :bluesky      | '<iframe src=javascript:alert()><iframe>'                    | ''
@@ -439,7 +455,7 @@ RSpec.describe UserDetail, feature_category: :system_access do
         :website_url  | '<iframe src=javascript:alert()><iframe>'                    | ''
         :github       | '<iframe src=javascript:alert()><iframe>'                    | ''
         :location     | '<iframe src=javascript:alert()><iframe>'                    | ''
-        :organization | '<iframe src=javascript:alert()><iframe>'                    | ''
+        :company      | '<iframe src=javascript:alert()><iframe>'                    | ''
 
         # js scripts sanitization
         :bluesky      | '<script>alert("Test")</script>'                             | ''
@@ -451,7 +467,7 @@ RSpec.describe UserDetail, feature_category: :system_access do
         :website_url  | '<script>alert("Test")</script>'                             | ''
         :github       | '<script>alert("Test")</script>'                             | ''
         :location     | '<script>alert("Test")</script>'                             | ''
-        :organization | '<script>alert("Test")</script>'                             | ''
+        :company      | '<script>alert("Test")</script>'                             | ''
       end
       # rubocop:enable Layout/LineLength
 
@@ -471,9 +487,9 @@ RSpec.describe UserDetail, feature_category: :system_access do
         :website_url  | 'http://example.com?test&attr'               | 'http://example.com?test&attr'
         :github       | 'test&attr'                                  | 'test&attr'
 
-        # HTML entities NOT encoded - location, organization preserve &
+        # HTML entities NOT encoded - location, company preserve &
         :location     | 'test&attr'                                  | 'test&attr'
-        :organization | 'test&attr'                                  | 'test&attr'
+        :company | 'test&attr' | 'test&attr'
 
         # Legitimate edge cases
         :website_url  | 'https://example.com/search?q=hello%20world' | 'https://example.com/search?q=hello%20world'
@@ -541,9 +557,9 @@ RSpec.describe UserDetail, feature_category: :system_access do
         :twitter      | 'test&attr'                                 | 'test&amp;attr'
         :github       | 'test&attr'                                 | 'test&amp;attr'
 
-        # HTML entities NOT encoded - location, organization, website_url preserve &
+        # HTML entities NOT encoded - location, company, website_url preserve &
         :location     | 'test&attr'                                 | 'test&attr'
-        :organization | 'test&attr'                                 | 'test&attr'
+        :company      | 'test&attr'                                 | 'test&attr'
         :website_url  | 'http://example.com?test&attr'              | 'http://example.com?test&attr'
 
         # Does not apply Sanitizable validations
@@ -578,6 +594,69 @@ RSpec.describe UserDetail, feature_category: :system_access do
 
     it 'does not include email_otp' do
       expect(user_detail.as_json).not_to have_key('email_otp')
+    end
+  end
+
+  describe 'provisioning source mutual exclusivity' do
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project) }
+
+    context 'when both provisioned_by_group_id and provisioned_by_project_id are set' do
+      subject(:user_detail) { build(:user_detail, provisioned_by_group: group, provisioned_by_project: project) }
+
+      it 'is invalid' do
+        expect(user_detail).not_to be_valid
+        expect(user_detail.errors[:base]).to include('User cannot be provisioned by both group and project')
+      end
+    end
+
+    context 'when only provisioned_by_group_id is set' do
+      subject(:user_detail) { build(:user_detail, provisioned_by_group: group) }
+
+      it { is_expected.to be_valid }
+    end
+
+    context 'when only provisioned_by_project_id is set' do
+      subject(:user_detail) { build(:user_detail, provisioned_by_project: project) }
+
+      it { is_expected.to be_valid }
+    end
+
+    context 'when neither is set' do
+      subject(:user_detail) { build(:user_detail) }
+
+      it { is_expected.to be_valid }
+    end
+  end
+
+  describe '.project_provisioned' do
+    subject(:scope) { described_class.project_provisioned }
+
+    let_it_be(:user_detail_with_project_id) { create(:project_provisioned_user).user_detail }
+    let_it_be(:user_details_without_project_id) { create_list(:user, 3) }
+
+    it 'returns user details with a provisioning project' do
+      expect(scope).to contain_exactly(user_detail_with_project_id)
+    end
+  end
+
+  context 'with loose foreign key on user_details.provisioned_by_group_id' do
+    it_behaves_like 'cleanup by a loose foreign key' do
+      let(:lfk_column) { :provisioned_by_group_id }
+      let_it_be(:parent) { create(:group) }
+      let_it_be(:model) do
+        user = create(:user)
+        user.user_detail.update!(provisioned_by_group: parent)
+        user.user_detail
+      end
+    end
+  end
+
+  context 'with loose foreign key on user_details.provisioned_by_project_id' do
+    it_behaves_like 'cleanup by a loose foreign key' do
+      let(:lfk_column) { :provisioned_by_project_id }
+      let_it_be(:parent) { create(:project) }
+      let(:model) { create(:project_provisioned_user, project: parent).user_detail }
     end
   end
 end

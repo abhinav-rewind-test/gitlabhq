@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Connect a cluster to GitLab
 ---
 
@@ -44,13 +44,13 @@ your cluster's level.
 
 **Project-level clusters**:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Operate** > **Kubernetes clusters**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Operate** > **Kubernetes clusters**.
 
 **Group-level clusters**:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Operate** > **Kubernetes clusters**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Operate** > **Kubernetes clusters**.
 
 **Instance-level clusters**:
 
@@ -59,7 +59,7 @@ Prerequisites:
 - Administrator access.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Kubernetes**.
+1. In the left sidebar, select **Kubernetes**.
 
 ## Security implications for clusters connected with certificates
 

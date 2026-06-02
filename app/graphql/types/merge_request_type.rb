@@ -181,6 +181,13 @@ module Types
       description: 'Pipelines for the merge request. Note: for performance reasons, ' \
         'no more than the most recent 500 pipelines will be returned.',
       resolver: Resolvers::MergeRequestPipelinesResolver
+    field :stack,
+      [Types::MergeRequestType],
+      null: true,
+      description: 'Other open merge requests in the same stack as this merge request, ' \
+        'ordered from the top of the stack to the bottom. ' \
+        'Returns null if this merge request is not part of a stack.',
+      resolver: Resolvers::MergeRequests::StackResolver
 
     field :assignees,
       type: Types::MergeRequests::AssigneeType.connection_type,
@@ -310,13 +317,23 @@ module Types
       description: 'Allows assigning multiple reviewers to a merge request.',
       null: false
 
+    field :linked_work_items,
+      [Types::MergeRequests::LinkedWorkItemType],
+      null: true,
+      calls_gitaly: true,
+      experiment: { milestone: '18.10' },
+      description: 'Work items linked to this merge request (closing or mentioned).',
+      resolver: Resolvers::MergeRequests::LinkedWorkItemsResolver do
+        extension ::Gitlab::Graphql::Limit::FieldCallCount, limit: 1
+      end
+
     field :retargeted, GraphQL::Types::Boolean, null: true,
       description: 'Indicates if merge request was retargeted.'
 
     field :hidden, GraphQL::Types::Boolean, null: true,
       description: 'Indicates the merge request is hidden because the author has been banned.', method: :hidden?
 
-    markdown_field :title_html, null: true
+    markdown_field :title_html, null: true, description: "HTML rendering of `title`"
     markdown_field :description_html, null: true
 
     def diff_stats(path: nil)

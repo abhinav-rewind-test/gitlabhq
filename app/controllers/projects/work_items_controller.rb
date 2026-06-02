@@ -4,6 +4,7 @@ class Projects::WorkItemsController < Projects::ApplicationController
   include WorkhorseAuthorization
   include WorkItemsCollections
   extend Gitlab::Utils::Override
+  include IssueBuildParameters
 
   EXTENSION_ALLOWLIST = %w[csv].map(&:downcase).freeze
 
@@ -11,11 +12,14 @@ class Projects::WorkItemsController < Projects::ApplicationController
   before_action do
     push_frontend_feature_flag(:notifications_todos_buttons, current_user)
     push_force_frontend_feature_flag(:glql_load_on_click, !!project&.glql_load_on_click_feature_flag_enabled?)
-    push_force_frontend_feature_flag(:work_item_planning_view,
-      !!project&.work_items_consolidated_list_enabled?(current_user))
     push_force_frontend_feature_flag(:use_work_item_url, !!project&.use_work_item_url?)
     push_force_frontend_feature_flag(:work_item_features_field,
       Feature.enabled?(:work_item_features_field, current_user))
+    push_frontend_feature_flag(:vue3_migrate_work_items, current_user)
+    push_frontend_feature_flag(:work_item_rest_api_frontend_users, current_user)
+    push_frontend_feature_flag(:planning_view_boards, current_user)
+    push_frontend_feature_flag(:work_item_rest_api, current_user)
+    push_frontend_feature_flag(:work_item_list_display_settings_drawer, current_user)
   end
 
   before_action :check_search_rate_limit!, if: ->(c) do
@@ -25,6 +29,7 @@ class Projects::WorkItemsController < Projects::ApplicationController
   prepend_before_action(only: [:calendar]) { authenticate_sessionless_user!(:ics) }
   prepend_before_action(only: [:rss]) { authenticate_sessionless_user!(:rss) }
 
+  feature_category :portfolio_management, [:index, :rss, :calendar]
   feature_category :team_planning
   urgency :high, [:authorize]
   urgency :low
@@ -42,12 +47,26 @@ class Projects::WorkItemsController < Projects::ApplicationController
     end
   end
 
-  def index
-    return unless current_user
+  def index; end
 
-    ::Users::DismissCalloutService.new(
-      container: nil, current_user: current_user, params: { feature_name: :work_items_nav_badge }
-    ).execute
+  def new
+    service = ::WorkItems::BuildService.new(
+      container: project,
+      current_user: current_user,
+      params: build_params
+    )
+
+    @work_item = service.execute
+    @related_issue = service.related_issue
+    @merge_request_to_resolve_discussions_of = service.merge_request_to_resolve_discussions_of
+
+    if service.discussion_to_resolve_id.present?
+      @discussion_to_resolve = service.discussions_to_resolve.first
+      Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter
+        .track_resolve_thread_in_issue_action(user: current_user)
+    end
+
+    render :show
   end
 
   def show
@@ -130,7 +149,7 @@ class Projects::WorkItemsController < Projects::ApplicationController
     # remove order by since we return just one item anyway. In some cases keeping order by confuses PG planner on which
     # index to use to return the result.
     @issuable ||= ::WorkItems::WorkItemsFinder.new(current_user, project_id: project.id)
-      .execute.with_work_item_type.without_order.find_by_iid(show_params[:iid])
+      .execute.without_order.find_by_iid(show_params[:iid])
   end
 end
 

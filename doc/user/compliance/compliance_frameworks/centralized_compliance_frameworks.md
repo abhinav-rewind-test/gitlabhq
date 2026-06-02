@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to manage compliance frameworks across your entire GitLab instance from a single, centralized location.
 title: Centralized compliance frameworks
 ---
@@ -104,8 +104,8 @@ cannot edit or delete them from your group.
 
 To apply a compliance and security policy framework to projects in your group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. On the page, select the **Projects** tab.
 1. Compliance and security policy frameworks appear in the list with a special indicator.
 1. Select a compliance and security policy framework to apply it to projects in your group.
@@ -114,8 +114,8 @@ To apply a compliance and security policy framework to projects in your group:
 
 To see which compliance frameworks apply to your projects:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Compliance frameworks** section.
 1. View all applied frameworks, including those from the compliance and security policy group.
 

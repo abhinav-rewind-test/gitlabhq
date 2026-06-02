@@ -2,6 +2,8 @@
 
 module Observability
   class GroupO11ySetting < ApplicationRecord
+    include Gitlab::Utils::StrongMemoize
+
     HUMANIZED_ATTRIBUTES = {
       o11y_service_url: 'O11y service name'
     }.freeze
@@ -82,6 +84,11 @@ module Observability
       errors.add(:o11y_service_user_email, I18n.t(:invalid, scope: 'valid_email.validations.email'))
     end
 
+    def gitlab_observability_export_variable
+      group&.variables&.by_key('GITLAB_OBSERVABILITY_EXPORT')&.first
+    end
+    strong_memoize_attr :gitlab_observability_export_variable
+
     def provisioning?
       within_provisioning_window? || new_record?
     end
@@ -94,8 +101,22 @@ module Observability
       "http://#{otel_address}:4317"
     end
 
+    def otel_https_endpoint
+      "https://#{otel_address}:14318"
+    end
+
+    def otel_grpcs_endpoint
+      "https://#{otel_address}:14317"
+    end
+
     def otel_address
-      "#{o11y_service_name}.otel.gitlab-o11y.com"
+      if Gitlab.com? # rubocop:disable Gitlab/AvoidGitlabInstanceChecks -- endpoint differs between SaaS and self-managed
+        "#{o11y_service_name}.otel.gitlab-o11y.com"
+      else
+        raise ArgumentError, "o11y_service_url must be present" if o11y_service_url.blank?
+
+        Addressable::URI.parse(o11y_service_url).host
+      end
     end
 
     private

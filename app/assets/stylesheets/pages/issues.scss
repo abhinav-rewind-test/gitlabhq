@@ -138,6 +138,7 @@ ul.related-merge-requests > li gl-emoji {
     }
   }
 
+  // stylelint-disable-next-line gitlab/no-js-class
   .js-create-merge-request {
     flex-grow: 1;
     flex-shrink: 0;
@@ -181,7 +182,7 @@ ul.related-merge-requests > li gl-emoji {
 }
 
 .issue-sticky-header {
-  left: var(--application-bar-left);
+  left: 0;
   right: var(--application-bar-right);
   width: auto;
   top: $calc-application-header-height;
@@ -193,12 +194,6 @@ ul.related-merge-requests > li gl-emoji {
   .right-sidebar-expanded & {
     padding-right: $right-sidebar-width;
   }
-}
-
-// stylelint-disable-next-line gitlab/no-gl-class
-.work-item-drawer .gl-drawer-header-sticky,
-.issue-sticky-header {
-  @include translucent-glass-background;
 }
 
 .limit-container-width {
@@ -258,6 +253,7 @@ ul.related-merge-requests > li gl-emoji {
 }
 
 // Issue markdown header if no sticky header is present
+// stylelint-disable-next-line gitlab/no-has -- scoped to work-item-detail element
 .work-item-detail:not(:has(.issue-sticky-header)) .md-header {
   top: 0;
 }

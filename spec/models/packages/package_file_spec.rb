@@ -45,6 +45,13 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
   describe 'validations' do
     it { is_expected.to validate_presence_of(:package) }
 
+    it { is_expected.to allow_value('A' * Packages::PackageFile::FILE_MD5_MAX_LENGTH).for(:file_md5) }
+    it { is_expected.not_to allow_value('A' * (Packages::PackageFile::FILE_MD5_MAX_LENGTH + 1)).for(:file_md5) }
+    it { is_expected.to allow_value('A' * Packages::PackageFile::FILE_SHA1_MAX_LENGTH).for(:file_sha1) }
+    it { is_expected.not_to allow_value('A' * (Packages::PackageFile::FILE_SHA1_MAX_LENGTH + 1)).for(:file_sha1) }
+    it { is_expected.to allow_value('A' * Packages::PackageFile::FILE_SHA256_MAX_LENGTH).for(:file_sha256) }
+    it { is_expected.not_to allow_value('A' * (Packages::PackageFile::FILE_SHA256_MAX_LENGTH + 1)).for(:file_sha256) }
+
     context 'with pypi package' do
       let_it_be(:package) { create(:pypi_package) }
 
@@ -77,7 +84,6 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
           ('a' * 64)     | true
           nil            | true
           ('a' * 63)     | false
-          ('a' * 65)     | false
           "#{'a' * 63}%" | false
           ''             | false
         end
@@ -216,7 +222,7 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
   end
 
   context 'for updating project statistics' do
-    let_it_be(:package, reload: true) { create(:maven_package, package_files: [], maven_metadatum: nil) }
+    let_it_be_with_reload(:package) { create(:maven_package, package_files: [], maven_metadatum: nil) }
 
     context 'when the package file has an explicit size' do
       subject { build(:package_file, :jar, package: package, size: 42) }
@@ -230,6 +236,20 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
       expect(described_class.for_package_ids([package_file1.package.id, package_file2.package.id]))
         .to contain_exactly(package_file1, package_file2)
     end
+  end
+
+  describe '.with_file_sha1' do
+    let_it_be(:file_sha1) { '415ab40ae9b7cc4e66d6769cb2c08106e8293b48' }
+    let_it_be(:package) { create(:generic_package) }
+    let_it_be(:package_file) { create(:package_file, file_sha1: file_sha1, package: package) }
+
+    let_it_be(:another_package_file) do
+      create(:package_file, file_sha1: 'd0941e68da8f38151ff86a61fc59f7c5cf9fcaa2', package: package)
+    end
+
+    subject { described_class.with_file_sha1(file_sha1) }
+
+    it { is_expected.to contain_exactly(package_file) }
   end
 
   describe '.for_rubygem_with_file_name' do
@@ -418,7 +438,7 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
     end
 
     describe '#with_debian_unknown_since' do
-      let_it_be(:incoming) { create(:debian_incoming, project: project) }
+      let_it_be(:incoming, freeze: false) { create(:debian_incoming, project: project) }
 
       before do
         incoming.package_files.first.debian_file_metadatum.update! updated_at: 1.day.ago
@@ -427,6 +447,51 @@ RSpec.describe Packages::PackageFile, feature_category: :package_registry do
 
       it 'returns package files with updated_at older than 1 hour' do
         expect(described_class.with_debian_unknown_since(1.hour.ago)).to contain_exactly(incoming.package_files.first)
+      end
+    end
+
+    describe '.latest_id_per_file_name' do
+      let_it_be(:package) { create(:debian_package, project: project, without_package_files: true) }
+      let_it_be(:shared_file_name) { 'libsample0_1.2.3~alpha2_amd64.deb' }
+      let_it_be(:file_a) { create(:debian_package_file, package: package, file_name: shared_file_name) }
+      let_it_be(:file_b) { create(:debian_package_file, package: package, file_name: shared_file_name) }
+      let_it_be(:file_c) { create(:debian_package_file, package: package, file_name: shared_file_name) }
+
+      it 'returns a single id per file name when multiple package files share the same file name' do
+        ids = described_class
+          .for_package_ids(package.id)
+          .with_file_name(file_a.file_name)
+          .latest_id_per_file_name
+
+        expect(ids[0].id).to eq(file_c.id)
+      end
+
+      context 'with multiple different file names' do
+        let_it_be(:other_file_old) do
+          create(:debian_package_file, package: package, file_name: 'sample-dev_1.2.3~binary_amd64.deb')
+        end
+
+        let_it_be(:other_file_new) do
+          create(:debian_package_file, package: package, file_name: 'sample-dev_1.2.3~binary_amd64.deb')
+        end
+
+        it 'returns exactly one record per unique file name' do
+          result = described_class
+            .for_package_ids(package.id)
+            .latest_id_per_file_name
+          expect(result.pluck(:id)).to contain_exactly(file_c.id, other_file_new.id)
+        end
+      end
+
+      it 'works correctly as a subquery with id_in' do
+        result = described_class.id_in(
+          described_class
+            .for_package_ids(package.id)
+            .with_file_name(shared_file_name)
+            .latest_id_per_file_name
+        )
+
+        expect(result).to contain_exactly(file_c)
       end
     end
   end

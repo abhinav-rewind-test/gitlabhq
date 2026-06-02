@@ -28,6 +28,7 @@ class SessionsController < Devise::SessionsController
   prepend_before_action :check_captcha, only: [:create]
   prepend_before_action :store_redirect_uri, only: [:new]
   prepend_before_action :require_no_authentication_without_flash, only: [:new, :create]
+  prepend_before_action :store_login_challenge, only: [:new]
   prepend_before_action :ensure_password_authentication_enabled!,
     if: -> { action_name == 'create' && password_based_login? }
   before_action :auto_sign_in_with_provider, only: [:new]
@@ -37,8 +38,6 @@ class SessionsController < Devise::SessionsController
   before_action :load_recaptcha
   before_action :set_invite_params, only: [:new]
   before_action only: [:new] do
-    push_frontend_feature_flag(:passkeys, Feature.current_request)
-    push_frontend_feature_flag(:sign_in_form_vue, Feature.current_request)
     push_frontend_feature_flag(:two_step_sign_in, Feature.current_request)
   end
 
@@ -72,8 +71,7 @@ class SessionsController < Devise::SessionsController
   end
 
   def new_passkey
-    if Feature.enabled?(:passkeys, Feature.current_request) &&
-        Gitlab::CurrentSettings.password_authentication_enabled_for_web?
+    if Gitlab::CurrentSettings.password_authentication_enabled_for_web?
       handle_passwordless_flow
     else
       render_403
@@ -94,6 +92,8 @@ class SessionsController < Devise::SessionsController
       end
 
       accept_pending_invitations
+
+      store_location_for(:redirect, new_admin_registrations_group_path) if should_redirect_to_sm_onboarding?(resource)
 
       synchronize_broadcast_message_dismissals(current_user)
 
@@ -133,7 +133,32 @@ class SessionsController < Devise::SessionsController
     end
   end
 
+  override :after_sign_in_path_for
+  def after_sign_in_path_for(resource)
+    return super unless iam_login_enabled? && session[:login_challenge].present?
+
+    challenge = session.delete(:login_challenge)
+    result = Authn::IamService::AcceptLoginChallengeService.new(challenge: challenge, user: resource).execute
+
+    if result.success?
+      result.payload[:redirect_to]
+    else
+      flash[:alert] = _('An error occurred. Please try again.')
+      super
+    end
+  end
+
   private
+
+  # TODO: Replace !Group.exists? with a cookie-based approach in a follow-up MR.
+  # See issue #579942 / epic #19488 for the onboarding presenter plan.
+  # Overridden in EE to add SaaS guard.
+  def should_redirect_to_sm_onboarding?(resource)
+    Feature.enabled?(:self_managed_welcome_onboarding, :instance) &&
+      !Gitlab::CurrentSettings.gitlab_dedicated_instance? &&
+      resource.can_admin_all_resources? &&
+      !Group.exists?
+  end
 
   # Overridden in EE
   def determine_sign_in_path
@@ -241,7 +266,9 @@ class SessionsController < Devise::SessionsController
   end
 
   def user_params
-    params.require(:user).permit(:login, :password, :remember_me, :otp_attempt, :device_response)
+    params.require(:user).permit(:login, :password, :remember_me, :otp_attempt, :device_response).tap do |curr_params|
+      curr_params[:login] = curr_params[:login].strip if curr_params[:login].present?
+    end
   end
 
   def passwordless_passkey_params
@@ -252,7 +279,7 @@ class SessionsController < Devise::SessionsController
   def find_user
     strong_memoize(:find_user) do
       if user_params[:login]
-        User.find_by_login(user_params[:login])
+        User.find_by_login(user_params[:login]) || User.find_for_database_authentication(login: user_params[:login])
       elsif session[:otp_user_id]
         User.find_by_id(session[:otp_user_id])
       end
@@ -265,7 +292,7 @@ class SessionsController < Devise::SessionsController
 
   def store_redirect_uri
     redirect_uri =
-      if request.referer.present? && (params['redirect_to_referer'] == 'yes')
+      if request.referer.present? && (params.permit(:redirect_to_referer)[:redirect_to_referer] == 'yes')
         URI(request.referer)
       else
         URI(request.url)
@@ -293,7 +320,7 @@ class SessionsController < Devise::SessionsController
 
     # If a "auto_sign_in" query parameter is set to a falsy value, don't auto sign-in.
     # Otherwise, the default is to auto sign-in.
-    return if Gitlab::Utils.to_boolean(params[:auto_sign_in]) == false
+    return if Gitlab::Utils.to_boolean(params.permit(:auto_sign_in)[:auto_sign_in]) == false
 
     # Auto sign in with an Omniauth provider only if the standard "you need to sign-in" alert is
     # registered or no alert at all. In case of another alert (such as a blocked user), it is safer
@@ -381,7 +408,24 @@ class SessionsController < Devise::SessionsController
   end
 
   def set_invite_params
-    @invite_email = ActionController::Base.helpers.sanitize(params[:invite_email])
+    @invite_email = ActionController::Base.helpers.sanitize(params.permit(:invite_email)[:invite_email])
+  end
+
+  def store_login_challenge
+    return unless iam_login_enabled?
+    return if failed_login?
+
+    session.delete(:login_challenge)
+
+    challenge = params.permit(:login_challenge)[:login_challenge]
+    return unless challenge.present?
+
+    session[:login_challenge] = challenge
+  end
+
+  def iam_login_enabled?
+    Feature.enabled?(:iam_svc_login, :instance) &&
+      Authn::IamAuthService.enabled?
   end
 
   # overridden by EE module

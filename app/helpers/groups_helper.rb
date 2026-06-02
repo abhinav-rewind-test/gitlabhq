@@ -198,45 +198,24 @@ module GroupsHelper
     new_group_custom_emoji_path(group)
   end
 
-  def groups_projects_more_actions_dropdown_data(source)
-    model_name = source.model_name.to_s.downcase
-    dropdown_data = {
-      is_group: source.is_a?(Group).to_s,
-      id: source.id
-    }
-
-    return dropdown_data unless current_user
-
-    if source.is_a?(Group)
-      dropdown_data[:can_edit] = can?(current_user, :admin_group, source).to_s
-      dropdown_data[:edit_path] = edit_group_path(source)
-    else
-      dropdown_data[:can_edit] = can?(current_user, :admin_project, source).to_s
-      dropdown_data[:edit_path] = edit_project_path(source)
-    end
-
-    if can?(current_user, :"destroy_#{model_name}_member", source.members.find_by(user_id: current_user.id)) # rubocop: disable CodeReuse/ActiveRecord -- we need to fetch it
-      dropdown_data[:leave_path] = polymorphic_path([:leave, source, :members])
-      dropdown_data[:leave_confirm_message] = leave_confirmation_message(source)
-    elsif source.requesters.find_by(user_id: current_user.id) # rubocop: disable CodeReuse/ActiveRecord -- we need to fetch it
-      requester = source.requesters.find_by(user_id: current_user.id) # rubocop: disable CodeReuse/ActiveRecord -- we need to fetch it
-      if can?(current_user, :withdraw_member_access_request, requester)
-        dropdown_data[:withdraw_path] = polymorphic_path([:leave, source, :members])
-        dropdown_data[:withdraw_confirm_message] = remove_member_message(requester)
-      end
-    elsif source.request_access_enabled && can?(current_user, :request_access, source)
-      dropdown_data[:request_access_path] = polymorphic_path([:request_access, source, :members])
-    end
-
-    dropdown_data
-  end
-
   def groups_list_with_filtered_search_app_data(endpoint)
     {
       endpoint: endpoint,
       initial_sort: group_project_list_sort_by,
-      base_path: dashboard_groups_path
+      base_path: dashboard_groups_path,
+      can_create_group: current_user.can_create_group?
     }.to_json
+  end
+
+  def group_more_action_data(group)
+    request = group.requesters.with_user(current_user).first
+
+    {
+      group: GroupChildSerializer.new(current_user:).represent(group).to_json,
+      can_request_access: can_request_access(current_user, group, request).to_s,
+      can_withdraw_access_request: can_withdraw_access_request(current_user, request).to_s,
+      dashboard_path: dashboard_groups_path
+    }
   end
 
   def group_merge_requests(group)
@@ -252,6 +231,14 @@ module GroupsHelper
   end
 
   private
+
+  def can_request_access(user, group, request)
+    request.nil? && can?(user, :request_access, group)
+  end
+
+  def can_withdraw_access_request(user, request)
+    can?(user, :withdraw_member_access_request, request)
+  end
 
   def group_title_link(group, hidable: false, show_avatar: false)
     link_to(group_path(group), class: "group-path js-breadcrumb-item-text #{'hidable' if hidable}") do

@@ -103,7 +103,23 @@ RSpec.describe 'Projects > Members > Manage members', :js, feature_category: :gr
           page.within role_dropdown_selector do
             wait_for_requests
             toggle_listbox
-            expect_listbox_items(Gitlab::Access.all_keys)
+            expect_listbox_role_names(Gitlab::Access.all_keys)
+          end
+        end
+      end
+
+      it 'shows descriptions for each role in the dropdown' do
+        visit_members_page
+
+        click_on 'Invite members'
+
+        page.within invite_modal_selector do
+          page.within role_dropdown_selector do
+            wait_for_requests
+            toggle_listbox
+            expect_listbox_role_description('Guest', 'No code access. View and comment on issues and epics.')
+            expect_listbox_role_description('Developer', 'Push code to non-protected branches.')
+            expect_listbox_role_description('Owner', 'Full control of project settings.')
           end
         end
       end
@@ -121,7 +137,7 @@ RSpec.describe 'Projects > Members > Manage members', :js, feature_category: :gr
           page.within role_dropdown_selector do
             wait_for_requests
             toggle_listbox
-            expect_listbox_items(%w[Guest Reporter Developer Maintainer])
+            expect_listbox_role_names(%w[Guest Reporter Developer Maintainer])
           end
         end
       end
@@ -188,11 +204,11 @@ RSpec.describe 'Projects > Members > Manage members', :js, feature_category: :gr
 
   describe 'member search results' do
     it 'does not show project_bots', :aggregate_failures do
-      internal_project_bot = create(:user, :project_bot, name: '_internal_project_bot_')
+      internal_project_bot = create(:user, :project_bot, name: 'John Bot Internal')
       project.add_maintainer(internal_project_bot)
 
       external_group = create(:group)
-      external_project_bot = create(:user, :project_bot, name: '_external_project_bot_')
+      external_project_bot = create(:user, :project_bot, name: 'John Bot External')
       external_project = create(:project, group: external_group)
       external_project.add_maintainer(external_project_bot)
       external_project.add_maintainer(group_owner)
@@ -202,14 +218,11 @@ RSpec.describe 'Projects > Members > Manage members', :js, feature_category: :gr
       click_on 'Invite members'
 
       page.within invite_modal_selector do
-        field = find(member_dropdown_selector)
-        field.native.send_keys :tab
-        field.click
+        find(member_dropdown_selector).set(group_owner.name)
 
         wait_for_requests
 
         expect(page).to have_content(group_owner.name)
-        expect(page).to have_content(project_developer.name)
         expect(page).not_to have_content(internal_project_bot.name)
         expect(page).not_to have_content(external_project_bot.name)
       end

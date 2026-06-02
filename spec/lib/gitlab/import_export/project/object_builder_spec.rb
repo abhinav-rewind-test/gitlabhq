@@ -3,10 +3,10 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::ImportExport::Project::ObjectBuilder do
-  let!(:organization_id) { create(:organization).id }
-  let!(:group) { create(:group, :private, organization_id: organization_id) }
-  let!(:subgroup) { create(:group, :private, parent: group, organization_id: organization_id) }
-  let!(:project) do
+  let_it_be(:organization_id) { create(:organization).id }
+  let_it_be(:group) { create(:group, :private, organization_id: organization_id) }
+  let_it_be(:subgroup) { create(:group, :private, parent: group, organization_id: organization_id) }
+  let_it_be(:project) do
     create(
       :project,
       :repository,
@@ -156,31 +156,6 @@ RSpec.describe Gitlab::ImportExport::Project::ObjectBuilder do
         expect(Milestone.count).to eq(2)
         expect(milestone.iid).to eq(clashing_iid)
       end
-    end
-  end
-
-  context 'work item types', :request_store, feature_category: :team_planning do
-    it 'returns the correct type by base type' do
-      task_type = described_class.new(WorkItems::Type, { 'base_type' => 'task' }).find
-      incident_type = described_class.new(WorkItems::Type, { 'base_type' => 'incident' }).find
-      default_type = described_class.new(WorkItems::Type, { 'base_type' => 'bad_input' }).find
-
-      expect(task_type).to eq(WorkItems::Type.default_by_type(:task))
-      expect(incident_type).to eq(WorkItems::Type.default_by_type(:incident))
-      expect(default_type).to eq(WorkItems::Type.default_by_type(:issue))
-    end
-
-    it 'caches the results' do
-      builder = described_class.new(WorkItems::Type, { 'base_type' => 'task' })
-
-      # Make sure finder works
-      expect(builder.find).to be_a(WorkItems::Type)
-
-      query_count = ActiveRecord::QueryRecorder.new(skip_cached: false) do
-        builder.find
-      end.count
-
-      expect(query_count).to be_zero
     end
   end
 

@@ -195,6 +195,36 @@ RSpec.describe API::Files, feature_category: :source_code_management do
 
       it_behaves_like 'returns bad request - validation error', 'content is required'
     end
+
+    context 'with non-string parameter types' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:param_name, :param_value) do
+        :branch         | { nested: 'object' }
+        :commit_message | { nested: 'object' }
+        :start_branch   | { nested: 'object' }
+        :author_email   | { nested: 'object' }
+        :author_name    | { nested: 'object' }
+        :last_commit_id | { nested: 'object' }
+        :branch         | ['array']
+        :commit_message | ['array']
+        :start_branch   | ['array']
+        :author_email   | ['array']
+        :author_name    | ['array']
+        :last_commit_id | ['array']
+      end
+
+      with_them do
+        let(:params) { super().merge(param_name => param_value) }
+
+        it 'returns bad request with type validation error' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['message']).to eq("400 Bad request - #{param_name} must be a string")
+        end
+      end
+    end
   end
 
   shared_examples 'rate limiting for large commit content' do
@@ -895,7 +925,7 @@ RSpec.describe API::Files, feature_category: :source_code_management do
           let(:request) { head api(route('files%2Flfs%2Flfs_object.iso') + '/raw', current_user), params: params.merge(lfs: true) }
 
           context 'and the file has an lfs object' do
-            let_it_be(:lfs_object) { create(:lfs_object, :with_file, oid: '91eff75a492a3ed0dfcb544d7f31326bc4014c8551849c192fd1e48d4dd2c897') }
+            let_it_be(:lfs_object, freeze: false) { create(:lfs_object, :with_file, oid: '91eff75a492a3ed0dfcb544d7f31326bc4014c8551849c192fd1e48d4dd2c897') }
 
             it 'responds with 404' do
               request
@@ -1035,7 +1065,7 @@ RSpec.describe API::Files, feature_category: :source_code_management do
         it_behaves_like '404 response'
 
         context 'and the file has an lfs object' do
-          let_it_be(:lfs_object) { create(:lfs_object, :with_file, oid: '91eff75a492a3ed0dfcb544d7f31326bc4014c8551849c192fd1e48d4dd2c897') }
+          let_it_be(:lfs_object, freeze: false) { create(:lfs_object, :with_file, oid: '91eff75a492a3ed0dfcb544d7f31326bc4014c8551849c192fd1e48d4dd2c897') }
 
           it_behaves_like '404 response'
 
@@ -1137,6 +1167,62 @@ RSpec.describe API::Files, feature_category: :source_code_management do
         url = api(route(file_path) + '/raw', personal_access_token: token)
 
         expect_to_send_git_blob(url, params)
+      end
+    end
+  end
+
+  describe 'GET repository_file_accessed_api audit event' do
+    let(:params) { { ref: 'master' } }
+
+    context 'when accessing GET /projects/:id/repository/files/:file_path' do
+      it 'emits a repository_file_accessed_api audit event for authenticated users' do
+        expect(::Gitlab::Audit::Auditor).to receive(:audit).with(
+          hash_including(
+            name: 'repository_file_accessed_api',
+            author: user,
+            scope: project,
+            target: project,
+            message: a_string_including('via API'),
+            additional_details: hash_including(
+              file_path: CGI.unescape(file_path),
+              ref: 'master',
+              project_path: project.full_path,
+              project_id: project.id
+            )
+          )
+        )
+
+        get api(route(file_path), user), params: params
+      end
+
+      it 'does not emit an audit event for unauthenticated requests' do
+        expect(::Gitlab::Audit::Auditor).not_to receive(:audit).with(
+          hash_including(name: 'repository_file_accessed_api')
+        )
+
+        get api(route(file_path)), params: params
+      end
+    end
+
+    context 'when accessing GET /projects/:id/repository/files/:file_path/raw' do
+      it 'emits a repository_file_accessed_api audit event for authenticated users' do
+        expect(::Gitlab::Audit::Auditor).to receive(:audit).with(
+          hash_including(
+            name: 'repository_file_accessed_api',
+            author: user,
+            scope: project,
+            target: project,
+            message: a_string_including('via API'),
+            additional_details: hash_including(
+              file_path: CGI.unescape(file_path),
+              ref: 'master',
+              project_path: project.full_path,
+              project_id: project.id
+            )
+          )
+        )
+
+        get api(route(file_path) + '/raw', user), params: params
       end
     end
   end
@@ -1396,18 +1482,18 @@ RSpec.describe API::Files, feature_category: :source_code_management do
 
   describe 'PUT /projects/:id/repository/files/:file_path' do
     let(:url) { api(route(file_path), user) }
+    let(:method) { :put }
+    let(:branch) { 'master' }
+
+    let(:params) do
+      {
+        branch: branch,
+        content: 'puts 8',
+        commit_message: 'Changed file'
+      }
+    end
 
     shared_examples 'updates to an existing file' do
-      let(:params) do
-        {
-          branch: 'master',
-          content: 'puts 8',
-          commit_message: 'Changed file'
-        }
-      end
-
-      let(:method) { :put }
-
       it 'updates existing file in project repo' do
         workhorse_body_upload(url, params)
 
@@ -1494,40 +1580,31 @@ RSpec.describe API::Files, feature_category: :source_code_management do
       end
 
       context 'when specifying the execute_filemode' do
-        let(:executable_params) do
-          {
-            branch: 'master',
-            content: 'puts 8',
-            commit_message: 'Changed file',
-            execute_filemode: true
-          }
-        end
+        context 'with executable params' do
+          let(:params) { super().merge(execute_filemode: true) }
 
-        let(:non_executable_params) do
-          {
-            branch: 'with-executables',
-            content: 'puts 8',
-            commit_message: 'Changed file',
-            execute_filemode: false
-          }
-        end
+          it 'updates to executable file mode' do
+            workhorse_body_upload(url, params)
 
-        it 'updates to executable file mode' do
-          workhorse_body_upload(url, executable_params)
-
-          aggregate_failures 'testing response' do
-            expect(response).to have_gitlab_http_status(:ok)
-            expect(project.repository.blob_at_branch(executable_params[:branch], CGI.unescape(file_path)).executable?).to eq(true)
+            aggregate_failures 'testing response' do
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(project.repository.blob_at_branch(branch, CGI.unescape(file_path)).executable?).to eq(true)
+            end
           end
         end
 
-        it 'updates to non-executable file mode' do
-          url = api(route(executable_file_path), user)
-          workhorse_body_upload(url, non_executable_params)
+        context 'with non-executable params' do
+          let(:branch) { 'with-executables' }
+          let(:params) { super().merge(execute_filemode: false) }
 
-          aggregate_failures 'testing response' do
-            expect(response).to have_gitlab_http_status(:ok)
-            expect(project.repository.blob_at_branch(non_executable_params[:branch], CGI.unescape(executable_file_path)).executable?).to eq(false)
+          it 'updates to non-executable file mode' do
+            url = api(route(executable_file_path), user)
+            workhorse_body_upload(url, params)
+
+            aggregate_failures 'testing response' do
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(project.repository.blob_at_branch(branch, CGI.unescape(executable_file_path)).executable?).to eq(false)
+            end
           end
         end
       end
@@ -1552,19 +1629,62 @@ RSpec.describe API::Files, feature_category: :source_code_management do
       it_behaves_like 'rate limiting for large commit content'
     end
 
+    context 'when authenticated' do
+      context 'and user is a direct project member' do
+        context 'and user is a developer' do
+          it 'updates existing file in project repo' do
+            workhorse_body_upload(url, params)
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['file_path']).to eq(CGI.unescape(file_path))
+          end
+        end
+
+        context 'and user is a guest' do
+          it_behaves_like '403 response' do
+            let(:request) { workhorse_body_upload(api(route(file_path), guest), params) }
+          end
+        end
+      end
+
+      context 'and user is an inherited member from the group' do
+        let(:project) { private_project }
+        let(:url) { api(route(file_path), current_user) }
+
+        context 'and user is a guest' do
+          let(:current_user) { inherited_guest }
+
+          it_behaves_like '403 response' do
+            let(:request) { workhorse_body_upload(url, params) }
+          end
+        end
+
+        context 'and user is a reporter' do
+          let(:current_user) { inherited_reporter }
+
+          it_behaves_like '403 response' do
+            let(:request) { workhorse_body_upload(url, params) }
+          end
+        end
+
+        context 'and user is a developer' do
+          let(:current_user) { inherited_developer }
+
+          it 'updates existing file in project repo' do
+            workhorse_body_upload(url, params)
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['file_path']).to eq(CGI.unescape(file_path))
+          end
+        end
+      end
+    end
+
     context 'when committing to a fork as a maintainer' do
       include_context 'merge request allowing collaboration'
 
-      let(:method) { :put }
       let(:url) { api("/projects/#{forked_project.id}/repository/files/#{file_path}", user) }
-
-      let(:params) do
-        {
-          branch: 'feature',
-          content: 'puts 8',
-          commit_message: 'Changed file'
-        }
-      end
+      let(:branch) { 'feature' }
 
       it 'allows pushing to the source branch of the merge request' do
         workhorse_body_upload(url, params)
@@ -1572,11 +1692,15 @@ RSpec.describe API::Files, feature_category: :source_code_management do
         expect(response).to have_gitlab_http_status(:ok)
       end
 
-      it 'denies pushing to another branch' do
-        workhorse_body_upload(url, params.merge(branch: 'master'))
+      context 'when pushing to another branch' do
+        let(:branch) { 'master' }
 
-        expect(response).to have_gitlab_http_status(:forbidden)
-        expect(json_response['message']).to eq('403 Forbidden - You are not allowed to push into this branch')
+        it 'denies the push' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+          expect(json_response['message']).to eq('403 Forbidden - You are not allowed to push into this branch')
+        end
       end
 
       it_behaves_like 'authorizing granular token permissions', :update_repository_file do

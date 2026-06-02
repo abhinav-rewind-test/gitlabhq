@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Set a merge request dependency to control the merge order of merge requests with related or dependent content.
 title: Merge request dependencies
 ---
@@ -96,11 +96,9 @@ proposed in [epic 5308](https://gitlab.com/groups/gitlab-org/-/epics/5308).
 If a merge request is dependent on another, the merge request reports section shows
 information about the dependency:
 
-![Dependencies in merge request widget](img/dependencies_view_v15_3.png)
-
 To view dependency information on a merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and identify your merge request.
 1. Scroll to the merge request reports area. Dependent merge requests display information
    about the total number of dependencies set, such as
@@ -108,8 +106,7 @@ To view dependency information on a merge request:
 1. Select **Expand** to view the title, milestone, assignee, and pipeline status
    of each dependency.
 
-Until your merge request's dependencies all merge, your merge request cannot merge. The message
-**Merge blocked: you can only merge after the above items are resolved** displays.
+Until your merge request's dependencies all merge, your merge request cannot merge.
 
 ### Closed merge requests
 
@@ -124,15 +121,17 @@ other specific work merges. This dependency works even if the merge request is i
 
 Prerequisites:
 
-- You must have at least the Developer role, or have permission to create merge requests in the project.
+- You must have the Developer, Maintainer, or Owner role, or have permission to create merge requests in the project.
 - The dependent merge request must be in a project in the Premium or Ultimate tier.
 
 To create a new merge request and mark it as dependent on another:
 
 1. [Create a new merge request](creating_merge_requests.md).
 1. In **Merge request dependencies**, paste either the reference or the full URL
-   to the merge requests that should merge before this work merges. References
-   are in the form of `path/to/project!merge_request_id`.
+   to the merge requests that should merge before this work merges. For example:
+   - `!1234` (for a merge request in the same project)
+   - `gitlab-org/gitlab!1234`
+   - `https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1234`
 1. Select **Create merge request**.
 
 ## Edit a merge request to add a dependency
@@ -141,16 +140,18 @@ You can edit an existing merge request and mark it as dependent on another.
 
 Prerequisites:
 
-- You must have at least the Developer role or have permission to edit merge requests in the project.
+- You must have the Developer, Maintainer, or Owner role or have permission to edit merge requests in the project.
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and identify your merge request.
 1. Select **Edit**.
 1. In **Merge request dependencies**, paste either the reference or the full URL
-   to the merge requests that should merge before this work merges. References
-   are in the form of `path/to/project!merge_request_id`.
+   to the merge requests that should merge before this work merges. For example:
+   - `!1234` (for a merge request in the same project)
+   - `gitlab-org/gitlab!1234`
+   - `https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1234`
 
 ## Remove a dependency from a merge request
 
@@ -160,7 +161,7 @@ Prerequisites:
 
 - You must have a role for the project that allows you to edit merge requests.
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and identify your merge request.
 1. Select **Edit**.
 1. Scroll to **Merge request dependencies** and select **Remove** next to the reference

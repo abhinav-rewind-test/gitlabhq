@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe LfsFileLock, feature_category: :source_code_management do
-  let_it_be(:lfs_file_lock, reload: true) { create(:lfs_file_lock) }
+  let_it_be_with_reload(:lfs_file_lock) { create(:lfs_file_lock) }
 
   subject { lfs_file_lock }
 
@@ -54,6 +54,16 @@ RSpec.describe LfsFileLock, feature_category: :source_code_management do
 
       it "can't be unlocked by other user" do
         expect(lfs_file_lock.can_be_unlocked_by?(developer)).to eq(false)
+      end
+    end
+
+    context 'when current_user is nil' do
+      it "can't be unlocked" do
+        expect(lfs_file_lock.can_be_unlocked_by?(nil)).to eq(false)
+      end
+
+      it "can't be unlocked even when forced" do
+        expect(lfs_file_lock.can_be_unlocked_by?(nil, true)).to eq(false)
       end
     end
   end

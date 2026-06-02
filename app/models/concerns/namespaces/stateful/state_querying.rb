@@ -7,9 +7,24 @@ module Namespaces
       extend ActiveSupport::Concern
 
       included do
-        scope :not_deletion_in_progress, -> do
-          where('state != ? OR state IS NULL', Namespaces::Stateful::STATES[:deletion_in_progress])
+        scope :with_deletion_scheduled_by_user, -> { includes(namespace_details: :deletion_scheduled_by_user) }
+
+        scope :deletion_scheduled_before, ->(time) do
+          joins(:namespace_details)
+            .merge(Namespace::Detail.deletion_scheduled_before(time))
         end
+
+        scope :stuck_in_transfer_in_progress, ->(timeout) do
+          where(state: :transfer_in_progress)
+            .where(namespaces: { updated_at: ...timeout.ago })
+        end
+
+        scope :stuck_in_transfer_scheduled, ->(timeout) do
+          where(state: :transfer_scheduled)
+            .where(namespaces: { updated_at: ...timeout.ago })
+        end
+
+        delegate :deletion_scheduled_by_user, to: :namespace_details
       end
 
       # Returns the effective state for this namespace, considering ancestor inheritance.
@@ -24,11 +39,13 @@ module Namespaces
         closest_ancestor_state =
           self.class
              .where(id: traversal_ids)
-             .where.not(state: STATES[:ancestor_inherited])
+             .where.not(state: :ancestor_inherited)
              .order(Arel.sql("array_length(traversal_ids, 1) DESC"))
              .pick(:state)
 
-        STATES.key(closest_ancestor_state).to_sym
+        return :ancestor_inherited if closest_ancestor_state.nil?
+
+        closest_ancestor_state.to_sym
       end
     end
   end

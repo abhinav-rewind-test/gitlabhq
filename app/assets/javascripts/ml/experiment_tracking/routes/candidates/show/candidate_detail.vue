@@ -8,7 +8,7 @@ import {
   GlTableLite,
   GlTooltipDirective,
 } from '@gitlab/ui';
-import { isEmpty, maxBy, range } from 'lodash';
+import { isEmpty, maxBy, range } from 'lodash-es';
 import { __, s__, sprintf } from '~/locale';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
 import { TYPENAME_PACKAGES_PACKAGE } from '~/graphql_shared/constants';
@@ -48,6 +48,7 @@ export default {
       if (!this.info?.pathToArtifact) return null;
       return convertToGraphQLId(
         TYPENAME_PACKAGES_PACKAGE,
+        // eslint-disable-next-line @gitlab/no-hardcoded-urls -- parsing a server-provided path to extract the package ID segment
         this.info.pathToArtifact.split('/packages/')[1],
       );
     },

@@ -57,6 +57,7 @@ module Ci
     expose :detailed_status, as: :status, with: DetailedStatusEntity
     expose :callout_message, if: ->(*) { failed? && !job.script_failure? }
     expose :recoverable, if: ->(*) { failed? }
+    expose :supply_chain_attestation_status, if: ->(*) { has_attestation? }
 
     private
 
@@ -67,7 +68,7 @@ module Ci
     end
 
     def authorized_to_force_cancel?
-      can?(request.current_user, :cancel_build, job) && can?(request.current_user, :maintainer_access, job)
+      can?(request.current_user, :cancel_build, job) && can?(request.current_user, :force_cancel_build, job)
     end
 
     def force_cancelable?
@@ -114,6 +115,14 @@ module Ci
 
     def job_presenter
       @job_presenter ||= job.present
+    end
+
+    def has_attestation?
+      job.respond_to?(:supply_chain_attestation) && job.supply_chain_attestation.present?
+    end
+
+    def supply_chain_attestation_status
+      job.supply_chain_attestation.status
     end
   end
 end

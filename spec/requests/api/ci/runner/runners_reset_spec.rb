@@ -13,9 +13,9 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
     stub_application_setting(valid_runner_registrars: ApplicationSetting::VALID_RUNNER_REGISTRAR_TYPES)
   end
 
-  let_it_be(:group_settings) { create(:namespace_settings, runner_token_expiration_interval: 5.days.to_i) }
-  let_it_be(:group) { create(:group, namespace_settings: group_settings) }
-  let_it_be(:instance_runner, reload: true) { create(:ci_runner, :instance) }
+  let_it_be(:group_settings, freeze: false) { create(:namespace_settings, runner_token_expiration_interval: 5.days.to_i) }
+  let_it_be(:group, freeze: false) { create(:group, namespace_settings: group_settings) }
+  let_it_be_with_reload(:instance_runner) { create(:ci_runner, :instance) }
   let_it_be(:group_runner) { create(:ci_runner, :group, groups: [group], token_expires_at: 1.day.from_now) }
 
   describe 'POST /runners/reset_authentication_token', :freeze_time do
@@ -63,6 +63,19 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
           expect(response).to have_gitlab_http_status(:forbidden)
         end.not_to change { instance_runner.reload.token }
+      end
+    end
+
+    context 'when project runner is not assigned to any project' do
+      let_it_be_with_reload(:project_runner) { create(:ci_runner, :project, :without_projects) }
+
+      it 'returns unprocessable_entity' do
+        expect do
+          post api("/runners/reset_authentication_token"), params: { token: project_runner.reload.token }
+
+          expect(response).to have_gitlab_http_status(:unprocessable_entity)
+          expect(json_response['error']).to include('needs to be assigned to at least one project')
+        end.not_to change { project_runner.reload.token }
       end
     end
   end

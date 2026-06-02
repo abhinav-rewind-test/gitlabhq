@@ -11,7 +11,7 @@ import {
   GlLoadingIcon,
   GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 import { mapActions, mapState } from 'pinia';
 import { keysFor, MR_TOGGLE_REVIEW } from '~/behaviors/shortcuts/keybindings';
 import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
@@ -34,6 +34,7 @@ import DiffStats from './diff_stats.vue';
 const createHotkeyHtml = (key) => `<kbd class="flat gl-ml-1" aria-hidden=true>${key}</kbd>`;
 
 export default {
+  name: 'DiffFileHeader',
   components: {
     ClipboardButton,
     DiffStats,
@@ -337,7 +338,7 @@ export default {
 <template>
   <div
     ref="header"
-    class="js-file-title file-title file-title-flex-parent"
+    class="js-file-title file-title file-title-flex-parent @md/panel:gl-flex-nowrap"
     data-testid="file-title-container"
     :data-qa-file-name="filePath"
     @click.self="handleToggleFile"
@@ -470,6 +471,8 @@ export default {
           right
           toggle-class="btn-icon js-diff-more-actions"
           data-testid="options-dropdown-button"
+          :toggle-text="$options.i18n.optionsDropdownTitle"
+          text-sr-only
         >
           <gl-disclosure-dropdown-item ref="viewButton" :item="viewFileDropdownItem" />
           <template v-if="showEditButton">

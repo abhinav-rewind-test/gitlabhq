@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Job artifact troubleshooting for administrators
 ---
 
@@ -758,6 +758,6 @@ Uploading artifacts as "archive" to coordinator... too large archive <job-id> re
 
 You might need to:
 
-- Increase the [maximum artifacts size](../settings/continuous_integration.md#set-maximum-artifacts-size).
+- Increase the [maximum artifacts size](limits.md#maximum-artifacts-size).
 - If you are using NGINX as a proxy server, increase the file upload size limit which is limited to 1 MB by default.
   Set a higher value for `client-max-body-size` in the NGINX configuration file.

@@ -95,6 +95,14 @@ RSpec.shared_examples 'process helm workhorse authorization' do |user_type, stat
 end
 
 RSpec.shared_examples 'process helm upload' do |user_type, status|
+  let(:extract_service) do
+    instance_double(::Packages::Helm::ExtractFileMetadataService, execute: { 'name' => 'rook-ceph', 'version' => 'v1.5.8' })
+  end
+
+  before do
+    allow(::Packages::Helm::ExtractFileMetadataService).to receive(:new).and_return(extract_service)
+  end
+
   shared_examples 'creates helm package files' do
     it 'creates package files' do
       expect(::Packages::Helm::ExtractionWorker).to receive(:perform_async).once
@@ -270,7 +278,7 @@ RSpec.shared_examples 'handling helm chart index requests' do
       end
 
       with_them do
-        let_it_be(:ci_build) { create(:ci_build, project: project, user: user, status: :running) }
+        let_it_be(:ci_build, freeze: false) { create(:ci_build, project: project, user: user, status: :running) }
 
         let(:headers) { user_role == :anonymous ? {} : job_basic_auth_header(ci_build) }
 

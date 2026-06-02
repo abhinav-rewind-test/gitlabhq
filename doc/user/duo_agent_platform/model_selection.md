@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Custom Models
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure large language models for GitLab Duo features.
 title: Agent Platform AI models
 ---
@@ -21,31 +21,40 @@ This table lists the default model for each feature in the Agent Platform.
 
 | Feature | Model |
 |-------|--------------|
-| GitLab Duo Chat (Agentic) | Claude Haiku 4.5 |
-| All other agents | Claude Sonnet 4.5 Vertex |
+| GitLab Duo Agentic Chat | Claude Sonnet 4.6 Vertex |
+| Code Review Flow | Claude Sonnet 4.6 Vertex |
+| All other agents | Claude Sonnet 4.6 Vertex |
 
 ## Supported models
 
 This table lists the models you can select for features
 in the Agent Platform.
 
-> [!note]
-> The OpenAI models used in GitLab Duo Chat (Agentic) have experimental support, specifically for GPT-5, GPT-5 mini, and GPT-5-Codex.
-> Share your feedback about OpenAI models in GitLab Duo Chat (Agentic) in this [issue](https://gitlab.com/gitlab-org/gitlab/-/issues/572864).
+| Model                | GitLab Duo Agentic Chat | Code Review Flow | All other agents |
+|----------------------|-------------------------|------------------|------------------|
+| Claude Sonnet 4      | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Sonnet 4.5    | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Sonnet 4.6    | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Haiku 4.5     | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.5      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.6      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.7      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.8      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Gemini 3.5 Flash     | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5                | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.1              | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.2              | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| GPT-5.5 <sup>1</sup> | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5 Codex          | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.2 Codex        | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.3 Codex        | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| GPT-5 Mini           | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.4 Mini         | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.4 Nano         | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
 
-| Model | Agentic Chat | All other agents |
-|-------|--------------|------------------|
-| Claude Sonnet 4 | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4 Vertex | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4.5 | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4.5 Vertex | {{< yes >}} | {{< yes >}} |
-| Claude Haiku 4.5 | {{< yes >}} | {{< yes >}} |
-| Claude Opus 4.5 | {{< yes >}} | {{< yes >}} |
-| Claude Opus 4.6 | {{< yes >}} | {{< yes >}} |
-| GPT-5 | {{< yes >}} | {{< yes >}} |
-| GPT-5 Codex | {{< yes >}} | {{< yes >}} |
-| GPT-5 Mini | {{< yes >}} | {{< yes >}} |
-| GPT-5.2 | {{< yes >}} | {{< yes >}} |
+**Footnotes**:
+
+1. This model is subject to [limited vendor-side data retention](../gitlab_duo/data_usage.md#data-retention).
 
 ## Select a model for a feature
 
@@ -65,6 +74,9 @@ in the Agent Platform.
 - Feature flag `duo_agent_platform_model_selection` [enabled](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/212051) in GitLab 18.6.
 - Feature flag `ai_model_switching` [removed](https://gitlab.com/gitlab-org/gitlab/-/issues/526307) in GitLab 18.7.
 - Feature flag `duo_agent_platform_model_selection` [removed](https://gitlab.com/gitlab-org/gitlab/-/issues/218591) in GitLab 18.9.
+- LLM [updated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/236876) to Claude Sonnet 4.6 Vertex for Code Review Flow in GitLab 19.1.
+- [Separate model selection](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/236876) from GitLab Duo Code Review introduced for Code Review Flow in GitLab 19.1, using the **Agentic Code Review** setting.
+- GPT-5.2 and GPT-5.3 Codex [added](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/merge_requests/5652) as selectable models for Code Review Flow in GitLab 19.1.
 
 {{< /history >}}
 
@@ -75,18 +87,37 @@ Prerequisites:
 
 - You have the Owner role for the group.
 - The group that you select models for is a top-level group.
-- In GitLab 18.3 or later, if you belong to multiple GitLab Duo namespaces, you must [assign a default namespace](../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace).
+- In GitLab 18.3 or later, if you belong to multiple GitLab Duo namespaces, you must [assign a default namespace](../profile/preferences.md#set-a-default-gitlab-duo-namespace).
 
 To select a model for a feature:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **GitLab Duo**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **GitLab Duo**.
 1. Select **Configure features**.
 1. Go to the **GitLab Duo Agent Platform** section.
 1. Select a model from the dropdown list.
 1. Optional. To apply the model to all features in the section, select **Apply to all**.
 
-In the IDE, model selection for GitLab Duo Chat (Agentic) is applied only when the connection type is set to WebSocket.
+In the IDE, model selection for GitLab Duo Agentic Chat is applied only when the connection type is set to WebSocket.
+
+To specify a model for the GitLab Duo CLI, see [select a model](../gitlab_duo_cli/_index.md#select-a-model).
+
+### Selecting the right model
+
+For many use cases, starting with a faster, more cost-effective model like
+Claude Haiku 4.5 or GPT-5.4 Mini can be the optimal approach.
+For this approach:
+
+1. Select Claude Haiku 4.5 or GPT-5.4 Mini.
+1. Test your use case thoroughly.
+1. Evaluate if performance meets your requirements.
+1. Upgrade only if necessary for specific capability gaps.
+
+You can use this approach for the following:
+
+- Exploratory or high-volume tasks
+- Applications with strict latency requirements
+- Cost-sensitive implementations
 
 ## Troubleshooting
 
@@ -100,11 +131,9 @@ If you have selected a specific model for a GitLab Duo AI-native feature, and th
 
 ### No default GitLab Duo namespace
 
-When using a GitLab Duo feature with a selected model, you might get an error that states that you have not selected a default GitLab Duo namespace. For example, on:
+When using a GitLab Duo feature with a selected model, you might get an error that indicates that you need to set a default GitLab Duo namespace.
 
-- GitLab Duo Code Suggestions, you might get `Error 422: No default Duo group found. Select a default Duo group in your user preferences and try again.`
-- GitLab Duo Chat, you might get `Error G3002: I'm sorry, you have not selected a default GitLab Duo namespace. Please go to GitLab and in user Preferences - Behavior, select a default namespace for GitLab Duo.`
+This issue occurs when you belong to multiple GitLab Duo namespaces or work on a project locally
+that does not have a GitLab remote configured.
 
-This issue occurs when you belong to multiple GitLab Duo namespaces, but have not chosen one as your default namespace.
-
-To resolve this, [set a default GitLab Duo namespace](../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace).
+To resolve this, [set a default GitLab Duo namespace](../profile/preferences.md#set-a-default-gitlab-duo-namespace).

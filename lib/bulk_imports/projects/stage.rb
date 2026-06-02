@@ -26,6 +26,11 @@ module BulkImports
             pipeline: BulkImports::Projects::Pipelines::ProjectPipeline,
             stage: 0
           },
+          max_iids: {
+            pipeline: BulkImports::Common::Pipelines::MaxIidsPipeline,
+            minimum_source_version: '18.11.0',
+            stage: 1
+          },
           repository: {
             pipeline: BulkImports::Projects::Pipelines::RepositoryPipeline,
             maximum_source_version: '15.0.0',
@@ -38,7 +43,7 @@ module BulkImports
           },
           project_attributes: {
             pipeline: BulkImports::Projects::Pipelines::ProjectAttributesPipeline,
-            stage: 1
+            stage: 2
           },
           labels: {
             pipeline: BulkImports::Common::Pipelines::LabelsPipeline,

@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Sidekiq Compatibility across Updates
 ---
 
@@ -137,7 +137,6 @@ To remove a worker class, follow these steps over three minor releases:
    For example, if there is a UI component or an API endpoint that a user can interact with that results in the worker instance getting enqueued, make sure those surface areas are either removed or updated in a way that the worker instance is no longer enqueued.
 
    This ensures that instances related to the worker class are no longer being enqueued.
-
 1. Ensure both the frontend and backend code no longer relies on any of the work that used to be done by the worker.
 1. In the relevant worker classes, replace the contents of the `perform` method with a no-op, while keeping any arguments intact.
 
@@ -180,7 +179,7 @@ Add a migration (not a post-deployment migration) that uses `sidekiq_remove_jobs
        Gitlab::SidekiqSharding::Validator.allow_unrouted_sidekiq_calls do
          # If the job has been scheduled via `sidekiq-cron`, we must also remove
          # it from the scheduled worker set using the key used to define the cron
-         # schedule in config/initializers/1_settings.rb.
+         # schedule in config/schedule.yml or ee/config/schedule.yml.
          job_to_remove = Sidekiq::Cron::Job.find('my_deprecated_worker')
          # The job may be removed entirely:
          job_to_remove.destroy if job_to_remove
@@ -240,6 +239,5 @@ of the application, follow these steps over three minor releases:
 1. Create the newly named worker, and have the old worker call the new worker's `#perform` method. Introduce a feature flag to control when we start scheduling the new worker. (Release M)
 
    Any old worker jobs that are still in the queue will delegate to the new worker. When this version is deployed, it is no longer relevant which version of the job is scheduled or which Sidekiq handles it, an old-Sidekiq will use the old worker's full implementation, a new-Sidekiq will delegate to the new worker.
-
 1. Enable the feature flag for GitLab.com, and after that prepare an MR to enable it by default. (Release M+1)
 1. Remove the old worker class and the feature flag. (Release M+2)

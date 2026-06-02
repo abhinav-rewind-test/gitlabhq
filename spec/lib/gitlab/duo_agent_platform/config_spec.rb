@@ -407,16 +407,16 @@ RSpec.describe Gitlab::DuoAgentPlatform::Config, feature_category: :duo_agent_pl
     end
   end
 
-  describe '#valid?' do
+  describe '#valid_format?' do
     context 'with valid YAML hash' do
       before do
         allow(project.repository).to receive(:blob_data_at)
                                        .with(default_branch, config_path)
-                                       .and_return("key: value")
+                                       .and_return("image: ruby:3.0")
       end
 
       it 'returns true' do
-        expect(config.valid?).to be true
+        expect(config.valid_format?).to be true
       end
     end
 
@@ -428,7 +428,7 @@ RSpec.describe Gitlab::DuoAgentPlatform::Config, feature_category: :duo_agent_pl
       end
 
       it 'returns false' do
-        expect(config.valid?).to be false
+        expect(config.valid_format?).to be false
       end
     end
 
@@ -447,7 +447,7 @@ RSpec.describe Gitlab::DuoAgentPlatform::Config, feature_category: :duo_agent_pl
         expect(Gitlab::ErrorTracking).to receive(:track_exception)
                                            .with(instance_of(Psych::SyntaxError), project_id: project.id)
 
-        expect(config.valid?).to be false
+        expect(config.valid_format?).to be false
       end
     end
 
@@ -477,7 +477,7 @@ RSpec.describe Gitlab::DuoAgentPlatform::Config, feature_category: :duo_agent_pl
       end
 
       it 'returns true' do
-        expect(config.valid?).to be true
+        expect(config.valid_format?).to be true
       end
 
       it 'correctly parses all configuration sections' do
@@ -490,6 +490,662 @@ RSpec.describe Gitlab::DuoAgentPlatform::Config, feature_category: :duo_agent_pl
           },
           'paths' => ['node_modules', '.npm']
         })
+      end
+    end
+  end
+
+  describe '#network_policy' do
+    context 'with valid network_policy containing duplicates' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - example.com
+              - example.com
+              - EXAMPLE.COM
+              - test.com
+              - test.com
+            denied_domains:
+              - blocked.com
+              - blocked.com
+              - malicious.com
+              - malicious.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'removes duplicates from allowed_domains and denied_domains' do
+        expected = {
+          'allowed_domains' => ['example.com', 'test.com'],
+          'denied_domains' => ['blocked.com', 'malicious.com']
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'with domains containing single quotes' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - "EXAM'PLE.COM"
+            denied_domains:
+              - "mali'cious.com"
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'removes single quotes and downcases domains' do
+        expected = {
+          'allowed_domains' => ['example.com'],
+          'denied_domains' => ['malicious.com']
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'with various input formats' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - 1
+              - nil
+              - abcdef
+            denied_domains:
+              - blocked.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'is invalid' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'when network_policy is not a hash' do
+      let(:config_content) do
+        <<~YAML
+          network_policy: invalid_string
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns nil' do
+        expect(config.network_policy).to be_nil
+      end
+    end
+
+    context 'when allowed_domains contains non-array' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains: example.com
+            denied_domains:
+              - blocked.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'is not valid' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'when config does not contain network_policy' do
+      let(:config_content) do
+        <<~YAML
+          image: node:18-alpine
+          setup_script:
+            - npm install
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns nil' do
+        expect(config.network_policy).to be_nil
+      end
+    end
+
+    context 'when config file does not exist' do
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(nil)
+      end
+
+      it 'returns nil' do
+        expect(config.network_policy).to be_nil
+      end
+    end
+
+    context 'when network_policy has empty arrays' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains: []
+            denied_domains: []
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns empty arrays for both domains' do
+        expected = {
+          'allowed_domains' => [],
+          'denied_domains' => []
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'when network_policy has only allowed_domains' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - example.com
+              - test.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns normalized policy with only allowed_domains' do
+        expected = {
+          'allowed_domains' => ['example.com', 'test.com'],
+          'denied_domains' => []
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'when network_policy has only denied_domains' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            denied_domains:
+              - blocked.com
+              - malicious.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns normalized policy with only denied_domains' do
+        expected = {
+          'allowed_domains' => [],
+          'denied_domains' => ['blocked.com', 'malicious.com']
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'when network_policy has nil values' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+            denied_domains:
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'is invalid' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'when @config is nil' do
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(nil)
+        allow(Rails.cache).to receive(:fetch).and_return(nil)
+      end
+
+      it 'returns nil without calling dig' do
+        expect(config.network_policy).to be_nil
+      end
+    end
+
+    context 'when domains exceed MAX_USER_SPECIFIED_DOMAINS' do
+      let(:max_domains) { 10 }
+      let(:excess_count) { max_domains + 10 }
+      let(:config_content) do
+        allowed = (1..excess_count).map { |i| "allowed#{i}.com" }
+        denied = (1..excess_count).map { |i| "denied#{i}.com" }
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              #{allowed.map { |d| "- #{d}" }.join("\n    ")}
+            denied_domains:
+              #{denied.map { |d| "- #{d}" }.join("\n    ")}
+        YAML
+      end
+
+      before do
+        stub_const("#{described_class}::MAX_USER_SPECIFIED_DOMAINS", max_domains)
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'limits allowed_domains and denied_domains to MAX_USER_SPECIFIED_DOMAINS' do
+        result = config.network_policy
+        expect(result['allowed_domains'].length).to eq(max_domains)
+        expect(result['denied_domains'].length).to eq(max_domains)
+        expect(result['allowed_domains'].first).to eq('allowed1.com')
+        expect(result['allowed_domains'].last).to eq("allowed#{max_domains}.com")
+        expect(result['denied_domains'].first).to eq('denied1.com')
+        expect(result['denied_domains'].last).to eq("denied#{max_domains}.com")
+      end
+    end
+
+    context 'with all network_policy fields' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - example.com
+              - test.com
+            denied_domains:
+              - blocked.com
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns normalized policy with all fields' do
+        expected = {
+          'allowed_domains' => ['example.com', 'test.com'],
+          'denied_domains' => ['blocked.com']
+        }
+        expect(config.network_policy).to eq(expected)
+      end
+    end
+
+    context 'with invalid image type' do
+      let(:config_content) do
+        <<~YAML
+          image:
+            - not_a_string
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with empty image string' do
+      let(:config_content) do
+        <<~YAML
+          image: ""
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with invalid top-level field imgae (typo of image)' do
+      let(:config_content) do
+        <<~YAML
+          imgae: ruby:3.0
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+        expect(config.validation_errors).to include('object property at `/imgae` is a disallowed additional property')
+      end
+    end
+
+    context 'with invalid setup_script type' do
+      let(:config_content) do
+        <<~YAML
+          setup_script:
+            key: value
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with empty setup_script array' do
+      let(:config_content) do
+        <<~YAML
+          setup_script: []
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with invalid network_policy type' do
+      let(:config_content) do
+        <<~YAML
+          network_policy: not_a_hash
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with invalid network_policy properties' do
+      let(:config_content) do
+        <<~YAML
+          network_policy:
+            allowed_domains:
+              - example.com
+            unknown_key: value
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+
+    context 'with invalid cache - missing paths' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            key: test-key
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'passes schema validation but cache_config returns nil' do
+        expect(config.valid_format?).to be true
+        expect(config.cache_config).to be_nil
+      end
+    end
+
+    context 'with invalid cache - empty paths array' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            paths: []
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'passes schema validation but cache_config returns nil' do
+        expect(config.valid_format?).to be false
+        expect(config.cache_config).to be_nil
+      end
+    end
+
+    context 'with invalid cache key - missing files' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            key:
+              prefix: test
+            paths:
+              - node_modules
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'passes schema validation but cache_config normalizes without key' do
+        expect(config.valid_format?).to be true
+        expect(config.cache_config).to eq({ 'paths' => ['node_modules'] })
+      end
+    end
+
+    context 'with invalid cache key - too many files' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            key:
+              files:
+                - file1.txt
+                - file2.txt
+                - file3.txt
+            paths:
+              - node_modules
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'passes schema validation but cache_config truncates to 2 files' do
+        expect(config.valid_format?).to be true
+        expect(config.cache_config['key']['files'].length).to eq(2)
+      end
+    end
+
+    context 'with valid cache key - exactly two files' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            key:
+              files:
+                - file1.txt
+                - file2.txt
+            paths:
+              - node_modules
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns true' do
+        expect(config.valid_format?).to be true
+      end
+    end
+
+    context 'with invalid cache - unknown properties' do
+      let(:config_content) do
+        <<~YAML
+          cache:
+            paths:
+              - node_modules
+            unknown_property: value
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns false' do
+        expect(config.valid_format?).to be false
+      end
+    end
+  end
+
+  describe '#validation_errors' do
+    context 'with valid configuration' do
+      let(:config_content) do
+        <<~YAML
+          image: ruby:3.0
+          setup_script:
+            - bundle install
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns empty array' do
+        expect(config.validation_errors).to eq([])
+      end
+    end
+
+    context 'with invalid configuration' do
+      let(:config_content) do
+        <<~YAML
+          image: 123
+        YAML
+      end
+
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(config_content)
+      end
+
+      it 'returns array of error messages' do
+        errors = config.validation_errors
+        expect(errors).not_to be_empty
+        expect(errors.first).to include('string')
+      end
+    end
+
+    context 'when config is nil' do
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return(nil)
+      end
+
+      it 'returns empty array' do
+        expect(config.validation_errors).to eq([])
+      end
+    end
+
+    context 'when config is not a hash' do
+      before do
+        allow(project.repository).to receive(:blob_data_at)
+                                       .with(default_branch, config_path)
+                                       .and_return("not a hash")
+        allow(Rails.cache).to receive(:fetch).and_yield
+      end
+
+      it 'returns empty array' do
+        expect(config.validation_errors).to eq([])
       end
     end
   end

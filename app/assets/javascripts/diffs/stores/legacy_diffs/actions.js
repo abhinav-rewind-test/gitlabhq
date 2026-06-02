@@ -56,7 +56,7 @@ import {
   BUILDING_YOUR_MR,
   SOMETHING_WENT_WRONG,
   ERROR_LOADING_FULL_DIFF,
-  ERROR_DISMISSING_SUGESTION_POPOVER,
+  ERROR_DISMISSING_SUGGESTION_POPOVER,
   ENCODED_FILE_PATHS_TITLE,
   ENCODED_FILE_PATHS_MESSAGE,
 } from '../../i18n';
@@ -73,6 +73,10 @@ import {
   parseUrlHashAsFileHash,
   isUrlHashNoteLink,
   findDiffFile,
+  parseRapidDiffsLineHash,
+  findDiffFileByShortHash,
+  findLineCodeFromRapidDiffsHash,
+  extractGitalyErrorMessage,
 } from '../../store/utils';
 
 export function setBaseConfig(options) {
@@ -168,6 +172,7 @@ export async function fetchFileByFile() {
     // Overloading "batch" loading indicators so the UI stays mostly the same
     this[types.SET_BATCH_LOADING_STATE]('loading');
     this[types.SET_RETRIEVING_BATCHES](true);
+    this[types.SET_GITALY_ERROR_MESSAGE](null);
 
     const urlParams = {
       old_path: treeEntry.filePaths.old,
@@ -199,7 +204,11 @@ export async function fetchFileByFile() {
 
         eventHub.$emit('diffFilesModified');
       })
-      .catch(() => {
+      .catch((error) => {
+        const gitalyErrorMessage = extractGitalyErrorMessage(error);
+        if (gitalyErrorMessage) {
+          this[types.SET_GITALY_ERROR_MESSAGE](gitalyErrorMessage);
+        }
         this[types.SET_BATCH_LOADING_STATE]('error');
       })
       .finally(() => {
@@ -219,12 +228,14 @@ export function fetchDiffFilesBatch(linkedFileLoading = false) {
     view: 'inline',
   };
   const hash = window.location.hash.replace('#', '').split('diff-content-').pop();
+  const rapidDiffsHash = parseRapidDiffsLineHash(hash);
   let totalLoaded = 0;
   let scrolledVirtualScroller = hash === '';
 
   if (!linkedFileLoading) {
     this[types.SET_BATCH_LOADING_STATE]('loading');
     this[types.SET_RETRIEVING_BATCHES](true);
+    this[types.SET_GITALY_ERROR_MESSAGE](null);
   }
   eventHub.$emit(EVT_PERF_MARK_DIFF_FILES_START);
 
@@ -238,10 +249,27 @@ export function fetchDiffFilesBatch(linkedFileLoading = false) {
         this[types.SET_BATCH_LOADING_STATE]('loaded');
 
         if (!scrolledVirtualScroller && !linkedFileLoading) {
-          const index = this.diffFiles.findIndex(
+          let index = this.diffFiles.findIndex(
             (f) =>
               f.file_hash === hash || f[INLINE_DIFF_LINES_KEY].find((l) => l.line_code === hash),
           );
+
+          if (index < 0 && rapidDiffsHash) {
+            const matchedFile = findDiffFileByShortHash(
+              this.diffFiles,
+              rapidDiffsHash.shortFileHash,
+            );
+            if (matchedFile) {
+              index = this.diffFiles.indexOf(matchedFile);
+              const legacyLineCode = findLineCodeFromRapidDiffsHash(matchedFile, rapidDiffsHash);
+              if (legacyLineCode) {
+                window.history.replaceState(null, null, `#${legacyLineCode}`);
+                this[types.SET_HIGHLIGHTED_ROW](legacyLineCode);
+                this[types.SET_CURRENT_DIFF_FILE](matchedFile.file_hash);
+                setTimeout(() => handleLocationHash());
+              }
+            }
+          }
 
           if (index >= 0) {
             eventHub.$emit('scrollToIndex', index);
@@ -302,6 +330,10 @@ export function fetchDiffFilesBatch(linkedFileLoading = false) {
         return null;
       })
       .catch((error) => {
+        const gitalyErrorMessage = extractGitalyErrorMessage(error);
+        if (gitalyErrorMessage) {
+          this[types.SET_GITALY_ERROR_MESSAGE](gitalyErrorMessage);
+        }
         this[types.SET_RETRIEVING_BATCHES](false);
         this[types.SET_BATCH_LOADING_STATE]('error');
         throw error;
@@ -396,7 +428,12 @@ export function setHighlightedRow({ lineCode, event }) {
     event.preventDefault();
     window.history.replaceState(null, undefined, removeParams(['file'], event.target.href));
   }
-  const fileHash = lineCode.split('_')[0];
+  const rapidDiffsHash = parseRapidDiffsLineHash(lineCode);
+  let fileHash = lineCode.split('_')[0];
+  if (rapidDiffsHash) {
+    const matchedFile = findDiffFileByShortHash(this.diffFiles, rapidDiffsHash.shortFileHash);
+    fileHash = matchedFile?.file_hash || fileHash;
+  }
   this[types.SET_HIGHLIGHTED_ROW](lineCode);
   this[types.SET_CURRENT_DIFF_FILE](fileHash);
 
@@ -626,6 +663,8 @@ export function collapseDiffDiscussion(discussion) {
   }
 
   const diffFile = this.getDiffFileByHash(discussion.diff_file.file_hash);
+  // Guard against a call in Rapid Diffs
+  if (!diffFile) return;
   const line = diffFile[INLINE_DIFF_LINES_KEY].find(
     (diffLine) => diffLine.line_code === discussion.line_code,
   );
@@ -694,11 +733,16 @@ export function getLinesForDiscussion({ discussion }) {
     }
 
     if (isAdding) {
+      if (line.type === 'match') break;
+
       if (line.type !== OLD_LINE_TYPE) {
         lines.push(line);
       }
 
-      if (end.line_code === line.line_code) {
+      if (
+        end.line_code === line.line_code ||
+        (end.new_line != null && line.new_line === end.new_line)
+      ) {
         break;
       }
     }
@@ -947,7 +991,7 @@ export function setSuggestPopoverDismissed() {
     })
     .catch(() => {
       createAlert({
-        message: ERROR_DISMISSING_SUGESTION_POPOVER,
+        message: ERROR_DISMISSING_SUGGESTION_POPOVER,
       });
     });
 }
@@ -1087,9 +1131,11 @@ export function fetchLinkedFile(linkedFileUrl) {
   const isNoteLink = isUrlHashNoteLink(window?.location?.hash);
   const [, fragmentFileHash, oldNumber, newNumber] =
     window.location.hash.substring(1).match(/^([0-9a-f]{40})_([0-9]+)_([0-9]+)$/) || [];
+  const rapidDiffsHash = parseRapidDiffsLineHash(window.location.hash);
 
   this[types.SET_BATCH_LOADING_STATE]('loading');
   this[types.SET_RETRIEVING_BATCHES](true);
+  this[types.SET_GITALY_ERROR_MESSAGE](null);
 
   return axios
     .get(linkedFileUrl)
@@ -1114,6 +1160,18 @@ export function fetchLinkedFile(linkedFileUrl) {
         });
       }
 
+      if (rapidDiffsHash) {
+        const matchedFile = findDiffFileByShortHash(
+          diffData.diff_files,
+          rapidDiffsHash.shortFileHash,
+        );
+        const legacyLineCode = findLineCodeFromRapidDiffsHash(matchedFile, rapidDiffsHash);
+        if (legacyLineCode) {
+          window.history.replaceState(null, null, `#${legacyLineCode}`);
+          this[types.SET_HIGHLIGHTED_ROW](legacyLineCode);
+        }
+      }
+
       this[types.SET_BATCH_LOADING_STATE]('loaded');
 
       setTimeout(() => {
@@ -1123,6 +1181,10 @@ export function fetchLinkedFile(linkedFileUrl) {
       eventHub.$emit('diffFilesModified');
     })
     .catch((error) => {
+      const gitalyErrorMessage = extractGitalyErrorMessage(error);
+      if (gitalyErrorMessage) {
+        this[types.SET_GITALY_ERROR_MESSAGE](gitalyErrorMessage);
+      }
       this[types.SET_BATCH_LOADING_STATE]('error');
       throw error;
     })

@@ -7,6 +7,12 @@ RSpec.describe Member, feature_category: :groups_and_projects do
 
   using RSpec::Parameterized::TableSyntax
 
+  it_behaves_like 'cells claimable model',
+    subject_type: Cells::Claimable::CLAIMS_SUBJECT_TYPE::NAMESPACE,
+    subject_key: :member_namespace_id,
+    source_type: Cells::Claimable::CLAIMS_SOURCE_TYPE::RAILS_TABLE_MEMBERS,
+    claiming_attributes: [:invite_email]
+
   describe 'default values' do
     subject(:member) { build(:project_member) }
 
@@ -129,9 +135,9 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'when a child member inherits its access level' do
-      let(:user) { create(:user) }
-      let(:member) { create(:group_member, :developer, user: user) }
-      let(:child_group) { create(:group, parent: member.group) }
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be(:member, freeze: false) { create(:group_member, :developer, user: user) }
+      let_it_be(:child_group) { create(:group, parent: member.group) }
       let(:child_member) { build(:group_member, group: child_group, user: user) }
 
       it 'requires a higher level' do
@@ -185,9 +191,9 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'when access_level is nil' do
-      let_it_be(:group) { create(:group) }
-      let_it_be(:user) { create(:user) }
-      let_it_be(:member) { create(:group_member, source: group, user: user) }
+      let_it_be(:group, freeze: false) { create(:group) }
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be(:member, freeze: false) { create(:group_member, source: group, user: user) }
 
       shared_examples 'returns the correct validation error' do
         specify do
@@ -202,8 +208,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
       it_behaves_like 'returns the correct validation error'
 
       context 'for a subgroup member' do
-        let_it_be(:subgroup) { create(:group, parent: group) }
-        let_it_be(:member) { create(:group_member, source: subgroup, user: user) }
+        let_it_be(:subgroup, freeze: false) { create(:group, parent: group) }
+        let_it_be(:member, freeze: false) { create(:group_member, source: subgroup, user: user) }
 
         it_behaves_like 'returns the correct validation error'
       end
@@ -212,7 +218,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
 
   describe 'Scopes & finders' do
     let_it_be(:project) { create(:project, :public) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:blocked_pending_approval_user) { create(:user, :blocked_pending_approval) }
     let_it_be(:blocked_pending_approval_project_member) { create(:project_member, :invited, :developer, project: project, invite_email: blocked_pending_approval_user.email) }
     let_it_be(:awaiting_group_member) { create(:group_member, :awaiting, group: group) }
@@ -274,15 +280,15 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe 'hierarchy related scopes' do
-      let(:root_ancestor) { create(:group) }
-      let(:project) { create(:project, group: root_ancestor) }
-      let(:subgroup) { create(:group, parent: root_ancestor) }
-      let(:subgroup_project) { create(:project, group: subgroup) }
+      let_it_be(:root_ancestor) { create(:group) }
+      let_it_be(:project) { create(:project, group: root_ancestor) }
+      let_it_be(:subgroup, freeze: false) { create(:group, parent: root_ancestor) }
+      let_it_be(:subgroup_project) { create(:project, group: subgroup) }
 
-      let!(:root_ancestor_member) { create(:group_member, group: root_ancestor) }
-      let!(:project_member) { create(:project_member, project: project) }
-      let!(:subgroup_member) { create(:group_member, group: subgroup) }
-      let!(:subgroup_project_member) { create(:project_member, project: subgroup_project) }
+      let_it_be(:root_ancestor_member) { create(:group_member, group: root_ancestor) }
+      let_it_be(:project_member) { create(:project_member, project: project) }
+      let_it_be(:subgroup_member, freeze: false) { create(:group_member, group: subgroup) }
+      let_it_be(:subgroup_project_member) { create(:project_member, project: subgroup_project) }
 
       describe '.in_hierarchy' do
         let(:hierarchy_members) do
@@ -334,18 +340,18 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe '.seat_assignable' do
-      let_it_be(:user) { create(:user) }
-      let_it_be(:other_user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
+      let_it_be(:other_user, freeze: false) { create(:user) }
 
-      let_it_be(:other_group) { create(:group) }
-      let_it_be(:subgroup) { create(:group, parent: group) }
+      let_it_be(:other_group, freeze: false) { create(:group) }
+      let_it_be(:subgroup, freeze: false) { create(:group, parent: group) }
       let_it_be(:project) { create(:project, group: group) }
 
-      let_it_be(:group_member) { create(:group_member, source: group, user: user) }
-      let_it_be(:subgroup_member) { create(:group_member, source: subgroup, user: user) }
+      let_it_be(:group_member, freeze: false) { create(:group_member, source: group, user: user) }
+      let_it_be(:subgroup_member, freeze: false) { create(:group_member, source: subgroup, user: user) }
 
       let_it_be(:other_group_member) { create(:group_member, user: user, source: other_group) }
-      let_it_be(:other_user_group_member) { create(:group_member, user: other_user, source: other_group) }
+      let_it_be(:other_user_group_member, freeze: false) { create(:group_member, user: other_user, source: other_group) }
 
       context 'without namespace' do
         it 'returns members of the user' do
@@ -389,10 +395,10 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe '.seat_assignable?' do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
 
-      let_it_be(:subgroup) { create(:group, parent: group) }
-      let_it_be(:subgroup_member) { create(:group_member, source: subgroup, user: user) }
+      let_it_be(:subgroup, freeze: false) { create(:group, parent: group) }
+      let_it_be(:subgroup_member, freeze: false) { create(:group_member, source: subgroup, user: user) }
 
       it { expect(described_class.seat_assignable?(user: user)).to be true }
       it { expect(described_class.seat_assignable?(user: user, namespace: group)).to be true }
@@ -403,11 +409,11 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe '.seat_assignable_highest_access_level' do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
 
-      let_it_be(:group) { create(:group).tap { |group| group.add_maintainer(user) } }
-      let_it_be(:subgroup) { create(:group, parent: group).tap { |group| group.add_developer(user) } }
-      let_it_be(:other_group) { create(:group).tap { |group| group.add_owner(user) } }
+      let_it_be(:group, freeze: false) { create(:group).tap { |group| group.add_maintainer(user) } }
+      let_it_be(:subgroup, freeze: false) { create(:group, parent: group).tap { |group| group.add_developer(user) } }
+      let_it_be(:other_group, freeze: false) { create(:group).tap { |group| group.add_owner(user) } }
 
       it 'returns the highest acecss level' do
         expect(described_class.seat_assignable_highest_access_level(user: user))
@@ -426,8 +432,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe '.seat_assignable_highest_access_levels' do
-      let_it_be(:user1) { create(:user) }
-      let_it_be(:user2) { create(:user) }
+      let_it_be(:user1, freeze: false) { create(:user) }
+      let_it_be(:user2, freeze: false) { create(:user) }
 
       let_it_be(:group1) do
         create(:group).tap do |group|
@@ -905,7 +911,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     describe '.distinct_on_user_with_max_access_level' do
-      let_it_be(:other_group) { create(:group) }
+      let_it_be(:other_group, freeze: false) { create(:group) }
       let_it_be(:group_project) { create(:project, group: group) }
       let_it_be(:member_with_lower_access_level) { create(:group_member, :developer, group: other_group, user: @owner_user) }
       let_it_be(:member_with_same_access_level) { create(:group_member, :maintainer, group: other_group, user: @maintainer_user) }
@@ -1120,8 +1126,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   describe '.filter_by_user_type' do
-    let_it_be(:service_account) { create(:user, :service_account) }
-    let_it_be(:service_account_member) { create(:group_member, user: service_account) }
+    let_it_be(:service_account, freeze: false) { create(:user, :service_account) }
+    let_it_be(:service_account_member, freeze: false) { create(:group_member, user: service_account) }
     let_it_be(:other_member) { create(:group_member) }
 
     context 'when the user type is valid' do
@@ -1186,7 +1192,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   describe '.coerce_to_no_access' do
-    let_it_be(:member) { create(:group_member) }
+    let_it_be(:member, freeze: false) { create(:group_member) }
 
     it 'returns NO_ACCESS for the member' do
       members = described_class.id_in(member.id).coerce_to_no_access.to_a
@@ -1351,7 +1357,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
 
       context 'for a group' do
         let_it_be(:recipient) { create(:user) }
-        let_it_be(:group) { create(:group, :public, owners: [recipient, new_approver]) }
+        let_it_be(:group, freeze: false) { create(:group, :public, owners: [recipient, new_approver]) }
 
         it 'enqueues emails for all approvers' do
           expect do
@@ -1379,15 +1385,15 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   describe '#pending?' do
-    let(:invited_member) { create(:project_member, invite_email: "user@example.com", user: nil) }
-    let(:requester) { create(:project_member, requested_at: Time.current.utc) }
+    let_it_be(:invited_member) { create(:project_member, invite_email: "user@example.com", user: nil) }
+    let_it_be(:requester) { create(:project_member, requested_at: Time.current.utc) }
 
     it { expect(invited_member).to be_pending }
     it { expect(requester).to be_pending }
   end
 
   describe '#hook_prerequisites_met?' do
-    let(:member) { create(:project_member) }
+    let_it_be_with_reload(:member) { create(:project_member) }
 
     context 'when the member does not have an associated user' do
       it 'returns false' do
@@ -1458,8 +1464,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'when after accepting invite' do
-      let_it_be(:group) { create(:group, require_two_factor_authentication: true) }
-      let_it_be(:member, reload: true) { create(:group_member, :invited, source: group) }
+      let_it_be(:group, freeze: false) { create(:group, require_two_factor_authentication: true) }
+      let_it_be_with_reload(:member) { create(:group_member, :invited, source: group) }
       let_it_be(:email) { member.invite_email }
       let(:user) { build(:user, email: email) }
 
@@ -1481,7 +1487,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
 
       context 'when member source is a project' do
         let_it_be(:project) { create(:project, namespace: group) }
-        let_it_be(:member) { create(:project_member, :invited, source: project, invite_email: email) }
+        let_it_be(:member, freeze: false) { create(:project_member, :invited, source: project, invite_email: email) }
 
         it 'calls updates the two factor requirement' do
           expect(user).not_to receive(:require_two_factor_authentication_from_group)
@@ -1492,8 +1498,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'when after accept request' do
-      let_it_be(:group) { create(:group, require_two_factor_authentication: true) }
-      let_it_be(:member, reload: true) { create(:group_member, :awaiting, source: group) }
+      let_it_be(:group, freeze: false) { create(:group, require_two_factor_authentication: true) }
+      let_it_be_with_reload(:member) { create(:group_member, :awaiting, source: group) }
 
       it 'calls updates the two factor requirement' do
         expect(member.user).to receive(:require_two_factor_authentication_from_group).and_call_original
@@ -1532,7 +1538,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   describe 'generate invite token on create' do
-    let(:project) { create(:project) }
+    let_it_be(:project) { create(:project) }
     let!(:member) { build(:project_member, invite_email: "user@example.com", project: project) }
 
     it 'sets the invite token' do
@@ -1568,7 +1574,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     subject(:send_invitation_reminder) { member.send_invitation_reminder(0) }
 
     context 'an invited group member' do
-      let!(:member) { create(:group_member, :invited) }
+      let_it_be(:member, freeze: false) { create(:group_member, :invited) }
 
       it 'enqueues a reminder email' do
         expect(Members::InviteReminderMailer)
@@ -1579,7 +1585,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'an invited member without a raw invite token set' do
-      let!(:member) { create(:group_member, :invited) }
+      let_it_be(:member, freeze: false) { create(:group_member, :invited) }
 
       before do
         member.instance_variable_set(:@raw_invite_token, nil)
@@ -1594,7 +1600,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     context 'an uninvited member' do
-      let!(:member) { create(:group_member) }
+      let_it_be(:member, freeze: false) { create(:group_member) }
 
       it 'does not send a reminder' do
         expect(Members::InviteReminderMailer).not_to receive(:email)
@@ -1636,8 +1642,8 @@ RSpec.describe Member, feature_category: :groups_and_projects do
 
   context 'for updating organization_users' do
     let_it_be(:organization) { create(:organization) }
-    let_it_be(:group) { create(:group, organization: organization) }
-    let_it_be(:user) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group, organization: organization) }
+    let_it_be(:user, freeze: false) { create(:user) }
     let(:member) { create(:group_member, source: group, user: user) }
 
     subject(:commit_member) { member }
@@ -1660,7 +1666,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
       end
 
       context 'when user already exists in the organization_users' do
-        let_it_be(:user) { create(:user) }
+        let_it_be(:user, freeze: false) { create(:user) }
         let_it_be(:common_attrs) { { organization: group.organization, user: user } }
         let(:new_member) { create(:group_member, :owner, source: group, user: user) }
 
@@ -1737,7 +1743,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
         end
 
         context 'when organization does not exist' do
-          let_it_be(:member) { create(:group_member) }
+          let_it_be(:member, freeze: false) { create(:group_member) }
 
           it_behaves_like 'does not create an organization_user entry'
         end
@@ -1786,7 +1792,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
       end
 
       context 'when updating a non user_id/requested_at attribute' do
-        let_it_be(:member) { create(:group_member, :reporter, source: group) }
+        let_it_be(:member, freeze: false) { create(:group_member, :reporter, source: group) }
 
         subject(:commit_member) { member.update!(access_level: GroupMember::DEVELOPER) }
 
@@ -1796,7 +1802,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   context 'when after_commit :update_highest_role' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
 
     let(:user_id) { user.id }
 
@@ -1841,7 +1847,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   context 'when after_update :post_update_hook' do
-    let_it_be(:member) { create(:group_member, :developer) }
+    let_it_be(:member, freeze: false) { create(:group_member, :developer) }
 
     context 'when access_level is changed' do
       it 'enqueues the access granted mailer when access level has changed' do
@@ -2002,7 +2008,7 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   context 'when after_commit :log_previous_state_on_update' do
-    let_it_be(:member) { create(:group_member) }
+    let_it_be(:member, freeze: false) { create(:group_member) }
 
     it 'logs a message on member update' do
       expect(Gitlab::AppLogger)
@@ -2069,13 +2075,13 @@ RSpec.describe Member, feature_category: :groups_and_projects do
   end
 
   describe '.sort_by_attribute' do
-    let_it_be(:user1) { create(:user, created_at: Date.today, last_sign_in_at: Date.today, last_activity_on: Date.today, name: 'Alpha') }
-    let_it_be(:user2) { create(:user, created_at: Date.today - 1, last_sign_in_at: Date.today - 1, last_activity_on: Date.today - 1, name: 'Omega') }
-    let_it_be(:user3) { create(:user, created_at: Date.today - 2, name: 'Beta') }
-    let_it_be(:group) { create(:group) }
-    let_it_be(:member1) { create(:group_member, :reporter, group: group, user: user1) }
-    let_it_be(:member2) { create(:group_member, :developer, group: group, user: user2) }
-    let_it_be(:member3) { create(:group_member, :maintainer, group: group, user: user3) }
+    let_it_be(:user1, freeze: false) { create(:user, created_at: Date.today, last_sign_in_at: Date.today, last_activity_on: Date.today, name: 'Alpha') }
+    let_it_be(:user2, freeze: false) { create(:user, created_at: Date.today - 1, last_sign_in_at: Date.today - 1, last_activity_on: Date.today - 1, name: 'Omega') }
+    let_it_be(:user3, freeze: false) { create(:user, created_at: Date.today - 2, name: 'Beta') }
+    let_it_be(:group, freeze: false) { create(:group) }
+    let_it_be(:member1, freeze: false) { create(:group_member, :reporter, group: group, user: user1) }
+    let_it_be(:member2, freeze: false) { create(:group_member, :developer, group: group, user: user2) }
+    let_it_be(:member3, freeze: false) { create(:group_member, :maintainer, group: group, user: user3) }
 
     it 'sort users in ascending order by access-level' do
       expect(described_class.sort_by_attribute('access_level_asc')).to eq([member1, member2, member3])
@@ -2120,18 +2126,18 @@ RSpec.describe Member, feature_category: :groups_and_projects do
     end
 
     it 'sort users by recent last activity' do
-      expect(described_class.sort_by_attribute('recent_last_activity')).to eq([member1, member2, member3])
+      expect(described_class.sort_by_attribute('last_activity_on_desc')).to eq([member1, member2, member3])
     end
 
     it 'sort users by oldest last activity' do
-      expect(described_class.sort_by_attribute('oldest_last_activity')).to eq([member3, member2, member1])
+      expect(described_class.sort_by_attribute('last_activity_on_asc')).to eq([member3, member2, member1])
     end
   end
 
   context 'with loose foreign key on members.user_id' do
     it_behaves_like 'cleanup by a loose foreign key' do
-      let_it_be(:parent) { create(:user) }
-      let_it_be(:model) { create(:group_member, user: parent) }
+      let_it_be(:parent, freeze: false) { create(:user) }
+      let_it_be(:model, freeze: false) { create(:group_member, user: parent) }
     end
   end
 end

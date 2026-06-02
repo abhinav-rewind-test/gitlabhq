@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Documentation for the REST API for Git repositories in GitLab.
 title: Repositories API
 ---
@@ -21,8 +21,8 @@ Lists all repository files and directories in a specified project. This endpoint
 be accessed without authentication if the repository is publicly accessible.
 
 This command provides essentially the same features as the `git ls-tree`
-command. For more information, refer to the section
-[Tree Objects](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects.html#_tree_objects)
+command. For more information, see
+[tree objects](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects.html#_tree_objects)
 in the Git internals documentation.
 
 > [!warning]
@@ -44,7 +44,7 @@ Supported attributes:
 | `page_token` | string            | No       | Tree record ID at which to fetch the next page. Used only with keyset pagination. |
 | `pagination` | string            | No       | If `keyset`, use the [keyset-based pagination method](rest/_index.md#keyset-based-pagination). |
 | `path`       | string            | No       | Path inside the repository. Used to get content of subdirectories. |
-| `per_page`   | integer           | No       | Number of results to show per page. If not specified, defaults to `20`. For more information, see [Pagination](rest/_index.md#pagination). |
+| `per_page`   | integer           | No       | Number of results to show per page. If not specified, defaults to `20`. For more information, see [pagination](rest/_index.md#pagination). |
 | `recursive`  | boolean           | No       | If `true`, get a recursive tree. Default is `false`. |
 | `ref`        | string            | No       | Name of a repository branch or tag. If not specified, uses the default branch. |
 
@@ -465,6 +465,7 @@ Example response:
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/172842) authentication through [CI/CD job token](../ci/jobs/ci_job_token.md) in GitLab 17.7.
 - `config_file_ref` attribute [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/426108) in GitLab 18.2.
+- Plain text format (`.txt`) [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/237585) in GitLab 19.1.
 
 {{< /history >}}
 
@@ -472,10 +473,17 @@ Generate changelog data based on commits in a repository, without committing
 them to a changelog file.
 
 Works exactly like `POST /projects/:id/repository/changelog`, except the changelog
-data isn't committed to any changelog file.
+data is not committed to any changelog file.
 
 ```plaintext
 GET /projects/:id/repository/changelog
+```
+
+Optional. You can add a `.txt` suffix that returns the changelog as plain text Markdown
+instead of JSON:
+
+```plaintext
+GET /projects/:id/repository/changelog.txt
 ```
 
 Supported attributes:
@@ -516,6 +524,26 @@ Example response, with line breaks added for readability:
 }
 ```
 
+Example request with `.txt` format:
+
+```shell
+curl --header "PRIVATE-TOKEN: token" \
+  --url "https://gitlab.com/api/v4/projects/42/repository/changelog.txt?version=1.0.0"
+```
+
+Example response:
+
+```plaintext
+## 1.0.0 (2021-11-17)
+
+### feature (2 changes)
+
+- [Title 2](namespace13/project13@ad608eb642124f5b3944ac0ac772fecaf570a6bf)
+  ([merge request](namespace13/project13!2))
+- [Title 1](namespace13/project13@3c6b80ff7034fa0d585314e1571cc780596ce3c8)
+  ([merge request](namespace13/project13!1))
+```
+
 ## Add changelog data to file
 
 {{< history >}}
@@ -537,7 +565,7 @@ For performance and security reasons, parsing the changelog configuration is lim
 This limitation helps prevent potential DoS attacks from malformed changelog templates.
 If the request times out, consider reducing the size of your `changelog_config.yml` file.
 
-For user-facing documentation, see [Changelogs](../user/project/changelogs.md).
+For user-facing documentation, see [changelogs](../user/project/changelogs.md).
 
 ```plaintext
 POST /projects/:id/repository/changelog

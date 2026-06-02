@@ -13,10 +13,12 @@ module API
       before { authenticate_non_get! }
 
       allow_mcp_access_read
+      allow_mcp_access_create
+      allow_mcp_access_delete
       allow_access_with_scope :ai_workflows, if: ->(request) { request.get? || request.head? }
 
       params do
-        requires :id, type: String, desc: 'The project ID or URL-encoded path', documentation: { example: 11 }
+        requires :id, type: String, desc: 'The project ID or URL-encoded path', documentation: { example: '11' }
       end
       resource :projects, requirements: ::API::API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc 'Get all Pipelines of the project' do
@@ -67,6 +69,11 @@ module API
             documentation: { example: 'Build pipeline' }
         end
 
+        route_setting :mcp,
+          tool_name: :list_pipelines,
+          params: [:id, :ref, :page, :per_page],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "project"
         route_setting :authentication, job_token_allowed: true
         route_setting :authorization, job_token_policies: :read_pipelines,
           allow_public_access_for_enabled_project_features: [:repository, :builds],
@@ -96,6 +103,11 @@ module API
           use :create_pipeline_params
         end
 
+        route_setting :mcp,
+          tool_name: :create_pipeline,
+          params: [:id, :ref, :variables, :inputs],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "project"
         route_setting :authorization, permissions: :create_pipeline, boundary_type: :project
         post ':id/pipeline', urgency: :low, feature_category: :pipeline_composition do
           Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/20711')
@@ -180,7 +192,7 @@ module API
           use :pagination
         end
 
-        route_setting :mcp, tool_name: :get_pipeline_jobs, params: [:id, :pipeline_id, :per_page, :page]
+        route_setting :mcp, tool_name: :get_pipeline_jobs, params: [:id, :pipeline_id, :per_page, :page], resource_name: "pipeline"
         route_setting :authentication, job_token_allowed: true
         route_setting :authorization, job_token_policies: :read_jobs,
           allow_public_access_for_enabled_project_features: [:repository, :builds],
@@ -302,14 +314,19 @@ module API
 
         desc 'Deletes a pipeline' do
           detail 'This feature was introduced in GitLab 11.6'
-          http_codes [[204, 'Pipeline was deleted'], [403, 'Forbidden']]
           success code: 204, message: 'Pipeline was deleted'
+          failure [[403, 'Forbidden']]
           tags ['pipelines']
         end
         params do
           requires :pipeline_id, type: Integer, desc: 'The pipeline ID', documentation: { example: 18 }
         end
 
+        route_setting :mcp,
+          tool_name: :delete_pipeline,
+          params: [:id, :pipeline_id],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "pipeline"
         route_setting :authorization, permissions: :delete_pipeline, boundary_type: :project
         delete ':id/pipelines/:pipeline_id', urgency: :low, feature_category: :continuous_integration do
           authorize! :destroy_pipeline, pipeline
@@ -336,6 +353,11 @@ module API
           requires :pipeline_id, type: Integer, desc: 'The pipeline ID', documentation: { example: 18 }
           requires :name, type: String, desc: 'The name of the pipeline', documentation: { example: 'Deployment to production' }
         end
+        route_setting :mcp,
+          tool_name: :update_pipeline,
+          params: [:id, :pipeline_id, :name],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "pipeline"
         route_setting :authentication, job_token_allowed: true
         route_setting :authorization, permissions: :update_pipeline_metadata, boundary_type: :project,
           job_token_policies: :admin_pipelines
@@ -367,6 +389,11 @@ module API
           requires :pipeline_id, type: Integer, desc: 'The pipeline ID', documentation: { example: 18 }
         end
 
+        route_setting :mcp,
+          tool_name: :retry_pipeline,
+          params: [:id, :pipeline_id],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "pipeline"
         route_setting :authorization, permissions: :retry_pipeline, boundary_type: :project
         post ':id/pipelines/:pipeline_id/retry', urgency: :low, feature_category: :continuous_integration do
           authorize! :update_pipeline, pipeline
@@ -380,8 +407,8 @@ module API
           end
         end
 
-        desc 'Cancel all builds in the pipeline' do
-          detail 'This feature was introduced in GitLab 8.11.'
+        desc 'Cancel all jobs for a pipeline' do
+          detail 'Cancels all jobs in a specified pipeline.'
           success status: 200, model: Entities::Ci::Pipeline
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -394,6 +421,11 @@ module API
           requires :pipeline_id, type: Integer, desc: 'The pipeline ID', documentation: { example: 18 }
         end
 
+        route_setting :mcp,
+          tool_name: :cancel_pipeline,
+          params: [:id, :pipeline_id],
+          aggregators: [::Mcp::Tools::PipelineService],
+          resource_name: "pipeline"
         route_setting :authorization, permissions: :cancel_pipeline, boundary_type: :project
         post ':id/pipelines/:pipeline_id/cancel', urgency: :low, feature_category: :continuous_integration do
           authorize! :cancel_pipeline, pipeline

@@ -1,7 +1,7 @@
 <script>
 import { GlAlert, GlButton, GlCollapsibleListbox, GlSprintf } from '@gitlab/ui';
 import { GlAreaChart } from '@gitlab/ui/src/charts';
-import { get } from 'lodash';
+import { get } from 'lodash-es';
 import { formatDate } from '~/lib/utils/datetime_utility';
 import axios from '~/lib/utils/axios_utils';
 import SettingsSection from '~/vue_shared/components/settings/settings_section.vue';
@@ -179,6 +179,7 @@ export default {
         <gl-alert
           v-if="noDataAvailable"
           variant="info"
+          :header-level="3"
           :title="s__('Code Coverage|No code coverage data')"
           :dismissible="false"
         >

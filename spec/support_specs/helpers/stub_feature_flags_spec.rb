@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe StubFeatureFlags do
   let_it_be(:dummy_feature_flag) { :dummy_feature_flag }
 
-  let_it_be(:dummy_definition) do
+  let_it_be(:dummy_definition, freeze: false) do
     Feature::Definition.new(
       nil,
       name: dummy_feature_flag,
@@ -188,7 +188,7 @@ RSpec.describe StubFeatureFlags do
   def actor(actor)
     case actor
     when Array
-      actor.map(&method(:actor))
+      actor.map { |item| actor(item) }
     when Symbol # convert to flipper compatible object
       stub_feature_flag_gate(actor)
     else

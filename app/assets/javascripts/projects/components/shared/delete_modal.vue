@@ -1,9 +1,11 @@
 <script>
 import { GlAlert, GlSprintf } from '@gitlab/ui';
-import { __ } from '~/locale';
+import SecretsCount from 'ee_component/delete_modal/components/delete_modal_secrets_count.vue';
+import { __, s__ } from '~/locale';
 import { numberToMetricPrefix } from '~/lib/utils/number_utils';
 import GroupsProjectsDeleteModal from '~/groups_projects/components/delete_modal.vue';
 import { RESOURCE_TYPES } from '~/groups_projects/constants';
+import { InternalEvents } from '~/tracking';
 
 export default {
   RESOURCE_TYPES,
@@ -17,8 +19,11 @@ export default {
     isNotForkMessage: __(
       'This project is %{strongStart}NOT%{strongEnd} a fork, and has the following:',
     ),
+    secretsCountFetchError: s__('SecretsManager|Failed to fetch secrets count.'),
   },
-  components: { GroupsProjectsDeleteModal, GlAlert, GlSprintf },
+  components: { GroupsProjectsDeleteModal, GlAlert, GlSprintf, SecretsCount },
+  mixins: [InternalEvents.mixin()],
+  inject: ['triggerDeleteLocation'],
   model: {
     prop: 'visible',
     event: 'change',
@@ -74,18 +79,22 @@ export default {
       required: true,
     },
   },
-  computed: {
-    hasStats() {
-      return (
-        this.issuesCount !== null ||
-        this.mergeRequestsCount !== null ||
-        this.forksCount !== null ||
-        this.starsCount !== null
-      );
-    },
+  data() {
+    return {
+      showSecretsCountFetchError: false,
+    };
   },
   methods: {
     numberToMetricPrefix,
+    handlePrimary() {
+      this.trackEvent('trigger_delete_on_project', {
+        label: this.triggerDeleteLocation,
+        property: String(this.markedForDeletion),
+        actor: 'user',
+      });
+
+      this.$emit('primary');
+    },
   },
 };
 </script>
@@ -99,18 +108,32 @@ export default {
     :confirm-loading="confirmLoading"
     :marked-for-deletion="markedForDeletion"
     :permanent-deletion-date="permanentDeletionDate"
-    @primary="$emit('primary')"
+    @primary="handlePrimary"
     @change="$emit('change', $event)"
   >
     <template #alert>
-      <gl-alert class="gl-mb-5" variant="danger" :dismissible="false">
+      <gl-alert
+        v-if="showSecretsCountFetchError"
+        data-testid="secrets-count-error"
+        class="gl-mb-5"
+        variant="warning"
+        :dismissible="false"
+      >
+        {{ $options.i18n.secretsCountFetchError }}
+      </gl-alert>
+      <gl-alert
+        data-testid="project-delete-modal-stats-alert"
+        class="gl-mb-5"
+        variant="danger"
+        :dismissible="false"
+      >
         <h4 v-if="isFork" class="gl-alert-title">
           {{ $options.i18n.isForkAlertTitle }}
         </h4>
         <h4 v-else class="gl-alert-title">
           {{ $options.i18n.isNotForkAlertTitle }}
         </h4>
-        <ul v-if="hasStats" data-testid="project-delete-modal-stats">
+        <ul data-testid="project-delete-modal-stats">
           <li v-if="issuesCount !== null">
             <gl-sprintf :message="n__('%{count} issue', '%{count} issues', issuesCount)">
               <template #count>{{ numberToMetricPrefix(issuesCount) }}</template>
@@ -135,6 +158,11 @@ export default {
               <template #count>{{ numberToMetricPrefix(starsCount) }}</template>
             </gl-sprintf>
           </li>
+          <secrets-count
+            :full-path="confirmPhrase"
+            :resource-type="$options.RESOURCE_TYPES.PROJECT"
+            @fetch-error="showSecretsCountFetchError = true"
+          />
         </ul>
         <gl-sprintf v-if="isFork" :message="$options.i18n.isForkAlertBody" />
         <gl-sprintf v-else :message="$options.i18n.isNotForkAlertBody">

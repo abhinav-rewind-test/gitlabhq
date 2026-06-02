@@ -29,8 +29,10 @@ test-coverage:export-rspec-and-e2e:
       optional: true
     - job: update-tests-metadata
       optional: true
+  variables:
+    JOB_NAME: 'process-e2e-coverage'
   script:
-    - ruby scripts/coverage/download_e2e_artifacts_from_child_pipeline.rb
+    - ruby scripts/coverage/download_artifacts_from_child_pipeline.rb
     - ruby scripts/coverage/merge_backend_coverage.rb
     - echo "Merging E2E test mappings with Crystalball mappings..."
     - ruby scripts/coverage/merge_e2e_backend_test_mapping.rb
@@ -62,8 +64,10 @@ test-coverage:export-jest-and-e2e:
     - eval "bundle install ${BUNDLE_INSTALL_FLAGS}"
     - source scripts/utils.sh
     - yarn_install_script
+  variables:
+    JOB_NAME: 'process-e2e-coverage'
   script:
-    - ruby scripts/coverage/download_e2e_artifacts_from_child_pipeline.rb
+    - ruby scripts/coverage/download_artifacts_from_child_pipeline.rb
     - echo "Merging Jest + E2E coverage..."
     - node scripts/frontend/merge_coverage_frontend.js
     - echo "Merging E2E test mappings with Jest mappings..."
@@ -76,6 +80,44 @@ test-coverage:export-jest-and-e2e:
       - jest-reports/
       - jest-test-mapping/
       - e2e-test-reports/
+    expire_in: 7d
+
+test-coverage:export-per-test-rspec:
+  extends:
+    - .coverage-export-base
+    - .per-test-coverage:rules:delta
+  stage: post-qa
+  needs:
+    - job: per-test-coverage:trigger
+      artifacts: false
+  variables:
+    JOB_PATTERN: '^rspec(-ee)? .+ per-test-coverage( [0-9]+/[0-9]+)?$'
+  script:
+    - ruby scripts/coverage/download_per_test_coverage_artifacts.rb --pattern "$JOB_PATTERN"
+    - bundle exec test-coverage --per-test-coverage 'tmp/per-test-coverage-rspec-*.ndjson'
+        --jest-quarantine-file scripts/frontend/quarantined_vue3_specs.txt
+  artifacts:
+    paths:
+      - tmp/per-test-coverage-rspec-*.ndjson
+    expire_in: 7d
+
+test-coverage:export-per-test-jest:
+  extends:
+    - .coverage-export-base
+    - .per-test-coverage:rules:delta
+  stage: post-qa
+  needs:
+    - job: per-test-coverage:trigger
+      artifacts: false
+  variables:
+    JOB_PATTERN: '^jest per-test-coverage( [0-9]+/[0-9]+)?$'
+  script:
+    - ruby scripts/coverage/download_per_test_coverage_artifacts.rb --pattern "$JOB_PATTERN"
+    - bundle exec test-coverage --per-test-coverage 'tmp/per-test-coverage-jest-*.json'
+        --jest-quarantine-file scripts/frontend/quarantined_vue3_specs.txt
+  artifacts:
+    paths:
+      - tmp/per-test-coverage-jest-*.json
     expire_in: 7d
 
 test-coverage:export-workhorse:

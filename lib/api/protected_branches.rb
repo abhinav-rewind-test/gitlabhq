@@ -79,17 +79,19 @@ module API
       end
       params do
         requires :name, type: String, desc: 'The name of the protected branch', documentation: { example: 'main' }
+        # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
         optional :push_access_level, type: Integer,
           values: ProtectedBranch::PushAccessLevel.allowed_access_levels,
           desc: 'Access levels allowed to push (defaults: `40`, maintainer access level)'
         optional :merge_access_level, type: Integer,
           values: ProtectedBranch::MergeAccessLevel.allowed_access_levels,
           desc: 'Access levels allowed to merge (defaults: `40`, maintainer access level)'
+        # rubocop:enable API/AccessLevelStringType
         optional :allow_force_push, type: Boolean,
           default: false,
           desc: 'Allow force push for all users with push access.'
 
-        use :optional_params_ee
+        use :optional_params
       end
       # rubocop: disable CodeReuse/ActiveRecord
       route_setting :authorization, permissions: :create_protected_branch, boundary_type: :project
@@ -130,7 +132,7 @@ module API
           desc: 'Allow force push for all users with push access.',
           allow_blank: false
 
-        use :optional_params_ee
+        use :optional_params
       end
       # rubocop: disable CodeReuse/ActiveRecord
       route_setting :authorization, permissions: :update_protected_branch, boundary_type: :project

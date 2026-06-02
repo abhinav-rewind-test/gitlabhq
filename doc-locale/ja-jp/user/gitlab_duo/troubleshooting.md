@@ -1,13 +1,13 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Duoのトラブルシューティング
 ---
 
 GitLab Duoの使用中に、問題が発生することがあります。
 
-[ヘルスチェックの実行](../../administration/gitlab_duo/configure/gitlab_self_managed.md#run-a-health-check-for-gitlab-duo)から開始して、お使いのインスタンスがGitLab Duoを使用するための要件を満たしているかどうかを判断してください。
+[ヘルスチェックの実行](../../administration/gitlab_duo/configure/_index.md#run-a-health-check-for-gitlab-duo)から開始して、お使いのインスタンスがGitLab Duoを使用するための要件を満たしているかどうかを判断してください。
 
 GitLab Duoのトラブルシューティングの詳細については、以下を参照してください:
 
@@ -17,9 +17,9 @@ GitLab Duoのトラブルシューティングの詳細については、以下�
 
 ヘルスチェックで問題が解決しない場合は、次のトラブルシューティングの手順を確認してください。
 
-## GitLab Duo機能がSelf-Managedで動作しない {#gitlab-duo-features-do-not-work-on-self-managed}
+## GitLab Duoの機能がセルフマネージド環境で動作しない {#gitlab-duo-features-do-not-work-on-self-managed}
 
-[GitLab Duoの機能がオンになっていることを確認する](turn_on_off.md)ことに加えて、次のこともできます:
+[GitLab Duoの機能がオンになっていることを確認する](turn_on_off.md)だけでなく、次のこともできます:
 
 1. 管理者として、GitLab Duoのヘルスチェックを実行します。
 
@@ -85,7 +85,7 @@ GitLab Duoのトラブルシューティングの詳細については、以下�
    curl --verbose --proxy "http://USERNAME:PASSWORD@example.com:8080" "https://customers.gitlab.com"
    ```
 
-1. オプション。GitLabアプリケーションとパブリックインターネットの間に[プロキシサーバー](../../administration/gitlab_duo/configure/gitlab_self_managed.md#allow-outbound-connections-from-the-gitlab-instance)を使用している場合は、[DNSリバインディング保護を無効にします](../../security/webhooks.md#enforce-dns-rebinding-attack-protection)。
+1. オプション。GitLabアプリケーションとパブリックインターネットの間に[プロキシサーバー](../../administration/gitlab_duo/configure/_index.md#allow-outbound-connections-from-the-gitlab-instance-to-gitlab-duo)を使用している場合は、[DNSリバインディング保護を無効にします](../../security/webhooks.md#enforce-dns-rebinding-attack-protection)。
 
 1. [サブスクリプションデータを手動で同期します](../../subscriptions/manage_subscription.md#manually-synchronize-subscription-data)。
    - GitLabインスタンスが[サブスクリプションデータをGitLabと同期している](https://about.gitlab.com/pricing/licensing-faq/cloud-licensing/)ことを確認します。
@@ -94,12 +94,14 @@ GitLab Duoのトラブルシューティングの詳細については、以下�
 
 VS Code Remote SSHまたはWSLセッションでGitLab Duo Chatを使用すると、このエラーが発生する可能性があります。拡張機能が`127.0.0.1`アドレスに誤って接続しようとする場合もあります。
 
-この問題は、リモート環境でレイテンシーが発生し、GitLab VS Code Extension 6.8.0以降にハードコードされた10秒のタイムアウトを超える場合に発生します。
+この問題は、GitLab VS Code拡張機能バージョン6.8.0以降で、ハードコードされた10秒のタイムアウトを超えるレイテンシーがリモート環境で生じた場合に発生します。
 
-この問題を解決するには:
+この問題を解決するには、次の手順に従います:
 
-1. VS Codeで、**Code** > **Preferences** > **Settings**を選択します。
-1. **Open Settings (JSON)**を選択して、`settings.json`ファイルを編集します。または、<kbd>F1</kbd>キーを押して、**Preferences: Open Settings (JSON)**と入力して、それを選択します。
+1. VS Codeで、設定エディタを開きます:
+   - macOSでは、<kbd>Command</kbd>+<kbd>,</kbd>を押してください。
+   - WindowsまたはLinuxでは、<kbd>Control</kbd>+<kbd>,</kbd>を押してください。
+1. **Open Settings (JSON)** を選択して、`settings.json`ファイルを編集します。または、<kbd>F1</kbd>キーを押して、**Preferences: Open Settings (JSON)** と入力し、それを選択します。
 1. この設定を追加します:
 
    ```json
@@ -124,7 +126,7 @@ PremiumおよびUltimateプランのお客様の場合、GitLab 18.3以降では
 
 これらの問題は、ライセンスがインスタンスと適切に同期されていない場合に発生します。
 
-この問題を解決するには、ライセンス同期を確認するためのサポートチケットを作成してください。サポートは、同期ステータスを確認し、必要に応じて新しいライセンスの生成をリクエストできます。
+この問題を解決するには、ライセンス同期を確認するためのサポートチケットを作成してください。サポートでは、同期ステータスを確認し、必要に応じて新しいライセンスの生成をリクエストできます。
 
 ### エラー: `GitLab-workflow failed: the GitLab Language server failed to start in 10 seconds` {#error-gitlab-workflow-failed-the-gitlab-language-server-failed-to-start-in-10-seconds}
 
@@ -132,38 +134,38 @@ Web IDEでGitLab Duo Chatを使用すると、このエラーが発生する可�
 
 この問題は、`cloud.gitlab.com`および`customers.gitlab.com`へのネットワーキング接続がネットワーク設定によってブロックされている場合に発生します。
 
-この問題を解決するには:
+この問題を解決するには、次の手順に従います:
 
 1. `cloud.gitlab.com:443`および`customers.gitlab.com:443`への送信接続を確認します。
 1. 必要に応じて、許可リストに[Cloudflare IP範囲](https://www.cloudflare.com/ips/)を追加します。
-1. [プライベートリンク](../../administration/dedicated/configure_instance/network_security.md#aws-private-link-connectivity)で、許可リストまたはファイアウォールの制限を確認します。
-1. [送信リクエストのフィルタリング](../../security/webhooks.md#gitlab-duo-functionality-is-blocked)に従って、接続の問題を解決します。
+1. [プライベートリンク](../../administration/dedicated/configure_instance/network_security.md#aws-privatelink-connectivity)で、許可リストまたはファイアウォールの制限を確認します。
+1. [送信リクエストのフィルタリング](../../security/webhooks.md#gitlab-duo-functionality-is-blocked)に従って、接続の問題のトラブルシューティングを行います。
 1. インスタンスからの接続をテストします。
 
 ### エラー: `Unable to resolve resource` {#error-unable-to-resolve-resource}
 
-Web IDEの読み込みに失敗すると、このエラーが発生する可能性があります。CORSエラー: `failed to load because it violates the following Content Security policy`のブラウザーログを確認してください。
+Web IDEの読み込みに失敗すると、このエラーが発生する可能性があります。CORSエラー`failed to load because it violates the following Content Security policy`のブラウザログを確認してください。
 
 この問題は、CORSポリシーがリクエストされたリソースをブロックすると発生します。
 
-この問題を解決するには:
+この問題を解決するには、次の手順に従います:
 
-1. GitLab Workflow Extensionバージョン6.35.1以降にアップデートします。
+1. GitLab for VS Codeバージョン6.35.1以降に更新してください。
 1. CORSポリシーに`https://*.cdn.web-ide.gitlab-static.net`を追加します。
-1. トラブルシューティングをさらに行うには、HARファイルのログを確認してください。詳細については、[HARファイルを作成する](../../user/application_security/api_fuzzing/create_har_files.md)を参照してください。
+1. トラブルシューティングをさらに行うには、HARファイルのログを確認してください。詳細については、[HARファイルを作成する](../application_security/api_fuzzing/create_har_files.md)を参照してください。
 
-詳細については、[CORSの問題](../../user/project/web_ide/_index.md#cors-issues)を参照してください。
+詳細については、[CORSの問題](../project/web_ide/_index.md#cors-issues)を参照してください。
 
-## GitLab Duo機能をユーザーが利用できない {#gitlab-duo-features-not-available-for-users}
+## GitLab Duoの機能をユーザーが利用できない {#gitlab-duo-features-not-available-for-users}
 
-[GitLab Duo機能をオンにする](turn_on_off.md)ことに加えて、次も実行できます:
+[GitLab Duoの機能をオンにする](turn_on_off.md)ことに加えて、次も実行できます:
 
-- GitLab Duo Coreをお持ちの場合は、以下があることを確認してください:
-  - PremiumまたはUltimateサブスクリプション。
+- GitLab Duo Coreを使用している場合は、以下を確認してください:
+  - PremiumまたはUltimateサブスクリプションを持っている。
   - [IDE機能をオンにしている](turn_on_off.md#turn-gitlab-duo-core-on-or-off)。
-- GitLab Duo ProまたはEnterpriseをお持ちの場合:
-  - [サブスクリプションアドオンが購入されている](../../subscriptions/subscription-add-ons.md#purchase-gitlab-duo)ことを確認します。
-  - [シートがユーザーに割り当てられている](../../subscriptions/subscription-add-ons.md#assign-gitlab-duo-seats)ことを確認します。
+- GitLab Duo ProまたはEnterpriseを使用している場合:
+  - [サブスクリプションアドオンが購入されている](../../subscriptions/subscription-add-ons.md#purchase-gitlab-duo)ことを確認する。
+  - [シートがユーザーに割り当てられている](../../subscriptions/subscription-add-ons.md#assign-gitlab-duo-seats)ことを確認する。
 - IDEの場合:
-  - [拡張機能](../project/repository/code_suggestions/set_up.md#configure-editor-extension)またはプラグインが最新であることを確認します。
-  - ヘルスチェックを実行し、認証をテストします。
+  - [拡張機能](../project/repository/code_suggestions/set_up.md#configure-editor-extension)またはプラグインが最新であることを確認する。
+  - ヘルスチェックを実行し、認証をテストする。

@@ -1,7 +1,7 @@
 import { GlFormFields, GlButton } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import MockAdapter from 'axios-mock-adapter';
-import htmlSessionsNew from 'test_fixtures/sessions/new_vue.html';
+import htmlSessionsNew from 'test_fixtures/sessions/new.html';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import { convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
 import { parseRailsFormFields } from '~/lib/utils/forms';
@@ -313,9 +313,9 @@ describe('SignInForm', () => {
     });
   });
 
-  describe('when passkeys feature flag is enabled', () => {
+  describe('passkeys button and remember me', () => {
     beforeEach(() => {
-      createComponent({ provide: { glFeatures: { passkeys: true } } });
+      createComponent();
     });
 
     it('renders form with passkeys button', () => {
@@ -347,7 +347,7 @@ describe('SignInForm', () => {
   });
 
   describe('when twoStepSignIn feature flag is enabled', () => {
-    const provide = { glFeatures: { passkeys: true, twoStepSignIn: true } };
+    const provide = { glFeatures: { twoStepSignIn: true } };
 
     describe('when login field is not prefilled', () => {
       it('renders focused login field with correct name and id attributes', async () => {

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Release CI/CD examples
 ---
 
@@ -78,7 +78,7 @@ In this CI/CD example the release preparation is split into separate jobs for gr
 
 - The `prepare_job` job generates the release metadata. Any image can be used to run the job,
   including a custom image. The generated metadata is stored in the variable file `variables.env`.
-  This metadata is [passed to the downstream job](../../../ci/variables/job_scripts.md#pass-environment-variables-to-later-jobs).
+  This metadata is [passed to the downstream job](../../../ci/variables/dotenv_variables.md#pass-variables-to-later-jobs).
 - The `release_job` uses the content from the variables file to create a release, using the
   metadata passed to it in the variables file. This job must use the
   `registry.gitlab.com/gitlab-org/cli:latest` image because it contains the `glab` CLI.
@@ -134,13 +134,10 @@ release_job:
 Creating a release using a CI/CD job could potentially trigger multiple pipelines if the associated tag does not exist already. To understand how this might happen, consider the following workflows:
 
 - Tag first, release second:
-
   1. A tag is created from the UI or pushed.
   1. A tag pipeline is triggered, and runs `release` job.
   1. A release is created.
-
 - Release first, tag second:
-
   1. A pipeline is triggered when commits are pushed or merged to default branch. The pipeline runs `release` job.
   1. A release is created.
   1. A tag is created.

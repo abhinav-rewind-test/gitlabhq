@@ -63,10 +63,20 @@ export default {
       required: false,
       default: GlCollapsibleListbox.props.block.default,
     },
+    toggleId: {
+      type: String,
+      required: false,
+      default: null,
+    },
     toggleClass: {
       type: [Array, String, Object],
       required: false,
       default: null,
+    },
+    loading: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
   },
   data() {
@@ -146,6 +156,7 @@ export default {
   <component :is="wrapperComponent" :label="label" :description="description" v-bind="$attrs">
     <gl-collapsible-listbox
       :selected="selected"
+      :toggle-id="toggleId"
       :toggle-text="toggleText"
       :toggle-class="toggleClass"
       :items="filteredItems"
@@ -155,6 +166,7 @@ export default {
       :fluid-width="fluidWidth"
       :placement="placement"
       :block="block"
+      :loading="loading"
       @search="search"
       @select="$emit($options.model.event, $event)"
     >

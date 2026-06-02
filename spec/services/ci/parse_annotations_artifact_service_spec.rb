@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Ci::ParseAnnotationsArtifactService, feature_category: :job_artifacts do
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project, freeze: false) { create(:project) }
 
   let_it_be_with_reload(:build) { create(:ci_build, project: project) }
   let(:service) { described_class.new(project, nil) }
@@ -12,7 +12,7 @@ RSpec.describe Ci::ParseAnnotationsArtifactService, feature_category: :job_artif
     subject { service.execute(artifact) }
 
     context 'when build has an annotations artifact' do
-      let_it_be(:artifact) { create(:ci_job_artifact, :annotations, job: build) }
+      let_it_be(:artifact, freeze: false) { create(:ci_job_artifact, :annotations, job: build) }
 
       context 'when artifact does not have the specified blob' do
         before do
@@ -106,6 +106,32 @@ RSpec.describe Ci::ParseAnnotationsArtifactService, feature_category: :job_artif
 
           it 'returns error' do
             expect(subject[:status]).to eq(:error)
+            expect(subject[:http_status]).to eq(:bad_request)
+          end
+        end
+
+        context 'when JSON exceeds safe parse limits' do
+          before do
+            stub_const('Gitlab::Json::PARSE_LIMITS', Gitlab::Json::PARSE_LIMITS.merge(max_depth: 2))
+          end
+
+          let(:blob) { data.to_json }
+          let(:data) do
+            {
+              external_links: [
+                {
+                  external_link: {
+                    label: 'URL 1',
+                    url: 'https://url1.example.com/'
+                  }
+                }
+              ]
+            }
+          end
+
+          it 'returns error due to safe_parse validation' do
+            expect(subject[:status]).to eq(:error)
+            expect(subject[:message]).to eq('Parameters nested too deeply')
             expect(subject[:http_status]).to eq(:bad_request)
           end
         end

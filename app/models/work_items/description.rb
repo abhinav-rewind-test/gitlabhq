@@ -1,26 +1,21 @@
 # frozen_string_literal: true
 
 module WorkItems
+  # TODO: This model and its table (work_item_descriptions) will be removed in a future MR
+  # once all reads have been confirmed safe to remove.
   class Description < ApplicationRecord
-    include CacheMarkdownField
-    include Redactable
-
     self.table_name = 'work_item_descriptions'
-
-    DESCRIPTION_LENGTH_MAX = 1.megabyte
-
-    cache_markdown_field :description, issuable_reference_expansion_enabled: true
-
-    redact_field :description
 
     belongs_to :work_item
     belongs_to :namespace
     belongs_to :last_editing_user, foreign_key: 'last_edited_by_id', class_name: 'User', optional: true # rubocop:disable Rails/InverseOf -- The inverse relation is not necessary
     validates :namespace, presence: true
     validates :work_item, presence: true
-    # we validate the description against DESCRIPTION_LENGTH_MAX only for Issuables being created and on updates if
+    # we validate the description against the limit only for Issuables being created and on updates if
     # the description changes to avoid breaking the existing Issuables which may have their descriptions longer
-    validates :description, bytesize: { maximum: -> { DESCRIPTION_LENGTH_MAX } }, if: :validate_description_length?
+    validates :description, bytesize: {
+      maximum: -> { Gitlab::CurrentSettings.description_and_note_max_size }
+    }, if: :validate_description_length?
 
     before_validation :set_namespace
 
@@ -42,7 +37,7 @@ module WorkItems
       # previous_description will be nil for new records
       return true if previous_description.blank?
 
-      previous_description.bytesize <= DESCRIPTION_LENGTH_MAX
+      previous_description.bytesize <= Gitlab::CurrentSettings.description_and_note_max_size
     end
   end
 end

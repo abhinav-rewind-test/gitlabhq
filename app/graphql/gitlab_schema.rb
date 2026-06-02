@@ -19,6 +19,8 @@ class GitlabSchema < GraphQL::Schema
   use Gitlab::Graphql::Pagination::Connections
   use Gitlab::Graphql::Timeout, max_seconds: Gitlab.config.gitlab.graphql_timeout
 
+  introspection Types::CustomIntrospection
+
   directive Gitlab::Graphql::VersionFilter::IntroducedDirective
 
   query_analyzer Gitlab::Graphql::QueryAnalyzers::AST::LoggerAnalyzer
@@ -31,7 +33,7 @@ class GitlabSchema < GraphQL::Schema
   default_max_page_size 100
 
   validate_max_errors 5
-  validate_timeout 0.2.seconds
+  validate_timeout 0.5.seconds
 
   lazy_resolve ::Gitlab::Graphql::Lazy, :force
 

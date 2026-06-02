@@ -7,7 +7,7 @@ RSpec.describe Terraform::States::TriggerDestroyService, feature_category: :infr
   let_it_be(:user) { create(:user, maintainer_of: project) }
 
   describe '#execute', :aggregate_failures do
-    let_it_be(:state) { create(:terraform_state, project: project) }
+    let_it_be(:state, freeze: false) { create(:terraform_state, project: project) }
 
     let(:service) { described_class.new(state, current_user: user) }
 
@@ -33,7 +33,7 @@ RSpec.describe Terraform::States::TriggerDestroyService, feature_category: :infr
       it 'does not modify the state' do
         expect(Terraform::States::DestroyWorker).not_to receive(:perform_async)
 
-        expect { subject }.not_to change(state, :deleted_at)
+        expect { subject }.not_to change { state.deleted_at }
         expect(subject).to be_error
         expect(subject.message).to eq(message)
       end

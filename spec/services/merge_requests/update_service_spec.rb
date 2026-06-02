@@ -6,13 +6,13 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
   include ProjectForksHelper
 
   let_it_be(:group) { create(:group, :public) }
-  let_it_be(:project) { create(:project, :private, :repository, group: group) }
+  let_it_be(:project, freeze: false) { create(:project, :private, :repository, group: group) }
   let_it_be(:user) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
   let_it_be(:service_account) { create(:user, :service_account, composite_identity_enforced: true) }
-  let_it_be(:label) { create(:label, title: 'a', project: project) }
-  let_it_be(:label2) { create(:label) }
+  let_it_be(:label, freeze: false) { create(:label, title: 'a', project: project) }
+  let_it_be(:label2, freeze: false) { create(:label) }
   let_it_be(:milestone) { create(:milestone, project: project) }
 
   let(:merge_request) do
@@ -556,7 +556,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
       let(:service) { described_class.new(project: project, current_user: user, params: opts) }
 
       before do
-        project.add_maintainer(user) # rubocop:disable RSpec/BeforeAllRoleAssignment -- we're overriding the project in this context
+        project.add_maintainer(user)
       end
 
       context 'without pipeline' do
@@ -922,6 +922,17 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
           update_merge_request({ target_branch: "target" })
         end
 
+        it 'destroys the merge_head_diff and enqueues an async mergeability check' do
+          create(:merge_request_diff, :merge_head, merge_request: merge_request)
+
+          expect(merge_request).to receive(:check_mergeability).with(async: true)
+          expect(merge_request.merge_head_diff).to be_present
+
+          update_merge_request({ target_branch: 'target' })
+
+          expect(merge_request.reload.merge_head_diff).not_to be_present
+        end
+
         it_behaves_like "creates a new pipeline" do
           let(:new_target_branch) { "target" }
         end
@@ -978,10 +989,11 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
         end
 
         context 'when merge_when_checks_pass is enabled' do
-          it 'publishes a DraftStateChangeEvent' do
+          it 'publishes a DraftStateChangeEvent with new_draft_status: false' do
             expected_data = {
               current_user_id: user.id,
-              merge_request_id: merge_request.id
+              merge_request_id: merge_request.id,
+              new_draft_status: false
             }
 
             expect { update_merge_request(title: 'New title') }.to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
@@ -994,6 +1006,17 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
               .to change { merge_request.title }
               .from(draft_title)
               .to(title)
+          end
+
+          it 'publishes a DraftStateChangeEvent with new_draft_status: false' do
+            expected_data = {
+              current_user_id: user.id,
+              merge_request_id: merge_request.id,
+              new_draft_status: false
+            }
+
+            expect { update_merge_request({ wip_event: "ready" }) }
+              .to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
           end
         end
       end
@@ -1015,10 +1038,11 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
         end
 
         context 'when merge_when_checks_pass is enabled' do
-          it 'publishes a DraftStateChangeEvent' do
+          it 'publishes a DraftStateChangeEvent with new_draft_status: true' do
             expected_data = {
               current_user_id: user.id,
-              merge_request_id: merge_request.id
+              merge_request_id: merge_request.id,
+              new_draft_status: true
             }
 
             expect { update_merge_request(title: 'Draft: New title') }.to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
@@ -1038,6 +1062,42 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
               .from(title)
               .to(draft_title)
           end
+
+          it 'publishes a DraftStateChangeEvent with new_draft_status: true' do
+            expected_data = {
+              current_user_id: user.id,
+              merge_request_id: merge_request.id,
+              new_draft_status: true
+            }
+
+            expect { update_merge_request({ wip_event: "draft" }) }
+              .to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
+          end
+        end
+      end
+
+      context 'when draft status does not change (draft title rename)' do
+        before do
+          merge_request.update_attribute(:title, "Draft: Old title")
+        end
+
+        it 'does not send notifications', :sidekiq_inline do
+          perform_enqueued_jobs do
+            described_class.new(project: project, current_user: user, params: { title: 'Draft: New title' }).execute(merge_request)
+          end
+
+          should_not_email(subscriber)
+          should_not_email(non_subscriber)
+        end
+
+        it 'does not trigger GraphQL subscription mergeRequestMergeStatusUpdated' do
+          expect(GraphqlTriggers).not_to receive(:merge_request_merge_status_updated)
+
+          update_merge_request(title: 'Draft: New title')
+        end
+
+        it 'does not publish a DraftStateChangeEvent' do
+          expect { update_merge_request(title: 'Draft: New title') }.not_to publish_event(MergeRequests::DraftStateChangeEvent)
         end
       end
     end
@@ -1162,14 +1222,6 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
         context 'when project has a required regex' do
           context 'when auto merge is enabled' do
             it_behaves_like 'it publishes the AutoMerge::TitleDescriptionUpdateEvent once'
-
-            context 'when merge_request_title_regex ff is off' do
-              before do
-                stub_feature_flags(merge_request_title_regex: false)
-              end
-
-              it_behaves_like 'it does not publish the AutoMerge::TitleDescriptionUpdateEvent'
-            end
           end
 
           context 'when auto merge is not enabled' do
@@ -1191,8 +1243,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
     context 'while saving references to issues that the updated merge request closes', :aggregate_failures do
       let_it_be(:user) { create(:user) }
       let_it_be(:group) { create(:group, :public) }
-      let_it_be(:project) { create(:project, :private, :repository, group: group, developers: user) }
-      let_it_be(:merge_request, refind: true) { create(:merge_request, :simple, :unchanged, source_project: project) }
+      let_it_be(:project, freeze: false) { create(:project, :private, :repository, group: group, developers: user) }
+      let_it_be_with_refind(:merge_request) { create(:merge_request, :simple, :unchanged, source_project: project) }
       let_it_be(:first_issue) { create(:issue, project: project) }
       let_it_be(:second_issue) { create(:issue, project: project) }
 
@@ -1269,7 +1321,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
       context 'when MergeRequestsClosingIssues already exist' do
         let_it_be(:third_issue) { create(:issue, project: project) }
 
-        before_all do
+        before do
           merge_request.update!(description: "Closes #{first_issue.to_reference} and #{second_issue.to_reference}")
           merge_request.cache_merge_request_closes_issues!(user)
         end
@@ -1382,7 +1434,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
             feature_visibility_attr = :"#{merge_request.model_name.plural}_access_level"
             project.project_feature.update_attribute(feature_visibility_attr, ProjectFeature::PRIVATE)
 
-            expect { update_merge_request(assignee_ids: [assignee]) }.not_to change(merge_request.assignees, :count)
+            expect { update_merge_request(assignee_ids: [assignee]) }.not_to change { merge_request.assignees.count }
           end
         end
       end
@@ -1528,6 +1580,18 @@ RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_ca
           expect(merge_request.reload.head_pipeline_id).to be_nil
           expect(merge_request.retargeted).to eq(true)
         end
+
+        it 'tracks the retarget_merge_request_on_target_branch_merge internal event' do
+          expect { update_merge_request(target_branch: 'master', target_branch_was_deleted: true) }
+            .to trigger_internal_events('retarget_merge_request_on_target_branch_merge')
+              .with(user: user, project: project, namespace: project.namespace)
+            .and increment_usage_metrics('counts.count_total_retarget_merge_request_on_target_branch_merge')
+        end
+      end
+
+      it 'does not track the retarget event on a normal target branch change' do
+        expect { update_merge_request(target_branch: 'master') }
+          .not_to trigger_internal_events('retarget_merge_request_on_target_branch_merge')
       end
     end
 

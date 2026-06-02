@@ -1,8 +1,9 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Scheduled pipelines
+description: Create and manage schedules to run CI/CD pipelines automatically using cron patterns.
 ---
 
 {{< details >}}
@@ -36,6 +37,7 @@ and use the [CI/CD job token](../jobs/ci_job_token.md) based on your access leve
 Prerequisites:
 
 - You must have the Developer, Maintainer, or Owner role for the project.
+- Your primary email address must be verified.
 - For schedules that target [protected branches](../../user/project/repository/branches/protected.md#protect-a-branch),
   you must have merge permissions for the target branch.
 - Your `.gitlab-ci.yml` file must have valid syntax. You can [validate your configuration](../yaml/lint.md) before scheduling.
@@ -43,13 +45,13 @@ Prerequisites:
 To create a pipeline schedule:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipeline schedules**.
+1. In the left sidebar, select **Build** > **Pipeline schedules**.
 1. Select **New schedule**.
 1. Complete the fields.
    - **Interval Pattern**: Select one of the preconfigured intervals, or enter a custom
      interval in [cron notation](../../topics/cron/_index.md). You can use any cron value,
      but scheduled pipelines cannot run more frequently than the instance's
-     [maximum scheduled pipeline frequency](../../administration/cicd/_index.md#change-maximum-scheduled-pipeline-frequency).
+     [maximum scheduled pipeline frequency](../../administration/cicd/limits.md#maximum-scheduled-pipeline-frequency).
    - **Target branch or tag**: Select the branch or tag for the pipeline.
    - **Inputs**: Set values for any [inputs](../inputs/_index.md) defined in your pipeline's `spec:inputs` section.
      These input values are used every time the scheduled pipeline runs. A schedule can have a maximum of 20 inputs.
@@ -58,7 +60,7 @@ To create a pipeline schedule:
      and not in any other pipeline run. Inputs are recommended for pipeline configuration instead of variables
      because they offer improved security and flexibility.
 
-If the project has reached the [maximum number of pipeline schedules](../../administration/instance_limits.md#number-of-pipeline-schedules),
+If the project has reached the [maximum number of pipeline schedules](../../administration/cicd/limits.md#number-of-pipeline-schedules),
 delete unused schedules before adding another.
 
 ## Edit a pipeline schedule
@@ -75,7 +77,7 @@ Prerequisites:
 To edit a pipeline schedule:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipeline schedules**.
+1. In the left sidebar, select **Build** > **Pipeline schedules**.
 1. Next to the schedule, select **Edit** ({{< icon name="pencil" >}}).
 1. Make your changes, then select **Save changes**.
 
@@ -87,7 +89,7 @@ When you run a scheduled pipeline manually, it uses your permissions instead of 
 To trigger a pipeline schedule immediately instead of waiting for the next scheduled time:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipeline schedules**.
+1. In the left sidebar, select **Build** > **Pipeline schedules**.
 1. Next to the schedule, select **Run** ({{< icon name="play" >}}).
 
 ## Take ownership
@@ -103,7 +105,7 @@ Prerequisites:
 To take ownership of a schedule:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipeline schedules**.
+1. In the left sidebar, select **Build** > **Pipeline schedules**.
 1. Next to the schedule, select **Take ownership**.
 
 ## View your scheduled pipelines

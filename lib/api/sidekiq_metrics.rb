@@ -83,22 +83,39 @@ module API
       end
     end
 
-    desc 'Get the Sidekiq queue metrics'
+    desc 'List all job queue metrics' do
+      detail 'Lists all details about all Sidekiq job queues, including backlog size and latency.'
+      tags ['sidekiq']
+    end
+    route_setting :authorization, permissions: :read_sidekiq_metric, boundary_type: :instance
     get 'sidekiq/queue_metrics' do
       { queues: queue_metrics }
     end
 
-    desc 'Get the Sidekiq process metrics'
+    desc 'List all Sidekiq processes' do
+      detail 'Lists all details about all registered Sidekiq worker processes, including hostname, process ID, ' \
+        'queues, and concurrency settings.'
+      tags ['sidekiq']
+    end
+    route_setting :authorization, permissions: :read_sidekiq_metric, boundary_type: :instance
     get 'sidekiq/process_metrics' do
       { processes: process_metrics }
     end
 
-    desc 'Get the Sidekiq job statistics'
+    desc 'Retrieve job completion metrics' do
+      detail 'Retrieves statistics on the completion status of all Sidekiq jobs.'
+      tags ['sidekiq']
+    end
+    route_setting :authorization, permissions: :read_sidekiq_metric, boundary_type: :instance
     get 'sidekiq/job_stats' do
       { jobs: job_stats }
     end
 
-    desc 'Get the Sidekiq Compound metrics. Includes queue, process, and job statistics'
+    desc 'List all Sidekiq metrics' do
+      detail 'Lists all Sidekiq metrics. Includes queue, process, and job completion metrics.'
+      tags ['sidekiq']
+    end
+    route_setting :authorization, permissions: :read_sidekiq_metric, boundary_type: :instance
     get 'sidekiq/compound_metrics' do
       { queues: queue_metrics, processes: process_metrics, jobs: job_stats }
     end

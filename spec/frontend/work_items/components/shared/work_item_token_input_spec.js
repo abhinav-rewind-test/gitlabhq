@@ -1,12 +1,11 @@
 import Vue, { nextTick } from 'vue';
 import { GlTokenSelector, GlAlert } from '@gitlab/ui';
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 import VueApollo from 'vue-apollo';
 import { shallowMountExtended, mountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import WorkItemTokenInput from '~/work_items/components/shared/work_item_token_input.vue';
-import { WORK_ITEM_TYPE_ENUM_TASK, WORK_ITEM_TYPE_NAME_TASK } from '~/work_items/constants';
 import groupWorkItemsQuery from '~/work_items/graphql/group_work_items.query.graphql';
 import projectWorkItemsQuery from '~/work_items/graphql/project_work_items.query.graphql';
 import workItemsByReferencesQuery from '~/work_items/graphql/work_items_by_references.query.graphql';
@@ -251,7 +250,7 @@ describe('WorkItemTokenInput', () => {
     parentConfidential = false,
     parentWorkItemId = WORK_ITEM_ID,
     childrenIds = [],
-    childrenType = WORK_ITEM_TYPE_NAME_TASK,
+    childrenType = { id: 'gid://gitlab/WorkItems::Type/5', name: 'Task' },
     areWorkItemsToAddValid = true,
     workItemsResolver = searchWorkItemTextResolver,
     isGroup = false,
@@ -293,10 +292,10 @@ describe('WorkItemTokenInput', () => {
     expect(availableWorkItemsResolver).toHaveBeenCalledWith({
       fullPath: 'test-project-path',
       searchTerm: '',
-      types: [WORK_ITEM_TYPE_ENUM_TASK],
       iid: null,
       searchByIid: false,
       searchByText: true,
+      workItemTypeIds: ['gid://gitlab/WorkItems::Type/5'],
     });
     expect(findTokenSelector().props('dropdownItems')).toHaveLength(3);
   });
@@ -451,12 +450,12 @@ describe('WorkItemTokenInput', () => {
 
         expect(resolver).toHaveBeenCalledWith({
           fullPath: 'test-project-path',
-          types: [WORK_ITEM_TYPE_ENUM_TASK],
           searchTerm,
           in: 'TITLE',
           iid,
           searchByIid,
           searchByText,
+          workItemTypeIds: ['gid://gitlab/WorkItems::Type/5'],
         });
         expect(findTokenSelector().props('dropdownItems')).toHaveLength(length);
       },
@@ -478,12 +477,12 @@ describe('WorkItemTokenInput', () => {
 
         expect(emptyWorkItemResolver).toHaveBeenCalledWith({
           fullPath: 'test-project-path',
-          types: [WORK_ITEM_TYPE_ENUM_TASK],
           searchTerm,
           in: 'TITLE',
           iid,
           searchByIid,
           searchByText,
+          workItemTypeIds: ['gid://gitlab/WorkItems::Type/5'],
         });
         expect(findTokenSelector().props('dropdownItems')).toHaveLength(0);
       },
@@ -534,7 +533,7 @@ describe('WorkItemTokenInput', () => {
           searchByIid: false,
           searchByText: true,
           searchTerm: '',
-          types: ['TASK'],
+          workItemTypeIds: ['gid://gitlab/WorkItems::Type/5'],
         }),
       );
     });
@@ -565,7 +564,7 @@ describe('WorkItemTokenInput', () => {
           searchByIid: false,
           searchByText: true,
           searchTerm: '',
-          types: ['TASK'],
+          workItemTypeIds: ['gid://gitlab/WorkItems::Type/5'],
         }),
       );
     });
@@ -585,7 +584,7 @@ describe('WorkItemTokenInput', () => {
       await waitForPromises();
       expect(findGlAlert().exists()).toBe(true);
       expect(findGlAlert().text()).toBe(
-        'Something went wrong while fetching the task. Please try again.',
+        'Something went wrong while fetching the Task. Please try again.',
       );
 
       findGlAlert().vm.$emit('dismiss');

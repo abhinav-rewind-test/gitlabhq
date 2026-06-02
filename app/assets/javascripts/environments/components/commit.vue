@@ -1,9 +1,10 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
 import { GlAvatar, GlAvatarLink, GlLink, GlTooltipDirective as GlTooltip } from '@gitlab/ui';
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 
 export default {
+  name: 'EnvironmentsCommit',
   components: {
     GlAvatar,
     GlAvatarLink,

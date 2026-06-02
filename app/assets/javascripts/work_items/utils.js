@@ -1,4 +1,4 @@
-import { escapeRegExp, kebabCase, isEmpty, unionBy, union } from 'lodash';
+import { escapeRegExp, kebabCase, snakeCase, isEmpty, unionBy, union } from 'lodash-es';
 import { ref } from 'vue';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { joinPaths, queryToObject } from '~/lib/utils/url_utility';
@@ -11,8 +11,6 @@ import Tracking from '~/tracking';
 import {
   DEFAULT_PAGE_SIZE_CHILD_ITEMS,
   NAME_TO_ENUM_MAP,
-  NAME_TO_ICON_MAP,
-  NAME_TO_ROUTE_MAP,
   NEW_WORK_ITEM_GID,
   STATE_CLOSED,
   WIDGET_TYPE_ASSIGNEES,
@@ -33,15 +31,32 @@ import {
   WIDGET_TYPE_LINKED_ITEMS,
   WIDGET_TYPE_LINKED_RESOURCES,
   WIDGET_TYPE_MILESTONE,
+  WIDGET_TYPE_NOTIFICATIONS,
   WIDGET_TYPE_NOTES,
   WIDGET_TYPE_START_AND_DUE_DATE,
   WIDGET_TYPE_STATUS,
   WIDGET_TYPE_TIME_TRACKING,
   WIDGET_TYPE_VULNERABILITIES,
   WIDGET_TYPE_WEIGHT,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-  WORK_ITEM_TYPE_ROUTE_WORK_ITEM,
 } from './constants';
+import {
+  CLOSED_AT_ASC,
+  CLOSED_AT_DESC,
+  CREATED_ASC,
+  CREATED_DESC,
+  DUE_DATE_ASC,
+  DUE_DATE_DESC,
+  MILESTONE_DUE_ASC,
+  MILESTONE_DUE_DESC,
+  POPULARITY_ASC,
+  POPULARITY_DESC,
+  START_DATE_ASC,
+  START_DATE_DESC,
+  TITLE_ASC,
+  TITLE_DESC,
+  UPDATED_ASC,
+  UPDATED_DESC,
+} from './list/constants';
 
 export const isAssigneesWidget = (widget) => widget.type === WIDGET_TYPE_ASSIGNEES;
 
@@ -52,15 +67,18 @@ export const isNotesWidget = (widget) => widget.type === WIDGET_TYPE_NOTES;
 export const isStatusWidget = (widget) => widget.type === WIDGET_TYPE_STATUS;
 
 export const findAssigneesWidget = (workItem) =>
+  workItem?.features?.assignees ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_ASSIGNEES);
 
 export const findAwardEmojiWidget = (workItem) =>
+  workItem?.features?.awardEmoji ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_AWARD_EMOJI);
 
 export const findColorWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_COLOR);
 
 export const findCrmContactsWidget = (workItem) =>
+  workItem?.features?.crmContacts ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_CRM_CONTACTS);
 
 export const findCurrentUserTodosWidget = (workItem) =>
@@ -76,12 +94,14 @@ export const findDesignsWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_DESIGNS);
 
 export const findDevelopmentWidget = (workItem) =>
+  workItem?.features?.development ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_DEVELOPMENT);
 
 export const findEmailParticipantsWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_EMAIL_PARTICIPANTS);
 
 export const findErrorTrackingWidget = (workItem) =>
+  workItem?.features?.errorTracking ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_ERROR_TRACKING);
 
 export const findHealthStatusWidget = (workItem) =>
@@ -94,27 +114,44 @@ export const findIterationWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_ITERATION);
 
 export const findLabelsWidget = (workItem) =>
+  workItem?.features?.labels ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_LABELS);
 
 export const findLinkedItemsWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_LINKED_ITEMS);
 
+export const findBlockerLinkedItems = (workItem) =>
+  workItem?.features?.linkedItems?.linkedItems?.nodes ||
+  workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_LINKED_ITEMS)?.linkedItems?.nodes;
+
+export const findOpenChildItemsCountsByType = (workItem) =>
+  workItem?.features?.hierarchy?.rolledUpCountsByType ||
+  workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_HIERARCHY)?.rolledUpCountsByType;
+
 export const findLinkedResourcesWidget = (workItem) =>
+  workItem?.features?.linkedResources ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_LINKED_RESOURCES);
 
 export const findMilestoneWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_MILESTONE);
 
+export const findNotificationsWidget = (workItem) =>
+  workItem?.features?.notifications ||
+  workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_NOTIFICATIONS);
+
 export const findNotesWidget = (workItem) =>
+  workItem?.features?.notes ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_NOTES);
 
 export const findStartAndDueDateWidget = (workItem) =>
+  workItem?.features?.startAndDueDate ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_START_AND_DUE_DATE);
 
 export const findStatusWidget = (workItem) =>
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_STATUS);
 
 export const findTimeTrackingWidget = (workItem) =>
+  workItem?.features?.timeTracking ||
   workItem?.widgets?.find((widget) => widget.type === WIDGET_TYPE_TIME_TRACKING);
 
 export const findVulnerabilitiesWidget = (workItem) =>
@@ -159,7 +196,7 @@ export const getDefaultHierarchyChildrenCount = () => {
 export const formatAncestors = (workItem) =>
   findHierarchyWidgetAncestors(workItem).map((ancestor) => ({
     ...ancestor,
-    icon: NAME_TO_ICON_MAP[ancestor.workItemType?.name],
+    icon: ancestor.workItemType?.iconName,
     href: ancestor.webUrl,
   }));
 
@@ -188,17 +225,13 @@ export const autocompleteDataSources = (autocompleteSourcesPaths = {}) => {
   return sources;
 };
 
-// the path for creating a new work item of that type, e.g. /groups/gitlab-org/-/epics/new
-export const newWorkItemPath = ({ fullPath, isGroup = false, workItemType, query = '' }) => {
+/**
+ * Constructs the path for creating a new work item
+ */
+export const newWorkItemPath = ({ fullPath, isGroup = false, query = '' }) => {
   const domain = gon.relative_url_root || '';
   const basePath = isGroup ? `groups/${fullPath}` : fullPath;
-  // We have a special case to redirect to /groups/my-group/-/work_items/new
-  // instead of /groups/my-group/-/issues/new
-  const type =
-    isGroup && workItemType === WORK_ITEM_TYPE_NAME_ISSUE
-      ? WORK_ITEM_TYPE_ROUTE_WORK_ITEM
-      : NAME_TO_ROUTE_MAP[workItemType] || WORK_ITEM_TYPE_ROUTE_WORK_ITEM;
-  return `${domain}/${basePath}/-/${type}/new${query}`;
+  return `${domain}/${basePath}/-/work_items/new${query}`;
 };
 
 export const getDisplayReference = (workItemFullPath, workitemReference) => {
@@ -281,7 +314,7 @@ export const getToggleFromLocalStorage = (key, defaultValue = true) => {
  * @param {string} issuableType
  * @returns {string}
  */
-export const makeDrawerItemFullPath = (activeItem, fullPath, issuableType = TYPE_ISSUE) => {
+export const makeDetailPanelItemFullPath = (activeItem, fullPath, issuableType = TYPE_ISSUE) => {
   if (activeItem?.fullPath) {
     return activeItem.fullPath;
   }
@@ -303,11 +336,11 @@ export const makeDrawerItemFullPath = (activeItem, fullPath, issuableType = TYPE
  * @param {string} issuableType
  * @returns {{iid: string, full_path: string, id: number}}
  */
-export const makeDrawerUrlParam = (activeItem, fullPath, issuableType = TYPE_ISSUE) => {
+export const makeDetailPanelUrlParam = (activeItem, fullPath, issuableType = TYPE_ISSUE) => {
   return btoa(
     JSON.stringify({
       iid: activeItem.iid,
-      full_path: makeDrawerItemFullPath(activeItem, fullPath, issuableType),
+      full_path: makeDetailPanelItemFullPath(activeItem, fullPath, issuableType),
       id: getIdFromGraphQLId(activeItem.id),
     }),
   );
@@ -364,6 +397,21 @@ export const getNewWorkItemWidgetsAutoSaveKey = ({ fullPath, context, relatedIte
 
   const baseKey = getBaseNewWorkItemAutoSaveKey({ fullPath, context, relatedItemId });
   return `${baseKey}-widgets-draft`;
+};
+
+export const getWorkItemFeatures = (draftData) => {
+  if (!draftData?.namespace?.workItem?.features) return {};
+
+  const workItemFeatures = draftData.namespace.workItem.features;
+  const features = Object.keys(workItemFeatures).reduce((acc, featureName) => {
+    return { ...acc, [snakeCase(featureName).toUpperCase()]: workItemFeatures[featureName] };
+  }, {});
+
+  return {
+    ...features,
+    TITLE: draftData.namespace.workItem.title,
+    TYPE: draftData.namespace.workItem.workItemType,
+  };
 };
 
 export const getWorkItemWidgets = (draftData) => {
@@ -492,7 +540,7 @@ export const getWorkItemTypeAllowedStatusMap = (workItemTypeNodes) => {
   workItemTypeNodes.forEach((workItemType) => {
     const statuses = workItemType.widgetDefinitions?.find(isStatusWidget)?.allowedStatuses;
     if (statuses) {
-      workItemTypeAllowedStatusMap[workItemType.name.toUpperCase()] = statuses;
+      workItemTypeAllowedStatusMap[workItemType.id] = statuses;
     }
   });
 
@@ -583,3 +631,128 @@ export function combineWorkItemLists(slimList, fullList, workItemFeaturesField =
     };
   });
 }
+
+export const saveHiddenMetadataKeysToLocalStorage = (key, hiddenKeys) => {
+  if (AccessorUtilities.canUseLocalStorage()) {
+    localStorage.setItem(key, JSON.stringify(hiddenKeys));
+  }
+};
+
+export const getHiddenMetadataKeysFromLocalStorage = (key, defaultHiddenKeys = []) => {
+  if (!AccessorUtilities.canUseLocalStorage()) return defaultHiddenKeys;
+
+  const stored = localStorage.getItem(key);
+
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return defaultHiddenKeys;
+    }
+  }
+
+  return defaultHiddenKeys;
+};
+
+export const isCurrentViewWorkItem = () => {
+  const page = document.body.dataset.page || '';
+  const descriptionWrapper = document.querySelector('.js-issuable-description-wrapper');
+
+  // Early return for Incident and Ticket pages as those are not work items
+  if (['ticket', 'incident'].includes(descriptionWrapper?.dataset.issuableType)) return false;
+
+  // Check page type for possible work items
+  return [
+    // Group Work Items/Epics List View
+    'groups:work_items:index',
+    'groups:epics:index',
+
+    // Group Issues List/Detail View
+    'groups:issues',
+
+    // Group Issues/Epics Board View
+    'groups:boards:index',
+    'groups:epic_boards:index',
+
+    // Project Work Items/Issues list View
+    'projects:work_items:index',
+    'projects:issues:index',
+
+    // Project Issues Board View
+    'projects:boards:index',
+
+    // Group Work Items/Epics Detail View
+    'groups:work_items:show',
+    'groups:epics:show',
+
+    // Project Work Items/Issues Detail View
+    'projects:work_items:show',
+    'projects:issues:show',
+  ].includes(page);
+};
+
+export const getSortValue = (item, sortKey) => {
+  switch (sortKey) {
+    case CREATED_ASC:
+    case CREATED_DESC:
+      return new Date(item.createdAt);
+    case UPDATED_ASC:
+    case UPDATED_DESC:
+      return new Date(item.updatedAt);
+    case CLOSED_AT_ASC:
+    case CLOSED_AT_DESC:
+      return item.closedAt ? new Date(item.closedAt) : null;
+    case TITLE_ASC:
+    case TITLE_DESC:
+      return item.title?.toLowerCase() || '';
+    case POPULARITY_ASC:
+    case POPULARITY_DESC:
+      return findAwardEmojiWidget(item)?.upvotes || null;
+    case MILESTONE_DUE_ASC:
+    case MILESTONE_DUE_DESC: {
+      const dueDate = findMilestoneWidget(item)?.milestone?.dueDate;
+      return dueDate ? new Date(dueDate) : null;
+    }
+    case DUE_DATE_ASC:
+    case DUE_DATE_DESC: {
+      const dueDate = findStartAndDueDateWidget(item)?.dueDate;
+      return dueDate ? new Date(dueDate) : null;
+    }
+    case START_DATE_ASC:
+    case START_DATE_DESC: {
+      const startDate = findStartAndDueDateWidget(item)?.startDate;
+      return startDate ? new Date(startDate) : null;
+    }
+    default:
+      return null;
+  }
+};
+
+export function sortWorkItems(workItems, sortKey, resolveWorkItemSortValue) {
+  const isDescending = sortKey.endsWith('_DESC');
+
+  return [...workItems].sort((workItem1, workItem2) => {
+    const workItem1Value = resolveWorkItemSortValue(workItem1, sortKey);
+    const workItem2Value = resolveWorkItemSortValue(workItem2, sortKey);
+    // Handle null values - always keep them at the end
+    if (workItem1Value === null && workItem2Value === null) return 0;
+    if (workItem1Value === null) return 1;
+    if (workItem2Value === null) return -1;
+
+    // Compare values
+    let comparison = 0;
+    if (workItem1Value < workItem2Value) {
+      comparison = -1;
+    } else if (workItem1Value > workItem2Value) {
+      comparison = 1;
+    }
+
+    return isDescending ? -comparison : comparison;
+  });
+}
+
+export function getSortedWorkItems(workItems, sortKey) {
+  return sortWorkItems(workItems, sortKey, getSortValue);
+}
+
+export const isWorkplanTemplate = (name) => Boolean(name?.endsWith('.plan'));

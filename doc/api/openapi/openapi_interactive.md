@@ -1,7 +1,7 @@
 ---
 stage: Developer Experience
-group: API
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+group: API Platform
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Interactive API documentation
 description: "Use OpenAPI to test the GitLab REST API."
 ---
@@ -14,13 +14,17 @@ For general information about the GitLab APIs, see [Extend with GitLab](../_inde
 
 <!--
 The following link is absolute rather than relative because it needs to be viewed through the GitLab
-Open API file viewer: https://docs.gitlab.com/user/project/repository/files/#render-openapi-files.
+Open API file viewer: <https://docs.gitlab.com/user/project/repository/files/#render-openapi-files>.
 -->
-The [interactive API documentation tool](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/api/openapi/openapi_v2.yaml)
+The [interactive API documentation tool](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/api/openapi/openapi_v3.yaml)
 allows API testing directly on the GitLab.com website. Only a few of the available endpoints are
 documented with the OpenAPI spec, but the current list demonstrates the functionality of the tool.
 
-![A list of some available GitLab API endpoints.](img/apiviewer01-fs8_v13_9.png)
+> [!note]
+> The OpenAPI 2.0 specification (`openapi_v2.yaml`) is deprecated and no longer receives updates.
+> Use the OpenAPI 3.0 specification (`openapi_v3.yaml`) instead.
+
+![A list of some available GitLab API endpoints.](img/apiviewer01_v19_0.png)
 
 ## Endpoint parameters
 

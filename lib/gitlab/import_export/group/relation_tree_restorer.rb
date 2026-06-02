@@ -229,7 +229,17 @@ module Gitlab
         end
 
         def modify_attributes
-          # no-op to be overridden on inheritance
+          @importable.state = :ancestor_inherited if @importable.read_attribute(:state).nil?
+
+          enforce_parent_shared_runners_restrictions
+        end
+
+        def enforce_parent_shared_runners_restrictions
+          return unless @importable.has_parent?
+          return unless @importable.parent.shared_runners_setting == ::Namespace::SR_DISABLED_AND_UNOVERRIDABLE
+
+          @importable.shared_runners_enabled = false
+          @importable.allow_descendants_override_disabled_shared_runners = false
         end
 
         def build_relations(relation_key, relation_definition, relation_index, data_hashes)

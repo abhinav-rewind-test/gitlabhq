@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Oauth::AuthorizationsController, feature_category: :system_access do
-  let(:user) { create(:user, organizations: [current_organization]) }
+  let(:user) { create(:user) }
   let(:application_scopes) { 'api read_user' }
   let(:confidential) { true }
 
@@ -58,21 +58,6 @@ RSpec.describe Oauth::AuthorizationsController, feature_category: :system_access
         expect(response).to have_gitlab_http_status(:ok)
         expect(response).to render_template('doorkeeper/authorizations/error')
       end
-    end
-  end
-
-  shared_examples 'RequestPayloadLogger information appended' do
-    it 'logs custom information in the payload' do
-      expect(controller).to receive(:append_info_to_payload).and_wrap_original do |method, payload|
-        method.call(payload)
-
-        expect(payload[:remote_ip]).to be_present
-        expect(payload[:username]).to eq(user.username)
-        expect(payload[:user_id]).to be_present
-        expect(payload[:ua]).to be_present
-      end
-
-      subject
     end
   end
 

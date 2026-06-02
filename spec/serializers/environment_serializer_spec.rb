@@ -6,7 +6,7 @@ RSpec.describe EnvironmentSerializer, feature_category: :continuous_delivery do
   include CreateEnvironmentsHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project, reload: true) { create(:project, :repository, developers: user) }
+  let_it_be_with_reload(:project) { create(:project, :repository, developers: user) }
 
   let(:json) do
     described_class
@@ -274,6 +274,21 @@ RSpec.describe EnvironmentSerializer, feature_category: :continuous_delivery do
 
         json
       end
+    end
+
+    it 'does not crash when last deployment is a bridge' do
+      last_deployment = nil
+      create(:environment, project: project).tap do |environment|
+        create(:deployment, :success, environment: environment, project: project)
+
+        create(:ci_bridge, :success, project: project).tap do |build|
+          last_deployment = create(:deployment, :success, environment: environment, project: project, deployable: build)
+        end
+      end
+
+      response_json = json
+
+      expect(response_json.last[:last_deployment][:id]).to eq(last_deployment.id)
     end
   end
 

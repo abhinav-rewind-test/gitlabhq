@@ -11,6 +11,7 @@ RSpec.describe 'notify/new_achievement_email.html.haml', feature_category: :user
     allow(view).to receive(:message) { instance_double(Mail::Message, subject: 'Subject') }
     assign(:user, user)
     assign(:achievement, achievement)
+    assign(:accept_url, 'https://gitlab.com/-/awarded_achievements/token123/accept')
   end
 
   it 'contains achievement information' do
@@ -20,7 +21,23 @@ RSpec.describe 'notify/new_achievement_email.html.haml', feature_category: :user
     expect(rendered).to have_content(" awarded you the ")
     expect(rendered).to have_content(achievement.name)
     expect(rendered).to have_content(" achievement!")
+  end
 
-    expect(rendered).to have_content("View your achievements on your profile")
+  it 'contains the accept link and ignore message' do
+    render
+
+    expect(rendered).to have_content('Accept')
+    expect(rendered).to have_content('simply ignore this email')
+  end
+
+  context 'when achievement name contains HTML' do
+    let(:achievement) { build(:achievement, name: '<script>alert(1)</script>') }
+
+    it 'renders the achievement name as text, not HTML', :skip_html_escaped_tags_check do
+      render
+
+      expect(rendered).to have_content('<script>alert(1)</script>')
+      expect(rendered).to have_no_selector('script')
+    end
   end
 end

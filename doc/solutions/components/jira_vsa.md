@@ -22,7 +22,8 @@ For teams using Jira for issue tracking while leveraging GitLab for development,
 
 The integration also populates the GitLab **Value Streams Dashboard** (Ultimate only), which provides an overview of key DevSecOps metrics and can be found under **Analyze** > **Analytics dashboards** in your GitLab project or group.
 
-**NOTE**: A similar integration exists for incident replication to generate specific DORA metrics (Change Failure Rate and Time to Restore Service). If you're interested in incident replication, refer to the [Jira Incident Replicator](jira_dora.md).
+> [!note]
+> A similar integration exists for incident replication to generate specific DORA metrics (Change Failure Rate and Time to Restore Service). If you're interested in incident replication, refer to the [Jira Incident Replicator](jira_dora.md).
 
 ## Architecture
 
@@ -97,7 +98,6 @@ To automatically create GitLab issues when Jira issues are created, we'll use [J
     | Content-Type | `application/json` |
 
    Set the Authorization header to "Hidden" for security.
-
 1. In the **Custom data** field, enter:
 
    ```json
@@ -108,7 +108,6 @@ To automatically create GitLab issues when Jira issues are created, we'll use [J
    ```
 
    Replace `"VSA-"` with your Jira project prefix (e.g., if your Jira issues are numbered `PROJ-123`, use `"PROJ-"`). The `1000` is a base number that gets added to ensure no conflict with issues that may have been created directly within GitLab itself via the UI - you can adjust this value as needed.
-
 1. Click **Save**, give your automation a descriptive name (e.g., `Jira to GitLab Issue Creation`), and click **Turn it on**.
 
 ### Jira Issue Resolution Workflow

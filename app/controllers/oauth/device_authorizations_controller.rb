@@ -2,6 +2,8 @@
 
 module Oauth
   class DeviceAuthorizationsController < Doorkeeper::DeviceAuthorizationGrant::DeviceAuthorizationsController
+    include RequestPayloadLogger
+
     layout 'minimal'
 
     def index
@@ -24,6 +26,14 @@ module Oauth
         end
         format.json { head :no_content }
       end
+    end
+
+    private
+
+    # In Rails 8 alias_method at class-body level fails when the aliased method
+    # is not yet in the ancestor chain at load time. Define explicitly instead.
+    def auth_user
+      current_user
     end
   end
 end

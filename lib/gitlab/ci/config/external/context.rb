@@ -8,10 +8,11 @@ module Gitlab
           include Gitlab::Utils::StrongMemoize
 
           TimeoutError = Class.new(StandardError)
+          HTTPTimeoutError = Class.new(StandardError)
 
           attr_reader :project, :sha, :user, :parent_pipeline, :variables, :pipeline_config, :parallel_requests,
             :pipeline, :expandset, :execution_deadline, :logger, :max_includes, :max_total_yaml_size_bytes,
-            :pipeline_policy_context, :component_data
+            :pipeline_policy_context, :component_data, :parent_file
 
           attr_accessor :total_file_size_in_bytes
 
@@ -23,7 +24,7 @@ module Gitlab
           # rubocop:disable Metrics/ParameterLists -- all arguments needed
           def initialize(
             project: nil, pipeline: nil, sha: nil, user: nil, parent_pipeline: nil, variables: nil,
-            pipeline_config: nil, logger: nil, pipeline_policy_context: nil, component_data: nil
+            pipeline_config: nil, logger: nil, pipeline_policy_context: nil, component_data: nil, parent_file: nil
           )
             @project = project
             @pipeline = pipeline
@@ -34,6 +35,7 @@ module Gitlab
             @pipeline_config = pipeline_config
             @pipeline_policy_context = pipeline_policy_context
             @component_data = component_data || {}
+            @parent_file = parent_file
             @expandset = []
             @parallel_requests = []
             @execution_deadline = 0
@@ -60,13 +62,13 @@ module Gitlab
 
           def variables_hash
             strong_memoize(:variables_hash) do
-              variables.to_hash
+              variables.to_lazy_hash
             end
           end
 
           def variables_hash_expanded
             strong_memoize(:variables_hash_expanded) do
-              variables_sorted_and_expanded.to_hash
+              variables_sorted_and_expanded.to_lazy_hash
             end
           end
 
@@ -85,7 +87,6 @@ module Gitlab
               ctx.max_includes = max_includes
               ctx.max_total_yaml_size_bytes = max_total_yaml_size_bytes
               ctx.parallel_requests = parallel_requests
-              ctx.component_data = component_data
             end
           end
 
@@ -94,7 +95,7 @@ module Gitlab
           end
 
           def check_execution_time!
-            raise TimeoutError if execution_expired?
+            raise TimeoutError, Gitlab::Ci::Config::TIMEOUT_MESSAGE if execution_expired?
           end
 
           def execute_remote_parallel_request(lazy_response)
@@ -110,7 +111,8 @@ module Gitlab
           def sentry_payload
             {
               user: user.inspect,
-              project: project.inspect
+              project: project.inspect,
+              include_type_counts: expandset_include_type_counts
             }
           end
 
@@ -146,6 +148,12 @@ module Gitlab
             Gitlab::Metrics::System.monotonic_time
           end
 
+          def expandset_include_type_counts
+            expandset.each_with_object(Hash.new(0)) do |file, counts|
+              counts[file.include_type] += 1
+            end
+          end
+
           def execution_expired?
             return false if execution_deadline == 0
 
@@ -156,3 +164,5 @@ module Gitlab
     end
   end
 end
+
+Gitlab::Ci::Config::External::Context.prepend_mod

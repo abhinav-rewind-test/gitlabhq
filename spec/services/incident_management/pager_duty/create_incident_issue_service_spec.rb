@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe IncidentManagement::PagerDuty::CreateIncidentIssueService, feature_category: :incident_management do
-  let_it_be(:project, reload: true) { create(:project) }
-  let_it_be(:user) { Users::Internal.alert_bot }
+  let_it_be_with_reload(:project) { create(:project) }
+  let_it_be(:user) { Users::Internal.in_organization(project.organization).alert_bot }
 
   let(:webhook_payload) { Gitlab::Json.parse(fixture_file('pager_duty/webhook_incident_trigger.json')) }
   let(:parsed_payload) { ::PagerDuty::WebhookPayloadParser.call(webhook_payload) }
@@ -18,7 +18,7 @@ RSpec.describe IncidentManagement::PagerDuty::CreateIncidentIssueService, featur
 
       context 'when issue can be created' do
         it 'creates a new issue' do
-          expect { execute }.to change(Issue, :count).by(1)
+          expect { execute }.to change { Issue.count }.by(1)
         end
 
         it 'responds with success' do
@@ -29,7 +29,7 @@ RSpec.describe IncidentManagement::PagerDuty::CreateIncidentIssueService, featur
         end
 
         it 'the issue author is Alert bot' do
-          expect(execute.payload[:issue].author).to eq(Users::Internal.alert_bot)
+          expect(execute.payload[:issue].author).to eq(Users::Internal.in_organization(project.organization).alert_bot)
         end
 
         it 'issue has a correct title' do
@@ -58,7 +58,7 @@ RSpec.describe IncidentManagement::PagerDuty::CreateIncidentIssueService, featur
         let(:incident_payload) { {} }
 
         it 'does not create a GitLab issue' do
-          expect { execute }.not_to change(Issue, :count)
+          expect { execute }.not_to change { Issue.count }
         end
 
         it 'responds with error' do
@@ -72,7 +72,7 @@ RSpec.describe IncidentManagement::PagerDuty::CreateIncidentIssueService, featur
       let_it_be(:incident_management_setting) { create(:project_incident_management_setting, project: project, pagerduty_active: false) }
 
       it 'does not create a GitLab issue' do
-        expect { execute }.not_to change(Issue, :count)
+        expect { execute }.not_to change { Issue.count }
       end
 
       it 'responds with forbidden' do

@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe "projectBlobsRemove", feature_category: :source_code_management do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
   let_it_be(:current_user) { create(:user, owner_of: project) }
   let_it_be(:repo) { project.repository }
 
@@ -15,6 +15,11 @@ RSpec.describe "projectBlobsRemove", feature_category: :source_code_management d
   let(:blob_oids) { ['53855584db773c3df5b5f61f72974cb298822fbb'] }
 
   subject(:post_mutation) { post_graphql_mutation(mutation, current_user: current_user) }
+
+  it 'requires rewrite_repository_history permission' do
+    expect(Mutations::Projects::BlobsRemove)
+      .to require_graphql_authorizations(:rewrite_repository_history)
+  end
 
   describe 'Removing blobs:' do
     it 'processes text redaction asynchoronously' do

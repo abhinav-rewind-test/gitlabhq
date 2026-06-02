@@ -25,10 +25,6 @@ class Admin::HooksController < Admin::ApplicationController
     @hook ||= SystemHook.find(params.permit(:id)[:id])
   end
 
-  def hook_param_names
-    %i[enable_ssl_verification name description token url]
-  end
-
   def trigger_values
     SystemHook.triggers.values
   end

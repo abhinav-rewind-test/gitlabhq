@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Compliance overview dashboard
 ---
 
@@ -38,12 +38,12 @@ The compliance overview dashboard displays four key areas of compliance monitori
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To view the compliance overview dashboard:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. Select **Overview** to view the compliance dashboard.
 
 ## Compliance framework coverage

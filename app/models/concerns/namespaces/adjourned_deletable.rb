@@ -4,7 +4,7 @@
 # Support for delayed deletion is provided.
 #
 # The #self_deletion_in_progress? method needs to be defined.
-# The #ancestors_scheduled_for_deletion method can be overriden.
+# The #ancestors_scheduled_for_deletion method can be overridden.
 module Namespaces
   module AdjournedDeletable
     extend ActiveSupport::Concern
@@ -15,7 +15,7 @@ module Namespaces
     end
 
     # Returns an array of the record's ancestors that are scheduled for deletion.
-    # This method can be overriden.
+    # This method can be overridden.
     def ancestors_scheduled_for_deletion
       []
     end
@@ -23,7 +23,7 @@ module Namespaces
 
     # Returns the date when the scheduled deletion was created.
     def self_deletion_scheduled_deletion_created_on
-      self_deletion_scheduled_deletion_created_on_legacy || deletion_schedule_from_state_metadata
+      self_deletion_scheduled_deletion_created_on_legacy || deletion_scheduled_at
     end
 
     # Returns true if the record is scheduled for deletion.
@@ -57,13 +57,6 @@ module Namespaces
     end
 
     private
-
-    def deletion_schedule_from_state_metadata
-      return unless try(:namespace_details)
-
-      deletion_schedule = namespace_details.state_metadata['deletion_scheduled_at']
-      Time.zone.parse(deletion_schedule) if deletion_schedule.present?
-    end
 
     def self_deletion_scheduled_deletion_created_on_legacy
       try(:marked_for_deletion_on)

@@ -229,6 +229,7 @@
   background-color: var(--blue-500, $blue-500) !important;
 }
 
+// stylelint-disable-next-line gitlab/no-has -- scoped to a specific CI card element
 .ci-card:has(.ci-job-item-failed) {
   border-color: var(--gl-control-border-color-error);
 }
@@ -256,7 +257,7 @@
     background-color: $gray-200;
 
     @include gl-container-width-up(sm, panel) {
-      top: 1.25rem;
+      top: 1.125rem;
       left: 100%;
       width: $gl-spacing-scale-5 * 2;
       height: 2px;

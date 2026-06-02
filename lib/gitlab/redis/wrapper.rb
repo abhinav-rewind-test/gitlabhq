@@ -29,7 +29,14 @@ module Gitlab
         alias_method :then, :with
 
         def version
-          with { |redis| redis.info['redis_version'] }
+          with do |redis|
+            info = redis.info
+            if info['server_name'] == 'valkey'
+              info['valkey_version']
+            else
+              info['redis_version']
+            end
+          end
         end
 
         def pool
@@ -155,6 +162,10 @@ module Gitlab
 
       def sentinels
         raw_config_hash[:sentinels]
+      end
+
+      def sentinel_password
+        raw_config_hash[:sentinel_password]
       end
 
       def secret_file

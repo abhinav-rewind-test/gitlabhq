@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe 'Query.issue(id)', feature_category: :team_planning do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project) }
-  let_it_be(:issue) { create(:issue, project: project) }
+  let_it_be(:project, freeze: false) { create(:project) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project) }
   let_it_be(:current_user) { create(:user) }
 
   let(:issue_params) { { 'id' => global_id_of(issue) } }
@@ -50,6 +50,22 @@ RSpec.describe 'Query.issue(id)', feature_category: :team_planning do
   context 'when the user does have access' do
     before_all do
       project.add_guest(current_user)
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL',
+      [:read_issue, :update_issue, :create_issue_note] do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:issue_fields) { all_graphql_fields_for('Issue', max_depth: 1) }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_issue do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      # createNoteEmail requires write permissions since it can be used to create issues and notes.
+      let(:issue_fields) { all_graphql_fields_for('Issue', max_depth: 1, excluded: ["createNoteEmail"]) }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
     end
 
     it 'returns the issue' do
@@ -99,7 +115,7 @@ RSpec.describe 'Query.issue(id)', feature_category: :team_planning do
     context 'when issue got moved' do
       let_it_be(:issue_fields) { ['moved', 'movedTo { title }'] }
       let_it_be(:new_issue) { create(:issue) }
-      let_it_be(:issue) { create(:issue, project: project, moved_to: new_issue) }
+      let_it_be(:issue, freeze: false) { create(:issue, project: project, moved_to: new_issue) }
 
       let(:issue_params) { { 'id' => global_id_of(issue) } }
 

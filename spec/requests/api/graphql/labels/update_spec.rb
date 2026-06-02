@@ -49,10 +49,24 @@ RSpec.describe 'Update a label', feature_category: :team_planning do
 
     it_behaves_like 'successfully updates the archived status'
 
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :update_label do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:mutation) { graphql_mutation(:labelUpdate, input, 'errors') }
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+
     context 'with group label' do
       let(:label) { create(:group_label, group: group) }
 
       it_behaves_like 'successfully updates the archived status'
+
+      it_behaves_like 'authorizing granular token permissions for GraphQL', :update_label do
+        let(:user) { current_user }
+        let(:boundary_object) { group }
+        let(:mutation) { graphql_mutation(:labelUpdate, input, 'errors') }
+        let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+      end
     end
 
     context 'when label does not exist' do
@@ -71,43 +85,6 @@ RSpec.describe 'Update a label', feature_category: :team_planning do
 
       it_behaves_like 'a mutation that returns top-level errors',
         errors: ['Label is not a project or group label.']
-    end
-
-    context 'with feature flag disabled' do
-      let_it_be(:group) { create(:group) }
-
-      before_all do
-        group.add_maintainer(current_user)
-      end
-
-      before do
-        stub_feature_flags(labels_archive: false)
-      end
-
-      it 'does not change the label archived status and returns an error' do
-        expect { post_graphql_mutation(mutation, current_user: current_user) }
-          .not_to change { label.reload.archived }
-      end
-
-      it_behaves_like 'a mutation that returns top-level errors',
-        errors: ["'labels_archive' feature flag is disabled"]
-
-      context 'when the project belongs to a group' do
-        before do
-          project.group = group
-          project.save!
-        end
-
-        it_behaves_like 'a mutation that returns top-level errors',
-          errors: ["'labels_archive' feature flag is disabled"]
-      end
-
-      context 'when the label is a group label' do
-        let(:label) { create(:group_label, group: group) }
-
-        it_behaves_like 'a mutation that returns top-level errors',
-          errors: ["'labels_archive' feature flag is disabled"]
-      end
     end
   end
 end

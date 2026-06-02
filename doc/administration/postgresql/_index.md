@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Operations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Configuring PostgreSQL for scaling
 description: Configure PostgreSQL for scaling.
 ---
@@ -60,6 +60,7 @@ Read how to [set up PostgreSQL replication and failover](replication_and_failove
 
 ## Related topics
 
+- [Manage PostgreSQL extensions](extensions.md)
 - [Working with the bundled PgBouncer service](pgbouncer.md)
 - [Database load balancing](database_load_balancing.md)
 - [Moving GitLab databases to a different PostgreSQL instance](moving.md)

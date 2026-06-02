@@ -3,16 +3,16 @@
 require 'spec_helper'
 
 RSpec.describe API::Invitations, feature_category: :user_profile do
-  let_it_be(:maintainer) { create(:user, username: 'maintainer_user') }
+  let_it_be(:maintainer, freeze: false) { create(:user, username: 'maintainer_user') }
   let_it_be(:maintainer2) { create(:user, username: 'user-with-maintainer-role') }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:access_requester) { create(:user) }
+  let_it_be(:developer, freeze: false) { create(:user) }
+  let_it_be(:access_requester, freeze: false) { create(:user) }
   let_it_be(:stranger) { create(:user) }
   let_it_be(:unconfirmed_stranger) { create(:user, :unconfirmed) }
   let(:email) { 'email1@example.com' }
   let(:email2) { 'email2@example.com' }
 
-  let_it_be(:project, reload: true) do
+  let_it_be_with_reload(:project) do
     create(:project, :public, creator_id: maintainer.id, namespace: maintainer.namespace) do |project|
       project.add_developer(developer)
       project.add_maintainer(maintainer)
@@ -20,7 +20,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
     end
   end
 
-  let_it_be(:group, reload: true) do
+  let_it_be_with_reload(:group) do
     create(:group, :public) do |group|
       group.add_developer(developer)
       group.add_owner(maintainer)
@@ -389,20 +389,35 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
         let_it_be(:other_organization) { create(:organization) }
         let_it_be(:other_user) { create(:user, organization: other_organization) }
 
-        it 'shows error for email' do
-          post invitations_url(source, maintainer),
-            params: { email: other_user.email, access_level: Member::GUEST }
+        it 'adds a new member by email' do
+          expect do
+            post invitations_url(source, maintainer),
+              params: { email: email, access_level: Member::DEVELOPER }
 
-          expect(json_response['status']).to eq 'error'
-          expect(json_response['message'][other_user.email]).to eq('already belongs to another organization')
+            expect(response).to have_gitlab_http_status(:created)
+          end.to change { source.members.invite.count }.by(1)
         end
 
-        it 'shows error for user_id' do
-          post invitations_url(source, maintainer),
-            params: { user_id: other_user.id, access_level: Member::GUEST }
+        context 'when the organization is isolated' do
+          before do
+            source.organization.mark_as_isolated!
+          end
 
-          expect(json_response['status']).to eq 'error'
-          expect(json_response['message'][other_user.username]).to eq('already belongs to another organization')
+          it 'shows error for email' do
+            post invitations_url(source, maintainer),
+              params: { email: other_user.email, access_level: Member::GUEST }
+
+            expect(json_response['status']).to eq 'error'
+            expect(json_response['message'][other_user.email]).to eq('already belongs to another organization')
+          end
+
+          it 'shows error for user_id' do
+            post invitations_url(source, maintainer),
+              params: { user_id: other_user.id, access_level: Member::GUEST }
+
+            expect(json_response['status']).to eq 'error'
+            expect(json_response['message'][other_user.username]).to eq('already belongs to another organization')
+          end
         end
       end
     end
@@ -422,7 +437,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
 
       emails = 'email3@example.com,email4@example.com,email5@example.com,email6@example.com,email7@example.com'
 
-      unresolved_n_plus_ones = 40 # currently there are 10 queries added per email
+      unresolved_n_plus_ones = 42 # currently there are 10 queries added per email, preloading approval_policy_rules adds 2 queries
 
       expect do
         post invitations_url(project, maintainer), params: { email: emails, access_level: Member::DEVELOPER }
@@ -440,7 +455,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
 
       users = create_list(:user, 5)
 
-      unresolved_n_plus_ones = 136 # 54 for 1 vs 190 for 5 - currently there are 34 queries added per user
+      unresolved_n_plus_ones = 138 # 54 for 1 vs 190 for 5 - currently there are 34 queries added per user, preloading approval_policy_rules adds 2 queries
 
       expect do
         post invitations_url(project, maintainer), params: { user_id: users.map(&:id).join(','), access_level: Member::DEVELOPER }
@@ -466,7 +481,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
       emails = 'email3@example.com,email4@example.com,email5@example.com,email6@example.com,email7@example.com,' \
         'EMAIL8@EXamPle.com'
 
-      unresolved_n_plus_ones = 86 # currently there are 10 queries added per email, checking if we should dispatch AuthorizationsAddedEvent makes 1 query per event (3 events dispatched)
+      unresolved_n_plus_ones = 88 # currently there are 10 queries added per email, checking if we should dispatch AuthorizationsAddedEvent makes 1 query per event (3 events dispatched), preloading approval_policy_rules adds 2 queries
 
       expect do
         post invitations_url(project, maintainer), params: { email: emails, access_level: Member::DEVELOPER }
@@ -684,7 +699,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
 
       it 'returns 422 for a valid request if the resource was not destroyed' do
         allow_next_instance_of(::Members::DestroyService) do |instance|
-          allow(instance).to receive(:execute).with(invite).and_return(invite)
+          allow(instance).to receive(:execute).and_return(invite)
         end
 
         delete invite_api(source, maintainer, invite.invite_email)

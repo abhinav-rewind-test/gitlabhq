@@ -7,9 +7,28 @@ RSpec.describe DashboardController, feature_category: :code_review_workflow do
     stub_feature_flags(personal_homepage: true)
   end
 
+  context 'when user is nil' do
+    before do
+      allow(controller).to receive(:authenticate_user!)
+      allow(controller).to receive(:projects)
+    end
+
+    it 'does not redirect issues to work_items dashboard' do
+      get :issues, params: { assignee_username: 'test' }, format: :atom
+
+      expect(response).not_to redirect_to(work_items_dashboard_path)
+    end
+
+    it 'does not redirect issues_calendar to work_items dashboard' do
+      get :issues_calendar, params: { assignee_username: 'test' }
+
+      expect(response).not_to redirect_to(work_items_dashboard_path)
+    end
+  end
+
   context 'signed in' do
     let_it_be(:user) { create(:user) }
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     before_all do
       project.add_maintainer(user)
@@ -30,14 +49,61 @@ RSpec.describe DashboardController, feature_category: :code_review_workflow do
       end
     end
 
-    describe 'GET issues.atom' do
-      it_behaves_like 'issuables list meta-data', :issue, :issues, format: :atom
-      it_behaves_like 'issuables requiring filter', :issues, format: :atom
+    describe 'GET issues' do
+      it 'redirects to work_items with query parameters preserved' do
+        get :issues, params: { assignee_username: user.username, state: 'opened', sort: 'created_desc' }
 
-      it 'includes tasks in issue list' do
+        expect(response).to redirect_to(work_items_dashboard_path(
+          assignee_username: user.username, state: 'opened', sort: 'created_desc'
+        ))
+        expect(response).to have_gitlab_http_status(:moved_permanently)
+      end
+    end
+
+    describe 'GET work_items' do
+      it 'renders issues template with filter params' do
+        get :work_items, params: { assignee_username: user.username }
+
+        expect(response).to render_template(:issues)
+        expect(response).to have_gitlab_http_status(:ok)
+      end
+
+      it 'renders issues template when no filters are set' do
+        get :work_items
+
+        expect(response).to render_template(:issues)
+        expect(response).to have_gitlab_http_status(:ok)
+      end
+    end
+
+    describe 'GET issues.atom' do
+      it 'redirects atom feed to work_items.atom' do
+        get :issues, params: { author_id: user.id }, format: :atom
+
+        expect(response).to redirect_to(work_items_dashboard_path(author_id: user.id, format: :atom))
+        expect(response).to have_gitlab_http_status(:moved_permanently)
+      end
+    end
+
+    describe 'GET issues_calendar' do
+      it 'redirects to work_items.ics' do
+        get :issues_calendar, params: { assignee_username: user.username }
+
+        expect(response).to redirect_to(
+          work_items_dashboard_path(assignee_username: user.username, format: :ics)
+        )
+        expect(response).to have_gitlab_http_status(:moved_permanently)
+      end
+    end
+
+    describe 'GET work_items.atom' do
+      it_behaves_like 'issuables list meta-data', :issue, :work_items, format: :atom
+      it_behaves_like 'issuables requiring filter', :work_items, format: :atom
+
+      it 'includes tasks in work item list' do
         task = create(:work_item, :task, project: project, author: user)
 
-        get :issues, params: { author_id: user.id }, format: :atom
+        get :work_items, params: { author_id: user.id }, format: :atom
 
         expect(assigns[:issues].map(&:id)).to include(task.id)
       end
@@ -120,7 +186,7 @@ RSpec.describe DashboardController, feature_category: :code_review_workflow do
     render_views
 
     let_it_be(:user) { create(:user) }
-    let_it_be(:project) { create(:project, :public, issues_access_level: ProjectFeature::PRIVATE) }
+    let_it_be(:project, freeze: false) { create(:project, :public, issues_access_level: ProjectFeature::PRIVATE) }
     let_it_be(:other_project) { create(:project, :public) }
 
     before do

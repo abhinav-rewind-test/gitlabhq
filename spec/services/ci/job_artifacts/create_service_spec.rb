@@ -136,18 +136,6 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
       context 'when FIPS is enabled', :fips_mode do
         it { expect(authorize[:headers][:UploadHashFunctions]).to eq(described_class::ARTIFACT_HASH_FUNCTIONS) }
       end
-
-      context 'when the skip_unused_job_artifact_hash_calculation feature flag is disabled' do
-        before do
-          stub_feature_flags(skip_unused_job_artifact_hash_calculation: false)
-        end
-
-        it { expect(authorize[:headers]).not_to have_key(:UploadHashFunctions) }
-
-        context 'when FIPS is enabled', :fips_mode do
-          it { expect(authorize[:headers][:UploadHashFunctions]).to match_array(%w[sha1 sha256 sha512]) }
-        end
-      end
     end
 
     context 'when object storage is enabled' do
@@ -390,6 +378,27 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
       end
     end
 
+    shared_examples_for 'handling environment_key' do
+      context 'when artifact type is environment_key' do
+        let(:artifacts_file) do
+          file_to_upload('spec/fixtures/banana_sample.gif', sha256: artifacts_sha256)
+        end
+
+        let(:params) do
+          {
+            'artifact_type' => 'environment_key',
+            'artifact_format' => 'raw'
+          }.with_indifferent_access
+        end
+
+        it 'stores the artifact and returns success without any parsing' do
+          expect { execute }.not_to change { Ci::JobVariable.count }
+          expect(execute[:status]).to eq(:success)
+          expect(job.reload.job_artifacts_environment_key).not_to be_nil
+        end
+      end
+    end
+
     shared_examples_for 'handling annotations' do |storage_type|
       context 'when artifact type is annotations' do
         let(:params) do
@@ -605,6 +614,7 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
       it_behaves_like 'handling uploads'
       it_behaves_like 'handling dotenv', :object_storage
       it_behaves_like 'handling annotations', :object_storage
+      it_behaves_like 'handling environment_key'
       it_behaves_like 'handling object storage errors'
       it_behaves_like 'validating requirements'
     end
@@ -617,6 +627,7 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
       it_behaves_like 'handling uploads'
       it_behaves_like 'handling dotenv', :local_storage
       it_behaves_like 'handling annotations', :local_storage
+      it_behaves_like 'handling environment_key'
       it_behaves_like 'validating requirements'
     end
   end

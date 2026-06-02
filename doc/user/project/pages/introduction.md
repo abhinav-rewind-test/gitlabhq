@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Pages settings
 ---
 
@@ -78,8 +78,8 @@ Permanently delete all Pages deployments for a project.
 
 To delete your pages:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Pages**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Deploy** > **Pages**.
 1. Select **Delete pages**.
 
 Your Pages site is no longer deployed.
@@ -89,7 +89,7 @@ To deploy this Pages site again, run a new pipeline.
 
 When using Pages under the top-level domain of a GitLab instance (`*.example.io`), you can't use HTTPS with subdomains
 of subdomains. If your namespace or group name contains a dot (for example, `foo.bar`) the domain
-`https://foo.bar.example.io` does **not** work.
+`https://foo.bar.example.io` does not work.
 
 This limitation is because of the [HTTP Over TLS protocol](https://www.rfc-editor.org/rfc/rfc2818#section-3.1). HTTP pages
 work as long as you don't redirect HTTP to HTTPS.
@@ -338,12 +338,12 @@ If anyone tries to access the old URL, they receive a `404` error.
 
 Prerequisites
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - The **Use unique domain** setting [must be enabled](_index.md#unique-domains) in your project's Pages settings.
 
 To regenerate a unique domain for your GitLab Pages site:
 
-1. On the left sidebar, select **Deploy** > **Pages**.
+1. In the left sidebar, select **Deploy** > **Pages**.
 1. Next to **Access pages**, press **Regenerate unique domain**.
 1. GitLab generates a new unique domain for your Pages site.
 

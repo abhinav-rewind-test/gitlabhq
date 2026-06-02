@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting direct transfer migrations
 description: "Troubleshooting GitLab direct transfer migrations with Rails console commands, error solutions, and configuration tips."
 ---
@@ -13,7 +13,7 @@ description: "Troubleshooting GitLab direct transfer migrations with Rails conso
 
 {{< /details >}}
 
-In a [rails console session](../../../administration/operations/rails_console.md#starting-a-rails-console-session),
+In a [Rails console session](../../../administration/operations/rails_console.md#starting-a-rails-console-session),
 you can find the failure or error messages for the group import attempt using:
 
 ```ruby
@@ -75,15 +75,16 @@ On the source instance, stale imports are often due to excessive memory usage,
 which might restart Sidekiq processes and interrupt export jobs.
 The destination instance might wait for the export files until the migration eventually times out.
 
-To check if the [group](../../../api/group_relations_export.md#export-status) or [project](../../../api/project_relations_export.md#export-status) relations were successfully exported,
-run the following command:
+To check if the [group](../../../api/group_relations_export.md#retrieve-the-status-of-an-export) or
+[project](../../../api/project_relations_export.md#retrieve-the-status-of-an-export) relations were
+successfully exported, run the following command:
 
 ```shell
 curl --request GET --location "https://example.gitlab.com/api/v4/projects/:ID/export_relations/status" \
 --header "PRIVATE-TOKEN: <your_access_token>"
 ```
 
-If a relation has a status other than `1`, the relation was not successfully exported
+If a {{< glossary-tooltip text="relation" >}} has a status other than `1`, the relation was not successfully exported
 and the issue is on the source instance.
 
 You can also run the following command to search for interrupted export jobs.
@@ -115,8 +116,8 @@ If Sidekiq restarts are causing the issue:
   1. Restart Sidekiq for the changes to take effect.
 
 You can now trigger a new migration or use the
-[relations export API](../../../api/project_relations_export.md#schedule-new-export) to manually trigger the export.
-Check the [export status](../../../api/project_relations_export.md#export-status) to see if
+[project relations export API](../../../api/project_relations_export.md#schedule-a-new-export-for-a-project) to manually trigger the export.
+Check the [export status](../../../api/project_relations_export.md#retrieve-the-status-of-an-export) to see if
 relations are being exported successfully.
 
 For example, to trigger the export of a specific project, run the following command:
@@ -144,7 +145,7 @@ To solve this, you must change the source group path to include a non-numerical 
 
 - The GitLab UI:
 
-  1. On the top bar, select **Search or go to** and find your group.
+  1. In the top bar, select **Search or go to** and find your group.
   1. Select **Settings** > **General**.
   1. Expand **Advanced**.
   1. Under **Change group URL**, change the group URL to include non-numeric characters.
@@ -195,8 +196,8 @@ To resolve this issue:
 1. Delete the partially imported project or group from the destination instance and initiate a new import.
 
 For more information about the relations and batches that failed to export,
-use the export status API endpoints for [projects](../../../api/project_relations_export.md#export-status)
-and [groups](../../../api/group_relations_export.md#export-status) on the source instance.
+use the export status API endpoints for [projects](../../../api/project_relations_export.md#retrieve-the-status-of-an-export)
+and [groups](../../../api/group_relations_export.md#retrieve-the-status-of-an-export) on the source instance.
 
 ## Error: `duplicate key value violates unique constraint`
 
@@ -206,20 +207,22 @@ When importing records, you might get the following error:
 PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint
 ```
 
-This error might occur when a Sidekiq worker processing the import
-restarts due to high memory or CPU usage during import.
+This error can occur when:
 
-To reduce Sidekiq memory or CPU issues during import:
+- A Sidekiq worker processing the import restarts due to high memory or CPU usage.
+  To reduce Sidekiq resource issues during import:
+  - Optimize [Sidekiq configuration for imports](../../../administration/sidekiq/configuration_for_imports.md).
+  - Limit the number of concurrent jobs in the `bulk_import_concurrent_pipeline_batch_limit` [application setting](../../../api/settings.md).
+- You are [consolidating groups or projects from different source groups into a single destination group](_index.md#known-issues).
+  When epics from different source groups have the same internal ID (which are only unique in a single group), importing them to a single destination group
+  causes conflicts. This conflict causes `PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint` errors referencing `index_issues_on_namespace_id_iid_unique` or `index_epics_on_group_id_and_iid`.
 
-- Optimize [Sidekiq configuration for imports](../../../administration/sidekiq/configuration_for_imports.md).
-- Limit the number of concurrent jobs in the `bulk_import_concurrent_pipeline_batch_limit` [application setting](../../../api/settings.md).
-
-## Error: `BulkImports::FileDownloadService::ServiceError Invalid content type`
+## Error: `Import::BulkImports::FileDownloadStrategy::ServiceError Invalid content type`
 
 When using direct transfer between GitLab instances, you might encounter the following error:
 
 ```plaintext
-BulkImports::FileDownloadService::ServiceError Invalid content type
+Import::BulkImports::FileDownloadStrategy::ServiceError Invalid content type
 ```
 
 This error is related to how network traffic is routed between instances.
@@ -234,7 +237,7 @@ To resolve this issue:
 
 ## Milestone titles appended with `(imported-xx-datetime)`
 
-When importing a group, if any group and project milestone titles [clash with existing titles](../../../user/project/milestones/_index.md#milestone-title-rules) in the destination namespace, the imported milestones have
+When importing a group, if any group and project milestone titles [clash with existing titles](../../project/milestones/_index.md#milestone-title-rules) in the destination namespace, the imported milestones have
 a unique suffix appended to their title. For example, `18.0 (imported-3d-1770206299)`.
 
 To identify these milestones, search the `log/importer.log` file on the destination instance for the following:
@@ -250,3 +253,12 @@ The log entry includes:
 - `existing_group_id` or `existing_project_id`: The ID of the group or project that contains the existing milestone.
 
 With this information, you can locate the milestone and update the title to something you prefer.
+
+## Error: `Destination belongs to a different organization than the current one`
+
+Migrations by direct transfer fail when the source and destination namespaces belong to
+different organizations and either organization is marked as isolated.
+
+To resolve this error, migrate to a destination namespace that belongs to your
+current organization. For more information, see
+[issue 595674](https://gitlab.com/gitlab-org/gitlab/-/issues/595674).

@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Markdown API
 ---
 
@@ -27,7 +27,9 @@ All requests to this API must be [authenticated](rest/authentication.md).
 > For more information, see the history.
 > This feature is available for testing, but not ready for production use.
 
-## Render an arbitrary Markdown document
+## Render Markdown content
+
+Renders Markdown content as HTML.
 
 ```plaintext
 POST /markdown

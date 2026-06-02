@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: How to configure GitLab when running in a Docker container.
 title: Configure GitLab running in a Docker container
 ---
@@ -214,4 +214,4 @@ If, for any reason, you wish to switch back to single database connection:
 
 After you configure your installation, consider taking the
 [recommended next steps](../next_steps.md), including authentication options
-and sign-up restrictions.
+and new user account restrictions.

@@ -29,11 +29,11 @@ class Ldap::OmniauthCallbacksController < OmniauthCallbacksController
 
   override :set_remember_me
   def set_remember_me(user, _auth_user)
-    user.remember_me = params[:remember_me] if user.persisted?
+    user.remember_me = params.permit(:remember_me)[:remember_me] if user.persisted?
   end
 
   override :fail_login
-  def fail_login(user)
+  def fail_login(_user)
     flash[:alert] = _('Access denied for your LDAP account.')
 
     redirect_to new_user_session_path

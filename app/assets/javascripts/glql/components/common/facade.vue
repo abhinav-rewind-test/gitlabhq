@@ -1,6 +1,6 @@
 <script>
 import { GlAlert, GlButton, GlModal, GlIntersectionObserver, GlSkeletonLoader } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { __, sprintf } from '~/locale';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import { renderMarkdown } from '~/notes/utils';
@@ -158,12 +158,12 @@ export default {
       }
     },
     renderMarkdown,
-    onResolverChange({ loading, query, config, data, aggregate, groupBy, error }) {
+    onResolverChange({ loading, query, config, data, error }) {
       this.loading = loading;
       this.query = query;
       this.config = config;
       this.data = data;
-      this.itemsCount = aggregate?.length && groupBy?.length ? null : data?.count;
+      this.itemsCount = data?.count;
 
       if (error) {
         this.handleError(error);
@@ -269,9 +269,7 @@ export default {
         />
 
         <template v-if="showEmptyState" #empty>
-          <div class="gl-pt-4">
-            {{ __('No data found for this query.') }}
-          </div>
+          {{ __('No data found for this query.') }}
         </template>
       </crud-component>
       <glql-footnote v-if="!isCollapsed" />

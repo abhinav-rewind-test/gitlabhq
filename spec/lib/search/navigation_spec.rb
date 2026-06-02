@@ -48,6 +48,26 @@ RSpec.describe Search::Navigation, feature_category: :global_search do
 
       it { is_expected.to be(false) }
     end
+
+    context 'when checking work_items tab' do
+      let(:tab) { :work_items }
+
+      context 'when user has ability' do
+        before do
+          allow(search_navigation).to receive(:can?).with(user, :read_work_item, project_double).and_return(true)
+        end
+
+        it { is_expected.to be(true) }
+      end
+
+      context 'when user does not have ability' do
+        before do
+          allow(search_navigation).to receive(:can?).with(user, :read_work_item, project_double).and_return(false)
+        end
+
+        it { is_expected.to be(false) }
+      end
+    end
   end
 
   describe '#tabs' do
@@ -84,7 +104,7 @@ RSpec.describe Search::Navigation, feature_category: :global_search do
 
     it 'calls label when it is a proc' do
       # All labels in SCOPE_DEFINITIONS are procs that return strings
-      expect(tabs[:issues][:label]).to be_a(String)
+      expect(tabs[:work_items][:label]).to be_a(String)
       expect(tabs[:merge_requests][:label]).to be_a(String)
     end
 
@@ -141,7 +161,7 @@ RSpec.describe Search::Navigation, feature_category: :global_search do
       end
     end
 
-    context 'for issues tab' do
+    context 'for work_items tab' do
       where(:tab_enabled, :setting_enabled, :project, :condition) do
         false | false | nil | false
         false | true | nil | true
@@ -155,12 +175,12 @@ RSpec.describe Search::Navigation, feature_category: :global_search do
 
       with_them do
         before do
-          allow(search_navigation).to receive(:tab_enabled_for_project?).with(:issues).and_return(tab_enabled)
-          stub_application_setting(global_search_issues_enabled: setting_enabled)
+          allow(search_navigation).to receive(:tab_enabled_for_project?).with(:work_items).and_return(tab_enabled)
+          stub_application_setting(global_search_work_items_enabled: setting_enabled)
         end
 
         it 'data item condition is set correctly' do
-          expect(tabs[:issues][:condition]).to eq(condition)
+          expect(tabs[:work_items][:condition]).to eq(condition)
         end
       end
     end

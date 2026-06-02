@@ -7,6 +7,7 @@ class Projects::TreeController < Projects::ApplicationController
   include ActionView::Helpers::SanitizeHelper
   include RedirectsForMissingPathOnTree
   include SourcegraphDecorator
+  include HandlesGitalyErrors
 
   around_action :allow_gitaly_ref_name_caching, only: [:show]
 
@@ -21,6 +22,7 @@ class Projects::TreeController < Projects::ApplicationController
     push_frontend_feature_flag(:inline_blame, @project)
     push_licensed_feature(:file_locks) if @project.licensed_feature_available?(:file_locks)
     push_frontend_feature_flag(:repository_file_tree_browser, current_user)
+    push_frontend_feature_flag(:vue3_migrate_repository, current_user)
   end
 
   feature_category :source_code_management
@@ -39,7 +41,7 @@ class Projects::TreeController < Projects::ApplicationController
     if tree.entries.empty?
       if @repository.blob_at(@commit.id, @path)
         redirect_to project_blob_path(@project, File.join(@ref, @path), ref_type: @ref_type)
-      elsif @path.present?
+      elsif path_present?
         redirect_to_tree_root_for_missing_path(@project, @ref, @path)
       end
     end

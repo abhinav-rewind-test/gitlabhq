@@ -27,7 +27,8 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
           obfuscated_email: obfuscated_email(user.email),
           verify_path: helper.session_path(:user),
           resend_path: users_resend_verification_code_path,
-          skip_path: nil
+          skip_path: nil,
+          show_resend_after: nil
         })
       end
     end
@@ -35,7 +36,7 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
     context 'when user is permitted to skip email otp' do
       before do
         allow(helper).to receive(
-          :permitted_to_skip_email_otp_in_grace_period?
+          :permitted_to_skip_email_otp_in_warning_period?
         ).and_return(true)
       end
 
@@ -45,8 +46,18 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
           obfuscated_email: obfuscated_email(user.email),
           verify_path: helper.session_path(:user),
           resend_path: users_resend_verification_code_path,
-          skip_path: users_skip_verification_for_now_path
+          skip_path: users_skip_verification_for_now_path,
+          show_resend_after: nil
         })
+      end
+    end
+
+    context 'when user has email_otp_last_sent_at set', :freeze_time do
+      let(:sent_at) { 10.seconds.ago }
+      let(:user) { build_stubbed(:user, user_detail: build_stubbed(:user_detail, email_otp_last_sent_at: sent_at)) }
+
+      it 'includes the resend cooldown timestamp from show_email_otp_resend_after' do
+        expect(helper.verification_data(user)[:show_resend_after]).to eq(helper.show_email_otp_resend_after(user))
       end
     end
   end
@@ -147,7 +158,7 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
   end
 
   describe '#fallback_to_email_otp_permitted?' do
-    let(:user) { build_stubbed(:user) }
+    let_it_be_with_reload(:user) { create(:user) } # rubocop:disable RSpec/FactoryBot/AvoidCreate -- we need to create it
 
     context 'when email_based_mfa feature flag is disabled' do
       before do
@@ -165,7 +176,9 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
       end
 
       context 'when user has email_otp_required_after set to nil' do
-        let(:user) { build_stubbed(:user, email_otp_required_after: nil) }
+        before do
+          user.update!(email_otp_required_after: nil)
+        end
 
         it 'returns false' do
           expect(helper.fallback_to_email_otp_permitted?(user)).to be_falsy
@@ -173,8 +186,8 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
       end
 
       context 'when user has email_otp_required_after set to future date' do
-        let(:user) do
-          build_stubbed(:user, email_otp_required_after: Time.zone.today + 1.day)
+        before do
+          user.update!(email_otp_required_after: Time.zone.today + 1.day)
         end
 
         it 'returns false' do
@@ -193,7 +206,9 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
       end
 
       context 'when user has email_otp_required_after set to today' do
-        let(:user) { build_stubbed(:user, email_otp_required_after: Time.zone.today) }
+        before do
+          user.update!(email_otp_required_after: Time.zone.today)
+        end
 
         it 'returns true' do
           expect(helper.fallback_to_email_otp_permitted?(user)).to be true
@@ -201,7 +216,9 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
       end
 
       context 'when user has email_otp_required_after set to past date' do
-        let(:user) { build_stubbed(:user, email_otp_required_after: Time.zone.today - 1.day) }
+        before do
+          user.update!(email_otp_required_after: Time.zone.today - 1.day)
+        end
 
         it 'returns true' do
           expect(helper.fallback_to_email_otp_permitted?(user)).to be true
@@ -401,6 +418,26 @@ RSpec.describe SessionsHelper, feature_category: :system_access do
         )
 
         expect(json['show_captcha']).to be(true)
+      end
+    end
+  end
+
+  describe '#registration_path_params' do
+    context 'when invite_email is provided' do
+      it 'returns a hash with invite_email' do
+        invite_email = 'user@example.com'
+
+        expect(helper.registration_path_params(invite_email)).to eq({
+          invite_email: invite_email
+        })
+      end
+    end
+
+    context 'when invite_email is nil' do
+      it 'returns a hash with nil invite_email' do
+        expect(helper.registration_path_params(nil)).to eq({
+          invite_email: nil
+        })
       end
     end
   end

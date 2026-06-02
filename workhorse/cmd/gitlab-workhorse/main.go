@@ -66,13 +66,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.WithError(run(*boot, *cfg)).Fatal("shutting down")
+	if err := run(*boot, *cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "shutting down: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stderr, "shutting down")
+	os.Exit(0)
 }
 
 type alreadyPrintedError struct{ error }
 
 // setupFlagSet initializes and configures the flag set for command line parsing
-func setupFlagSet(arg0 string, boot *bootConfig, cfg *config.Config) (fset *flag.FlagSet, configFile, authBackend, cableBackend *string) {
+func setupFlagSet(arg0 string, boot *bootConfig, cfg *config.Config) (fset *flag.FlagSet, configFile, authBackend, cableBackend, iamServiceBackend *string) {
 	fset = flag.NewFlagSet(arg0, flag.ContinueOnError)
 	fset.Usage = func() {
 		_, _ = fmt.Fprintf(fset.Output(), "Usage of %s:\n", arg0)
@@ -102,6 +107,9 @@ func setupFlagSet(arg0 string, boot *bootConfig, cfg *config.Config) (fset *flag
 	cableBackend = fset.String("cableBackend", "", "ActionCable backend")
 	fset.StringVar(&cfg.CableSocket, "cableSocket", "", "Optional: Unix domain socket to dial cableBackend at")
 
+	// IAM Auth service backend (AUTH-011). When unset, OAuth IAM proxy routing is disabled.
+	iamServiceBackend = fset.String("iamServiceURL", "", "Optional: URL of the IAM Auth service for OAuth request routing during the AUTH-011 gradual rollout")
+
 	fset.StringVar(&cfg.DocumentRoot, "documentRoot", "public", "Path to static files content")
 	fset.DurationVar(&cfg.ProxyHeadersTimeout, "proxyHeadersTimeout", 5*time.Minute, "How long to wait for response headers when proxying the request")
 	fset.BoolVar(&cfg.DevelopmentMode, "developmentMode", false, "Allow the assets to be served from Rails app")
@@ -111,7 +119,7 @@ func setupFlagSet(arg0 string, boot *bootConfig, cfg *config.Config) (fset *flag
 	fset.DurationVar(&cfg.APICILongPollingDuration, "apiCiLongPollingDuration", 50, "Long polling duration for job requesting for runners")
 	fset.BoolVar(&cfg.PropagateCorrelationID, "propagateCorrelationID", false, "Reuse existing Correlation-ID from the incoming request header `X-Request-ID` if present")
 
-	return fset, configFile, authBackend, cableBackend
+	return fset, configFile, authBackend, cableBackend, iamServiceBackend
 }
 
 // buildConfig may print messages to os.Stderr if err != nil. If err is
@@ -121,7 +129,7 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 	cfg := config.NewDefaultConfig()
 	cfg.Version = Version
 
-	fset, configFile, authBackend, cableBackend := setupFlagSet(arg0, boot, cfg)
+	fset, configFile, authBackend, cableBackend, iamServiceBackend := setupFlagSet(arg0, boot, cfg)
 
 	if err := fset.Parse(args); err != nil {
 		return nil, nil, alreadyPrintedError{err}
@@ -149,37 +157,32 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 		cfg.CableBackend = cfg.Backend
 	}
 
+	// Allow the IAM service URL to be set via env var as well as CLI flag,
+	// so cloud-native deployments can configure it through standard container
+	// env injection without templating a CLI arg. CLI flag wins when both are
+	// set. The bare IAM_SERVICE_URL name follows the convention established
+	// by the auth-architecture sandbox-config (see !27), where the same name
+	// was first introduced. Reusing this name lets a follow-up sandbox MR
+	// re-add it to global.extraEnv without introducing a new convention.
+	iamURL := *iamServiceBackend
+	if iamURL == "" {
+		iamURL = os.Getenv("IAM_SERVICE_URL")
+	}
+	if iamURL != "" {
+		cfg.IAMServiceURL, err = parseAuthBackend(iamURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("iamServiceURL: %v", err)
+		}
+	}
+
 	cfgFromFile, err := config.LoadConfigFromFile(configFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("configFile: %v", err)
 	}
 
-	cfg.MetricsListener = cfgFromFile.MetricsListener
-	if boot.prometheusListenAddr != "" {
-		if cfg.MetricsListener != nil {
-			return nil, nil, fmt.Errorf("configFile: both prometheusListenAddr and metrics_listener can't be specified")
-		}
-		cfg.MetricsListener = &config.ListenerConfig{Network: "tcp", Addr: boot.prometheusListenAddr}
+	if err := cfg.MergeFromFile(cfgFromFile, boot.prometheusListenAddr); err != nil {
+		return nil, nil, err
 	}
-
-	cfg.Redis = cfgFromFile.Redis
-	cfg.Sentinel = cfgFromFile.Sentinel
-	cfg.ObjectStorageCredentials = cfgFromFile.ObjectStorageCredentials
-	cfg.ImageResizerConfig = cfgFromFile.ImageResizerConfig
-	cfg.AltDocumentRoot = cfgFromFile.AltDocumentRoot
-	cfg.ShutdownTimeout = cfgFromFile.ShutdownTimeout
-	cfg.TrustedCIDRsForXForwardedFor = cfgFromFile.TrustedCIDRsForXForwardedFor
-	cfg.TrustedCIDRsForPropagation = cfgFromFile.TrustedCIDRsForPropagation
-	cfg.Listeners = cfgFromFile.Listeners
-	cfg.HealthCheckListener = cfgFromFile.HealthCheckListener
-	cfg.LoadSheddingConfig = cfgFromFile.LoadSheddingConfig
-
-	// Apply default health check configuration if not provided
-	cfg.ApplyHealthCheckDefaults()
-	cfg.ApplyLoadSheddingDefaults()
-
-	cfg.CircuitBreakerConfig = cfgFromFile.CircuitBreakerConfig
-	cfg.AdoptCfRayHeader = cfgFromFile.AdoptCfRayHeader
 
 	return boot, cfg, nil
 }
@@ -207,6 +210,83 @@ func initializePprof(listenerAddress string, errors chan error) (*http.Server, e
 	}()
 
 	return server, nil
+}
+
+func buildListeners(boot bootConfig, cfg config.Config) ([]net.Listener, error) {
+	listenerFromBootConfig := config.ListenerConfig{
+		Network: boot.listenNetwork,
+		Addr:    boot.listenAddr,
+	}
+
+	var listeners []net.Listener
+	oldUmask := syscall.Umask(boot.listenUmask)
+	defer syscall.Umask(oldUmask)
+
+	for _, listenerCfg := range append(cfg.Listeners, listenerFromBootConfig) {
+		l, err := listener.New("upstream", listenerCfg)
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, l)
+	}
+
+	return listeners, nil
+}
+
+func gracefulShutdown(
+	srv *http.Server,
+	cfg config.Config,
+	redisKeyWatcher *redis.KeyWatcher,
+	healthCheckServer *healthcheck.Server,
+	shutdownCh chan struct{},
+	upgradedConnsManager *upstream.UpgradedConnsManager,
+) error {
+	if healthCheckServer != nil {
+		healthCheckServer.InitiateShutdown()
+		// Signal upstream to stop accepting long polling requests because
+		// requests can arrive during the graceful shutdown time.
+		close(shutdownCh)
+		// Kick out any long poll requests
+		redisKeyWatcher.Shutdown()
+
+		// Wait for the graceful shutdown delay to complete before shutting down the server
+		gracefulShutdownDelay := healthCheckServer.GetGracefulShutdownDelay()
+		if gracefulShutdownDelay > 0 {
+			log.WithField("shutdown_delay_s", gracefulShutdownDelay.Seconds()).Info("Waiting for graceful shutdown delay")
+
+			go upgradedConnsManager.Shutdown(gracefulShutdownDelay)
+
+			time.Sleep(gracefulShutdownDelay)
+		}
+	} else {
+		redisKeyWatcher.Shutdown()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout.Duration) // lint:allow context.Background
+	defer cancel()
+
+	return srv.Shutdown(ctx)
+}
+
+func setupMonitoring(cfg config.Config, finalErrors chan<- error) error {
+	monitoringOpts := []monitoring.Option{monitoring.WithBuildInformation(Version, BuildTime)}
+	if cfg.MetricsListener != nil {
+		l, err := listener.New("metrics", *cfg.MetricsListener)
+		if err != nil {
+			return err
+		}
+		monitoringOpts = append(monitoringOpts, monitoring.WithListener(l))
+	}
+
+	go func() {
+		// Unlike http.Serve, which always returns a non-nil error,
+		// monitoring.Start may return nil in which case we should not shut down.
+		if err := monitoring.Start(monitoringOpts...); err != nil {
+			finalErrors <- err
+		}
+	}()
+
+	return nil
 }
 
 // run() lets us use normal Go error handling; there is no log.Fatal in run().
@@ -239,24 +319,9 @@ func run(boot bootConfig, cfg config.Config) error {
 		return err
 	}
 
-	var l net.Listener
-
-	monitoringOpts := []monitoring.Option{monitoring.WithBuildInformation(Version, BuildTime)}
-	if cfg.MetricsListener != nil {
-		l, err = listener.New("metrics", *cfg.MetricsListener)
-		if err != nil {
-			return err
-		}
-		monitoringOpts = append(monitoringOpts, monitoring.WithListener(l))
+	if err = setupMonitoring(cfg, finalErrors); err != nil {
+		return err
 	}
-
-	go func() {
-		// Unlike http.Serve, which always returns a non-nil error,
-		// monitoring.Start may return nil in which case we should not shut down.
-		if err = monitoring.Start(monitoringOpts...); err != nil {
-			finalErrors <- err
-		}
-	}()
 
 	secret.SetPath(boot.secretPath)
 
@@ -300,9 +365,9 @@ func run(boot bootConfig, cfg config.Config) error {
 	if cfg.LoadSheddingConfig != nil && cfg.LoadSheddingConfig.Enabled {
 		cfg.ApplyLoadSheddingDefaults()
 
-		loadSheddingService, shedder, err := loadshedding.NewLoadSheddingService(cfg.LoadSheddingConfig, accessLogger)
-		if err != nil {
-			return fmt.Errorf("failed to create load shedding service: %v", err)
+		loadSheddingService, shedder, loadSheddingErr := loadshedding.NewLoadSheddingService(cfg.LoadSheddingConfig, accessLogger)
+		if loadSheddingErr != nil {
+			return fmt.Errorf("failed to create load shedding service: %v", loadSheddingErr)
 		}
 
 		loadShedder = shedder
@@ -314,37 +379,22 @@ func run(boot bootConfig, cfg config.Config) error {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
-	listenerFromBootConfig := config.ListenerConfig{
-		Network: boot.listenNetwork,
-		Addr:    boot.listenAddr,
+	listeners, err := buildListeners(boot, cfg)
+	if err != nil {
+		return err
 	}
-	var listeners []net.Listener
-	oldUmask := syscall.Umask(boot.listenUmask)
-	for _, cfg := range append(cfg.Listeners, listenerFromBootConfig) {
-		l, err := listener.New("upstream", cfg)
-		if err != nil {
-			return err
-		}
-		listeners = append(listeners, l)
-	}
-	syscall.Umask(oldUmask)
 
 	shutdownCh := make(chan struct{})
 	upgradedConnsManager := &upstream.UpgradedConnsManager{}
-	up := upstream.NewUpstream(
-		cfg,
-		accessLogger,
-		watchKeyFn,
-		rdb,
-		healthCheckServer,
-		shutdownCh,
-		upgradedConnsManager,
-	)
-
-	// Apply load shedding middleware if configured
-	if loadShedder != nil {
-		up = loadshedding.Middleware(loadShedder, accessLogger)(up)
-	}
+	up := upstream.NewUpstream(cfg, upstream.Dependencies{
+		AccessLogger:         accessLogger,
+		WatchKeyHandler:      watchKeyFn,
+		Rdb:                  rdb,
+		HealthCheckServer:    healthCheckServer,
+		ShutdownChan:         shutdownCh,
+		UpgradedConnsManager: upgradedConnsManager,
+		LoadShedder:          loadShedder,
+	})
 
 	srv := &http.Server{Handler: wrapRaven(up)}
 
@@ -357,31 +407,6 @@ func run(boot bootConfig, cfg config.Config) error {
 		return err
 	case sig := <-done:
 		log.WithFields(log.Fields{"shutdown_timeout_s": cfg.ShutdownTimeout.Duration.Seconds(), "signal": sig.String()}).Infof("shutdown initiated")
-
-		if healthCheckServer != nil {
-			healthCheckServer.InitiateShutdown()
-			// Signal upstream to stop accepting long polling requests because
-			// requests can arrive during the graceful shutdown time.
-			close(shutdownCh)
-			// Kick out any long poll requests
-			redisKeyWatcher.Shutdown()
-
-			// Wait for the graceful shutdown delay to complete before shutting down the server
-			gracefulShutdownDelay := healthCheckServer.GetGracefulShutdownDelay()
-			if gracefulShutdownDelay > 0 {
-				log.WithField("shutdown_delay_s", gracefulShutdownDelay.Seconds()).Info("Waiting for graceful shutdown delay")
-
-				go upgradedConnsManager.Shutdown(gracefulShutdownDelay)
-
-				time.Sleep(gracefulShutdownDelay)
-			}
-		} else {
-			redisKeyWatcher.Shutdown()
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout.Duration) // lint:allow context.Background
-		defer cancel()
-
-		return srv.Shutdown(ctx)
+		return gracefulShutdown(srv, cfg, redisKeyWatcher, healthCheckServer, shutdownCh, upgradedConnsManager)
 	}
 }

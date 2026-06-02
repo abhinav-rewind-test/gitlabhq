@@ -210,13 +210,6 @@ module Ci
       )
     end
 
-    scope :timed_out_running_builds, ->(time_buffer = 0) do
-      joins(:runtime_metadata)
-        .where("#{Ci::RunningBuild.table_name}.created_at + INTERVAL \'1 second\' * #{table_name}.timeout <= ?",
-          Time.current - time_buffer)
-        .where(arel_table[:partition_id].eq(Ci::RunningBuild.arel_table[:partition_id]))
-    end
-
     scope :not_timed_out_running_builds, -> do
       joins(:runtime_metadata)
         .where("#{Ci::RunningBuild.table_name}.created_at + INTERVAL \'1 second\' * #{table_name}.timeout > ?",
@@ -261,6 +254,9 @@ module Ci
       joins(:pipeline).where(pipeline: { project_id: project_id, iid: iid })
     end
 
+    scope :iac_sast_jobs, -> { where("name ~ ?", "^kics-iac-sast(-\\d+)?$") }
+    scope :with_sast_artifacts, -> { joins(:job_artifacts_sast) }
+
     add_authentication_token_field :token,
       encrypted: :required,
       format_with_prefix: :prefix_and_partition_for_token,
@@ -271,9 +267,6 @@ module Ci
     after_create unless: :importing? do |build|
       run_after_commit { build.execute_hooks }
     end
-
-    after_commit :track_ci_secrets_management_id_tokens_usage, on: :create, if: :id_tokens?
-    after_commit :track_ci_build_created_event, on: :create
 
     # Builds no longer use the p_ci_build_tags table for tag storage.
     # Tags are stored in ci_job_definitions and accessed via job_definition.tag_list.
@@ -464,7 +457,7 @@ module Ci
       end
 
       before_transition running: [:failed] do |build|
-        if build.failure_reason&.to_sym == :job_execution_timeout
+        if build.server_timeout_running?
           # If job was stuck or timed-out, only bill the set timeout.
           build.finished_at = build.started_at + build.timeout.seconds
         end
@@ -474,7 +467,7 @@ module Ci
         reason_enum = ::Gitlab::Ci::Build::Status::Reason
                            .fabricate(build, transition.args.first)
 
-        if reason_enum.failure_reason == :job_execution_server_timeout
+        if reason_enum.failure_reason == :server_timeout_canceling
           # If job was stuck or timed-out, only bill the set timeout.
           build.failure_reason = reason_enum.failure_reason
           build.finished_at = build.started_at + build.timeout.seconds
@@ -488,6 +481,16 @@ module Ci
           trigger_stage_subscription
         end
       end
+    end
+
+    def self.retryable_pipeline_keys(items)
+      where([:commit_id, :partition_id] => items)
+        .latest
+        .failed_or_canceled
+        .group(:commit_id, :partition_id)
+        .count
+        .keys
+        .to_set
     end
 
     def self.build_matchers(project)
@@ -514,7 +517,7 @@ module Ci
     def self.tag_names_array_query
       <<~SQL.squish
         (
-          SELECT COALESCE(array_agg(tag_name ORDER BY tag_name), '{}')
+          SELECT COALESCE(array_agg(tag_name ORDER BY tag_name), ARRAY[]::text[])::text[]
             FROM jsonb_array_elements_text(
               #{Ci::JobDefinition.quoted_table_name}.config->'tag_list'
             ) AS tag_name
@@ -538,6 +541,19 @@ module Ci
     # TODO: remove this method with `ci_builds_metadata`
     def self.has_any_job_definition?
       left_joins(:job_definition_instance).limit(1).pick(:job_id).present?
+    end
+
+    def self.any_stuck?(pending_builds)
+      return false if pending_builds.empty?
+
+      projects_by_id = Project.where(id: pending_builds.map(&:project_id).uniq).index_by(&:id)
+
+      pending_builds.any? do |build|
+        project = projects_by_id[build.project_id]
+        next true unless project
+
+        !project.any_online_runners? { |runner| runner.match_build_if_online?(build) }
+      end
     end
 
     def needs_maintainer_role_for_artifact_access?
@@ -635,7 +651,7 @@ module Ci
     end
 
     def degenerated?
-      super && execution_config_id.nil?
+      super && execution_config_id.nil? && run_steps.blank?
     end
 
     def degenerate!
@@ -919,6 +935,11 @@ module Ci
       job_definition.tag_list
     end
     strong_memoize_attr :tag_list
+
+    override :run_steps
+    def run_steps
+      read_job_definition_attribute(:run_steps) || execution_config&.run_steps || []
+    end
 
     def any_runners_online?
       cache_for_online_runners do
@@ -1235,12 +1256,32 @@ module Ci
     def drop_with_exit_code!(failure_reason, exit_code)
       failure_reason ||= :unknown_failure
       result = drop!(::Gitlab::Ci::Build::Status::Reason.new(self, failure_reason, exit_code))
-      ::Ci::TrackFailedBuildWorker.perform_async(id, exit_code, failure_reason)
+      ::Ci::TrackFailedBuildWorker.perform_async(id, exit_code, failure_reason.to_s)
       result
     end
 
     def exit_codes_defined?
       options.dig(:allow_failure_criteria, :exit_codes).present? || options.dig(:retry, :exit_codes).present?
+    end
+
+    attr_reader :pending_build_args
+
+    # Override save to pre-compute pending build args outside the database
+    # transaction. The state_machines-activerecord gem wraps ALL callbacks
+    # (before_transition, after_transition) inside a transaction, so there
+    # is no callback that runs outside it. However, the gem sets
+    # `status_event_transition` on the object *before* calling save (see
+    # TransitionCollection#perform), so we can detect a pending transition
+    # here and pre-compute the expensive args (tag lookups, CI minutes
+    # checks, plan lookups) before `super` enters the transaction. The
+    # args are then read by UpdateBuildQueueService#push inside the
+    # transaction via `build.pending_build_args`.
+    def save(...)
+      with_pending_build_args { super }
+    end
+
+    def save!(...)
+      with_pending_build_args { super }
     end
 
     def create_queuing_entry!
@@ -1329,7 +1370,7 @@ module Ci
       return false unless user
       return false unless project.ci_separated_caches
 
-      project.team.max_member_access(user.id) >= Gitlab::Access::MAINTAINER
+      Ability.allowed?(user, :use_protected_cache, project)
     end
 
     def harbor_integration
@@ -1357,6 +1398,20 @@ module Ci
     end
 
     private
+
+    def with_pending_build_args
+      prepare_pending_build_args
+      yield
+    ensure
+      @pending_build_args = nil
+    end
+
+    def prepare_pending_build_args
+      return unless project
+      return unless status_event_transition&.to == 'pending'
+
+      @pending_build_args = ::Ci::PendingBuild.args_from_build(self)
+    end
 
     def apply_jobs_cache_index(cache)
       return cache unless project.jobs_cache_index
@@ -1502,32 +1557,6 @@ module Ci
       end
     end
 
-    def track_ci_secrets_management_id_tokens_usage
-      ::Gitlab::UsageDataCounters::HLLRedisCounter.track_event('i_ci_secrets_management_id_tokens_build_created', values: user_id)
-
-      Gitlab::Tracking.event(
-        self.class.to_s,
-        'create_id_tokens',
-        namespace: namespace,
-        user: user,
-        label: 'redis_hll_counters.ci_secrets_management.i_ci_secrets_management_id_tokens_build_created_monthly',
-        ultimate_namespace_id: namespace.root_ancestor.id,
-        context: [Gitlab::Tracking::ServicePingContext.new(
-          data_source: :redis_hll,
-          event: 'i_ci_secrets_management_id_tokens_build_created'
-        ).to_context]
-      )
-    end
-
-    def track_ci_build_created_event
-      Gitlab::InternalEvents.track_event(
-        'create_ci_build',
-        project: project,
-        user: user,
-        property: name
-      )
-    end
-
     def prefix_and_partition_for_token
       ::Ci::Builds::TokenPrefix.encode(self)
     end
@@ -1540,6 +1569,17 @@ module Ci
         .index_by(&:type_new)
     end
     strong_memoize_attr :project_integrations
+
+    def read_job_definition_attribute(key, default_value = nil)
+      result =
+        if key.in?(::Ci::JobDefinition::NORMALIZED_DATA_COLUMNS)
+          [job_definition&.read_attribute(key), temp_job_definition&.read_attribute(key)].find { |v| !v.nil? }
+        else
+          [job_definition&.config&.dig(key), temp_job_definition&.config&.dig(key)].find { |v| !v.nil? }
+        end
+
+      [result, default_value].find { |v| !v.nil? }
+    end
   end
 end
 

@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: SSH key limits, 2FA, tokens, hardening.
 title: Secure GitLab
 ---
@@ -17,8 +17,8 @@ title: Secure GitLab
 
 This section covers general information and recommendations about the platform.
 
-- [Password and OAuth token storage](password_storage.md)
-- [Password generation for users created through integrated authentication](passwords_for_integrated_authentication_methods.md)
+- [Password and OAuth token storage](../user/profile/user_passwords.md)
+- [Password generation for users created through integrated authentication](../user/profile/user_passwords.md)
 - [CRIME vulnerability management](crime_vulnerability.md)
 - [Secret rotation for third-party integrations](rotate_integrations_secrets.md)
 
@@ -47,7 +47,7 @@ You can find all those directories listed in the [Linux package configuration do
 - [Modify password complexity requirements](../administration/settings/sign_up_restrictions.md#modify-password-complexity-requirements).
 - [Restrict SSH key technologies and require minimum key lengths](ssh_keys_restrictions.md).
 - [Restrict account creation with sign up restrictions](../administration/settings/sign_up_restrictions.md).
-- [Send email confirmation on sign-up](user_email_confirmation.md)
+- [Send email confirmation on new account creation](user_email_confirmation.md)
 - [Enforce two-factor authentication](two_factor_authentication.md) to require users to [enable two-factor authentication](../user/profile/account/two_factor_authentication.md).
 - [Restrict logins from multiple IPs](../administration/reporting/ip_addr_restrictions.md).
 - [How to reset a user password](reset_user_password.md).

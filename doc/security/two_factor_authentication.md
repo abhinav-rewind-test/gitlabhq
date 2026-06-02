@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Enforce two-factor authentication
 ---
 
@@ -47,7 +47,7 @@ You can use the UI or the API to enforce 2FA for all users.
 ### Use the UI
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Sign-in restrictions**:
    - Select **Enforce two-factor authentication** to enable this feature.
    - In **Two-factor grace period**, enter a number of hours. If you want to
@@ -84,15 +84,15 @@ Administrators can enforce 2FA for both:
 - Regular users who have been assigned a [custom admin role](../user/custom_roles/_index.md).
 
 1. In the upper-right corner, select **Admin**.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section:
    1. Select **Enforce two-factor authentication for administrators**.
    1. In **Two-factor grace period**, enter a number of hours. If you want to
-     enforce 2FA on the next sign-in attempt, enter `0`.
+      enforce 2FA on the next sign-in attempt, enter `0`.
 1. Select **Save changes**.
 
 > [!note]
-> If you are using an external provider to sign in into GitLab, this setting will **not** enforce 2FA for users. 2FA should be enabled on that external provider.
+> If you are using an external provider to sign in into GitLab, this setting will not enforce 2FA for users. 2FA should be enabled on that external provider.
 
 ## Enforce 2FA for all users in a group
 
@@ -118,8 +118,8 @@ Prerequisites:
 
 To enforce 2FA for a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Permissions and group features**.
 1. Select **All users in this group must set up two-factor authentication**.
 1. Optional. In **Delay 2FA enforcement (hours)**, enter the number of hours you
@@ -151,7 +151,6 @@ When 2FA is not enforced in a top-level group:
   If a subgroup enables a 2FA requirement:
   - All members of the top-level group must use 2FA.
   - All members of any sibling subgroups must use 2FA.
-
 - If **Allow more restrictive 2FA enforcement for subgroups** is disabled, subgroups
   cannot enforce a 2FA requirement independently. 2FA is not required for any members in the hierarchy.
 
@@ -180,7 +179,7 @@ for the 2FA group.
 
 > [!warning]
 > If you add members to a project in a group or subgroup that has 2FA
-> enabled, 2FA is **not** required for those individually added members.
+> enabled, 2FA is not required for those individually added members.
 
 ## Disable 2FA
 
@@ -252,12 +251,12 @@ You cannot use the API endpoint to disable 2FA for administrators.
 
 {{< /details >}}
 
-Top-level group Owners can disable two-factor authentication (2FA) for enterprise users.
+Top-level group Owners can disable two-factor authentication (2FA) for [enterprise users](../user/enterprise_user/_index.md).
 
 To disable 2FA:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Find a user with the **Enterprise** and **2FA** badges.
 1. Select **More actions** ({{< icon name="ellipsis_v" >}}) and select **Disable two-factor authentication**.
 

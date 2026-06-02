@@ -19,6 +19,7 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
 
   def show
     setup_show_page
+    render(locals: show_view_variables)
   end
 
   def create
@@ -38,8 +39,6 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
       Users::UpdateService.new(current_user, user: current_user, otp_required_for_login: true).execute! do |user|
         @codes = user.generate_otp_backup_codes!
       end
-
-      helpers.dismiss_two_factor_auth_recovery_settings_check
 
       render 'create'
     else
@@ -74,7 +73,6 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
         Users::UpdateService.new(current_user, user: current_user).execute! do |_user|
           @codes = current_user.generate_otp_backup_codes!
         end
-        helpers.dismiss_two_factor_auth_recovery_settings_check
         flash[:notice] = notice
         render 'create'
       end
@@ -91,8 +89,6 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
   def codes
     Users::UpdateService.new(current_user, user: current_user).execute! do |user|
       @codes = user.generate_otp_backup_codes!
-
-      helpers.dismiss_two_factor_auth_recovery_settings_check
     end
   end
 
@@ -140,6 +136,10 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
   end
 
   private
+
+  def show_view_variables
+    {}
+  end
 
   def update_current_user_otp!
     current_user.update_otp_secret! if current_user.needs_new_otp_secret?
@@ -252,12 +252,12 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
   def groups_notification(groups)
     group_links = groups.map { |group| view_context.link_to group.full_name, group_path(group) }.to_sentence
     leave_group_links = groups.map do |group|
-      view_context.link_to safe_format(s_("leave %{group_name}"), group_name: group.full_name),
+      view_context.link_to safe_format(_("leave %{group_name}"), group_name: group.full_name),
         leave_group_members_path(group),
         remote: false, method: :delete
     end.to_sentence
 
-    safe_format(s_(
+    safe_format(_(
       'The group settings for %{group_links} require you to enable Two-Factor Authentication for your account. ' \
         'You can %{leave_group_links}.'
     ), group_links: group_links.html_safe, leave_group_links: leave_group_links.html_safe)
@@ -266,7 +266,7 @@ class Profiles::TwoFactorAuthsController < Profiles::ApplicationController
   def ensure_verified_primary_email
     unless current_user.two_factor_enabled? || current_user.primary_email_verified?
       redirect_to profile_emails_path,
-        notice: s_('You need to verify your primary email first before enabling Two-Factor Authentication.')
+        notice: _('You need to verify your primary email first before enabling Two-Factor Authentication.')
     end
   end
 

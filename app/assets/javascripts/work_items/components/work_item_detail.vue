@@ -1,5 +1,5 @@
 <script>
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import {
   GlAlert,
   GlButton,
@@ -10,13 +10,13 @@ import {
   GlIntersectionObserver,
 } from '@gitlab/ui';
 import noAccessSvg from '@gitlab/svgs/dist/illustrations/empty-state/empty-search-md.svg';
-import DuoWorkflowAction from 'ee_component/ai/components/duo_workflow_action.vue';
+import DuoWorkItemToMrAction from 'ee_component/ai/shared/widgets/duo_work_item_to_mr_action.vue';
 import DesignDropzone from '~/vue_shared/components/upload_dropzone/upload_dropzone.vue';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { s__, __ } from '~/locale';
 import { InternalEvents } from '~/tracking';
 import { getParameterByName, updateHistory, removeParams } from '~/lib/utils/url_utility';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import toast from '~/vue_shared/plugins/global_toast';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
@@ -28,24 +28,20 @@ import { keysFor, ISSUABLE_EDIT_DESCRIPTION } from '~/behaviors/shortcuts/keybin
 import ShortcutsWorkItems from '~/behaviors/shortcuts/shortcuts_work_items';
 import {
   i18n,
-  WIDGET_TYPE_ASSIGNEES,
   WIDGET_TYPE_CURRENT_USER_TODOS,
   WIDGET_TYPE_DESCRIPTION,
-  WIDGET_TYPE_AWARD_EMOJI,
   WIDGET_TYPE_HIERARCHY,
   WORK_ITEM_TYPE_NAME_OBJECTIVE,
-  WIDGET_TYPE_NOTES,
   WIDGET_TYPE_LINKED_ITEMS,
   WIDGET_TYPE_DESIGNS,
   WORK_ITEM_REFERENCE_CHAR,
   WORK_ITEM_TYPE_NAME_EPIC,
-  WIDGET_TYPE_DEVELOPMENT,
   STATE_OPEN,
-  WIDGET_TYPE_ERROR_TRACKING,
   WIDGET_TYPE_ITERATION,
-  WIDGET_TYPE_LINKED_RESOURCES,
   WIDGET_TYPE_MILESTONE,
   WORK_ITEM_TYPE_NAME_INCIDENT,
+  VIEW_CONTEXT,
+  WORK_ITEM_DETAIL_PANEL,
 } from '../constants';
 
 import workItemUpdatedSubscription from '../graphql/work_item_updated.subscription.graphql';
@@ -54,7 +50,16 @@ import workItemByIdQuery from '../graphql/work_item_by_id.query.graphql';
 import workItemByIidQuery from '../graphql/work_item_by_iid.query.graphql';
 import getAllowedWorkItemChildTypes from '../graphql/work_item_allowed_children.query.graphql';
 import workspacePermissionsQuery from '../graphql/workspace_permissions.query.graphql';
-import { findHierarchyWidgetDefinition, activeWorkItemIds } from '../utils';
+import {
+  findAssigneesWidget,
+  findAwardEmojiWidget,
+  findDevelopmentWidget,
+  findErrorTrackingWidget,
+  findLinkedResourcesWidget,
+  findHierarchyWidgetDefinition,
+  findNotesWidget,
+  activeWorkItemIds,
+} from '../utils';
 import { updateWorkItemCurrentTodosWidget } from '../graphql/cache_utils';
 
 import getWorkItemDesignListQuery from './design_management/graphql/design_collection.query.graphql';
@@ -85,7 +90,7 @@ import WorkItemAncestors from './work_item_ancestors/work_item_ancestors.vue';
 import WorkItemTitle from './work_item_title.vue';
 import WorkItemLoading from './work_item_loading.vue';
 import WorkItemAbuseModal from './work_item_abuse_modal.vue';
-import WorkItemDrawer from './work_item_drawer.vue';
+import WorkItemDetailPanel from './work_item_detail_panel.vue';
 import DesignWidget from './design_management/design_management_widget.vue';
 import DesignUploadButton from './design_management/upload_button.vue';
 import WorkItemDevelopment from './work_item_development/work_item_development.vue';
@@ -138,15 +143,15 @@ export default {
     WorkItemTitle,
     WorkItemLoading,
     WorkItemAbuseModal,
-    WorkItemDrawer,
+    WorkItemDetailPanel,
     WorkItemDevelopment,
     WorkItemCreateBranchMergeRequestSplitButton,
     WorkItemVulnerabilities: () =>
       import('ee_component/work_items/components/work_item_vulnerabilities.vue'),
     WorkItemMetadataProvider,
-    DuoWorkflowAction,
+    DuoWorkItemToMrAction,
   },
-  mixins: [glFeatureFlagMixin(), trackingMixin],
+  mixins: [glFeatureFlagsMixin(), trackingMixin],
   inject: {
     groupPath: {
       from: 'groupPath',
@@ -184,7 +189,7 @@ export default {
       required: false,
       default: '',
     },
-    isDrawer: {
+    isDetailPanel: {
       type: Boolean,
       required: false,
       default: false,
@@ -213,6 +218,7 @@ export default {
       designUploadErrorVariant: ALERT_VARIANTS.danger,
       workspacePermissions: defaultWorkspacePermissions,
       activeChildItem: null,
+      activePanel: null,
       isEmptyStateVisible: false,
       dragCounter: 0,
       isDesignUploadButtonInViewport: false,
@@ -228,20 +234,20 @@ export default {
   apollo: {
     workItem: {
       query() {
-        if (this.workItemId) {
-          return workItemByIdQuery;
-        }
-        return workItemByIidQuery;
+        return this.workItemId ? workItemByIdQuery : workItemByIidQuery;
       },
       variables() {
         if (this.workItemId) {
           return {
             id: this.workItemId,
+            useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
           };
         }
+
         return {
           fullPath: this.workItemFullPath,
           iid: this.workItemIid,
+          useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
         };
       },
       skip() {
@@ -277,7 +283,7 @@ export default {
           this.refetchError = null;
         }
 
-        if (!(this.isModal || this.isDrawer) && this.workItem.namespace) {
+        if (!(this.isModal || this.isDetailPanel) && this.workItem.namespace) {
           const path = this.workItem.namespace.fullPath
             ? ` · ${this.workItem.namespace.fullPath}`
             : '';
@@ -290,6 +296,7 @@ export default {
         variables() {
           return {
             id: this.workItem.id,
+            useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
           };
         },
         skip() {
@@ -313,6 +320,14 @@ export default {
     },
   },
   computed: {
+    showGenerateMrWithDuoButton() {
+      if (!this.duoRemoteFlowsAvailability) return false;
+
+      const hasAgentPlan =
+        this.workItem?.features?.agentPlan || Boolean(this.findWidget('AGENT_PLAN'));
+
+      return !hasAgentPlan;
+    },
     workItemProjectId() {
       return this.workItem?.project?.id;
     },
@@ -412,25 +427,25 @@ export default {
       return this.workItemCurrentUserTodos?.currentUserTodos?.nodes;
     },
     workItemAssignees() {
-      return this.findWidget(WIDGET_TYPE_ASSIGNEES);
+      return findAssigneesWidget(this.workItem);
     },
     workItemAwardEmoji() {
-      return this.findWidget(WIDGET_TYPE_AWARD_EMOJI);
+      return findAwardEmojiWidget(this.workItem);
     },
     workItemErrorTracking() {
-      return this.findWidget(WIDGET_TYPE_ERROR_TRACKING) ?? {};
+      return findErrorTrackingWidget(this.workItem) ?? {};
     },
     workItemLinkedResources() {
-      return this.findWidget(WIDGET_TYPE_LINKED_RESOURCES)?.linkedResources.nodes ?? [];
+      return findLinkedResourcesWidget(this.workItem)?.linkedResources?.nodes ?? [];
     },
     workItemHierarchy() {
       return this.findWidget(WIDGET_TYPE_HIERARCHY);
     },
     workItemNotes() {
-      return this.findWidget(WIDGET_TYPE_NOTES);
+      return findNotesWidget(this.workItem);
     },
     workItemDevelopment() {
-      return this.findWidget(WIDGET_TYPE_DEVELOPMENT);
+      return findDevelopmentWidget(this.workItem);
     },
     workItemIteration() {
       return this.findWidget(WIDGET_TYPE_ITERATION)?.iteration;
@@ -512,7 +527,7 @@ export default {
       return this.workItem.widgets;
     },
     isItemSelected() {
-      return !isEmpty(this.activeChildItem);
+      return !isEmpty(this.activeChildItem) && this.activePanel === WORK_ITEM_DETAIL_PANEL;
     },
     activeChildItemType() {
       return this.activeChildItem?.workItemType?.name;
@@ -532,8 +547,8 @@ export default {
     hasChildren() {
       return this.workItemHierarchy?.hasChildren;
     },
-    isModalOrDrawer() {
-      return this.isModal || this.isDrawer;
+    isModalOrDetailPanel() {
+      return this.isModal || this.isDetailPanel;
     },
     workItemActionProps() {
       return {
@@ -554,7 +569,7 @@ export default {
         workItemReference: this.workItem.reference,
         workItemWebUrl: this.workItem.webUrl,
         workItemCreateNoteEmail: this.workItem.createNoteEmail,
-        isModal: this.isModalOrDrawer,
+        isModal: this.isModalOrDetailPanel,
         workItemState: this.workItem.state,
         hasChildren: this.hasChildren,
         hasParent: this.shouldShowAncestors,
@@ -577,9 +592,6 @@ export default {
     },
     canPasteDesign() {
       return !this.isSaving && !this.isAddingNotes && !this.editMode && !this.activeChildItem;
-    },
-    agentPrivileges() {
-      return [1, 2, 3, 4, 5];
     },
     confidentialityToggledText() {
       return this.workItem.confidential
@@ -647,6 +659,7 @@ export default {
               id: this.workItem.id,
               confidential: confidentialStatus,
             },
+            useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
           },
         })
         .then(
@@ -679,10 +692,11 @@ export default {
     openContextualView({ event, modalWorkItem }) {
       if (!modalWorkItem) {
         this.activeChildItem = null;
+        this.activePanel = null;
         return;
       }
 
-      if (modalWorkItem.workItemType?.name === WORK_ITEM_TYPE_NAME_INCIDENT || this.isDrawer) {
+      if (modalWorkItem.workItemType?.name === WORK_ITEM_TYPE_NAME_INCIDENT || this.isDetailPanel) {
         return;
       }
       if (event) {
@@ -696,9 +710,21 @@ export default {
 
       if (this.activeChildItem && this.activeChildItem.iid === modalWorkItem.iid) {
         this.activeChildItem = null;
+        this.activePanel = null;
       } else {
         this.activeChildItem = modalWorkItem;
+        this.activePanel = WORK_ITEM_DETAIL_PANEL;
       }
+    },
+    requestPanel(name) {
+      this.activePanel = name;
+      if (name !== WORK_ITEM_DETAIL_PANEL) {
+        this.activeChildItem = null;
+      }
+    },
+    closeContextualPanel() {
+      this.activeChildItem = null;
+      this.activePanel = null;
     },
     openReportAbuseModal(reply) {
       if (this.isModal) {
@@ -736,6 +762,7 @@ export default {
                 description: this.draftData.description,
               },
             },
+            useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
           },
         });
 
@@ -864,11 +891,9 @@ export default {
         return;
       }
 
-      // Dragging image resize handles in RTE do not require repositioning like text does
-      // so we return early after preventing default behaviour, this fixes
-      // a problem as mentioned in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/217708#note_2987427072
-      if (event.target.classList.contains('image-resize')) {
-        event.preventDefault();
+      // Allow the rich-text editor (ProseMirror) to handle its own node drags
+      // (images, videos, iframes, etc.) without interference.
+      if (event.target.closest('.ProseMirror')) {
         return;
       }
 
@@ -933,6 +958,7 @@ export default {
     },
   },
   WORK_ITEM_TYPE_NAME_OBJECTIVE,
+  VIEW_CONTEXT,
   noAccessSvg,
 };
 </script>
@@ -953,7 +979,7 @@ export default {
       <!-- Do not remove the element below, it allows for scrolling to top on click of sticky header -->
       <div id="top"></div>
       <section class="work-item-view">
-        <component :is="isModalOrDrawer ? 'h2' : 'h1'" v-if="editMode" class="gl-sr-only">{{
+        <component :is="isModalOrDetailPanel ? 'h2' : 'h1'" v-if="editMode" class="gl-sr-only">{{
           s__('WorkItem|Edit work item')
         }}</component>
         <gl-alert
@@ -972,7 +998,9 @@ export default {
         </section>
         <section
           v-if="refetchError"
-          :class="isDrawer ? 'gl-sticky gl-top-0' : 'flash-container flash-container-page sticky'"
+          :class="
+            isDetailPanel ? 'gl-sticky gl-top-0' : 'flash-container flash-container-page sticky'
+          "
           :style="{ zIndex: 100 }"
           data-testid="work-item-refetch-alert"
         >
@@ -1020,7 +1048,7 @@ export default {
                   v-if="workItem.title"
                   ref="title"
                   :is-editing="editMode"
-                  :is-modal="isModalOrDrawer"
+                  :is-modal="isModalOrDetailPanel"
                   :title="workItem.title"
                   :title-html="workItem.titleHtml"
                   @updateWorkItem="updateWorkItem"
@@ -1066,7 +1094,7 @@ export default {
                   @workItemStateUpdated="$emit('workItemStateUpdated')"
                   @workItemTypeChanged="workItemTypeChanged"
                   @toggleReportAbuseModal="toggleReportAbuseModal"
-                  @workItemCreated="handleWorkItemCreated"
+                  @work-item-created="handleWorkItemCreated"
                   @toggleSidebar="handleToggleSidebar"
                   @toggleTruncationEnabled="handleTruncationEnabled"
                 />
@@ -1086,7 +1114,7 @@ export default {
                 v-if="workItem.title && shouldShowAncestors"
                 ref="title"
                 :is-editing="editMode"
-                :is-modal="isModalOrDrawer"
+                :is-modal="isModalOrDetailPanel"
                 :class="titleClassComponent"
                 :title="workItem.title"
                 :title-html="workItem.titleHtml"
@@ -1124,7 +1152,7 @@ export default {
               :parent-work-item-confidentiality="parentWorkItemConfidentiality"
               :full-path="workItemFullPath"
               :is-modal="isModal"
-              :is-drawer="isDrawer"
+              :is-drawer="isDetailPanel"
               :work-item="workItem"
               :is-sticky-header-showing="isStickyHeaderShowing"
               :archived="workItem.archived"
@@ -1154,7 +1182,7 @@ export default {
                   @workItemStateUpdated="$emit('workItemStateUpdated')"
                   @workItemTypeChanged="workItemTypeChanged"
                   @toggleReportAbuseModal="toggleReportAbuseModal"
-                  @workItemCreated="handleWorkItemCreated"
+                  @work-item-created="handleWorkItemCreated"
                   @toggleSidebar="handleToggleSidebar"
                   @toggleTruncationEnabled="handleTruncationEnabled"
                 />
@@ -1170,6 +1198,14 @@ export default {
                   v-model="truncationEnabled"
                   :storage-key="$options.ENABLE_TRUNCATION_STORAGE_KEY"
                 />
+                <slot
+                  name="widgets-top"
+                  :work-item="workItem"
+                  :is-detail-panel="isDetailPanel"
+                  :active-panel="activePanel"
+                  :edit-mode="editMode"
+                  :request-panel="requestPanel"
+                ></slot>
                 <work-item-description
                   v-if="hasDescriptionWidget"
                   :edit-mode="editMode"
@@ -1178,8 +1214,8 @@ export default {
                   :work-item-id="workItem.id"
                   :work-item-iid="workItem.iid"
                   :update-in-progress="updateInProgress"
-                  :without-heading-anchors="isDrawer"
-                  :hide-fullscreen-markdown-button="isDrawer"
+                  :without-heading-anchors="isDetailPanel"
+                  :hide-fullscreen-markdown-button="isDetailPanel"
                   :truncation-enabled="truncationEnabled"
                   @updateWorkItem="updateWorkItem"
                   @updateDraft="updateDraft('description', $event)"
@@ -1221,17 +1257,13 @@ export default {
                       :project-id="workItemProjectId"
                     />
                     <div>
-                      <duo-workflow-action
-                        v-if="duoRemoteFlowsAvailability"
+                      <duo-work-item-to-mr-action
+                        v-if="showGenerateMrWithDuoButton"
                         :project-path="workItemFullPath"
-                        :hover-message="__('Generate merge request with Duo')"
-                        :goal="workItem.webUrl"
-                        workflow-definition="developer/v1"
-                        :agent-privileges="agentPrivileges"
                         :work-item-id="workItem.iid"
-                        size="medium"
-                        >{{ __('Generate MR with Duo') }}</duo-workflow-action
-                      >
+                        :work-item-type="workItemType"
+                        :work-item-web-url="workItem.webUrl"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1247,7 +1279,6 @@ export default {
               >
                 <h2 class="gl-sr-only">{{ s__('WorkItem|Attributes') }}</h2>
                 <work-item-attributes-wrapper
-                  :class="{ 'gl-top-9': isDrawer }"
                   :full-path="workItemFullPath"
                   :work-item="workItem"
                   :group-path="groupPath"
@@ -1270,7 +1301,7 @@ export default {
 
               <design-widget
                 v-if="hasDesignWidget"
-                :class="{ 'gl-mt-0': isDrawer }"
+                :class="{ 'gl-mt-0': isDetailPanel }"
                 :work-item-id="workItem.id"
                 :work-item-iid="iid"
                 :work-item-full-path="workItemFullPath"
@@ -1304,6 +1335,8 @@ export default {
                 </template>
               </design-widget>
 
+              <slot name="widgets" :work-item="workItem"></slot>
+
               <work-item-tree
                 v-if="showWorkItemTree"
                 :full-path="workItemFullPath"
@@ -1315,14 +1348,15 @@ export default {
                 :parent-iteration="workItemIteration"
                 :parent-milestone="workItemMilestone"
                 :active-child-item-id="activeChildItemId"
+                :active-panel="activePanel"
                 :can-update="canUpdate"
                 :can-update-children="canUpdateChildren"
                 :confidential="workItem.confidential"
                 :allowed-child-types="allowedChildTypes"
-                :is-drawer="isDrawer"
+                :is-drawer="isDetailPanel"
                 contextual-view-enabled
                 @show-modal="openContextualView"
-                @addChild="$emit('addChild')"
+                @add-child="$emit('add-child')"
               />
               <work-item-relationships
                 v-if="workItemLinkedItems"
@@ -1333,6 +1367,7 @@ export default {
                 :work-item-type="workItem.workItemType.name"
                 :can-admin-work-item-link="canAdminWorkItemLink"
                 :active-child-item-id="activeChildItemId"
+                :active-panel="activePanel"
                 :has-blocked-work-items-feature="hasBlockedWorkItemsFeature"
                 contextual-view-enabled
                 @showModal="openContextualView"
@@ -1361,7 +1396,7 @@ export default {
                 :work-item-type="workItemType"
                 :work-item-type-id="workItemTypeId"
                 :is-modal="isModal"
-                :is-drawer="isDrawer"
+                :is-drawer="isDetailPanel"
                 :assignees="workItemAssignees && workItemAssignees.assignees.nodes"
                 :can-set-work-item-metadata="canAssignUnassignUser"
                 :can-summarize-comments="canSummarizeComments"
@@ -1370,10 +1405,10 @@ export default {
                 :is-work-item-confidential="workItem.confidential"
                 :new-comment-template-paths="workItem.commentTemplatesPaths"
                 class="gl-pt-5"
-                :use-h2="!isModalOrDrawer"
+                :use-h2="!isModalOrDetailPanel"
                 :small-header-style="isModal"
                 :parent-id="parentWorkItemId"
-                :hide-fullscreen-markdown-button="isDrawer"
+                :hide-fullscreen-markdown-button="isDetailPanel"
                 @error="updateError = $event"
                 @openReportAbuse="openReportAbuseModal"
                 @start-editing="isAddingNotes = true"
@@ -1385,14 +1420,15 @@ export default {
           </div>
         </section>
       </section>
-      <work-item-drawer
-        v-if="!isDrawer"
+      <work-item-detail-panel
+        v-if="!isDetailPanel"
         :active-item="activeChildItem"
         :open="isItemSelected"
         :issuable-type="activeChildItemType"
+        :view-context="$options.VIEW_CONTEXT.drawerWorkItem"
         click-outside-exclude-selector=".issuable-list"
-        @close="activeChildItem = null"
-        @workItemDeleted="deleteChildItem"
+        @close="closeContextualPanel"
+        @work-item-deleted="deleteChildItem"
       />
       <work-item-abuse-modal
         v-if="isReportModalOpen"

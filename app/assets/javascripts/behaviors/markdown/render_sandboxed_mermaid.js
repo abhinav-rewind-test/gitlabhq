@@ -1,11 +1,7 @@
-import { countBy, debounce } from 'lodash';
+import { countBy, debounce } from 'lodash-es';
 import { __ } from '~/locale';
-import {
-  getBaseURL,
-  relativePathToAbsolute,
-  setUrlParams,
-  joinPaths,
-} from '~/lib/utils/url_utility';
+import { getBaseURL, relativePathToAbsolute } from '~/lib/utils/url_utility';
+import { sandboxMermaidV11Path } from '~/lib/utils/path_helpers/routes';
 import { darkModeEnabled } from '~/lib/utils/color_utils';
 import { setAttributes, isElementVisible } from '~/lib/utils/dom_utils';
 import { createAlert, VARIANT_WARNING } from '~/alert';
@@ -27,11 +23,12 @@ import { unrestrictedPages } from './constants';
 // </pre>
 //
 
-const SANDBOX_FRAME_PATH = '/-/sandbox/mermaid';
 // This is an arbitrary number; Can be iterated upon when suitable.
 export const MAX_CHAR_LIMIT = 2000;
+
 // Max # of mermaid blocks that can be rendered in a page.
 export const MAX_MERMAID_BLOCK_LIMIT = 50;
+
 // Max # of `&` allowed in Chaining of links syntax
 const MAX_CHAINING_OF_LINKS_LIMIT = 30;
 
@@ -73,18 +70,11 @@ function fixElementSource(el) {
 }
 
 export function getSandboxFrameSrc() {
-  const path = joinPaths(gon.relative_url_root || '', SANDBOX_FRAME_PATH);
-  let absoluteUrl = relativePathToAbsolute(path, getBaseURL());
-  if (darkModeEnabled()) {
-    absoluteUrl = setUrlParams({ darkMode: darkModeEnabled() }, { url: absoluteUrl });
-  }
-  if (window.gon?.relative_url_root) {
-    absoluteUrl = setUrlParams(
-      { relativeRootPath: window.gon.relative_url_root },
-      { url: absoluteUrl },
-    );
-  }
-  return absoluteUrl;
+  const relativeURL = darkModeEnabled()
+    ? sandboxMermaidV11Path({ darkMode: true })
+    : sandboxMermaidV11Path();
+
+  return relativePathToAbsolute(relativeURL, getBaseURL());
 }
 
 function renderMermaidEl(el, source) {
@@ -126,7 +116,11 @@ function renderMermaidEl(el, source) {
   const renderSandbox = () => {
     // Potential risk associated with '*' discussed in below thread
     // https://gitlab.com/gitlab-org/gitlab/-/merge_requests/74414#note_735183398
-    iframeEl.contentWindow?.postMessage({ source, proxiedUrls }, '*');
+    iframeEl.contentWindow?.postMessage(
+      // eslint-disable-next-line @gitlab/no-hardcoded-urls
+      { source, proxiedUrls, relativeRootPath: window.gon?.relative_url_root || null },
+      '*',
+    );
     hasRendered = true;
   };
 
@@ -244,17 +238,15 @@ export default function renderMermaid(els) {
 
   renderMermaids(visibleMermaids);
 
-  hiddenMermaids.forEach((el) => {
-    el.closest('details')?.addEventListener(
-      'toggle',
-      ({ target: details }) => {
-        if (details.open) {
-          renderMermaids([...details.querySelectorAll('.js-render-mermaid')]);
-        }
+  if (hiddenMermaids.length) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting);
+        visible.forEach((entry) => observer.unobserve(entry.target));
+        renderMermaids(visible.map((entry) => entry.target));
       },
-      {
-        once: true,
-      },
+      { threshold: 0 },
     );
-  });
+    hiddenMermaids.forEach((el) => observer.observe(el));
+  }
 }

@@ -3,7 +3,7 @@
 require 'rubocop_spec_helper'
 require_relative '../../../../rubocop/cop/gitlab/strong_memoize_attr'
 
-RSpec.describe RuboCop::Cop::Gitlab::StrongMemoizeAttr do
+RSpec.describe RuboCop::Cop::Gitlab::StrongMemoizeAttr, feature_category: :tooling do
   context 'when strong_memoize() is the entire body of a method' do
     context 'when the memoization name is the same as the method name' do
       it 'registers an offense and autocorrects' do
@@ -133,6 +133,18 @@ RSpec.describe RuboCop::Cop::Gitlab::StrongMemoizeAttr do
             strong_memoize_with(:memoized_method, param) do
               param.to_s
             end
+          end
+        end
+      RUBY
+    end
+  end
+
+  context 'with numbered block parameters' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<~RUBY)
+        class Foo
+          def memoized_method
+            [1].map { _1 }
           end
         end
       RUBY

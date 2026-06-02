@@ -5,6 +5,7 @@ import { helpPagePath } from '~/helpers/help_page_helper';
 import { BV_HIDE_TOOLTIP } from '~/lib/utils/constants';
 import { __, s__, sprintf } from '~/locale';
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
+import JobSourceBadge from '~/ci/job_details/components/job_source_badge.vue';
 import ActionComponent from '../../../common/private/job_action_component.vue';
 import JobNameComponent from '../../../common/private/job_name_component.vue';
 import { BRIDGE_KIND, RETRY_ACTION_TITLE, SINGLE_JOB, SKIP_RETRY_MODAL_KEY } from '../constants';
@@ -69,6 +70,7 @@ export default {
     GlLink,
     GlModal,
     JobNameComponent,
+    JobSourceBadge,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -125,6 +127,7 @@ export default {
       default: true,
     },
   },
+  emits: ['pipeline-action-request-complete', 'set-skip-retry-modal'],
   data() {
     return {
       currentSkipModalValue: this.skipRetryModal,
@@ -260,9 +263,13 @@ export default {
       return (this.isRetryableBridge && !this.skipRetryModal) || this.hasManualConfirmationMessage;
     },
     manualConfirmationMessage() {
-      return sprintf(__('Custom confirmation message: %{message}'), {
-        message: this.job.status.action.confirmationMessage,
-      });
+      return sprintf(
+        __('Custom confirmation message: %{message}'),
+        {
+          message: this.job.status.action.confirmationMessage,
+        },
+        false,
+      );
     },
     jobActionTooltipText() {
       const { group } = this.status;
@@ -282,7 +289,7 @@ export default {
   methods: {
     handleConfirmationModalPreferences() {
       if (this.currentSkipModalValue) {
-        this.$emit('setSkipRetryModal');
+        this.$emit('set-skip-retry-modal');
         localStorage.setItem(SKIP_RETRY_MODAL_KEY, String(this.currentSkipModalValue));
       }
     },
@@ -301,7 +308,7 @@ export default {
       this.hideTooltips();
     },
     pipelineActionRequestComplete() {
-      this.$emit('pipelineActionRequestComplete');
+      this.$emit('pipeline-action-request-complete');
 
       if (this.isBridge) {
         this.$toast.show(this.$options.i18n.bridgeRetryText);
@@ -339,11 +346,14 @@ export default {
       <div class="gl-flex gl-grow gl-items-center">
         <ci-icon :status="job.status" :use-link="false" :show-tooltip="false" />
         <div class="gl-pipeline-job-width gl-flex gl-flex-col gl-pl-3 gl-pr-3">
-          <div
-            class="gl-line-clamp-2 gl-pr-6 gl-text-left gl-leading-normal gl-text-default"
-            :title="job.name"
-          >
-            {{ job.name }}
+          <div class="gl-flex gl-items-center">
+            <div
+              class="gl-line-clamp-2 gl-pr-1 gl-text-left gl-leading-normal gl-text-default"
+              :title="job.name"
+            >
+              {{ job.name }}
+            </div>
+            <job-source-badge v-if="job.source" :source="job.source" compact />
           </div>
           <div
             v-if="showStageName"
@@ -372,9 +382,9 @@ export default {
       class="gl-mr-1"
       :should-trigger-click="shouldTriggerActionClick"
       :with-confirmation-modal="withConfirmationModal"
-      @actionButtonClicked="handleConfirmationModalPreferences"
-      @pipelineActionRequestComplete="pipelineActionRequestComplete"
-      @showActionConfirmationModal="showActionConfirmationModal"
+      @action-button-clicked="handleConfirmationModalPreferences"
+      @pipeline-action-request-complete="pipelineActionRequestComplete"
+      @show-action-confirmation-modal="showActionConfirmationModal"
       @focus.native="hideTooltips"
     />
     <action-component

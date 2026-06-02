@@ -180,6 +180,12 @@ class EventCreateService
 
     Gitlab::UsageDataCounters::HLLRedisCounter.track_event(:git_write_action, values: author.id)
 
+    track_internal_event("performed_wiki_action",
+      project: wiki_page_meta.project,
+      user: author,
+      additional_properties: { label: action.to_s }
+    )
+
     duplicate = Event.for_wiki_meta(wiki_page_meta).for_fingerprint(fingerprint).first
     return duplicate if duplicate.present?
 
@@ -212,7 +218,7 @@ class EventCreateService
     base_attrs = {
       created_at: Time.now.utc,
       updated_at: Time.now.utc,
-      author_id: current_user.id
+      author_id: Gitlab::Auth::Identity.resolve_composite_identity_actor(current_user).id
     }
 
     attribute_sets = tuples.map do |record, status, fingerprint|
@@ -275,7 +281,7 @@ class EventCreateService
   def create_event(resource_parent, current_user, status, attributes = {})
     attributes.reverse_merge!(
       action: status,
-      author_id: current_user.id
+      author_id: Gitlab::Auth::Identity.resolve_composite_identity_actor(current_user).id
     )
     attributes.merge!(parent_attrs(resource_parent, current_user))
 

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.shared_context 'container registry auth service context' do
-  let_it_be(:rsa_key) { OpenSSL::PKey::RSA.generate(3072) }
+  let_it_be(:rsa_key, freeze: false) { OpenSSL::PKey::RSA.generate(3072) }
 
   let(:current_project) { nil }
   let(:current_user) { nil }
@@ -35,22 +35,22 @@ end
 RSpec.shared_examples 'a valid token' do
   it { is_expected.to include(:token) }
   it { expect(payload).to include('access') }
+end
 
-  context 'a expirable' do
-    let(:expires_at) { Time.zone.at(payload['exp']) }
-    let(:expire_delay) { 10 }
+RSpec.shared_examples 'an expirable token' do
+  let(:expires_at) { Time.zone.at(payload['exp']) }
+  let(:expire_delay) { 10 }
 
-    context 'for default configuration' do
-      it { expect(expires_at).not_to be_within(2.seconds).of(Time.current + expire_delay.minutes) }
+  context 'for default configuration' do
+    it { expect(expires_at).not_to be_within(2.seconds).of(Time.current + expire_delay.minutes) }
+  end
+
+  context 'for changed configuration' do
+    before do
+      stub_application_setting(container_registry_token_expire_delay: expire_delay)
     end
 
-    context 'for changed configuration' do
-      before do
-        stub_application_setting(container_registry_token_expire_delay: expire_delay)
-      end
-
-      it { expect(expires_at).to be_within(2.seconds).of(Time.current + expire_delay.minutes) }
-    end
+    it { expect(expires_at).to be_within(2.seconds).of(Time.current + expire_delay.minutes) }
   end
 end
 
@@ -140,6 +140,14 @@ RSpec.shared_examples 'a forbidden' do
   it { is_expected.not_to include(:token) }
 end
 
+RSpec.shared_examples 'a forbidden with denied error' do
+  it_behaves_like 'a forbidden'
+
+  it 'includes access forbidden error message' do
+    expect(subject[:errors]).to contain_exactly(include(code: 'DENIED', message: 'access forbidden'))
+  end
+end
+
 RSpec.shared_examples 'container repository factory' do
   it 'creates a new container repository resource' do
     expect { subject }
@@ -214,7 +222,7 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   describe '.full_access_token' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     let(:token) { described_class.full_access_token(project.full_path) }
 
@@ -225,10 +233,11 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     it_behaves_like 'not a container repository factory'
+    it_behaves_like 'an expirable token'
   end
 
   describe '.pull_access_token' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     let(:token) { described_class.pull_access_token(project.full_path) }
 
@@ -242,7 +251,7 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   describe '.pull_nested_repositories_access_token' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:name) { project.full_path }
     let(:token) { described_class.pull_nested_repositories_access_token(name) }
 
@@ -287,7 +296,7 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   describe '.push_pull_nested_repositories_access_token' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:name) { project.full_path }
     let(:token) { described_class.push_pull_nested_repositories_access_token(name, project:) }
 
@@ -332,8 +341,8 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   describe '.push_pull_move_repositories_access_token' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let(:name) { project.full_path }
     let(:token) { described_class.push_pull_move_repositories_access_token(name, group.full_path, project:) }
 
@@ -398,7 +407,7 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'user authorization' do
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
 
     context 'for registry catalog' do
       let(:current_params) do
@@ -579,7 +588,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'for public project with container_registry `enabled`' do
-      let_it_be(:project) { create(:project, :public, :container_registry_enabled) }
+      let_it_be(:project, freeze: false) { create(:project, :public, :container_registry_enabled) }
 
       context 'allow anyone to pull images' do
         let(:current_params) do
@@ -629,7 +638,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'for internal project with container_registry `enabled`' do
-      let_it_be(:project) { create(:project, :internal, :container_registry_enabled) }
+      let_it_be(:project, freeze: false) { create(:project, :internal, :container_registry_enabled) }
 
       context 'for internal user' do
         context 'allow anyone to pull images' do
@@ -672,7 +681,7 @@ RSpec.shared_examples 'a container registry auth service' do
 
       context 'for external user' do
         context 'disallow anyone to pull or push images' do
-          let_it_be(:current_user) { create(:user, external: true) }
+          let_it_be(:current_user, freeze: false) { create(:user, external: true) }
 
           let(:current_params) do
             { scopes: ["repository:#{project.full_path}:pull,push"] }
@@ -683,7 +692,7 @@ RSpec.shared_examples 'a container registry auth service' do
         end
 
         context 'disallow anyone to delete images' do
-          let_it_be(:current_user) { create(:user, external: true) }
+          let_it_be(:current_user, freeze: false) { create(:user, external: true) }
 
           let(:current_params) do
             { scopes: ["repository:#{project.full_path}:*"] }
@@ -694,7 +703,7 @@ RSpec.shared_examples 'a container registry auth service' do
         end
 
         context 'disallow anyone to delete images since registry 2.7' do
-          let_it_be(:current_user) { create(:user, external: true) }
+          let_it_be(:current_user, freeze: false) { create(:user, external: true) }
 
           let(:current_params) do
             { scopes: ["repository:#{project.full_path}:delete"] }
@@ -714,8 +723,8 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'delete authorized as maintainer' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
 
     before_all do
       project.add_maintainer(current_user)
@@ -725,8 +734,8 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'build authorized as user' do
-    let_it_be(:current_project) { create(:project) }
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_project, freeze: false) { create(:project) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
 
     let(:authentication_abilities) do
       [:build_read_container_image, :build_create_container_image, :build_destroy_container_image]
@@ -745,6 +754,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     it_behaves_like 'a valid token'
+    it_behaves_like 'an expirable token'
     it_behaves_like 'with auth_type'
 
     context 'allow to pull and push images' do
@@ -788,7 +798,7 @@ RSpec.shared_examples 'a container registry auth service' do
         end
 
         context 'allow for public' do
-          let_it_be(:project) { create(:project, :public) }
+          let_it_be(:project, freeze: false) { create(:project, :public) }
 
           it_behaves_like 'a pullable'
           it_behaves_like 'not a container repository factory'
@@ -810,7 +820,7 @@ RSpec.shared_examples 'a container registry auth service' do
           end
 
           context 'when you are owner' do
-            let_it_be(:project) { create(:project, namespace: current_user.namespace) }
+            let_it_be(:project, freeze: false) { create(:project, namespace: current_user.namespace) }
 
             it_behaves_like 'a pullable'
             it_behaves_like 'not a container repository factory'
@@ -818,12 +828,12 @@ RSpec.shared_examples 'a container registry auth service' do
         end
 
         context 'for private' do
-          let_it_be(:project) { create(:project, :private) }
+          let_it_be(:project, freeze: false) { create(:project, :private) }
 
           it_behaves_like 'pullable for being team member'
 
           context 'when you are admin' do
-            let_it_be(:current_user) { create(:admin) }
+            let_it_be(:current_user, freeze: false) { create(:admin) }
 
             context 'when you are not member' do
               it_behaves_like 'an inaccessible'
@@ -840,7 +850,7 @@ RSpec.shared_examples 'a container registry auth service' do
             end
 
             context 'when you are owner' do
-              let_it_be(:project) { create(:project, namespace: current_user.namespace) }
+              let_it_be(:project, freeze: false) { create(:project, namespace: current_user.namespace) }
 
               it_behaves_like 'a pullable'
               it_behaves_like 'not a container repository factory'
@@ -854,7 +864,7 @@ RSpec.shared_examples 'a container registry auth service' do
           it_behaves_like 'pullable for being team member'
 
           context 'when you are admin' do
-            let_it_be(:current_user) { create(:admin) }
+            let_it_be(:current_user, freeze: false) { create(:admin) }
 
             it_behaves_like 'pullable for being team member'
           end
@@ -868,7 +878,7 @@ RSpec.shared_examples 'a container registry auth service' do
 
         context 'disallow for all' do
           context 'when you are member' do
-            let_it_be(:project) { create(:project, :public) }
+            let_it_be(:project, freeze: false) { create(:project, :public) }
 
             before_all do
               project.add_developer(current_user)
@@ -879,7 +889,7 @@ RSpec.shared_examples 'a container registry auth service' do
           end
 
           context 'when you are owner' do
-            let_it_be(:project) { create(:project, :public, namespace: current_user.namespace) }
+            let_it_be(:project, freeze: false) { create(:project, :public, namespace: current_user.namespace) }
 
             it_behaves_like 'an inaccessible'
             it_behaves_like 'not a container repository factory'
@@ -902,7 +912,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'for project that disables repository' do
-      let_it_be(:project) { create(:project, :public, :repository_disabled) }
+      let_it_be(:project, freeze: false) { create(:project, :public, :repository_disabled) }
 
       context 'allow when pulling' do
         let(:current_params) do
@@ -916,8 +926,8 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'registry catalog browsing authorized as admin' do
-    let_it_be(:current_user) { create(:user, :admin) }
-    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:current_user, freeze: false) { create(:user, :admin) }
+    let_it_be(:project, freeze: false) { create(:project, :public) }
 
     let(:current_params) do
       { scopes: ["registry:catalog:*"] }
@@ -927,8 +937,8 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'registry background-migrations authorized as admin' do
-    let_it_be(:current_user) { create(:user, :admin) }
-    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:current_user, freeze: false) { create(:user, :admin) }
+    let_it_be(:project, freeze: false) { create(:project, :public) }
 
     let(:current_params) do
       { scopes: ["registry:background-migrations:*"] }
@@ -950,10 +960,12 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'support for multiple scopes' do
-    let_it_be(:internal_project) { create(:project, :internal) }
-    let_it_be(:private_project) { create(:project, :private) }
-    let_it_be(:public_project) { create(:project, :public) }
-    let_it_be(:public_project_private_container_registry) { create(:project, :public, :container_registry_private) }
+    let_it_be(:internal_project, freeze: false) { create(:project, :internal) }
+    let_it_be(:private_project, freeze: false) { create(:project, :private) }
+    let_it_be_with_reload(:public_project) { create(:project, :public) }
+    let_it_be(:public_project_private_container_registry, freeze: false) do
+      create(:project, :public, :container_registry_private)
+    end
 
     let(:current_params) do
       {
@@ -967,7 +979,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'user has access to all projects' do
-      let_it_be(:current_user) { create(:user, :admin) }
+      let_it_be(:current_user, freeze: false) { create(:user, :admin) }
 
       before do
         enable_admin_mode!(current_user)
@@ -1014,7 +1026,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'user only has access to internal and public projects' do
-      let_it_be(:current_user) { create(:user) }
+      let_it_be(:current_user, freeze: false) { create(:user) }
 
       it_behaves_like 'a browsable' do
         let(:access) do
@@ -1059,7 +1071,7 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'with no public container registry' do
-        before do
+        before_all do
           public_project.project_feature.update_column(:container_registry_access_level, ProjectFeature::PRIVATE)
         end
 
@@ -1084,7 +1096,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'for private project' do
-      let_it_be(:project) { create(:project, :private) }
+      let_it_be(:project, freeze: false) { create(:project, :private) }
 
       let(:current_params) do
         { scopes: ["repository:#{project.full_path}:pull"] }
@@ -1175,7 +1187,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for public project' do
-        let_it_be(:project) { create(:project, :public) }
+        let_it_be(:project, freeze: false) { create(:project, :public) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, write_registry: true, projects: [project]) }
 
         context 'when pulling' do
           it_behaves_like 'a pullable'
@@ -1193,7 +1206,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for internal project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, write_registry: true, projects: [project]) }
 
         context 'when pulling' do
           it_behaves_like 'a pullable'
@@ -1211,7 +1225,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for private project' do
-        let_it_be(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, write_registry: true, projects: [project]) }
 
         context 'when pulling' do
           it_behaves_like 'a pullable'
@@ -1230,6 +1245,7 @@ RSpec.shared_examples 'a container registry auth service' do
 
       context 'for public project with private container registry' do
         let_it_be_with_reload(:project) { create(:project, :public, :container_registry_private) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, write_registry: true, projects: [project]) }
 
         context 'when pulling' do
           it_behaves_like 'a pullable'
@@ -1247,7 +1263,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for private project when the deploy key is restricted with external_authorization' do
-        let_it_be(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, write_registry: true, projects: [project]) }
 
         before do
           allow(Gitlab::ExternalAuthorization).to receive(:allow_deploy_tokens_and_deploy_keys?).and_return(false)
@@ -1288,6 +1305,7 @@ RSpec.shared_examples 'a container registry auth service' do
 
       context 'for public project with container registry `enabled`' do
         let_it_be_with_reload(:project) { create(:project, :public, :container_registry_enabled) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, projects: [project], read_registry: false) }
 
         context 'when pulling' do
           it_behaves_like 'a pullable'
@@ -1298,6 +1316,7 @@ RSpec.shared_examples 'a container registry auth service' do
 
       context 'for public project with container registry `private`' do
         let_it_be_with_reload(:project) { create(:project, :public, :container_registry_private) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, projects: [project], read_registry: false) }
 
         context 'when pulling' do
           it_behaves_like 'an inaccessible'
@@ -1307,7 +1326,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for internal project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, projects: [project], read_registry: false) }
 
         context 'when pulling' do
           it_behaves_like 'an inaccessible'
@@ -1317,7 +1337,8 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for private project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, projects: [project], read_registry: false) }
 
         context 'when pulling' do
           it_behaves_like 'an inaccessible'
@@ -1335,7 +1356,7 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'when deploy token is not related to the project' do
-      let_it_be(:deploy_token) { create(:deploy_token, read_registry: false) }
+      let_it_be(:deploy_token, freeze: false) { create(:deploy_token, read_registry: false) }
 
       context 'for public project with container registry `enabled`' do
         let_it_be_with_reload(:project) { create(:project, :public, :container_registry_enabled) }
@@ -1354,7 +1375,7 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for internal project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
 
         context 'when pulling' do
           it_behaves_like 'an inaccessible'
@@ -1362,7 +1383,7 @@ RSpec.shared_examples 'a container registry auth service' do
       end
 
       context 'for private project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
 
         context 'when pulling' do
           it_behaves_like 'an inaccessible'
@@ -1371,28 +1392,30 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'when deploy token has been revoked' do
-      let(:deploy_token) { create(:deploy_token, :revoked, projects: [project]) }
-
       context 'for public project with container registry `enabled`' do
-        let_it_be(:project) { create(:project, :public, :container_registry_enabled) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :container_registry_enabled) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, :revoked, projects: [project]) }
 
         it_behaves_like 'a pullable'
       end
 
       context 'for public project with container registry `private`' do
-        let_it_be(:project) { create(:project, :public, :container_registry_private) }
+        let_it_be(:project, freeze: false) { create(:project, :public, :container_registry_private) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, :revoked, projects: [project]) }
 
         it_behaves_like 'an inaccessible'
       end
 
       context 'for internal project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, :revoked, projects: [project]) }
 
         it_behaves_like 'an inaccessible'
       end
 
       context 'for private project' do
-        let_it_be(:project) { create(:project, :internal) }
+        let_it_be(:project, freeze: false) { create(:project, :internal) }
+        let_it_be(:deploy_token, freeze: false) { create(:deploy_token, :revoked, projects: [project]) }
 
         it_behaves_like 'an inaccessible'
       end
@@ -1401,16 +1424,19 @@ RSpec.shared_examples 'a container registry auth service' do
 
   context 'when the deploy token is restricted with external_authorization' do
     context 'when the authenticator is a regular user' do
-      let_it_be(:current_user) { create(:user) }
+      let_it_be(:current_user, freeze: false) { create(:user) }
       let(:current_params) do
         { scopes: ["repository:#{project.full_path}:pull"] }
       end
 
-      let_it_be(:project) { create(:project, :private, :container_registry_enabled) }
+      let_it_be(:project, freeze: false) { create(:project, :private, :container_registry_enabled) }
+
+      before_all do
+        project.add_developer(current_user)
+      end
 
       before do
         allow(Gitlab::ExternalAuthorization).to receive(:allow_deploy_tokens_and_deploy_keys?).and_return(false)
-        project.add_developer(current_user)
       end
 
       it_behaves_like 'an accessible' do
@@ -1420,10 +1446,10 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'user authorization' do
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
 
     context 'with multiple scopes' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
 
       context 'allow developer to push images' do
         before_all do
@@ -1450,9 +1476,9 @@ RSpec.shared_examples 'a container registry auth service' do
   end
 
   context 'with a project with a path containing special characters' do
-    let_it_be(:bad_project) { create(:project) }
+    let_it_be(:bad_project, freeze: false) { create(:project) }
 
-    before do
+    before_all do
       bad_project.update_attribute(:path, "#{bad_project.path}_")
     end
 
@@ -1505,21 +1531,21 @@ RSpec.shared_examples 'a container registry auth service' do
   context 'with container registry protection rules' do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:current_project) { create(:project) }
-    let_it_be(:project) { current_project }
+    let_it_be(:current_project, freeze: false) { create(:project) }
+    let_it_be(:project, freeze: false) { current_project }
 
-    let_it_be(:container_repository_path) { current_project.full_path }
-    let_it_be(:container_repository_path_pattern_no_match) { "#{container_repository_path}_no_match" }
+    let_it_be(:container_repository_path, freeze: false) { current_project.full_path }
+    let_it_be(:container_repository_path_pattern_no_match, freeze: false) { "#{container_repository_path}_no_match" }
 
     let_it_be_with_reload(:container_registry_protection_rule) do
       create(:container_registry_protection_rule, project: current_project,
         repository_path_pattern: container_repository_path)
     end
 
-    let_it_be(:project_developer) { create(:user, developer_of: current_project) }
-    let_it_be(:project_maintainer) { create(:user, maintainer_of: current_project) }
-    let_it_be(:project_owner) { current_project.owner }
-    let_it_be(:instance_admin) { create(:admin) }
+    let_it_be(:project_developer, freeze: false) { create(:user, developer_of: current_project) }
+    let_it_be(:project_maintainer, freeze: false) { create(:user, maintainer_of: current_project) }
+    let_it_be(:project_owner, freeze: false) { current_project.owner }
+    let_it_be(:instance_admin, freeze: false) { create(:admin) }
 
     let(:current_params) { { scopes: ["repository:#{container_repository_path}:push"] } }
 
@@ -1560,9 +1586,9 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'with different scopes and actions' do
-      let_it_be(:current_user) { project_maintainer }
+      let_it_be(:current_user, freeze: false) { project_maintainer }
 
-      before do
+      before_all do
         container_registry_protection_rule.update!(minimum_access_level_for_push: :owner)
       end
 
@@ -1581,7 +1607,9 @@ RSpec.shared_examples 'a container registry auth service' do
     end
 
     context 'for deploy tokens' do
-      let_it_be(:deploy_token) { create(:deploy_token, write_registry: true, projects: [current_project]) }
+      let_it_be(:deploy_token, freeze: false) do
+        create(:deploy_token, write_registry: true, projects: [current_project])
+      end
 
       let(:current_params) { { scopes: current_params_scopes, deploy_token: deploy_token } }
 
@@ -1607,17 +1635,131 @@ RSpec.shared_examples 'a container registry auth service' do
         it_behaves_like params[:shared_examples_name]
       end
     end
+
+    context 'when CheckRuleExistenceService returns an unauthorized error' do
+      let(:current_user) { project_developer }
+
+      before do
+        allow_next_instance_of(ContainerRegistry::Protection::CheckRuleExistenceService) do |service|
+          allow(service).to receive(:execute)
+            .and_return(ContainerRegistry::Protection::CheckRuleExistenceService::ERROR_RESPONSE_UNAUTHORIZED)
+        end
+      end
+
+      it_behaves_like 'a forbidden with denied error'
+
+      context 'when authentication_abilities are for a CI build' do
+        let(:authentication_abilities) do
+          [:build_read_container_image, :build_create_container_image, :build_destroy_container_image]
+        end
+
+        it_behaves_like 'a forbidden with denied error'
+      end
+
+      context 'when current_user is a deploy token' do
+        let_it_be(:deploy_token, freeze: false) do
+          create(:deploy_token, write_registry: true, projects: [current_project])
+        end
+
+        let(:current_user) { nil }
+        let(:current_params) do
+          { scopes: ["repository:#{container_repository_path}:push"], deploy_token: deploy_token }
+        end
+
+        it_behaves_like 'a forbidden with denied error'
+      end
+
+      context 'when project is nil' do
+        it 'returns true' do
+          service = described_class.new(current_project, current_user, current_params)
+
+          result = service.send(:protection_rule_for_push_exists?,
+            current_user: project_developer,
+            project: nil,
+            repository_path: container_repository_path)
+          expect(result).to be(true)
+        end
+      end
+    end
+
+    context 'when CheckRuleExistenceService returns an unexpected error' do
+      let(:current_user) { project_developer }
+      let(:unexpected_error_response) do
+        ServiceResponse.error(message: 'Something went wrong', reason: :internal_error)
+      end
+
+      before do
+        allow_next_instance_of(ContainerRegistry::Protection::CheckRuleExistenceService) do |service|
+          allow(service).to receive(:execute).and_return(unexpected_error_response)
+        end
+      end
+
+      it 'logs the error and raises ArgumentError' do
+        expect(Gitlab::AuthLogger).to receive(:error).with(
+          hash_including(
+            message: 'Unexpected error checking container registry push protection rule',
+            reason: :internal_error,
+            error_message: 'Something went wrong'
+          )
+        )
+
+        expect { subject }.to raise_error(ArgumentError, 'Something went wrong')
+      end
+
+      context 'when project is nil' do
+        it 'logs the error and raises ArgumentError' do
+          service = described_class.new(current_project, current_user, current_params)
+
+          expect(Gitlab::AuthLogger).to receive(:error).with(
+            hash_including(
+              message: 'Unexpected error checking container registry push protection rule'
+            )
+          )
+
+          expect do
+            service.send(:protection_rule_for_push_exists?,
+              current_user: project_developer,
+              project: nil,
+              repository_path: container_repository_path)
+          end.to raise_error(ArgumentError, 'Something went wrong')
+        end
+      end
+
+      context 'when current_user is a deploy token' do
+        let_it_be(:deploy_token, freeze: false) do
+          create(:deploy_token, write_registry: true, projects: [current_project])
+        end
+
+        it 'logs deploy_token_id and raises ArgumentError' do
+          service = described_class.new(current_project, nil, { deploy_token: deploy_token })
+
+          expect(Gitlab::AuthLogger).to receive(:error).with(
+            hash_including(
+              message: 'Unexpected error checking container registry push protection rule',
+              deploy_token_id: deploy_token.id
+            )
+          )
+
+          expect do
+            service.send(:protection_rule_for_push_exists?,
+              current_user: deploy_token,
+              project: current_project,
+              repository_path: container_repository_path)
+          end.to raise_error(ArgumentError, 'Something went wrong')
+        end
+      end
+    end
   end
 
   context 'with protected tags' do
-    let_it_be(:current_project) { create(:project) }
-    let_it_be(:container_repository_path) { current_project.full_path }
-    let_it_be(:project_developer) { create(:user, developer_of: current_project) }
-    let_it_be(:project_maintainer) { create(:user, maintainer_of: current_project) }
-    let_it_be(:project_owner) { current_project.owner }
-    let_it_be(:instance_admin) { create(:admin) }
+    let_it_be(:current_project, freeze: false) { create(:project) }
+    let_it_be(:container_repository_path, freeze: false) { current_project.full_path }
+    let_it_be(:project_developer, freeze: false) { create(:user, developer_of: current_project) }
+    let_it_be(:project_maintainer, freeze: false) { create(:user, maintainer_of: current_project) }
+    let_it_be(:project_owner, freeze: false) { current_project.owner }
+    let_it_be(:instance_admin, freeze: false) { create(:admin) }
 
-    let_it_be(:rules) do
+    let_it_be(:rules, freeze: false) do
       [
         create(:container_registry_protection_tag_rule,
           project: current_project,

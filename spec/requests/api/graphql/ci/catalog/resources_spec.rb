@@ -5,11 +5,11 @@ require 'spec_helper'
 RSpec.describe 'Query.ciCatalogResources', feature_category: :pipeline_composition do
   include GraphqlHelpers
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:namespace) { create(:group, developers: user) }
-  let_it_be(:project) { create(:project, namespace: namespace) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:namespace, freeze: false) { create(:group, developers: user) }
+  let_it_be(:project, freeze: false) { create(:project, namespace: namespace) }
 
-  let_it_be(:private_project) do
+  let_it_be(:private_project, freeze: false) do
     create(
       :project, :with_avatar, :custom_repo,
       name: 'Component Repository',
@@ -20,7 +20,7 @@ RSpec.describe 'Query.ciCatalogResources', feature_category: :pipeline_compositi
     )
   end
 
-  let_it_be(:public_project) do
+  let_it_be(:public_project, freeze: false) do
     create(
       :project, :with_avatar, :custom_repo, :public,
       name: 'Public Component',
@@ -29,12 +29,12 @@ RSpec.describe 'Query.ciCatalogResources', feature_category: :pipeline_compositi
     )
   end
 
-  let_it_be(:private_resource) do
+  let_it_be(:private_resource, freeze: false) do
     create(:ci_catalog_resource, :published, project: private_project, latest_released_at: '2023-01-01T00:00:00Z',
       last_30_day_usage_count: 15)
   end
 
-  let_it_be(:public_resource) { create(:ci_catalog_resource, :published, project: public_project) }
+  let_it_be(:public_resource, freeze: false) { create(:ci_catalog_resource, :published, project: public_project) }
 
   let(:query) do
     <<~GQL
@@ -101,7 +101,7 @@ RSpec.describe 'Query.ciCatalogResources', feature_category: :pipeline_compositi
   end
 
   describe 'with an unauthorized user on a private project' do
-    let_it_be(:query) do
+    let_it_be(:query, freeze: false) do
       <<~GQL
         query {
           ciCatalogResources {
@@ -211,6 +211,78 @@ RSpec.describe 'Query.ciCatalogResources', feature_category: :pipeline_compositi
     end
 
     it_behaves_like 'avoids N+1 queries'
+
+    context 'when the project repository feature is enabled' do
+      let(:query) do
+        <<~GQL
+          query {
+            ciCatalogResources {
+              nodes {
+                id
+                versions(first: 1) {
+                  nodes {
+                    id
+                    readme
+                  }
+                }
+              }
+            }
+          }
+        GQL
+      end
+
+      it 'resolves the readme field for versions' do
+        post_query
+
+        resources = graphql_data_at(:ciCatalogResources, :nodes)
+        versions = resources.flat_map { |r| r.dig('versions', 'nodes') }
+
+        expect(versions).to all(have_key('readme'))
+      end
+    end
+
+    context 'when the project repository feature is disabled' do
+      let(:query) do
+        <<~GQL
+          query {
+            ciCatalogResources {
+              nodes {
+                id
+                versions(first: 1) {
+                  nodes {
+                    id
+                    readme
+                    readmeHtml
+                  }
+                }
+              }
+            }
+          }
+        GQL
+      end
+
+      before do
+        public_project.project_feature.update!(
+          repository_access_level: ProjectFeature::DISABLED,
+          merge_requests_access_level: ProjectFeature::DISABLED,
+          builds_access_level: ProjectFeature::DISABLED
+        )
+      end
+
+      it 'returns null for readme and readmeHtml fields on the affected resource' do
+        post_query
+
+        resources = graphql_data_at(:ciCatalogResources, :nodes)
+
+        public_resource_data = resources.find { |r| r['id'] == public_resource.to_global_id.to_s }
+        public_versions = public_resource_data.dig('versions', 'nodes')
+
+        public_versions.each do |version|
+          expect(version['readme']).to be_nil
+          expect(version['readmeHtml']).to be_nil
+        end
+      end
+    end
 
     context 'when querying version paths' do
       let(:query) do

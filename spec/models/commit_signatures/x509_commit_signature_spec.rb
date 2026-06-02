@@ -8,7 +8,7 @@ RSpec.describe CommitSignatures::X509CommitSignature, feature_category: :source_
   # The email for this commit is 'r.meier@siemens.com'
   let_it_be(:commit_sha) { '189a6c924013fc3fe40d6f1ec1dc20214183bc97' }
   let_it_be(:project) { create(:project, :public, :repository) }
-  let_it_be(:commit) { create(:commit, project: project, sha: commit_sha) }
+  let_it_be(:commit, freeze: false) { create(:commit, project: project, sha: commit_sha) }
   let_it_be(:x509_certificate) { create(:x509_certificate, email: 'r.meier@siemens.com') }
   let_it_be(:verification_status) { "unverified_author_email" }
   let_it_be(:committer_email) { nil }
@@ -112,12 +112,16 @@ RSpec.describe CommitSignatures::X509CommitSignature, feature_category: :source_
       end
     end
 
-    context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+    context 'when committer email differs in case from certificate email' do
+      let(:x509_certificate) { create(:x509_certificate, email: matching_email.upcase) }
+      let(:user) { create(:user, email: matching_email.downcase) }
+
       before do
-        stub_feature_flags(check_for_mailmapped_commit_emails: false)
+        allow(project).to receive(:commit).with(commit_sha).and_return(commit)
+        allow(commit).to receive_messages(committer_email: matching_email.downcase, committer: user)
       end
 
-      it 'verification status is unmodified' do
+      it 'returns verified (case-insensitive match)' do
         expect(signature.verification_status).to eq('verified')
       end
     end

@@ -18,7 +18,16 @@ class ProjectCiCdSetting < ApplicationRecord
       maintainer: MAINTAINER_ROLE,
       owner: OWNER_ROLE }.freeze
 
-  ALLOWED_SUB_CLAIM_COMPONENTS = %w[project_path ref_type ref environment_protected deployment_tier].freeze
+  PRIVILEGED_PIPELINE_VARIABLES_ROLES = %w[owner no_one_allowed].freeze
+
+  ALLOWED_SUB_CLAIM_COMPONENTS = %w[
+    project_path
+    ref_type
+    ref
+    ref_protected
+    environment_protected
+    deployment_tier
+  ].freeze
 
   enum :pipeline_variables_minimum_override_role, PIPELINE_VARIABLES_OVERRIDE_ROLES, prefix: true
 
@@ -55,6 +64,9 @@ class ProjectCiCdSetting < ApplicationRecord
   attribute :forward_deployment_enabled, default: true
   attribute :separated_caches, default: true
   validates :merge_trains_skip_train_allowed, inclusion: { in: [true, false] }
+  validates :max_pipelines_per_merge_train,
+    numericality: { only_integer: true, greater_than_or_equal_to: 1 },
+    allow_nil: true
 
   chronic_duration_attr :runner_token_expiration_interval_human_readable, :runner_token_expiration_interval
   chronic_duration_attr_writer :delete_pipelines_in_human_readable, :delete_pipelines_in_seconds
@@ -81,7 +93,7 @@ class ProjectCiCdSetting < ApplicationRecord
     project_ids = settings_relation.limit(limit).pluck(:project_id)
 
     projects_with_vars =
-      Ci::PipelineVariable.projects_with_variables(project_ids, limit) +
+      Ci::Pipeline.projects_with_variables(project_ids, limit) +
       Ci::JobVariable.projects_with_variables(project_ids, limit)
 
     project_ids - projects_with_vars
@@ -90,6 +102,10 @@ class ProjectCiCdSetting < ApplicationRecord
   def keep_latest_artifacts_available?
     # The project level feature can only be enabled when the feature is enabled instance wide
     Gitlab::CurrentSettings.current_application_settings.keep_latest_artifact? && keep_latest_artifact?
+  end
+
+  def pipeline_override_role_privileged?
+    PRIVILEGED_PIPELINE_VARIABLES_ROLES.include?(pipeline_variables_minimum_override_role)
   end
 
   def override_pipeline_variables_allowed?(role_access_level, user)

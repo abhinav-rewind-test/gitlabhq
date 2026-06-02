@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, feature_category: :pipeline_composition do
   include Ci::TemplateHelpers
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :repository, namespace: group) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, namespace: group) }
   let_it_be_with_reload(:pipeline) { create(:ci_pipeline, project: project) }
   let_it_be(:user) { create(:user) }
   let_it_be_with_reload(:job) do
@@ -83,6 +83,8 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
         value: project.namespace.id.to_s },
       { key: 'CI_PROJECT_ROOT_NAMESPACE',
         value: project.namespace.root_ancestor.path },
+      { key: 'CI_PROJECT_ROOT_NAMESPACE_SLUG',
+        value: Gitlab::Utils.slugify(project.namespace.root_ancestor.path) },
       { key: 'CI_PROJECT_URL',
         value: project.web_url },
       { key: 'CI_PROJECT_VISIBILITY',
@@ -101,6 +103,12 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
         value: Gitlab.config.pages.host },
       { key: 'CI_PAGES_HOSTNAME',
         value: project.pages_hostname },
+      { key: 'CI_DEPENDENCY_PROXY_SERVER',
+        value: Gitlab.host_with_port },
+      { key: 'CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX',
+        value: "#{Gitlab.host_with_port}/#{group.path.downcase}#{DependencyProxy::URL_SUFFIX}" },
+      { key: 'CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX',
+        value: "#{Gitlab.host_with_port}/#{group.path.downcase}#{DependencyProxy::URL_SUFFIX}" },
       { key: 'CI_API_V4_URL',
         value: API::Helpers::Version.new('v4').root_url },
       { key: 'CI_API_GRAPHQL_URL',
@@ -158,6 +166,9 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
             value: pipeline.created_at.iso8601 },
           { key: 'CI_PIPELINE_NAME',
             value: pipeline.name },
+          { key: 'CI_CONFIG_REF_URI',
+            value: "#{Settings.build_server_fqdn}/#{project.full_path}" \
+              "//#{project.ci_config_path_or_default}@#{pipeline.source_ref_path}" },
           { key: 'CI_COMMIT_SHA',
             value: job.sha },
           { key: 'CI_COMMIT_SHORT_SHA',
@@ -184,6 +195,8 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
             value: pipeline.git_commit_timestamp },
           { key: 'CI_COMMIT_AUTHOR',
             value: pipeline.git_author_full_text },
+          { key: 'CI_COMMIT_USER_LOGIN',
+            value: pipeline.git_author_login.to_s },
           { key: 'YAML_VARIABLE',
             value: 'value' }
         ] + predefined_user_vars
@@ -312,7 +325,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
 
       let_it_be(:tag) { project.repository.tags.first }
       let_it_be(:pipeline) { create(:ci_pipeline, project: project, tag: true, ref: tag.name) }
-      let_it_be(:release) { create(:release, tag: tag.name, project: project) }
+      let_it_be(:release, freeze: false) { create(:release, tag: tag.name, project: project) }
 
       it 'includes release variables' do
         expect(subject.to_hash).to include(release_description_key => release.description)
@@ -481,6 +494,9 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
             value: nil },
           { key: 'CI_PIPELINE_NAME',
             value: pipeline.name },
+          { key: 'CI_CONFIG_REF_URI',
+            value: "#{Settings.build_server_fqdn}/#{project.full_path}" \
+              "//#{project.ci_config_path_or_default}@#{pipeline.source_ref_path}" },
           { key: 'CI_COMMIT_SHA',
             value: pipeline.sha },
           { key: 'CI_COMMIT_SHORT_SHA',
@@ -507,6 +523,8 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
             value: pipeline.git_commit_timestamp },
           { key: 'CI_COMMIT_AUTHOR',
             value: pipeline.git_author_full_text },
+          { key: 'CI_COMMIT_USER_LOGIN',
+            value: pipeline.git_author_login.to_s },
           { key: 'YAML_VARIABLE',
             value: 'value' }
         ] + predefined_user_vars
@@ -652,7 +670,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
       let(:release_description_key) { 'CI_RELEASE_DESCRIPTION' }
 
       let_it_be(:tag) { project.repository.tags.first }
-      let_it_be(:release) { create(:release, tag: tag.name, project: project) }
+      let_it_be(:release, freeze: false) { create(:release, tag: tag.name, project: project) }
       let_it_be(:pipeline) { build(:ci_pipeline, project: project, tag: true, ref: tag.name) }
 
       it 'includes release variables' do
@@ -898,7 +916,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder, :clean_gitlab_redis_cache, featur
     context 'when ref is merge request' do
       let_it_be(:merge_request) { create(:merge_request, :with_detached_merge_request_pipeline, source_project: project) }
       let_it_be(:pipeline) { merge_request.pipelines_for_merge_request.first }
-      let_it_be(:job) { create(:ci_build, ref: merge_request.source_branch, tag: false, pipeline: pipeline) }
+      let_it_be(:job, freeze: false) { create(:ci_build, ref: merge_request.source_branch, tag: false, pipeline: pipeline) }
 
       context 'when the pipeline is protected' do
         before do

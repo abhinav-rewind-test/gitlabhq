@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Manage cluster applications
 ---
 
@@ -22,7 +22,7 @@ your custom cluster applications.
 
 ## Use one project for the agent and your manifests
 
-If you **have not yet** used the agent to connect your cluster with GitLab:
+If you have not yet used the agent to connect your cluster with GitLab:
 
 1. [Create a project from the cluster management project template](#create-a-project-based-on-the-cluster-management-project-template).
 1. [Configure the project for the agent](agent/install/_index.md).

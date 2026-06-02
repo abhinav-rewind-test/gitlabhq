@@ -186,7 +186,7 @@ RSpec.describe Ci::JobEntity, feature_category: :continuous_integration do
   end
 
   context 'when job is running' do
-    let_it_be(:job) { create(:ci_build, :running) }
+    let_it_be(:job, freeze: false) { create(:ci_build, :running) }
 
     it 'contains started_at' do
       expect(subject[:started]).to be_truthy
@@ -298,6 +298,15 @@ RSpec.describe Ci::JobEntity, feature_category: :continuous_integration do
 
     it 'does not include cancel path' do
       expect(subject).not_to include(:cancel_path)
+    end
+  end
+
+  context 'when the job has a supply chain attestation' do
+    let!(:job) { create(:ci_build, :success) }
+    let!(:attestation) { create(:supply_chain_attestation, build: job) }
+
+    it 'includes the supply_chain_attestation_status' do
+      expect(subject).to include(:supply_chain_attestation_status)
     end
   end
 end

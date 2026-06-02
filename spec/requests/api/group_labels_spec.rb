@@ -260,13 +260,6 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       let(:params) { { name: group_label1.name } }
     end
 
-    context 'with valid label params' do
-      let(:api_path) { api("/groups/#{group.id}/labels", user) }
-      let(:label_title) { valid_new_label_title }
-
-      it_behaves_like 'ignores archived param when feature flag is disabled'
-    end
-
     it_behaves_like 'authorizing granular token permissions', :delete_label do
       let(:boundary_object) { group }
       let(:request) do
@@ -364,7 +357,7 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       put api("/groups/#{group.id}/labels", user), params: { name: group_label1.name }
 
       expect(response).to have_gitlab_http_status(:bad_request)
-      expect(json_response['error']).to eq('new_name, color, description, archived are missing, '\
+      expect(json_response['error']).to eq('new_name, color, description, archived are missing, ' \
                                            'at least one parameter must be provided')
     end
 
@@ -423,7 +416,7 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       put api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", user)
 
       expect(response).to have_gitlab_http_status(:bad_request)
-      expect(json_response['error']).to eq('new_name, color, description, archived are missing, '\
+      expect(json_response['error']).to eq('new_name, color, description, archived are missing, ' \
                                            'at least one parameter must be provided')
     end
 

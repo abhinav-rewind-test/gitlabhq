@@ -81,6 +81,97 @@ RSpec.describe SnippetBlobPresenter do
     end
   end
 
+  shared_examples 'snippet blob reference redaction' do
+    context 'when the viewer cannot see the confidential issue' do
+      subject(:rich_data) { described_class.new(blob, current_user: unauthorized_user).rich_data }
+
+      it 'renders the public reference and redacts the confidential one' do
+        doc = Nokogiri::HTML.fragment(rich_data)
+        links = doc.css('a[data-reference-type="issue"]')
+
+        expect(links.size).to eq(1)
+        expect(links[0]['data-iid'].to_i).to eq(public_issue.iid)
+      end
+    end
+
+    context 'when the viewer can see the confidential issue' do
+      subject(:rich_data) { described_class.new(blob, current_user: authorized_user).rich_data }
+
+      it 'renders both references' do
+        doc = Nokogiri::HTML.fragment(rich_data)
+        links = doc.css('a[data-reference-type="issue"]')
+
+        iids = links.map { |link| link['data-iid'].to_i }
+        expect(iids).to contain_exactly(public_issue.iid, private_issue.iid)
+      end
+    end
+  end
+
+  describe '#rich_data reference redaction' do
+    # Ensure that references in snippet markdown are properly redacted based on
+    # user permissions, for both repo-backed blobs and legacy SnippetBlobs.
+    let_it_be(:ref_project) { create(:project, :public) }
+    let_it_be(:public_issue) { create(:issue, project: ref_project) }
+    let_it_be(:private_issue) { create(:issue, :confidential, project: ref_project) }
+    let_it_be(:unauthorized_user) { create(:user) }
+    let_it_be(:authorized_user) { ref_project.first_owner }
+
+    let(:content) { "Reference to #{public_issue.to_reference} and #{private_issue.to_reference}" }
+
+    context 'with a SnippetBlob (no repository)' do
+      let(:snippet) do
+        create(
+          :project_snippet,
+          :public,
+          project: ref_project,
+          author: ref_project.first_owner,
+          file_name: 'test.md',
+          content: content
+        )
+      end
+
+      let(:blob) { snippet.blob }
+
+      it 'uses a SnippetBlob (no repository)' do
+        expect(snippet.empty_repo?).to be(true)
+      end
+
+      it_behaves_like 'snippet blob reference redaction'
+    end
+
+    context 'with a repo-backed blob' do
+      let(:snippet) do
+        create(
+          :project_snippet,
+          :public,
+          :repository,
+          project: ref_project,
+          author: ref_project.first_owner,
+          file_name: 'test.md',
+          content: content
+        )
+      end
+
+      let(:blob) do
+        snippet.repository.create_file(
+          ref_project.first_owner,
+          'test.md',
+          content,
+          message: 'Add test.md with references',
+          branch_name: snippet.default_branch
+        )
+
+        snippet.blobs(['test.md']).first
+      end
+
+      it 'uses a repo-backed blob' do
+        expect(snippet.repository_exists?).to be(true)
+      end
+
+      it_behaves_like 'snippet blob reference redaction'
+    end
+  end
+
   describe 'route helpers' do
     let_it_be(:project)          { create(:project) }
     let_it_be(:user)             { create(:user) }

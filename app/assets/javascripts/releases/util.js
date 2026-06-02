@@ -1,4 +1,4 @@
-import { pick } from 'lodash';
+import { pick } from 'lodash-es';
 import createGqClient, { fetchPolicies } from '~/lib/graphql';
 import { truncateSha } from '~/lib/utils/text_utility';
 
@@ -63,6 +63,7 @@ const convertCommit = (graphQLRelease) => {
     commit: {
       shortId: truncateSha(graphQLRelease.commit.sha),
       title: graphQLRelease.commit.title,
+      sha: graphQLRelease.commit.sha,
     },
     commitPath: graphQLRelease.commit.webUrl,
   };

@@ -17,6 +17,7 @@ import getAllowedWorkItemParentTypes from '~/work_items/graphql/work_item_allowe
 import {
   workItemResponseFactory,
   mockParticipantWidget,
+  mockAssignees,
   allowedParentTypesResponse,
   allowedParentTypesEmptyResponse,
 } from 'ee_else_ce_jest/work_items/mock_data';
@@ -108,6 +109,30 @@ describe('WorkItemAttributesWrapper component', () => {
 
       expect(findWorkItemAssignees().exists()).toBe(false);
     });
+
+    describe('when features.assignees is present', () => {
+      let firstAssignee;
+      let workItem;
+
+      beforeEach(() => {
+        [firstAssignee] = mockAssignees;
+        workItem = {
+          ...workItemResponseFactory().data.workItem,
+          features: {
+            assignees: {
+              allowsMultipleAssignees: true,
+              canInviteMembers: false,
+              assignees: { nodes: [firstAssignee] },
+            },
+          },
+        };
+        createComponent({ workItem });
+      });
+
+      it('renders assignees component', () => {
+        expect(findWorkItemAssignees().exists()).toBe(true);
+      });
+    });
   });
 
   describe('labels widget', () => {
@@ -126,6 +151,22 @@ describe('WorkItemAttributesWrapper component', () => {
       createComponent();
 
       await waitForPromises();
+
+      expect(findWorkItemLabels().exists()).toBe(true);
+    });
+
+    it('renders when features.labels is present', () => {
+      createComponent({
+        workItem: {
+          ...workItemResponseFactory({ labelsWidgetPresent: false }).data.workItem,
+          features: {
+            labels: {
+              allowsScopedLabels: false,
+              labels: { nodes: [] },
+            },
+          },
+        },
+      });
 
       expect(findWorkItemLabels().exists()).toBe(true);
     });
@@ -149,6 +190,22 @@ describe('WorkItemAttributesWrapper component', () => {
       createComponent();
 
       await waitForPromises();
+
+      expect(findWorkItemDates().exists()).toBe(true);
+    });
+
+    it('renders when features.startAndDueDate is present', () => {
+      createComponent({
+        workItem: {
+          ...workItemResponseFactory({ datesWidgetPresent: false }).data.workItem,
+          features: {
+            startAndDueDate: {
+              startDate: '2024-01-01',
+              dueDate: '2024-01-31',
+            },
+          },
+        },
+      });
 
       expect(findWorkItemDates().exists()).toBe(true);
     });
@@ -237,6 +294,24 @@ describe('WorkItemAttributesWrapper component', () => {
 
       expect(findWorkItemTimeTracking().exists()).toBe(exists);
     });
+
+    it('renders when features.timeTracking is present', () => {
+      createComponent({
+        workItem: {
+          ...workItemResponseFactory({ timeTrackingWidgetPresent: false }).data.workItem,
+          features: {
+            timeTracking: {
+              timeEstimate: 0,
+              humanReadableAttributes: { timeEstimate: '' },
+              timelogs: { nodes: [] },
+              totalTimeSpent: 0,
+            },
+          },
+        },
+      });
+
+      expect(findWorkItemTimeTracking().exists()).toBe(true);
+    });
   });
 
   describe('CRM contacts widget', () => {
@@ -249,6 +324,22 @@ describe('WorkItemAttributesWrapper component', () => {
       createComponent({ workItem: response.data.workItem });
 
       expect(findWorkItemCrmContacts().exists()).toBe(exists);
+    });
+
+    it('renders when features.crmContacts is present', () => {
+      createComponent({
+        workItem: {
+          ...workItemResponseFactory({ crmContactsWidgetPresent: false }).data.workItem,
+          features: {
+            crmContacts: {
+              contactsAvailable: true,
+              contacts: { nodes: [] },
+            },
+          },
+        },
+      });
+
+      expect(findWorkItemCrmContacts().exists()).toBe(true);
     });
   });
 

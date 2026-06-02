@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe PlanLimits do
   let_it_be(:project) { create(:project) }
-  let_it_be(:plan_limits) { create(:plan_limits, :default_plan) }
+  let_it_be(:plan_limits, freeze: false) { create(:plan_limits, :default_plan) }
 
   let(:project_hooks_count) { 2 }
 
@@ -20,6 +20,12 @@ RSpec.describe PlanLimits do
     it { is_expected.to validate_numericality_of(:web_hook_calls).is_greater_than_or_equal_to(0) }
     it { is_expected.to validate_numericality_of(:web_hook_calls_low).is_greater_than_or_equal_to(0) }
     it { is_expected.to validate_numericality_of(:web_hook_calls_mid).is_greater_than_or_equal_to(0) }
+
+    it 'validates max_pipelines_per_merge_train is at least 1' do
+      is_expected.to validate_numericality_of(:max_pipelines_per_merge_train)
+        .only_integer
+        .is_greater_than_or_equal_to(1)
+    end
 
     describe 'limits_history' do
       context 'when does not match the JSON schema' do
@@ -309,6 +315,10 @@ RSpec.describe PlanLimits do
       attributes = attributes.slice(*columns_with_zero)
 
       expect(attributes).to all(include(be_zero))
+    end
+
+    it "has a non-zero default for ci_max_artifact_size_sarif" do
+      expect(plan_limits.ci_max_artifact_size_sarif).to eq(10)
     end
 
     it "has nil values for disabled limits" do

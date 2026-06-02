@@ -143,9 +143,9 @@ RSpec.describe 'Issue Boards', :js, feature_category: :portfolio_management do
         move_to_position.click
 
         click_button 'Move to end of list'
-      end
 
-      expect(all('.board-card').last).to have_content(issue3.title)
+        expect(page).to have_selector('.board-card:last-child', text: issue3.title)
+      end
     end
 
     it 'moves to start of list' do
@@ -156,9 +156,24 @@ RSpec.describe 'Issue Boards', :js, feature_category: :portfolio_management do
         move_to_position.click
 
         click_button 'Move to start of list'
+
+        expect(page).to have_selector('.board-card:first-child', text: issue1.title)
+      end
+    end
+
+    it 'shows toast notification when moving to end of list', :aggregate_failures do
+      expect(find('.board-card:first-child')).to have_content(issue3.title)
+
+      page.within(find('[data-testid="board-list"]:nth-child(2)')) do
+        first('.board-card').hover
+        move_to_position.click
+
+        click_button 'Move to end of list'
+
+        expect(page).to have_selector('.board-card:last-child', text: issue3.title)
       end
 
-      expect(all('.board-card').first).to have_content(issue1.title)
+      expect(page).to have_css('.gl-toast', text: 'Item moved to end of list.')
     end
   end
 

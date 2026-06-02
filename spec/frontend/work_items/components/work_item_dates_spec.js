@@ -11,6 +11,7 @@ import WorkItemSidebarWidget from '~/work_items/components/shared/work_item_side
 import { TRACKING_CATEGORY_SHOW } from '~/work_items/constants';
 import updateWorkItemMutation from '~/work_items/graphql/update_work_item.mutation.graphql';
 import {
+  mockWorkItemFeaturesData,
   updateWorkItemMutationErrorResponse,
   updateWorkItemMutationResponse,
 } from 'ee_else_ce_jest/work_items/mock_data';
@@ -25,17 +26,31 @@ describe('WorkItemDueDate component', () => {
 
   const findWorkItemSidebarWidget = () => wrapper.findComponent(WorkItemSidebarWidget);
   const findStartDatePicker = () => wrapper.findByTestId('start-date-picker');
+  const findDatePickersWrapper = () => wrapper.findByTestId('date-pickers-wrapper');
   const findDueDatePicker = () => wrapper.findByTestId('due-date-picker');
   const findApplyButton = () => wrapper.findByTestId('apply-button');
   const findEditButton = () => wrapper.findByTestId('edit-button');
   const findStartDateValue = () => wrapper.findByTestId('start-date-value');
   const findDueDateValue = () => wrapper.findByTestId('due-date-value');
 
+  const editAndApplyStartDate = async (isoDateString) => {
+    findEditButton().vm.$emit('click');
+    await nextTick();
+
+    findStartDatePicker().vm.$emit('input', new Date(isoDateString));
+    findStartDatePicker().vm.$emit('close');
+
+    await nextTick();
+    findApplyButton().vm.$emit('click');
+  };
+
   const createComponent = ({
     canUpdate = false,
     dueDate = null,
     startDate = null,
     mutationHandler = updateWorkItemMutationHandler,
+    workItem = updateWorkItemMutationResponse.data.workItemUpdate.workItem,
+    provide = {},
   } = {}) => {
     wrapper = shallowMountExtended(WorkItemDates, {
       apolloProvider: createMockApollo([[updateWorkItemMutation, mutationHandler]]),
@@ -44,8 +59,9 @@ describe('WorkItemDueDate component', () => {
         dueDate,
         startDate,
         workItemType: 'Task',
-        workItem: updateWorkItemMutationResponse.data.workItemUpdate.workItem,
+        workItem,
       },
+      provide,
       stubs: {
         WorkItemSidebarWidget,
       },
@@ -164,7 +180,7 @@ describe('WorkItemDueDate component', () => {
       });
 
       it('widget is closed and dates are updated, when date picker is focused', async () => {
-        findStartDatePicker().trigger('keydown.esc');
+        findDatePickersWrapper().trigger('keydown.esc');
         await nextTick();
 
         expect(updateWorkItemMutationHandler).toHaveBeenCalled();
@@ -193,14 +209,7 @@ describe('WorkItemDueDate component', () => {
           });
           trackingSpy = mockTracking(undefined, wrapper.element, jest.spyOn);
 
-          findEditButton().vm.$emit('click');
-          await nextTick();
-
-          findStartDatePicker().vm.$emit('input', new Date('2022-01-01T00:00:00.000Z'));
-          findStartDatePicker().vm.$emit('close');
-
-          await nextTick();
-          findApplyButton().vm.$emit('click');
+          await editAndApplyStartDate('2022-01-01T00:00:00.000Z');
         });
 
         it('mutation is called to update dates', () => {
@@ -212,6 +221,7 @@ describe('WorkItemDueDate component', () => {
                 startDate: '2022-01-01',
               },
             },
+            useWorkItemFeatures: false,
           });
         });
 
@@ -229,6 +239,50 @@ describe('WorkItemDueDate component', () => {
             category: TRACKING_CATEGORY_SHOW,
             label: 'item_dates',
             property: 'type_Task',
+            extra: { viewContext: 'full_screen' },
+          });
+        });
+      });
+
+      describe('when workItemFeaturesField feature flag is enabled', () => {
+        let mutationHandler;
+
+        beforeEach(async () => {
+          const baseWorkItem = updateWorkItemMutationResponse.data.workItemUpdate.workItem;
+          const featuresFragment = mockWorkItemFeaturesData();
+          mutationHandler = jest.fn().mockResolvedValue({
+            data: {
+              workItemUpdate: {
+                ...updateWorkItemMutationResponse.data.workItemUpdate,
+                workItem: {
+                  ...baseWorkItem,
+                  features: featuresFragment,
+                },
+              },
+            },
+          });
+          createComponent({
+            canUpdate: true,
+            dueDate: '2022-12-31',
+            startDate: '2022-12-31',
+            mutationHandler,
+            workItem: { ...baseWorkItem, features: featuresFragment },
+            provide: { glFeatures: { workItemFeaturesField: true } },
+          });
+
+          await editAndApplyStartDate('2022-01-01T00:00:00.000Z');
+        });
+
+        it('passes useWorkItemFeatures as true to the mutation', () => {
+          expect(mutationHandler).toHaveBeenCalledWith({
+            input: {
+              id: workItemId,
+              startAndDueDateWidget: {
+                dueDate: '2022-12-31',
+                startDate: '2022-01-01',
+              },
+            },
+            useWorkItemFeatures: true,
           });
         });
       });
@@ -241,14 +295,7 @@ describe('WorkItemDueDate component', () => {
             startDate: '2022-12-31',
           });
 
-          findEditButton().vm.$emit('click');
-          await nextTick();
-
-          findStartDatePicker().vm.$emit('input', new Date('2022-12-31T00:00:00.000Z'));
-          findStartDatePicker().vm.$emit('close');
-
-          await nextTick();
-          findApplyButton().vm.$emit('click');
+          await editAndApplyStartDate('2022-12-31T00:00:00.000Z');
         });
 
         it('mutation is not called to update dates', () => {
@@ -269,20 +316,13 @@ describe('WorkItemDueDate component', () => {
             mutationHandler,
           });
 
-          findEditButton().vm.$emit('click');
-          await nextTick();
-
-          findStartDatePicker().vm.$emit('input', new Date('2022-01-01T00:00:00.000Z'));
-          findStartDatePicker().vm.$emit('close');
-
-          await nextTick();
-          findApplyButton().vm.$emit('click');
+          await editAndApplyStartDate('2022-01-01T00:00:00.000Z');
           return waitForPromises();
         });
 
         it('emits an error', () => {
           expect(wrapper.emitted('error')).toEqual([
-            ['Something went wrong while updating the task. Please try again.'],
+            ['Something went wrong while updating the Task. Please try again.'],
           ]);
         });
       });

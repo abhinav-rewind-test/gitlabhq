@@ -10,6 +10,8 @@ module Mutations
           include FindsProject
 
           authorize :admin_container_image
+          authorize_granular_token permissions: :create_container_repository_protection_rule,
+            boundary_argument: :project_path, boundary_type: :project
 
           argument :project_path,
             GraphQL::Types::ID,
@@ -28,6 +30,7 @@ module Mutations
           argument :minimum_access_level_for_delete,
             Types::ContainerRegistry::Protection::RuleAccessLevelEnum,
             required: false,
+            experiment: { milestone: '17.11' },
             description: copy_field_description(
               Types::ContainerRegistry::Protection::RuleType,
               :minimum_access_level_for_delete

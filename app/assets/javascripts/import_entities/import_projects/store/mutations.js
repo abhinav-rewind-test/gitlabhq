@@ -31,6 +31,7 @@ export default {
       endCursor: null,
       hasNextPage: true,
     };
+    state.workspacePagingInfo = {};
   },
 
   [types.REQUEST_REPOS](state) {
@@ -53,6 +54,8 @@ export default {
 
       const existingProjectNames = new Set(state.repositories.map((p) => p.importSource.fullName));
       const importedProjects = [...(repositories.importedProjects ?? [])].reverse();
+      const matchedProviderLinks = new Set();
+
       const newProjects = repositories.providerRepos
         .filter((project) => !existingProjectNames.has(project.fullName))
         .map((project) => {
@@ -60,13 +63,43 @@ export default {
             (p) => p.providerLink === project.providerLink,
           );
 
+          if (importedProject) {
+            matchedProviderLinks.add(importedProject.providerLink);
+          }
+
           return {
             importSource: project,
             importedProject,
           };
         });
 
-      state.repositories = [...state.repositories, ...newProjects, ...newIncompatibleProjects];
+      // Include imported projects whose source repo no longer exists on the provider
+      // (e.g. deleted during or after import) so failed/completed imports remain visible.
+      // Also filter out orphans already present from a previous page load to avoid duplicates.
+      const existingImportedProjectIds = new Set(
+        state.repositories.map((r) => r.importedProject?.id).filter(Boolean),
+      );
+      const unmatchedImportedProjects = importedProjects
+        .filter(
+          (p) => !matchedProviderLinks.has(p.providerLink) && !existingImportedProjectIds.has(p.id),
+        )
+        .map((importedProject) => ({
+          importSource: {
+            id: importedProject.id,
+            fullName: importedProject.importSource,
+            sanitizedName: importedProject.importSource,
+            providerLink: importedProject.providerLink,
+            target: (importedProject.fullPath ?? '').replace(/^\//, ''),
+          },
+          importedProject,
+        }));
+
+      state.repositories = [
+        ...state.repositories,
+        ...newProjects,
+        ...unmatchedImportedProjects,
+        ...newIncompatibleProjects,
+      ];
 
       if (incompatibleRepos.length === 0 && repositories.providerRepos.length === 0) {
         state.pageInfo.page -= 1;
@@ -143,9 +176,19 @@ export default {
     state.pageInfo.page = page;
   },
 
-  [types.SET_PAGE_CURSORS](state, pageInfo) {
-    const { startCursor, endCursor, hasNextPage } = pageInfo;
+  [types.SET_PAGE_CURSORS](state, payload) {
+    const { startCursor, endCursor, hasNextPage, workspacePagingInfo } = payload;
     state.pageInfo = { ...state.pageInfo, startCursor, endCursor, hasNextPage };
+
+    if (workspacePagingInfo) {
+      state.workspacePagingInfo = workspacePagingInfo.reduce((acc, info) => {
+        acc[info.workspace] = {
+          nextPage: info.pageInfo.nextPage,
+          hasNextPage: info.pageInfo.hasNextPage,
+        };
+        return acc;
+      }, {});
+    }
   },
 
   [types.SET_HAS_NEXT_PAGE](state, hasNextPage) {

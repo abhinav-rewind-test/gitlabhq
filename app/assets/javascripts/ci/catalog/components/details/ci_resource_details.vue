@@ -9,6 +9,8 @@ export default {
   components: {
     CiResourceReadme,
     CiResourceComponents,
+    CiResourceAnalytics: () =>
+      import('ee_component/ci/catalog/components/details/ci_resource_analytics.vue'),
     GlTab,
     GlTabs,
   },
@@ -35,7 +37,11 @@ export default {
 <template>
   <gl-tabs>
     <gl-tab :title="$options.i18n.tabs.components" lazy>
-      <ci-resource-components :class="$options.componentStyles" :resource-path="resourcePath" />
+      <ci-resource-components
+        :class="$options.componentStyles"
+        :resource-path="resourcePath"
+        :version="version"
+      />
     </gl-tab>
     <gl-tab :title="$options.i18n.tabs.readme" lazy>
       <ci-resource-readme
@@ -44,5 +50,6 @@ export default {
         :version="version"
       />
     </gl-tab>
+    <ci-resource-analytics :class="$options.componentStyles" :resource-path="resourcePath" />
   </gl-tabs>
 </template>

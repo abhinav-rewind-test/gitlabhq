@@ -23,9 +23,18 @@ RSpec.describe ActiveContext::Concerns::Collection do
     it 'delegates to ActiveContext::Tracker' do
       objects = [mock_object]
 
-      expect(ActiveContext::Tracker).to receive(:track!).with(objects, collection: collection_class)
+      expect(ActiveContext::Tracker).to receive(:track!).with(objects, collection: collection_class, queue: nil)
 
       collection_class.track!(*objects)
+    end
+
+    it 'passes queue parameter to ActiveContext::Tracker' do
+      objects = [mock_object]
+      queue = double
+
+      expect(ActiveContext::Tracker).to receive(:track!).with(objects, collection: collection_class, queue: queue)
+
+      collection_class.track!(*objects, queue: queue)
     end
   end
 
@@ -33,9 +42,21 @@ RSpec.describe ActiveContext::Concerns::Collection do
     it 'delegates to ActiveContext adapter' do
       query = 'test query'
 
-      expect(mock_adapter).to receive(:search).with(query: query, user: user, collection: collection_class)
+      expect(mock_adapter).to receive(:search).with(
+        query: query, user: user, collection: collection_class, source_fields: nil
+      )
 
       collection_class.search(user: user, query: query)
+    end
+
+    it 'passes source_fields to the adapter' do
+      query = 'test query'
+
+      expect(mock_adapter).to receive(:search).with(
+        query: query, user: user, collection: collection_class, source_fields: ['content']
+      )
+
+      collection_class.search(user: user, query: query, source_fields: ['content'])
     end
   end
 
@@ -80,170 +101,8 @@ RSpec.describe ActiveContext::Concerns::Collection do
     end
   end
 
-  describe '.current_search_embedding_version' do
-    let(:search_embedding_version) { 1 }
-
-    before do
-      allow(collection_record).to receive(:search_embedding_version).and_return(search_embedding_version)
-    end
-
-    it 'is empty hash' do
-      expect(collection_class.current_search_embedding_version).to eq({})
-    end
-
-    context 'when collection_record does not exist' do
-      let(:collection_record) { nil }
-
-      it 'is empty hash' do
-        expect(collection_class.current_search_embedding_version).to eq({})
-      end
-    end
-
-    context 'when a MODELS constant is defined on the class' do
-      let(:models_hash) { { 1 => model_1 } }
-      let(:model_1) { { foo: 'bar' } }
-
-      before do
-        stub_const("#{collection_class}::MODELS", models_hash)
-      end
-
-      it 'returns the matching value from MODELS' do
-        expect(collection_class.current_search_embedding_version).to eq(model_1)
-      end
-
-      context 'when MODELS does not have an entry for collection_record.search_embedding_version' do
-        let(:search_embedding_version) { 2 }
-
-        it 'is empty hash' do
-          expect(collection_class.current_search_embedding_version).to eq({})
-        end
-      end
-    end
-  end
-
-  describe '.current_indexing_embedding_versions' do
-    let(:indexing_embedding_versions) { [1, 3] }
-
-    before do
-      allow(collection_record).to receive(:indexing_embedding_versions).and_return(indexing_embedding_versions)
-    end
-
-    it 'returns an empty array when no MODELS constant is defined' do
-      expect(collection_class.current_indexing_embedding_versions).to eq([])
-    end
-
-    context 'when collection_record does not exist' do
-      let(:collection_record) { nil }
-
-      it 'returns an empty array' do
-        expect(collection_class.current_indexing_embedding_versions).to eq([])
-      end
-    end
-
-    context 'when a MODELS constant is defined on the class' do
-      let(:models_hash) { { 1 => model_1, 3 => model_3 } }
-      let(:model_1) { { name: 'model_1' } }
-      let(:model_3) { { name: 'model_3' } }
-
-      before do
-        stub_const("#{collection_class}::MODELS", models_hash)
-      end
-
-      it 'returns an array of models that correspond to the indexing_embedding_versions' do
-        expect(collection_class.current_indexing_embedding_versions).to eq([model_1, model_3])
-      end
-
-      context 'when some versions do not have corresponding models' do
-        let(:indexing_embedding_versions) { [1, 2, 3] }
-
-        it 'only includes models that exist in MODELS' do
-          expect(collection_class.current_indexing_embedding_versions).to eq([model_1, model_3])
-        end
-      end
-
-      context 'when no versions have corresponding models' do
-        let(:indexing_embedding_versions) { [4, 5] }
-
-        it 'returns an empty array' do
-          expect(collection_class.current_indexing_embedding_versions).to eq([])
-        end
-      end
-
-      context 'when indexing_embedding_versions is nil' do
-        let(:indexing_embedding_versions) { nil }
-
-        it 'returns an empty array' do
-          expect(collection_class.current_indexing_embedding_versions).to eq([])
-        end
-      end
-    end
-  end
-
-  describe '.current_embedding_fields' do
-    let(:indexing_embedding_versions) { [1, 3] }
-
-    before do
-      allow(collection_record).to receive(:indexing_embedding_versions).and_return(indexing_embedding_versions)
-    end
-
-    it 'returns an empty array when no MODELS constant is defined' do
-      expect(collection_class.current_embedding_fields).to eq([])
-    end
-
-    context 'when a MODELS constant is defined on the class' do
-      let(:models_hash) { { 1 => model_1, 3 => model_3 } }
-      let(:model_1) { { field: :embedding_v1 } }
-      let(:model_3) { { field: :embedding_v3 } }
-
-      before do
-        stub_const("#{collection_class}::MODELS", models_hash)
-      end
-
-      it 'returns an array of field names as strings from the indexing embedding versions' do
-        expect(collection_class.current_embedding_fields).to eq(%w[embedding_v1 embedding_v3])
-      end
-
-      context 'when some versions do not have corresponding models' do
-        let(:indexing_embedding_versions) { [1, 2, 3] }
-
-        it 'only includes fields from models that exist in MODELS' do
-          expect(collection_class.current_embedding_fields).to eq(%w[embedding_v1 embedding_v3])
-        end
-      end
-
-      context 'when no versions have corresponding models' do
-        let(:indexing_embedding_versions) { [4, 5] }
-
-        it 'returns an empty array' do
-          expect(collection_class.current_embedding_fields).to eq([])
-        end
-      end
-
-      context 'when indexing_embedding_versions is nil' do
-        let(:indexing_embedding_versions) { nil }
-
-        it 'returns an empty array' do
-          expect(collection_class.current_embedding_fields).to eq([])
-        end
-      end
-
-      context 'when models have string field names' do
-        let(:model_1) { { field: 'embedding_v1' } }
-        let(:model_3) { { field: 'embedding_v3' } }
-
-        it 'returns field names as strings' do
-          expect(collection_class.current_embedding_fields).to eq(%w[embedding_v1 embedding_v3])
-        end
-      end
-    end
-  end
-
   describe 'all embedding models' do
-    where(:embedding_model_key) do
-      [:current_indexing_embedding_model, :next_indexing_embedding_model, :search_embedding_model]
-    end
-
-    with_them do
+    shared_examples 'embedding_model' do
       subject(:embedding_model) { collection_class.public_send(embedding_model_key) }
 
       context 'when collection_record is nil' do
@@ -276,19 +135,43 @@ RSpec.describe ActiveContext::Concerns::Collection do
         end
 
         it "builds an embedding_model object through the embedding_model_selector" do
-          expect(model_selector_class).to receive(:for).with(model_metadata)
+          expect(model_selector_class).to receive(:for).with(
+            model_metadata, **expected_custom_build_params
+          )
 
           embedding_model
         end
       end
     end
+
+    describe '#current_indexing_embedding_model' do
+      it_behaves_like 'embedding_model' do
+        let(:embedding_model_key) { :current_indexing_embedding_model }
+        let(:expected_custom_build_params) { {} }
+      end
+    end
+
+    describe '#next_indexing_embedding_model' do
+      it_behaves_like 'embedding_model' do
+        let(:embedding_model_key) { :next_indexing_embedding_model }
+        let(:expected_custom_build_params) { {} }
+      end
+    end
+
+    describe '#search_embedding_model' do
+      it_behaves_like 'embedding_model' do
+        let(:embedding_model_key) { :search_embedding_model }
+        let(:expected_custom_build_params) { { search: true } }
+      end
+    end
   end
 
-  describe '.indexing_embedding_models' do
+  describe 'indexing embedding models' do
     let(:current_indexing_embedding_model) do
       ::ActiveContext::EmbeddingModel.new(
-        model_name: 'some-model-01',
+        model_ref: 'some-model-01',
         field: 'current_model_field',
+        model_type: 'gitlab_managed',
         llm_class: Test::MockLlmClass,
         llm_params: {}
       )
@@ -296,8 +179,9 @@ RSpec.describe ActiveContext::Concerns::Collection do
 
     let(:next_indexing_embedding_model) do
       ::ActiveContext::EmbeddingModel.new(
-        model_name: 'some-model-02',
+        model_ref: 'some-model-02',
         field: 'next_model_field',
+        model_type: 'gitlab_managed',
         llm_class: Test::MockLlmClass,
         llm_params: {}
       )
@@ -310,10 +194,18 @@ RSpec.describe ActiveContext::Concerns::Collection do
       )
     end
 
-    it 'returns the current and next indexing embedding models' do
-      expect(collection_class.indexing_embedding_models).to eq(
-        [current_indexing_embedding_model, next_indexing_embedding_model]
-      )
+    describe '.indexing_embedding_models' do
+      it 'returns the current and next indexing embedding models' do
+        expect(collection_class.indexing_embedding_models).to eq(
+          [current_indexing_embedding_model, next_indexing_embedding_model]
+        )
+      end
+    end
+
+    describe '.indexing_embedding_fields' do
+      it 'returns the current and next indexing fields' do
+        expect(collection_class.indexing_embedding_fields).to eq(%w[current_model_field next_model_field])
+      end
     end
   end
 
@@ -398,6 +290,35 @@ RSpec.describe ActiveContext::Concerns::Collection do
 
     it 'requires embedding_model_selector to be implemented' do
       expect { base_collection_class.embedding_model_selector }.to raise_error(NotImplementedError)
+    end
+  end
+
+  describe '.backfill_queue' do
+    context 'when backfill_queue is not overridden' do
+      it 'defaults to the main queue' do
+        expect(collection_class.backfill_queue).to eq(collection_class.queue)
+      end
+    end
+
+    context 'when backfill_queue is overridden' do
+      let(:custom_backfill_queue) { double }
+      let(:collection_with_custom_backfill) do
+        Class.new do
+          include ActiveContext::Concerns::Collection
+
+          def self.queue
+            'main_queue'
+          end
+
+          def self.backfill_queue
+            'custom_backfill_queue'
+          end
+        end
+      end
+
+      it 'returns the custom backfill queue' do
+        expect(collection_with_custom_backfill.backfill_queue).to eq('custom_backfill_queue')
+      end
     end
   end
 end

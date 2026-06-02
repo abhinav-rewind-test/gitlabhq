@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Secret Detection
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Secret detection exclusions
 ---
 
@@ -51,12 +51,12 @@ Define an exclusion to avoid false positives from secret detection.
 
 Prerequisites:
 
-- You must have the Maintainer or Owner role for the project.
+- You must have the Security Manager, Maintainer or Owner role for the project.
 
 To define an exclusion:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Secure** > **Security configuration**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Secure** > **Security configuration**.
 1. Scroll down to **Secret push protection**.
 1. Turn on the **Secret push protection** toggle.
 1. Select **Configure Secret Detection** ({{< icon name="settings" >}}).

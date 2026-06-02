@@ -40,8 +40,12 @@ module API
         optional :milestone_events, type: Boolean, desc: "Trigger hook on milestone events"
         optional :emoji_events, type: Boolean, desc: "Trigger hook on emoji events"
         optional :resource_access_token_events, type: Boolean, desc: "Trigger hook on project access token expiry events"
+        optional :resource_deploy_token_events, type: Boolean, desc: 'Trigger hook on deploy token expiry events'
         optional :enable_ssl_verification, type: Boolean, desc: "Do SSL verification when triggering the hook"
         optional :token, type: String, desc: "Secret token to validate received payloads; this will not be returned in the response"
+        optional :signing_token, type: String,
+          desc: "HMAC signing token used to compute the webhook-signature header. " \
+            "Must be in whsec_<base64> format encoding a 32-byte key. Not returned in the response"
         optional :push_events_branch_filter, type: String, desc: "Trigger hook on specified branch only"
         optional :custom_webhook_template, type: String, desc: "Custom template for the request payload"
         optional :branch_filter_strategy, type: String, values: WebHook.branch_filter_strategies.keys,

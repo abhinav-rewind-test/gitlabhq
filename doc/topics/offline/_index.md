@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Isolated installation.
 title: Offline GitLab
 ---
@@ -26,3 +26,4 @@ If you plan to deploy a GitLab instance on a physically-isolated and offline net
 Follow these best practices to use GitLab features in an offline environment:
 
 - [Operating the GitLab Secure scanners in an offline environment](../../user/application_security/offline_deployments/_index.md).
+- [Deploying GitLab Duo Self-Hosted in an offline environment](../../administration/gitlab_duo_self_hosted/offline_deployment.md).

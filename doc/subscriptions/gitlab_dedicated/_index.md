@@ -1,7 +1,7 @@
 ---
 stage: GitLab Dedicated
 group: Switchboard
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Discover available features and benefits of a single-tenant SaaS solution.
 title: GitLab Dedicated
 ---
@@ -32,6 +32,21 @@ With GitLab Dedicated, you can:
 - Improve organizational agility.
 - Meet strict compliance requirements.
 
+## Default URLs
+
+GitLab Dedicated assigns each tenant a set of default URLs based on the
+environment type. Replace `tenant_name` with the name of your tenant.
+
+| Component                          | Production                              | Pre-production                                |
+|------------------------------------|-----------------------------------------|-----------------------------------------------|
+| GitLab instance                    | `tenant_name.gitlab-dedicated.com`      | `tenant_name.gitlab-dedicated.systems`        |
+| GitLab Pages                       | `tenant_name.gitlab-dedicated.site`     | `tenant_name.gitlab-dedicated-pages.systems`  |
+| Switchboard (management console)   | `console.gitlab-dedicated.com`          | `console.gitlab-dedicated.systems`            |
+
+You can replace the default GitLab instance URL with a
+[custom domain](#custom-domains). Custom domains are not supported
+for GitLab Pages, and Switchboard URLs cannot be customized.
+
 ## Available features
 
 This section lists the key features that are available for GitLab Dedicated.
@@ -51,7 +66,7 @@ You can configure single sign-on (SSO) using the supported providers for authent
 Two connectivity options are available:
 
 - Public connectivity with IP allowlists: By default, your instance is publicly accessible. You can [configure an IP allowlist](../../administration/dedicated/configure_instance/network_security.md#ip-allowlist) to restrict access to specified IP addresses.
-- Private connectivity with AWS PrivateLink: You can configure [AWS PrivateLink](https://aws.amazon.com/privatelink/) for [inbound](../../administration/dedicated/configure_instance/network_security.md#inbound-private-link) and [outbound](../../administration/dedicated/configure_instance/network_security.md#outbound-private-link) connections.
+- Private connectivity with AWS PrivateLink: You can configure [AWS PrivateLink](https://aws.amazon.com/privatelink/) for [inbound](../../administration/dedicated/configure_instance/network_security.md#inbound-privatelink-connections) and [outbound](../../administration/dedicated/configure_instance/network_security.md#outbound-privatelink-connections) PrivateLink connections.
 
 For private connections to internal resources using non-public certificates, you can also [specify trusted certificates](../../administration/dedicated/configure_instance/network_security.md#custom-certificate-authorities-for-external-services).
 
@@ -64,11 +79,13 @@ it cannot directly connect to local IP addresses in your network.
 To set up private connectivity for your internal services:
 
 1. Assign hostnames to your internal services.
-1. Configure your Private Hosted Zone (PHZ) records to route to these hostnames through outbound private links.
-1. Plan for the 10-endpoint limit on outbound private links.
+1. Configure your Private Hosted Zone (PHZ) records to route to these hostnames through outbound PrivateLink connections.
+1. Plan for the 10-endpoint limit on outbound PrivateLink connections.
 
-If you need to connect to more than 10 endpoints, implement a reverse proxy or TLS passthrough on your infrastructure.
-This approach routes multiple services through fewer private link connections.
+If you need to connect to more than 10 endpoints, you can use the
+[`terraform-outbound-proxy`](https://gitlab.com/gitlab-com/gl-infra/gitlab-dedicated/customer-tools/terraform-outbound-proxy)
+Terraform module to deploy a reverse proxy in your VPC. This approach routes multiple
+services through fewer PrivateLink connections.
 
 #### Data encryption
 
@@ -76,7 +93,7 @@ Data is encrypted at rest and in transit using the latest encryption standards.
 
 Optionally, you can use your own AWS Key Management Service (KMS) encryption key for data at rest. This option gives you full control over the data you store in GitLab.
 
-For more information, see [encrypted data at rest (BYOK)](../../administration/dedicated/encryption.md#encrypted-data-at-rest).
+For more information, see [GitLab Dedicated encryption](../../administration/dedicated/encryption.md).
 
 #### Email service
 
@@ -133,7 +150,7 @@ You can access [application logs](../../administration/dedicated/monitor.md) for
 
 ### Custom domains
 
-By default, your GitLab Dedicated instance is accessible at `tenant_name.gitlab-dedicated.com`.
+By default, your GitLab Dedicated instance is accessible at its [default URL](#default-urls).
 You can configure a custom domain to use your own domain name instead, such as `gitlab.company.com`.
 
 Use custom domains to:
@@ -151,13 +168,19 @@ You can configure custom domains for:
 For more information, see [custom domains](../../administration/dedicated/configure_instance/network_security.md#custom-domains).
 
 > [!note]
-> GitLab Pages does not support custom domains. Pages sites are accessible only at
-> `tenant_name.gitlab-dedicated.site`, regardless of any custom domain configured for your
+> GitLab Pages does not support custom domains. Pages sites are accessible only at the
+> default Pages URL, regardless of any custom domain configured for your
 > GitLab Dedicated instance.
 
 ### Object storage downloads
 
-By default, GitLab Dedicated enables direct downloads from S3 for optimal performance (`proxy_download = false`). The object types that support direct downloads include:
+By default, GitLab Dedicated enables direct downloads from S3 for optimal performance (`proxy_download = false`).
+Proxied downloads are not supported. The following settings cannot be set to `true`:
+
+- `proxy_download` in the consolidated object storage configuration
+- `dependency_proxy_object_store_proxy_download` in the Dependency Proxy object storage configuration
+
+The object types that support direct downloads include:
 
 - [CI/CD job artifacts](../../administration/cicd/job_artifacts.md)
 - [Dependency Proxy files](../../administration/packages/dependency_proxy.md)
@@ -168,21 +191,6 @@ By default, GitLab Dedicated enables direct downloads from S3 for optimal perfor
 - [User uploads](../../administration/uploads.md)
 
 When you download one of the above object types, your browser or client connects directly to Amazon S3 rather than routing through GitLab infrastructure.
-
-If your network security policies prevent direct access to S3 endpoints, you can request proxied downloads through GitLab infrastructure. This configuration (`proxy_download = true`) ensures all downloads route through your GitLab Dedicated instance.
-
-#### Request proxied downloads
-
-To request proxied downloads:
-
-1. Contact your account executive with your use case details.
-1. Include information about your network security requirements.
-1. Specify which object types need proxied access.
-
-> [!note]
-> Proxied downloads impact performance compared to direct S3 access.
-
-For more information, see [proxy download](../../administration/object_storage.md#proxy-download).
 
 ### Application
 
@@ -199,18 +207,24 @@ ClickHouse Cloud integration, which is enabled by default for eligible customers
 
 - Your GitLab Dedicated tenant is deployed to a commercial AWS region.
   GitLab Dedicated for Government is not supported.
-- Your tenant's primary region supports ClickHouse Cloud. For supported regions, see
-  [primary regions](../../administration/dedicated/create_instance/data_residency_high_availability.md#primary-regions).
+- ClickHouse Cloud is available only in supported regions. For more information, see
+  [supported regions](../../administration/dedicated/create_instance/data_residency_high_availability.md#supported-regions).
 
 #### GitLab Pages
 
 You can use [GitLab Pages](../../user/project/pages/_index.md) on GitLab Dedicated to host your static website. Pages is enabled by default.
 
-Your website uses the domain `tenant_name.gitlab-dedicated.site`, where `tenant_name` matches your instance URL.
+Your website uses the default Pages URL.
 
 > [!note]
 > Custom domains are not supported. If you add a custom domain like `gitlab.my-company.com`,
-> you still access your website at `tenant_name.gitlab-dedicated.site`.
+> you still access your website at the default Pages URL.
+
+If you migrate from GitLab Self-Managed and want to preserve a legacy wildcard domain
+(for example, `*.gitlab-pages.company.com`), you can use the
+[`terraform-gitlab-pages-redirect`](https://gitlab.com/gitlab-com/gl-infra/gitlab-dedicated/customer-tools/terraform-gitlab-pages-redirect)
+Terraform module to issue 301 redirects from your existing wildcard domain to your
+default Pages URL.
 
 Control access to your website with:
 
@@ -274,6 +288,12 @@ These limits prevent any single user or automation from degrading performance fo
 For more information about how rate limits work in GitLab Dedicated,
 see [authenticated user rate limits](../../administration/dedicated/user_rate_limits.md).
 
+### Gitaly storage weights
+
+GitLab configures storage weights to distribute new repositories evenly across Gitaly nodes.
+If you modify storage weights in the Admin area, GitLab overwrites your changes during the
+next deployment.
+
 ## Unavailable features
 
 This section lists the features that are not available for GitLab Dedicated.
@@ -287,6 +307,7 @@ This section lists the features that are not available for GitLab Dedicated.
 | Kerberos authentication                       | Single sign-on authentication using Kerberos protocol.                | Must authenticate separately to GitLab.                      |
 | FortiAuthenticator/FortiToken 2FA             | Two-factor authentication using Fortinet security solutions.          | Cannot integrate existing Fortinet 2FA infrastructure.       |
 | Git clone using HTTPS with username/password  | Git operations using username and password authentication over HTTPS. | Must use access tokens for Git operations.                   |
+| SSH certificate authentication                   | SSH authentication using CA-issued certificates.                      | Must use another SSH authentication method, such as SSH keys.    |
 | [Sigstore](../../ci/yaml/signing_examples.md) | Keyless signing and verification for software supply chain security.  | Must use traditional code signing methods.                   |
 | Port remapping                                | Remap ports like SSH (22) to different inbound ports.                 | GitLab Dedicated only uses default communication ports.      |
 
@@ -299,10 +320,10 @@ This section lists the features that are not available for GitLab Dedicated.
 
 ### Development and AI features
 
-| Feature                                | Description                                                                          | Impact                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------- |
-| Some GitLab Duo AI capabilities        | AI-powered features for code suggestions, vulnerability detection, and productivity. | Limited AI assistance for development tasks. |
-| Features behind disabled feature flags | Experiment and beta features under development.                              | No access to experimental or beta features.       |
+| Feature                                | Description                                                       | Impact                                       |
+|----------------------------------------|-------------------------------------------------------------------|----------------------------------------------|
+| Some GitLab Duo AI capabilities        | AI-powered features for vulnerability detection and productivity. | Limited AI assistance for development tasks. |
+| Features behind disabled feature flags | Experiment and beta features under development.                   | No access to experimental or beta features.  |
 
 For more information about AI features, see [GitLab Duo](../../user/gitlab_duo/_index.md).
 
@@ -323,8 +344,7 @@ following the [release schedule](../../administration/dedicated/maintenance.md) 
 
 | Feature                | Description                                                     | Impact |
 | ---------------------- | --------------------------------------------------------------- | ------ |
-| Custom domains         | Host GitLab Pages sites on custom domain names.                 | Pages sites accessible only using `tenant_name.gitlab-dedicated.site`. |
-| PrivateLink access     | Private network access to GitLab Pages through AWS PrivateLink. | Pages sites are accessible over the public internet only. You can configure IP allowlists to restrict access to specific IP addresses. |
+| Custom domains         | Host GitLab Pages sites on custom domain names.                 | Pages sites accessible only using the default Pages URL. |
 | Namespaces in URL path | Organize Pages sites with namespace-based URL structure.        | Limited URL organization options. |
 
 ### Operational features

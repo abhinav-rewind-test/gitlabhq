@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Global Search
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Advanced search development guidelines
 ---
 
@@ -25,14 +25,13 @@ These recordings and presentations provide in-depth knowledge about the Advanced
 
 ### Supported versions
 
-See [Version Requirements](../integration/advanced_search/elasticsearch.md#version-requirements).
+See [version compatibility](../integration/advanced_search/elasticsearch.md#version-compatibility).
 
 Developers making significant changes to Elasticsearch queries should test their features against all our supported versions.
 
 ### Setting up your development environment
 
 - See the [Elasticsearch GDK setup instructions](https://gitlab.com/gitlab-org/gitlab-development-kit/blob/main/doc/howto/elasticsearch.md)
-
 - Ensure [Elasticsearch is running](#setting-up-your-development-environment):
 
   ```shell
@@ -526,7 +525,7 @@ The continuous update is done by calling `Elastic::ProcessBookkeepingService.tra
 
 ##### Backfilling data
 
-Add a new [Advanced Search migration](search/advanced_search_migration_styleguide.md) to backfill data by executing `scripts/elastic-migration` and following the instructions.
+Add a new [advanced search migration](search/advanced_search_migration_styleguide.md) to backfill data by executing `scripts/elastic-migration` and following the instructions.
 
 Use the [`MigrationDatabaseBackfillHelper`](search/advanced_search_migration_styleguide.md#searchelasticmigrationdatabasebackfillhelper). The [`BackfillWorkItems` migration](https://gitlab.com/gitlab-org/search-team/migration-graveyard/-/blob/09354f497698037fc21f5a65e5c2d0a70edd81eb/lib/migrate/20240816132114_backfill_work_items.rb) can be used as an example.
 
@@ -764,6 +763,74 @@ New scopes must create a new query builder class that inherits from `Search::Ela
 The query builder framework provides a collection of pre-built filters to handle common search scenarios. These filters
 simplify the process of constructing complex query conditions without having to write raw Elasticsearch query DSL.
 
+### Composing a query builder with `QUERY_COMPONENTS`
+
+A query builder declares its pipeline as a `QUERY_COMPONENTS` hash. The base class
+walks the hash and applies each method to the running `query_hash`, so subclasses
+do not override `build`.
+
+Hash keys are modules (`Filters`, `Formats`, `Sorts`, `Aggregations`). Values are
+an array of methods on that module. Each method receives the running `query_hash:`
+and the builder's `options:`, and returns the next `query_hash`.
+
+A minimal example from `Search::Elastic::UserQueryBuilder`:
+
+```ruby
+QUERY_COMPONENTS = {
+  ::Search::Elastic::Filters => %i[by_forbidden_states by_user_accessible_namespaces],
+  ::Search::Elastic::Formats => %i[size source_fields],
+  ::Search::Elastic::Sorts => %i[sort_by]
+}.freeze
+```
+
+#### Subclass hooks
+
+Override these methods on the subclass to plug into the pipeline.
+
+| Method | When it runs | Purpose |
+|---|---|---|
+| `extra_options` | At initialization. | Return option defaults to merge into `options`. |
+| `prepare_options` | Before `build_initial_query_hash`. | Mutate `options` (set defaults, transform inputs). |
+| `build_initial_query_hash` | After `prepare_options`. | Return the starting `query_hash` (full-text query, IID query, or empty bool). |
+
+#### Per-method flags
+
+To express conditional behavior, replace the bare symbol with a hash that names the
+method and the flag.
+
+| Flag | Apply the method when... |
+|---|---|
+| `migration:` | The given migration has finished. |
+| `unless_migration:` | The given migration has not finished. |
+| `skip_if_size_zero:` | At the end of the pipeline, `query_hash[:size]` is greater than `0`. Use for `Formats` and `Sorts` methods in builders that also run aggregation queries, because aggregations set `size: 0`. |
+
+Pair `migration:` and `unless_migration:` to swap one filter for another during a
+gradual rollout. After the migration completes, remove the legacy entry and the
+`migration:` flag.
+
+```ruby
+QUERY_COMPONENTS = {
+  ::Search::Elastic::Filters => [
+    :by_type,
+    { method: :by_search_level_and_membership, migration: :migration_name },
+    { method: :by_project_authorization, unless_migration: :migration_name },
+    :by_archived
+  ],
+  ::Search::Elastic::Formats => [
+    { method: :source_fields, skip_if_size_zero: true },
+    { method: :size, skip_if_size_zero: true }
+  ]
+}.freeze
+```
+
+#### Filter and aggregation contract
+
+Every method named in `QUERY_COMPONENTS` must accept `query_hash:` and `options:`
+and return the updated `query_hash`. Methods that only act when a specific option
+is set (for example, `Aggregations.by_label_ids` when `options[:aggregation]` is
+`true`) must return `query_hash` unchanged in the other case, so they can sit
+unconditionally in the pipeline.
+
 ### Creating a filter
 
 Filters are essential components in building effective Elasticsearch queries. They help narrow down search results
@@ -814,7 +881,6 @@ search functionality:
 - **Queries** are essential when relevance scoring is required to rank results by how well they match search criteria.
   They use the Boolean query's `must`, `should`, and `must_not` clauses, all of which influence the document's final
   relevance score.
-
 - **Filters** (within query context) determine whether documents appear in search results without affecting their score.
   For search operations where results only need to be included/excluded without ranking by relevance, using filters
   alone is more efficient and performs better at scale.
@@ -1330,6 +1396,174 @@ This filter combines `by_project_confidentiality` and `by_group_level_confidenti
     }
   }
 ]
+```
+
+#### `by_note_confidentiality`
+
+Applies confidentiality filters for notes. Notes have two levels of confidentiality:
+
+1. Note's own confidentiality (`confidential` field)
+1. Issue's confidentiality (`issue.confidential`, `issue.author_id`, `issue.assignee_id`)
+
+Requires `confidential`, `issue.confidential`, `issue.author_id`, `issue.assignee_id`, `project_id`, and `traversal_ids` fields.
+
+A note is visible if ANY of these conditions are met:
+
+- It's on a non-confidential issue AND the note isn't confidential
+- It's on a confidential issue but user is author/assignee/has project access via `project_id` or `traversal_ids`
+- The note is confidential but user has project access via `project_id` or `traversal_ids`
+
+This filter uses both `project_id` terms and `traversal_ids`-based authorization for efficient group-level searches.
+
+```json
+{
+  "bool": {
+    "minimum_should_match": 1,
+    "should": [
+      {
+        "bool": {
+          "filter": [
+            {
+              "bool": {
+                "_name": "filters:confidentiality:notes:not_on_issue_or_not_confidential",
+                "should": [
+                  {
+                    "bool": {
+                      "_name": "filters:confidentiality:notes:not_on_issue",
+                      "must_not": [{ "exists": { "field": "issue" } }]
+                    }
+                  },
+                  {
+                    "term": {
+                      "issue.confidential": {
+                        "_name": "filters:confidentiality:notes:non_confidential_issue",
+                        "value": false
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "bool": {
+                "_name": "filters:confidentiality:notes:not_confidential",
+                "should": [
+                  { "bool": { "must_not": [{ "exists": { "field": "confidential" } }] } },
+                  { "term": { "confidential": false } }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "bool": {
+          "filter": [
+            {
+              "term": {
+                "issue.confidential": {
+                  "_name": "filters:confidentiality:notes:issue:confidential",
+                  "value": true
+                }
+              }
+            },
+            {
+              "bool": {
+                "_name": "filters:confidentiality:notes:not_confidential",
+                "should": [
+                  { "bool": { "must_not": [{ "exists": { "field": "confidential" } }] } },
+                  { "term": { "confidential": false } }
+                ]
+              }
+            },
+            {
+              "bool": {
+                "minimum_should_match": 1,
+                "should": [
+                  {
+                    "term": {
+                      "issue.author_id": {
+                        "_name": "filters:confidentiality:notes:confidential:as_author",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "term": {
+                      "issue.assignee_id": {
+                        "_name": "filters:confidentiality:notes:confidential:as_assignee",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "terms": {
+                      "_name": "filters:confidentiality:notes:private:project:member",
+                      "project_id": [1]
+                    }
+                  },
+                  {
+                    "bool": {
+                      "minimum_should_match": 1,
+                      "should": [
+                        {
+                          "prefix": {
+                            "traversal_ids": {
+                              "_name": "filters:confidentiality:notes:private:ancestry_filter:descendants",
+                              "value": "123-"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "bool": {
+          "filter": [
+            {
+              "term": {
+                "confidential": {
+                  "_name": "filters:confidentiality:notes:confidential",
+                  "value": true
+                }
+              }
+            }
+          ],
+          "minimum_should_match": 1,
+          "should": [
+            {
+              "terms": {
+                "_name": "filters:confidentiality:notes:private:project:member",
+                "project_id": [1]
+              }
+            },
+            {
+              "bool": {
+                "minimum_should_match": 1,
+                "should": [
+                  {
+                    "prefix": {
+                      "traversal_ids": {
+                        "_name": "filters:confidentiality:notes:private:ancestry_filter:descendants",
+                        "value": "123-"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
 ```
 
 #### `by_label_ids`
@@ -2119,6 +2353,116 @@ Requires `search_level` field and at least one of `use_group_authorization` or `
     }
   }
 ]
+```
+
+#### `by_user_accessible_namespaces`
+
+Filters documents based on user access to namespaces (groups and projects). This filter is specific
+to user search queries and handles authorization at the namespace level for global, group, and
+project search levels.
+
+**Required fields:**
+
+- `namespace_ancestry_ids` - keyword field populated from `Namespace#elastic_namespace_ancestry` / `Project#elastic_namespace_ancestry` (including the `p<id>` project segment), used for `prefix` and `terms` queries in namespace hierarchy filtering
+- `current_user` - the user performing the search (for global scope)
+- `search_level` - one of `:global`, `:group`, or `:project`
+
+**Optional fields:**
+
+- `group_id` - group ID for group-level search
+- `project_id` - project ID for project-level search
+- `autocomplete` - boolean flag for autocomplete searches
+
+**Behavior by search level:**
+
+- **Global**: Returns all users
+  - **With autocomplete**: Returns users accessible through authorized groups and projects. Uses `traversal_id_prefixes` to match group hierarchies and direct project membership.
+- **Group**: Returns users in the specified group and its descendants, plus users in ancestor
+  groups.
+- **Project**: Returns users in the specified project and its ancestor groups.
+
+Example for global search:
+
+```json
+{
+  "bool": {
+    "should": [
+      {
+        "prefix": {
+          "namespace_ancestry_ids": {
+            "_name": "namespace:ancestry_filter:descendants",
+            "value": "285-"
+          }
+        }
+      },
+      {
+        "prefix": {
+          "namespace_ancestry_ids": {
+            "_name": "namespace:ancestry_filter:descendants",
+            "value": "417-418-419-"
+          }
+        }
+      },
+      {
+        "terms": {
+          "namespace_ancestry_ids": [
+            "417-418-419-p91-"
+          ],
+          "_name": "namespace:ancestry_filter:ancestors"
+        }
+      }
+    ],
+    "minimum_should_match": 1
+  }
+}
+```
+
+Example for group search in a subgroup:
+
+```json
+{
+  "bool": {
+    "should": [
+      {
+        "prefix": {
+          "namespace_ancestry_ids": {
+            "_name": "namespace:ancestry_filter:descendants",
+            "value": "807-806-805"
+          }
+        }
+      },
+      {
+        "terms": {
+          "namespace_ancestry_ids": [
+            "807-","807-806-"
+          ],
+          "_name": "namespace:ancestry_filter:ancestors"
+        }
+      }
+    ],
+    "minimum_should_match": 1
+  }
+}
+```
+
+Example for project search:
+
+```json
+{
+  "bool": {
+    "should": [
+      {
+        "terms": {
+          "namespace_ancestry_ids": [
+            "807-","807-806-", "807-806-805", "807-806-805-p123"
+          ],
+          "_name": "namespace:ancestry_filter:ancestors"
+        }
+      }
+    ],
+    "minimum_should_match": 1
+  }
+}
 ```
 
 #### `by_noteable_type`

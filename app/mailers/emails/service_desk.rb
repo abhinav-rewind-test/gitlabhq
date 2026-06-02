@@ -26,11 +26,12 @@ module Emails
         sender_email: service_desk_sender_email_address
       )
 
+      @custom_template_body = template_content('thank_you')
+
       options = {
         from: email_sender,
         to: @work_item.external_author,
-        subject: "Re: #{subject_base}",
-        **service_desk_template_content_options('thank_you')
+        subject: "Re: #{subject_base}"
       }
 
       mail_new_thread(@work_item, options)
@@ -50,11 +51,12 @@ module Emails
         sender_email: service_desk_sender_email_address
       )
 
+      @custom_template_body = template_content('new_note')
+
       options = {
         from: email_sender,
         to: recipient.email,
-        subject: subject_base,
-        **service_desk_template_content_options('new_note')
+        subject: subject_base
       }
 
       mail_answer_thread(@work_item, options)
@@ -74,11 +76,12 @@ module Emails
         sender_email: service_desk_sender_email_address
       )
 
+      @custom_template_body = template_content('new_participant')
+
       options = {
         from: email_sender,
         to: recipient.email,
-        subject: "Re: #{subject_base}",
-        **service_desk_template_content_options('new_participant')
+        subject: "Re: #{subject_base}"
       }
 
       mail_new_thread(@work_item, options)
@@ -159,15 +162,6 @@ module Emails
       })
     end
 
-    def service_desk_template_content_options(email_type)
-      return {} unless template_body = template_content(email_type)
-
-      {
-        body: template_body,
-        content_type: 'text/html; charset=UTF-8'
-      }
-    end
-
     def inject_service_desk_custom_email(force: false)
       return mail if !@service_desk_setting&.custom_email_enabled? && !force
       return mail unless @service_desk_setting.custom_email_credential.present?
@@ -184,7 +178,7 @@ module Emails
     def inject_service_desk_custom_email_reply_address
       reply_address = Gitlab::Email::ServiceDesk::CustomEmail.reply_address(@work_item, reply_key)
       headers['Reply-To'] = Mail::Address.new(reply_address).tap do |address|
-        address.display_name = reply_display_name(@work_item)
+        address.display_name = encode_display_name(reply_display_name(@work_item))
       end
     end
 

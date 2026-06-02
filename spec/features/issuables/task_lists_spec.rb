@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
+RSpec.describe 'Task Lists', :js, feature_category: :markdown do
   include Warden::Test::Helpers
 
   let_it_be(:project) { create(:project, :public, :repository) }
@@ -39,11 +39,6 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
   end
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-
     sign_in(user)
   end
 
@@ -194,7 +189,7 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
 
         expect(page).to have_selector(container)
         expect(page).to have_selector("#{container} .md .task-list .task-list-item .task-list-item-checkbox")
-        expect(page).to have_selector("#{container} .js-task-list-field", visible: false)
+        expect(page).to have_selector("#{container} .js-task-list-field", visible: :hidden)
         expect(page).to have_selector('form.js-issuable-update')
       end
 
@@ -276,7 +271,7 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
   describe 'markdown task edge cases' do
     describe 'commented tasks' do
       let(:commented_tasks_markdown) do
-        <<-EOT.strip_heredoc
+        <<~MARKDOWN
         <!-- comment text -->
 
         text
@@ -288,7 +283,7 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
         -->
 
         - [ ] b
-        EOT
+        MARKDOWN
       end
 
       let!(:issue) { create(:issue, description: commented_tasks_markdown, author: user, project: project) }
@@ -314,13 +309,13 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
 
     describe 'tasks in code blocks' do
       let(:code_tasks_markdown) do
-        <<-EOT.strip_heredoc
+        <<~MARKDOWN
         ```
         - [ ] a
         ```
 
         - [ ] b
-        EOT
+        MARKDOWN
       end
 
       let!(:issue) { create(:issue, description: code_tasks_markdown, author: user, project: project) }
@@ -346,14 +341,14 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
 
     describe 'summary with no blank line' do
       let(:summary_no_blank_line_markdown) do
-        <<-EOT.strip_heredoc
+        <<~MARKDOWN
         <details>
         <summary>No blank line after summary element breaks task list</summary>
         1. [ ] People Ops: do such and such
         </details>
 
         * [ ] Task 1
-        EOT
+        MARKDOWN
       end
 
       let!(:issue) { create(:issue, description: summary_no_blank_line_markdown, author: user, project: project) }
@@ -377,7 +372,7 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
 
     describe 'summary properly formatted' do
       let(:summary_markdown) do
-        <<-EOT.strip_heredoc
+        <<~MARKDOWN
         <details open>
         <summary>Valid detail/summary with tasklist</summary>
 
@@ -386,7 +381,7 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
         </details>
 
         * [x] Task 1
-        EOT
+        MARKDOWN
       end
 
       let!(:issue) { create(:issue, description: summary_markdown, author: user, project: project) }
@@ -413,10 +408,10 @@ RSpec.describe 'Task Lists', :js, feature_category: :team_planning do
 
     describe 'markdown starting with new line character' do
       let(:markdown_starting_with_new_line) do
-        <<-EOT.strip_heredoc
+        <<~MARKDOWN
 
         - [ ] Task 1
-        EOT
+        MARKDOWN
       end
 
       let(:merge_request) { create(:merge_request, description: markdown_starting_with_new_line, author: user, source_project: project) }

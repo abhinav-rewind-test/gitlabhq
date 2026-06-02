@@ -2,7 +2,7 @@
 /* global Issuable */
 
 import $ from 'jquery';
-import { difference, isEqual, escape, sortBy, template, union } from 'lodash';
+import { difference, isEqual, escape, sortBy, template, union } from 'lodash-es';
 import initDeprecatedJQueryDropdown from '~/deprecated_jquery_dropdown';
 import IssuableBulkUpdateActions from '~/merge_requests/list/issuable_bulk_update_actions';
 import { isScopedLabel } from '~/lib/utils/common_utils';
@@ -399,7 +399,7 @@ export default class LabelsSelect {
     // see: http://2ality.com/2016/05/template-literal-whitespace.html#joining-arrays
 
     const linkOpenTag =
-      '<a href="<%- issueUpdateURL.slice(0, issueUpdateURL.lastIndexOf("/")) %>?label_name[]=<%- encodeURIComponent(label.title) %>" class="gl-link gl-label-link has-tooltip" <%= linkAttrs %> title="<%= tooltipTitleTemplate({ label, isScopedLabel, enableScopedLabels, escapeStr }) %>">';
+      '<a href="<%- issueUpdateURL.slice(0, issueUpdateURL.lastIndexOf("/")) %>?label_name[]=<%- encodeURIComponent(label.title) %>" class="gl-link gl-label-link has-tooltip" <%= linkAttrs %> title="<%= tooltipTitleTemplate({ label, isScopedLabel, enableScopedLabels, escapeStr }) %>" aria-label="<%- label.title %>">';
     const labelTemplate = template(
       [
         '<span class="gl-label">',

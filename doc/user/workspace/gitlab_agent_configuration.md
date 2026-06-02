@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Remote Development
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure the GitLab agent for Kubernetes to support your workspace.
 title: GitLab agent for Kubernetes configuration
 ---
@@ -26,7 +26,7 @@ agent is already installed in the Kubernetes cluster.
 
 Prerequisites:
 
-- You must complete the setup steps in [Tutorial: Set up the GitLab agent for Kubernetes](set_up_gitlab_agent_and_proxies.md).
+- You must complete the setup steps in the [set up the GitLab agent for Kubernetes tutorial](set_up_gitlab_agent_and_proxies.md).
 - The agent configuration must have the `remote_development` module enabled, and the required fields of this module must be correctly set.
 
   > [!note]
@@ -81,8 +81,8 @@ Prerequisites:
 
 To allow a cluster agent for workspaces in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. On the left sidebar, select **Settings** > **Workspaces**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Workspaces**.
 1. In the **Group agents** section, select the **All agents** tab.
 1. From the list of available agents, find the agent with status **Blocked**, and select **Allow**.
 1. On the confirmation dialog, select **Allow agent**.
@@ -98,8 +98,8 @@ Prerequisites:
 
 To remove an allowed cluster agent from a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. On the left sidebar, select **Settings** > **Workspaces**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Workspaces**.
 1. In the **Group agents** section, select the **Allowed agents** tab.
 1. From the list of allowed agents, find the agent you want to remove, and select **Block**.
 1. On the confirmation dialog, select **Block agent**.
@@ -127,7 +127,7 @@ Prerequisites:
 To allow a cluster agent for workspaces on the instance:
 
 1. In the upper-right corner, select **Admin**.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Available agents for workspaces**.
 1. From the list of agents with workspaces enabled, find the agent you want to allow, and select the
    availability toggle.
@@ -147,7 +147,7 @@ Prerequisites:
 To remove an allowed cluster agent from the instance:
 
 1. In the upper-right corner, select **Admin**.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Available agents for workspaces**.
 1. From the list of allowed agents, find the agent you want to remove, and clear the availability toggle.
 

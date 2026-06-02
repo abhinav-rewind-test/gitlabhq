@@ -28,19 +28,12 @@ module Mutations
           description: 'Inputs to use when playing the job.'
 
         authorize :play_job
+        authorize_granular_token permissions: :play_job, boundary_argument: :id, boundary_type: :project
 
         def resolve(id:, variables:, inputs:)
           job = authorized_find!(id: id)
-          project = job.project
           variables = variables.map(&:to_h)
           inputs = inputs.to_h { |input| [input[:name].to_sym, input[:value]] }
-
-          if inputs.present? && !Feature.enabled?(:ci_job_inputs, project)
-            return {
-              job: nil,
-              errors: ['The inputs argument is not available']
-            }
-          end
 
           result = job.play(current_user, variables, inputs)
 

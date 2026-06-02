@@ -27,14 +27,10 @@ module Namespaces
         return AncestorAlreadyArchivedError if group.ancestors_archived?
         return ScheduledDeletionError if group.scheduled_for_deletion_in_hierarchy_chain?
 
-        if unarchive_descendants?
-          group.transaction do
-            archive_group
-            group.unarchive_descendants!
-            group.unarchive_all_projects!
-          end
-        else
+        group.transaction do
           archive_group
+          group.unarchive_descendants!
+          group.unarchive_all_projects!
         end
 
         after_archive
@@ -48,7 +44,7 @@ module Namespaces
 
       def archive_group
         Namespace.transaction do
-          group.archive!(transition_user: current_user)
+          group.archive!(transition_user: current_user) unless group.state == 'archived'
           group.namespace_settings.update!(archived: true)
         end
       end
@@ -65,10 +61,6 @@ module Namespaces
 
       def error_response(message)
         ServiceResponse.error(message: message)
-      end
-
-      def unarchive_descendants?
-        Feature.enabled?(:cascade_unarchive_group, group, type: :gitlab_com_derisk)
       end
     end
   end

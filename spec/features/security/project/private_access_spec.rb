@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe "Private Project Access", feature_category: :system_access do
   include AccessMatchers
 
-  let_it_be(:project, reload: true) do
+  let_it_be_with_reload(:project) do
     create(:project, :private, :repository, :with_namespace_settings, public_builds: false)
   end
 
@@ -520,21 +520,6 @@ RSpec.describe "Private Project Access", feature_category: :system_access do
   end
 
   describe "GET /:project_path/pipeline_schedules/new" do
-    subject { new_project_pipeline_schedule_path(project) }
-
-    it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { is_expected.to be_allowed_for(:admin) }
-    it('is denied for admin when admin mode is disabled') { is_expected.to be_denied_for(:admin) }
-    it { is_expected.to be_allowed_for(:owner).of(project) }
-    it { is_expected.to be_allowed_for(:maintainer).of(project) }
-    it { is_expected.to be_allowed_for(:developer).of(project) }
-    it { is_expected.to be_denied_for(:reporter).of(project) }
-    it { is_expected.to be_denied_for(:guest).of(project) }
-    it { is_expected.to be_denied_for(:user) }
-    it { is_expected.to be_denied_for(:external) }
-    it { is_expected.to be_denied_for(:visitor) }
-  end
-
-  describe "GET /:project_path/-/environments/new" do
     subject { new_project_pipeline_schedule_path(project) }
 
     it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { is_expected.to be_allowed_for(:admin) }

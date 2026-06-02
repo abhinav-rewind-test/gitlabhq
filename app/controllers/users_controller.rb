@@ -91,9 +91,9 @@ class UsersController < ApplicationController
         @is_personal_homepage = params[:is_personal_homepage].present? && Feature.enabled?(:personal_homepage,
           current_user)
 
-        if Feature.enabled?(:profile_tabs_vue, current_user) && !@is_personal_homepage
+        if params[:type] == 'raw' || (Feature.enabled?(:profile_tabs_vue, current_user) && !@is_personal_homepage)
           @events = if user.include_private_contributions?
-                      @events
+                      @events.reject(&:target_deleted?)
                     else
                       @events.select { |event| event.visible_to_user?(current_user) }
                     end
@@ -227,7 +227,7 @@ class UsersController < ApplicationController
     if followee
       flash[:alert] = followee.errors.full_messages.join(', ') if followee&.errors&.any?
     else
-      flash[:alert] = s_('Action not allowed.')
+      flash[:alert] = _('Action not allowed.')
     end
 
     redirect_path = referer_path(request) || @user
@@ -272,7 +272,8 @@ class UsersController < ApplicationController
   end
 
   def load_events
-    @events = UserRecentEventsFinder.new(current_user, user, nil, params).execute
+    event_filter = EventFilter.new(params[:event_filter]) if params[:event_filter].present?
+    @events = UserRecentEventsFinder.new(current_user, user, event_filter, params).execute
 
     Events::RenderService.new(current_user).execute(@events, atom_request: request.format.atom?)
   end

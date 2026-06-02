@@ -1,35 +1,54 @@
-import Vue from 'vue';
+import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
-import { GlLoadingIcon, GlModal, GlKeysetPagination } from '@gitlab/ui';
+import { GlAlert, GlLoadingIcon, GlModal, GlKeysetPagination } from '@gitlab/ui';
+import { createMockSubscription } from 'mock-apollo-client';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import { stubComponent } from 'helpers/stub_component';
 import waitForPromises from 'helpers/wait_for_promises';
 import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createAlert } from '~/alert';
 import Api from '~/api';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { setupQueryPollingByVisibility } from '~/ci/pipeline_details/graph/utils';
 import PipelinesTable from '~/ci/common/pipelines_table.vue';
+import { DEFAULT_MANUAL_ACTIONS_LIMIT } from '~/ci/constants';
 import PipelinesTableWrapper from '~/ci/merge_requests/components/pipelines_table_wrapper.vue';
+import RunPipelineButton from '~/ci/common/run_pipeline_button.vue';
 import { MR_PIPELINE_TYPE_DETACHED } from '~/ci/merge_requests/constants';
 import getMergeRequestsPipelines from '~/ci/merge_requests/graphql/queries/get_merge_request_pipelines.query.graphql';
+import getSinglePipeline from '~/ci/pipelines_page/graphql/queries/get_single_pipeline.query.graphql';
 import cancelPipelineMutation from '~/ci/pipeline_details/graphql/mutations/cancel_pipeline.mutation.graphql';
 import retryPipelineMutation from '~/ci/pipeline_details/graphql/mutations/retry_pipeline.mutation.graphql';
 import mrPipelineStatusesUpdatedSubscription from '~/ci/merge_requests/graphql/subscriptions/mr_pipeline_statuses_updated.subscription.graphql';
+import getPipelinesDownstream from '~/ci/merge_requests/graphql/queries/get_pipelines_downstream.query.graphql';
+import downstreamPipelineStatusUpdatedSubscription from '~/ci/merge_requests/graphql/subscriptions/downstream_pipeline_status_updated.subscription.graphql';
+import getPipelineCreationRequests from '~/ci/merge_requests/graphql/queries/get_pipeline_creation_requests.query.graphql';
+import pipelineCreationRequestsUpdatedSubscription from '~/ci/merge_requests/graphql/subscriptions/pipeline_creation_requests_updated.subscription.graphql';
 import {
   HTTP_STATUS_BAD_REQUEST,
   HTTP_STATUS_INTERNAL_SERVER_ERROR,
   HTTP_STATUS_UNAUTHORIZED,
 } from '~/lib/utils/http_status';
-import { DEFAULT_MANUAL_ACTIONS_LIMIT } from '~/ci/constants';
+import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
 import {
   generateMRPipelinesResponse,
   generateMockPipeline,
+  generateMockDownstreamPipeline,
+  generateSinglePipelineResponse,
+  generateMockDownstreamResponse,
   mockPipelineUpdateResponseEmpty,
   mockPipelineUpdateResponse,
+  mockDownstreamPipelineUpdateResponse,
+  generatePipelineCreationRequestsResponse,
+  generatePipelineCreationSubscriptionResponse,
+  generatePipelineCreationRequest,
 } from '../mock_data';
 
 Vue.use(VueApollo);
 
 jest.mock('~/alert');
+jest.mock('~/ci/pipeline_details/graph/utils');
+jest.mock('~/sentry/sentry_browser_wrapper');
 
 const $toast = {
   show: jest.fn(),
@@ -37,9 +56,16 @@ const $toast = {
 
 let wrapper;
 let mergeRequestPipelinesRequest;
+let getSinglePipelineRequest;
+let getPipelinesDownstreamRequest;
 let cancelPipelineMutationRequest;
 let retryPipelineMutationRequest;
 let subscriptionHandler;
+let downstreamSubscriptionHandler;
+let mockDownstreamSubscription;
+let pipelineCreationRequestsHandler;
+let pipelineCreationSubscriptionHandler;
+let mockPipelineCreationSubscription;
 let apolloMock;
 const showMock = jest.fn();
 
@@ -47,6 +73,7 @@ const defaultProvide = {
   graphqlPath: '/api/graphql/',
   mergeRequestId: 1,
   targetProjectFullPath: '/group/project',
+  newPipelinePath: '/group/project/-/pipelines/new',
 };
 
 const defaultProps = {
@@ -70,14 +97,35 @@ const createResponseWithPageInfo = ({ hasNextPage, hasPreviousPage }) => {
 };
 
 const createComponent = ({ mountFn = shallowMountExtended, props = {} } = {}) => {
+  mockDownstreamSubscription = createMockSubscription();
+  let isFirstDownstreamCall = true;
+  downstreamSubscriptionHandler = jest.fn().mockImplementation(() => {
+    if (isFirstDownstreamCall) {
+      isFirstDownstreamCall = false;
+      return mockDownstreamSubscription;
+    }
+    return createMockSubscription();
+  });
+
   const handlers = [
     [getMergeRequestsPipelines, mergeRequestPipelinesRequest],
+    [getSinglePipeline, getSinglePipelineRequest],
+    [getPipelinesDownstream, getPipelinesDownstreamRequest],
     [cancelPipelineMutation, cancelPipelineMutationRequest],
     [retryPipelineMutation, retryPipelineMutationRequest],
     [mrPipelineStatusesUpdatedSubscription, subscriptionHandler],
+    [downstreamPipelineStatusUpdatedSubscription, downstreamSubscriptionHandler],
+    [getPipelineCreationRequests, pipelineCreationRequestsHandler],
   ];
 
   apolloMock = createMockApollo(handlers);
+
+  mockPipelineCreationSubscription = createMockSubscription();
+  pipelineCreationSubscriptionHandler = jest.fn().mockReturnValue(mockPipelineCreationSubscription);
+  apolloMock.defaultClient.setRequestHandler(
+    pipelineCreationRequestsUpdatedSubscription,
+    pipelineCreationSubscriptionHandler,
+  );
 
   wrapper = mountFn(PipelinesTableWrapper, {
     apolloProvider: apolloMock,
@@ -109,8 +157,8 @@ const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
 const findModal = () => wrapper.findComponent(GlModal);
 const findMrPipelinesDocsLink = () => wrapper.findByTestId('mr-pipelines-docs-link');
 const findPipelinesList = () => wrapper.findComponent(PipelinesTable);
-const findRunPipelineBtn = () => wrapper.findByTestId('run_pipeline_button');
-const findRunPipelineBtnMobile = () => wrapper.findByTestId('run_pipeline_button_mobile');
+const findRunPipelineBtn = () => wrapper.findComponent(RunPipelineButton);
+const findCreationFailedAlert = () => wrapper.findComponent(GlAlert);
 const findTableRows = () => wrapper.findAllByTestId('pipeline-table-row');
 const findUserPermissionsDocsLink = () => wrapper.findByTestId('user-permissions-docs-link');
 const findPagination = () => wrapper.findComponent(GlKeysetPagination);
@@ -119,6 +167,14 @@ beforeEach(() => {
   mergeRequestPipelinesRequest = jest.fn();
   mergeRequestPipelinesRequest.mockResolvedValue(generateMRPipelinesResponse({ count: 1 }));
 
+  getSinglePipelineRequest = jest.fn();
+  getSinglePipelineRequest.mockResolvedValue(
+    generateSinglePipelineResponse(generateMockPipeline({ id: '1' })),
+  );
+
+  getPipelinesDownstreamRequest = jest.fn();
+  getPipelinesDownstreamRequest.mockResolvedValue(generateMockDownstreamResponse());
+
   cancelPipelineMutationRequest = jest.fn();
   cancelPipelineMutationRequest.mockResolvedValue({ data: { pipelineCancel: { errors: [] } } });
 
@@ -126,6 +182,10 @@ beforeEach(() => {
   retryPipelineMutationRequest.mockResolvedValue({ data: { pipelineRetry: { errors: [] } } });
 
   subscriptionHandler = jest.fn().mockResolvedValue(mockPipelineUpdateResponseEmpty);
+
+  pipelineCreationRequestsHandler = jest
+    .fn()
+    .mockResolvedValue(generatePipelineCreationRequestsResponse({ requests: [] }));
 });
 
 afterEach(() => {
@@ -203,7 +263,7 @@ describe('PipelinesTableWrapper component', () => {
       });
 
       it('should render correct empty state content', () => {
-        expect(findRunPipelineBtn().exists()).toBe(true);
+        expect(findRunPipelineBtn().props()).toMatchObject({ isLoading: false, mergeRequestId: 1 });
         expect(findMrPipelinesDocsLink().attributes('href')).toBe(
           '/help/ci/pipelines/merge_request_pipelines.md#prerequisites',
         );
@@ -239,22 +299,75 @@ describe('PipelinesTableWrapper component', () => {
   });
 
   describe('polling', () => {
-    beforeEach(async () => {
+    it('toggles polling by tab visibility', async () => {
       await createComponent();
+
+      expect(setupQueryPollingByVisibility).toHaveBeenCalledWith(expect.anything(), 60000);
     });
 
-    it('polls every 10 seconds', async () => {
+    it('polls every 60 seconds', async () => {
+      await createComponent();
+
       expect(mergeRequestPipelinesRequest).toHaveBeenCalledTimes(1);
 
-      jest.advanceTimersByTime(5000);
+      jest.advanceTimersByTime(30000);
       await waitForPromises();
 
       expect(mergeRequestPipelinesRequest).toHaveBeenCalledTimes(1);
 
-      jest.advanceTimersByTime(5000);
+      jest.advanceTimersByTime(30000);
       await waitForPromises();
 
       expect(mergeRequestPipelinesRequest).toHaveBeenCalledTimes(2);
+    });
+
+    describe('with pending pipelines from subscription', () => {
+      const succeededRequest = generatePipelineCreationRequest({
+        status: 'SUCCEEDED',
+        pipelineId: 'gid://gitlab/Ci::Pipeline/999',
+      });
+
+      const addPipelineViaSubscription = async () => {
+        mockPipelineCreationSubscription.next(
+          generatePipelineCreationSubscriptionResponse({ requests: [succeededRequest] }),
+        );
+        await waitForPromises();
+      };
+
+      it('preserves pipelines not yet returned by server', async () => {
+        await createComponent();
+        await addPipelineViaSubscription();
+
+        expect(findPipelinesList().props('pipelines')[0].id).toBe(999);
+
+        mergeRequestPipelinesRequest.mockResolvedValue(generateMRPipelinesResponse({ count: 1 }));
+        apolloMock.defaultClient.resetStore();
+        await waitForPromises();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        expect(pipelines).toHaveLength(2);
+        expect(pipelines[0].id).toBe(999);
+      });
+
+      it('does not duplicate pipeline once server returns it', async () => {
+        await createComponent();
+        await addPipelineViaSubscription();
+
+        const responseWithNewPipeline = generateMRPipelinesResponse({ count: 2 });
+        responseWithNewPipeline.data.project.mergeRequest.pipelines.nodes = [
+          generateMockPipeline({ id: '999', status: 'RUNNING' }),
+          generateMockPipeline({ id: '1', status: 'SUCCESS' }),
+        ];
+        mergeRequestPipelinesRequest.mockResolvedValue(responseWithNewPipeline);
+        apolloMock.defaultClient.resetStore();
+        await waitForPromises();
+
+        const pipelineIds = findPipelinesList()
+          .props('pipelines')
+          .map((p) => p.id);
+        expect(pipelineIds).toHaveLength(2);
+        expect(pipelineIds.filter((id) => id === 999)).toHaveLength(1);
+      });
     });
   });
 
@@ -266,12 +379,11 @@ describe('PipelinesTableWrapper component', () => {
 
       mergeRequestPipelinesRequest.mockResolvedValue(response);
 
-      await createComponent({ mountFn: mountExtended });
+      await createComponent();
     });
 
     it('renders the run pipeline button', () => {
-      expect(findRunPipelineBtn().exists()).toBe(true);
-      expect(findRunPipelineBtnMobile().exists()).toBe(true);
+      expect(findRunPipelineBtn().props()).toMatchObject({ isLoading: false, mergeRequestId: 1 });
     });
   });
 
@@ -282,40 +394,6 @@ describe('PipelinesTableWrapper component', () => {
           mergeRequestEventType: MR_PIPELINE_TYPE_DETACHED,
         });
         mergeRequestPipelinesRequest.mockResolvedValue(response);
-      });
-
-      describe('success', () => {
-        beforeEach(async () => {
-          jest.spyOn(Api, 'postMergeRequestPipeline').mockResolvedValue();
-          await createComponent({ mountFn: mountExtended });
-          await findRunPipelineBtn().trigger('click');
-          await waitForPromises();
-        });
-
-        it('displays a toast message during pipeline creation', () => {
-          expect($toast.show).toHaveBeenCalledWith('Creating pipeline.');
-        });
-
-        it('on desktop, shows a loading button', async () => {
-          await findRunPipelineBtn().trigger('click');
-
-          expect(findRunPipelineBtn().props('loading')).toBe(true);
-
-          await waitForPromises();
-
-          expect(findRunPipelineBtn().props('loading')).toBe(false);
-        });
-
-        it('on mobile, shows a loading button', async () => {
-          await findRunPipelineBtnMobile().trigger('click');
-
-          expect(findRunPipelineBtn().props('loading')).toBe(true);
-
-          await waitForPromises();
-
-          expect(findRunPipelineBtn().props('disabled')).toBe(false);
-          expect(findRunPipelineBtn().props('loading')).toBe(false);
-        });
       });
 
       describe('failure', () => {
@@ -333,7 +411,7 @@ describe('PipelinesTableWrapper component', () => {
           jest.spyOn(Api, 'postMergeRequestPipeline').mockRejectedValue(response);
           await createComponent({ mountFn: mountExtended });
 
-          await findRunPipelineBtn().trigger('click');
+          await findRunPipelineBtn().vm.$emit('run-pipeline');
 
           await waitForPromises();
 
@@ -365,18 +443,11 @@ describe('PipelinesTableWrapper component', () => {
         jest.spyOn(Api, 'postMergeRequestPipeline').mockResolvedValue();
       });
 
-      it('on desktop, shows a security warning modal', async () => {
-        await findRunPipelineBtn().trigger('click');
+      it('shows a security warning modal', async () => {
+        await findRunPipelineBtn().vm.$emit('run-pipeline');
 
-        expect(findModal()).not.toBeNull();
-        expect(findRunPipelineBtn().props('loading')).toBe(false);
-      });
-
-      it('on mobile, shows a security warning modal', async () => {
-        await findRunPipelineBtnMobile().trigger('click');
-
-        expect(findModal()).not.toBeNull();
-        expect(findRunPipelineBtn().props('loading')).toBe(false);
+        expect(showMock).toHaveBeenCalled();
+        expect(findRunPipelineBtn().props('isLoading')).toBe(false);
       });
     });
 
@@ -399,7 +470,7 @@ describe('PipelinesTableWrapper component', () => {
         expect(findEmptyState().exists()).toBe(true);
         expect(findModal().exists()).toBe(true);
 
-        await findRunPipelineBtn().trigger('click');
+        await findRunPipelineBtn().vm.$emit('run-pipeline');
 
         expect(showMock).toHaveBeenCalled();
       });
@@ -407,7 +478,12 @@ describe('PipelinesTableWrapper component', () => {
 
     describe('events', () => {
       const response = generateMRPipelinesResponse();
-      const pipeline = response.data.project.mergeRequest.pipelines.nodes[0];
+      const rawPipeline = response.data.project.mergeRequest.pipelines.nodes[0];
+      const pipeline = {
+        ...rawPipeline,
+        id: 1,
+        graphqlId: rawPipeline.id,
+      };
 
       beforeEach(async () => {
         mergeRequestPipelinesRequest.mockResolvedValue(response);
@@ -426,6 +502,19 @@ describe('PipelinesTableWrapper component', () => {
             { id: 'gid://gitlab/Ci::Pipeline/1' },
           ]);
         });
+
+        it('refetches the single pipeline after successful cancel', async () => {
+          expect(getSinglePipelineRequest).not.toHaveBeenCalled();
+
+          findPipelinesList().vm.$emit('cancel-pipeline', pipeline);
+
+          await waitForPromises();
+
+          expect(getSinglePipelineRequest).toHaveBeenCalledWith({
+            fullPath: '/group/project',
+            id: 'gid://gitlab/Ci::Pipeline/1',
+          });
+        });
       });
 
       describe('When retrying a pipeline', () => {
@@ -440,17 +529,113 @@ describe('PipelinesTableWrapper component', () => {
             { id: 'gid://gitlab/Ci::Pipeline/1' },
           ]);
         });
-      });
 
-      describe('When refreshing a pipeline', () => {
-        it('calls the apollo query again', async () => {
-          expect(mergeRequestPipelinesRequest.mock.calls).toHaveLength(1);
+        it('refetches the single pipeline after successful retry', async () => {
+          expect(getSinglePipelineRequest).not.toHaveBeenCalled();
 
-          findPipelinesList().vm.$emit('refresh-pipelines-table');
+          findPipelinesList().vm.$emit('retry-pipeline', pipeline);
 
           await waitForPromises();
 
-          expect(mergeRequestPipelinesRequest.mock.calls).toHaveLength(2);
+          expect(getSinglePipelineRequest).toHaveBeenCalledWith({
+            fullPath: '/group/project',
+            id: 'gid://gitlab/Ci::Pipeline/1',
+          });
+        });
+      });
+
+      describe('When a job action is executed', () => {
+        it('refetches the single pipeline', async () => {
+          expect(getSinglePipelineRequest).not.toHaveBeenCalled();
+
+          findPipelinesList().vm.$emit('job-action-executed', pipeline);
+
+          await waitForPromises();
+
+          expect(getSinglePipelineRequest).toHaveBeenCalledWith({
+            fullPath: '/group/project',
+            id: 'gid://gitlab/Ci::Pipeline/1',
+          });
+        });
+
+        it('updates the pipeline in the list with refetched data', async () => {
+          const updatedPipeline = generateMockPipeline({ id: '1', status: 'RUNNING' });
+          getSinglePipelineRequest.mockResolvedValue(
+            generateSinglePipelineResponse(updatedPipeline),
+          );
+
+          findPipelinesList().vm.$emit('job-action-executed', pipeline);
+
+          await waitForPromises();
+
+          const pipelinesAfterUpdate = findPipelinesList().props('pipelines');
+          expect(pipelinesAfterUpdate[0].detailedStatus.name).toBe('RUNNING');
+        });
+
+        it('updates a running pipeline to canceled status after cancel action', async () => {
+          const runningResponse = generateMRPipelinesResponse({ count: 1, status: 'RUNNING' });
+          mergeRequestPipelinesRequest.mockResolvedValue(runningResponse);
+          await createComponent();
+
+          const pipelinesBefore = findPipelinesList().props('pipelines');
+          expect(pipelinesBefore[0].detailedStatus.name).toBe('RUNNING');
+
+          const canceledPipeline = generateMockPipeline({ id: '1', status: 'CANCELED' });
+          getSinglePipelineRequest.mockResolvedValue(
+            generateSinglePipelineResponse(canceledPipeline),
+          );
+
+          findPipelinesList().vm.$emit('job-action-executed', pipelinesBefore[0]);
+
+          await waitForPromises();
+
+          const pipelinesAfter = findPipelinesList().props('pipelines');
+          expect(pipelinesAfter[0].detailedStatus.name).toBe('CANCELED');
+        });
+
+        it('preserves the graphqlId and numeric id on merged pipeline', async () => {
+          const updatedPipeline = generateMockPipeline({ id: '1', status: 'RUNNING' });
+          getSinglePipelineRequest.mockResolvedValue(
+            generateSinglePipelineResponse(updatedPipeline),
+          );
+
+          findPipelinesList().vm.$emit('job-action-executed', pipeline);
+
+          await waitForPromises();
+
+          const pipelinesAfterUpdate = findPipelinesList().props('pipelines');
+          expect(pipelinesAfterUpdate[0].id).toBe(1);
+          expect(pipelinesAfterUpdate[0].graphqlId).toBe('gid://gitlab/Ci::Pipeline/1');
+        });
+
+        it('captures Sentry error on refetch failure', async () => {
+          getSinglePipelineRequest.mockRejectedValueOnce(new Error('network error'));
+
+          findPipelinesList().vm.$emit('job-action-executed', pipeline);
+
+          await waitForPromises();
+
+          expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
+        });
+      });
+
+      describe('when a manual job is played via pipeline actions dropdown', () => {
+        beforeEach(() => {
+          // simulate PipelinesManualActions → PipelineOperations → PipelinesTable
+          findPipelinesList().vm.$emit('job-action-executed', pipeline);
+          return waitForPromises();
+        });
+
+        it('refetches the single pipeline', () => {
+          expect(getSinglePipelineRequest).toHaveBeenCalledWith({
+            fullPath: defaultProvide.targetProjectFullPath,
+            id: pipeline.graphqlId,
+          });
+        });
+
+        it('does not reset pagination', () => {
+          // refetchSinglePipeline does not reset pagination
+          expect(mergeRequestPipelinesRequest).toHaveBeenCalledTimes(1); // only initial load
         });
       });
     });
@@ -523,6 +708,54 @@ describe('PipelinesTableWrapper component', () => {
           fullPath: '/group/project',
           mergeRequestIid: '1',
         });
+      });
+    });
+
+    describe('clears downstream data on page change', () => {
+      const fullDownstream = generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' });
+
+      beforeEach(() => {
+        getPipelinesDownstreamRequest.mockResolvedValue(
+          generateMockDownstreamResponse([{ pipelineId: '1', downstreamNodes: [fullDownstream] }]),
+        );
+      });
+
+      it('clears downstream data when navigating to next page', async () => {
+        await createComponent();
+        await waitForPromises();
+
+        const pipelinesBeforeNav = findPipelinesList().props('pipelines');
+        expect(pipelinesBeforeNav[0].downstream?.nodes).toHaveLength(1);
+
+        getPipelinesDownstreamRequest.mockResolvedValue(generateMockDownstreamResponse());
+
+        findPagination().vm.$emit('next');
+        await waitForPromises();
+
+        const pipelinesAfterNav = findPipelinesList().props('pipelines');
+        expect(pipelinesAfterNav[0].downstream?.nodes).toHaveLength(0);
+      });
+
+      it('clears downstream data when navigating to previous page', async () => {
+        const responseWithPreviousPage = createResponseWithPageInfo({
+          hasNextPage: false,
+          hasPreviousPage: true,
+        });
+        mergeRequestPipelinesRequest.mockResolvedValue(responseWithPreviousPage);
+
+        await createComponent();
+        await waitForPromises();
+
+        const pipelinesBeforeNav = findPipelinesList().props('pipelines');
+        expect(pipelinesBeforeNav[0].downstream?.nodes).toHaveLength(1);
+
+        getPipelinesDownstreamRequest.mockResolvedValue(generateMockDownstreamResponse());
+
+        findPagination().vm.$emit('prev');
+        await waitForPromises();
+
+        const pipelinesAfterNav = findPipelinesList().props('pipelines');
+        expect(pipelinesAfterNav[0].downstream?.nodes).toHaveLength(0);
       });
     });
   });
@@ -605,12 +838,540 @@ describe('PipelinesTableWrapper component', () => {
         },
       );
 
+      it('passes overall stage status to the pipelines table', async () => {
+        const mockSub = createMockSubscription();
+        subscriptionHandler = jest.fn().mockReturnValue(mockSub);
+
+        const response = generateMRPipelinesResponse({ count: 0 });
+        response.data.project.mergeRequest.pipelines.nodes = [
+          generateMockPipeline({ id: '701', status: 'RUNNING' }),
+        ];
+
+        mergeRequestPipelinesRequest.mockResolvedValue(response);
+        await createComponent();
+
+        const originalPipeline = findPipelinesList().props('pipelines')[0];
+        const originalStageStatuses = originalPipeline.stages.nodes.map(
+          (s) => s.detailedStatus.name,
+        );
+
+        expect(originalStageStatuses).toEqual(['SUCCESS', 'SUCCESS', 'SUCCESS']);
+
+        mockSub.next(mockPipelineUpdateResponse);
+        await waitForPromises();
+
+        const updatedPipeline = findPipelinesList().props('pipelines')[0];
+        const updatedStages = updatedPipeline.stages.nodes;
+
+        expect(updatedStages.map((s) => s.detailedStatus.name)).toEqual([
+          'RUNNING',
+          'CREATED',
+          'CREATED',
+        ]);
+        expect(updatedStages.map((s) => s.detailedStatus.icon)).toEqual([
+          'status_running',
+          'status_created',
+          'status_created',
+        ]);
+        expect(updatedStages.map((s) => s.detailedStatus.tooltip)).toEqual([
+          'running',
+          'created',
+          'created',
+        ]);
+      });
+
       it('skips subscription when there are no pipelines', async () => {
         mergeRequestPipelinesRequest.mockResolvedValue(generateMRPipelinesResponse({ count: 0 }));
         subscriptionHandler.mockResolvedValue(mockPipelineUpdateResponse);
         await createComponent();
 
         expect(subscriptionHandler).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('subscription lifecycle driven by user actions and ticks', () => {
+      const buildTick = (status) => ({
+        data: {
+          ciPipelineStatusUpdated: {
+            ...mockPipelineUpdateResponse.data.ciPipelineStatusUpdated,
+            detailedStatus: {
+              ...mockPipelineUpdateResponse.data.ciPipelineStatusUpdated.detailedStatus,
+              name: status,
+              icon: `status_${status.toLowerCase()}`,
+            },
+          },
+        },
+      });
+
+      it('subscribes to a terminal parent pipeline after retry', async () => {
+        const response = generateMRPipelinesResponse({ count: 1, status: 'SUCCESS' });
+        mergeRequestPipelinesRequest.mockResolvedValue(response);
+        await createComponent();
+
+        expect(subscriptionHandler).not.toHaveBeenCalled();
+
+        const pipeline = findPipelinesList().props('pipelines')[0];
+        findPipelinesList().vm.$emit('retry-pipeline', pipeline);
+        await waitForPromises();
+
+        expect(subscriptionHandler).toHaveBeenCalledWith({
+          pipelineId: 'gid://gitlab/Ci::Pipeline/1',
+        });
+      });
+
+      it('subscribes to a terminal downstream after a job action on its parent', async () => {
+        const downstream = generateMockDownstreamPipeline({ id: '100', status: 'SUCCESS' });
+        const response = generateMRPipelinesResponse({ count: 0 });
+        response.data.project.mergeRequest.pipelines.nodes = [
+          {
+            ...generateMockPipeline({ id: '1', status: 'RUNNING' }),
+            downstream: {
+              nodes: [downstream],
+              __typename: 'PipelineConnection',
+            },
+          },
+        ];
+        mergeRequestPipelinesRequest.mockResolvedValue(response);
+        await createComponent();
+
+        expect(downstreamSubscriptionHandler).not.toHaveBeenCalled();
+
+        const pipeline = findPipelinesList().props('pipelines')[0];
+        findPipelinesList().vm.$emit('job-action-executed', pipeline);
+        await waitForPromises();
+
+        expect(downstreamSubscriptionHandler).toHaveBeenCalledWith({
+          pipelineId: 'gid://gitlab/Ci::Pipeline/100',
+        });
+      });
+
+      it('stops applying ticks for a parent once a terminal status is reported', async () => {
+        const mockParentSub = createMockSubscription();
+        subscriptionHandler = jest.fn().mockReturnValue(mockParentSub);
+
+        const response = generateMRPipelinesResponse({ count: 0 });
+        response.data.project.mergeRequest.pipelines.nodes = [
+          generateMockPipeline({ id: '701', status: 'RUNNING' }),
+        ];
+        mergeRequestPipelinesRequest.mockResolvedValue(response);
+        await createComponent();
+
+        expect(findPipelinesList().props('pipelines')[0].detailedStatus.name).toBe('RUNNING');
+
+        mockParentSub.next(buildTick('SUCCESS'));
+        await waitForPromises();
+
+        expect(findPipelinesList().props('pipelines')[0].detailedStatus.name).toBe('SUCCESS');
+
+        // Subscription is torn down; second tick should be ignored
+        const statusBeforeSecondTick =
+          findPipelinesList().props('pipelines')[0].detailedStatus.name;
+        mockParentSub.next(buildTick('RUNNING'));
+        await waitForPromises();
+
+        expect(findPipelinesList().props('pipelines')[0].detailedStatus.name).toBe(
+          statusBeforeSecondTick,
+        );
+      });
+    });
+
+    describe('downstream pipeline subscriptions', () => {
+      const createWithDownstream = async (
+        downstreamPipelines,
+        { parentStatus = 'RUNNING' } = {},
+      ) => {
+        const response = generateMRPipelinesResponse({ count: 0 });
+        response.data.project.mergeRequest.pipelines.nodes = [
+          {
+            ...generateMockPipeline({ id: '1', status: parentStatus }),
+            downstream: {
+              nodes: downstreamPipelines,
+              __typename: 'PipelineConnection',
+            },
+          },
+        ];
+        mergeRequestPipelinesRequest.mockResolvedValue(response);
+        subscriptionHandler.mockResolvedValue(mockPipelineUpdateResponseEmpty);
+        await createComponent();
+      };
+
+      it('subscribes to each alive downstream pipeline', async () => {
+        const downstream = generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' });
+        await createWithDownstream([downstream]);
+
+        expect(downstreamSubscriptionHandler).toHaveBeenCalledWith({
+          pipelineId: 'gid://gitlab/Ci::Pipeline/100',
+        });
+      });
+
+      it('does not subscribe to completed downstream pipelines', async () => {
+        const downstream = generateMockDownstreamPipeline({ id: '100', status: 'SUCCESS' });
+        await createWithDownstream([downstream]);
+
+        expect(downstreamSubscriptionHandler).not.toHaveBeenCalled();
+      });
+
+      it('subscribes only to alive downstream pipelines when mixed statuses exist', async () => {
+        await createWithDownstream([
+          generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' }),
+          generateMockDownstreamPipeline({ id: '101', status: 'SUCCESS' }),
+          generateMockDownstreamPipeline({ id: '102', status: 'PENDING' }),
+        ]);
+
+        expect(downstreamSubscriptionHandler).toHaveBeenCalledTimes(2);
+        expect(downstreamSubscriptionHandler).toHaveBeenNthCalledWith(1, {
+          pipelineId: 'gid://gitlab/Ci::Pipeline/100',
+        });
+        expect(downstreamSubscriptionHandler).toHaveBeenNthCalledWith(2, {
+          pipelineId: 'gid://gitlab/Ci::Pipeline/102',
+        });
+      });
+
+      it('subscribes to alive downstream pipelines even when parent is completed', async () => {
+        const downstream = generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' });
+        await createWithDownstream([downstream], { parentStatus: 'SUCCESS' });
+
+        expect(downstreamSubscriptionHandler).toHaveBeenCalledWith({
+          pipelineId: 'gid://gitlab/Ci::Pipeline/100',
+        });
+      });
+
+      it('updates downstream pipeline status when subscription receives data', async () => {
+        const downstream = generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' });
+        await createWithDownstream([downstream]);
+
+        expect(
+          findPipelinesList().props('pipelines')[0].downstream.nodes[0].detailedStatus.name,
+        ).toBe('RUNNING');
+
+        mockDownstreamSubscription.next(mockDownstreamPipelineUpdateResponse);
+        await nextTick();
+
+        expect(
+          findPipelinesList().props('pipelines')[0].downstream.nodes[0].detailedStatus.name,
+        ).toBe('SUCCESS');
+      });
+    });
+
+    describe('downstream pipeline fetching', () => {
+      it('fetches full downstream data lazily after initial query', async () => {
+        await createComponent();
+
+        expect(getPipelinesDownstreamRequest).toHaveBeenCalledTimes(1);
+        expect(getPipelinesDownstreamRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            fullPath: defaultProvide.targetProjectFullPath,
+            mergeRequestIid: String(defaultProvide.mergeRequestId),
+          }),
+        );
+      });
+
+      it('does not duplicate bulk fetch when already in flight', async () => {
+        await createComponent();
+
+        expect(getPipelinesDownstreamRequest).toHaveBeenCalledTimes(1);
+      });
+
+      it('fetches downstream for a single pipeline after job action', async () => {
+        await createComponent();
+        await waitForPromises();
+
+        getPipelinesDownstreamRequest.mockClear();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        getSinglePipelineRequest.mockResolvedValue(
+          generateSinglePipelineResponse(
+            generateMockPipeline({ id: String(pipelines[0].id), status: 'RUNNING' }),
+          ),
+        );
+        findPipelinesList().vm.$emit('job-action-executed', pipelines[0]);
+        await waitForPromises();
+
+        expect(getPipelinesDownstreamRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ids: [pipelines[0].graphqlId],
+          }),
+        );
+      });
+
+      it('merges full downstream data with existing skeleton data', async () => {
+        const fullDownstream = generateMockDownstreamPipeline({ id: '100', status: 'RUNNING' });
+        getPipelinesDownstreamRequest.mockResolvedValue(
+          generateMockDownstreamResponse([{ pipelineId: '1', downstreamNodes: [fullDownstream] }]),
+        );
+
+        await createComponent();
+        await waitForPromises();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        const downstreamNode = pipelines[0].downstream?.nodes?.find(
+          (n) => n.id === 'gid://gitlab/Ci::Pipeline/100',
+        );
+
+        if (downstreamNode) {
+          expect(downstreamNode.iid).toBe('100');
+          expect(downstreamNode.name).toBe('child-pipeline-100');
+          expect(downstreamNode.project.fullPath).toBe('root/child-project');
+        } else {
+          expect(getPipelinesDownstreamRequest).toHaveBeenCalled();
+        }
+      });
+
+      it('skips downstream merge when fetch returns empty nodes', async () => {
+        getPipelinesDownstreamRequest.mockResolvedValue(generateMockDownstreamResponse());
+        await createComponent();
+        await waitForPromises();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        expect(pipelines[0].downstream.nodes).toEqual([]);
+      });
+    });
+  });
+
+  describe('pipeline creation requests', () => {
+    const inProgressRequest = generatePipelineCreationRequest({
+      status: 'IN_PROGRESS',
+      pipelineId: null,
+      pipeline: null,
+    });
+    const failedRequest = generatePipelineCreationRequest({
+      status: 'FAILED',
+      pipelineId: null,
+      pipeline: null,
+      error: 'Creation failed',
+    });
+    const succeededRequest = generatePipelineCreationRequest({
+      status: 'SUCCEEDED',
+      pipelineId: 'gid://gitlab/Ci::Pipeline/999',
+    });
+
+    const setupPipelineCreationRequestsResponse = (requests) => {
+      pipelineCreationRequestsHandler.mockResolvedValue(
+        generatePipelineCreationRequestsResponse({ requests }),
+      );
+    };
+
+    const emitSubscriptionUpdate = (requests) => {
+      mockPipelineCreationSubscription.next(
+        generatePipelineCreationSubscriptionResponse({ requests }),
+      );
+    };
+
+    const setupDetachedPipelineResponse = () => {
+      mergeRequestPipelinesRequest.mockResolvedValue(
+        generateMRPipelinesResponse({ mergeRequestEventType: MR_PIPELINE_TYPE_DETACHED }),
+      );
+    };
+
+    describe('query', () => {
+      it('calls with correct variables', async () => {
+        await createComponent();
+
+        expect(pipelineCreationRequestsHandler).toHaveBeenCalledWith({
+          fullPath: '/group/project',
+          mergeRequestIid: '1',
+        });
+      });
+    });
+
+    describe('subscription', () => {
+      it('subscribes with correct mergeRequestId', async () => {
+        await createComponent();
+
+        expect(pipelineCreationSubscriptionHandler).toHaveBeenCalledWith({
+          mergeRequestId: 'gid://gitlab/MergeRequest/1',
+        });
+      });
+
+      it('skips when mergeRequestGid is not available', async () => {
+        pipelineCreationRequestsHandler.mockResolvedValue({
+          data: {
+            project: {
+              __typename: 'Project',
+              id: 'gid://gitlab/Project/1',
+              fullPath: 'root/project-1',
+              mergeRequest: null,
+            },
+          },
+        });
+
+        await createComponent();
+
+        expect(pipelineCreationSubscriptionHandler).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('initial state from query', () => {
+      describe('failed alert', () => {
+        it('shows alert when pipeline creation fails', async () => {
+          setupPipelineCreationRequestsResponse([failedRequest]);
+
+          await createComponent();
+
+          expect(findCreationFailedAlert().text()).toBe(
+            'Pipeline creation failed. Please try again.',
+          );
+          expect(findCreationFailedAlert().props('variant')).toBe('danger');
+        });
+
+        it('hides alert when dismissed', async () => {
+          setupPipelineCreationRequestsResponse([failedRequest]);
+
+          await createComponent();
+
+          expect(findCreationFailedAlert().exists()).toBe(true);
+
+          await findCreationFailedAlert().vm.$emit('dismiss');
+
+          expect(findCreationFailedAlert().exists()).toBe(false);
+        });
+      });
+
+      describe('run pipeline button', () => {
+        beforeEach(() => {
+          setupDetachedPipelineResponse();
+        });
+
+        it('shows loading state when IN_PROGRESS requests exist', async () => {
+          setupPipelineCreationRequestsResponse([inProgressRequest]);
+
+          await createComponent();
+
+          expect(findRunPipelineBtn().props('isLoading')).toBe(true);
+        });
+
+        it('does not show toast when running pipeline', async () => {
+          jest.spyOn(Api, 'postMergeRequestPipeline').mockResolvedValue();
+
+          await createComponent();
+
+          await findRunPipelineBtn().vm.$emit('run-pipeline');
+          await waitForPromises();
+
+          expect($toast.show).not.toHaveBeenCalled();
+        });
+      });
+    });
+
+    it('clears debounce timeout on component unmount', async () => {
+      setupDetachedPipelineResponse();
+      jest.spyOn(Api, 'postMergeRequestPipeline').mockResolvedValue();
+
+      await createComponent();
+
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      await findRunPipelineBtn().vm.$emit('run-pipeline');
+
+      wrapper.destroy();
+
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+    });
+
+    describe('subscription updates', () => {
+      it('prepends new pipeline to list on SUCCEEDED', async () => {
+        await createComponent();
+
+        const initialPipelineCount = findPipelinesList().props('pipelines').length;
+
+        emitSubscriptionUpdate([succeededRequest]);
+        await waitForPromises();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        expect(pipelines).toHaveLength(initialPipelineCount + 1);
+        expect(pipelines[0].id).toBe(999);
+      });
+
+      it('updates badge count on SUCCEEDED', async () => {
+        const element = document.createElement('div');
+        document.body.appendChild(element);
+
+        try {
+          await createComponent();
+          element.appendChild(wrapper.vm.$el);
+
+          let eventCount = 0;
+          const eventPromise = new Promise((resolve) => {
+            element.addEventListener('update-pipelines-count', (event) => {
+              eventCount += 1;
+              if (eventCount === 2) {
+                resolve(event.detail.pipelineCount);
+              }
+            });
+          });
+
+          emitSubscriptionUpdate([succeededRequest]);
+          await waitForPromises();
+
+          const newCount = await eventPromise;
+          expect(newCount).toBe(2);
+        } finally {
+          element.remove();
+        }
+      });
+
+      it('shows skeleton loader on IN_PROGRESS after debounce', async () => {
+        await createComponent();
+
+        expect(findPipelinesList().props('isCreatingPipeline')).toBe(false);
+
+        emitSubscriptionUpdate([inProgressRequest]);
+        await waitForPromises();
+
+        expect(findPipelinesList().props('isCreatingPipeline')).toBe(false);
+
+        jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+        await nextTick();
+
+        expect(findPipelinesList().props('isCreatingPipeline')).toBe(true);
+      });
+
+      it('shows alert on FAILED', async () => {
+        await createComponent();
+
+        expect(findCreationFailedAlert().exists()).toBe(false);
+
+        emitSubscriptionUpdate([failedRequest]);
+        await waitForPromises();
+
+        expect(findCreationFailedAlert().exists()).toBe(true);
+        expect(findCreationFailedAlert().text()).toBe(
+          'Pipeline creation failed. Please try again.',
+        );
+      });
+
+      it('shows loading state on run pipeline button on IN_PROGRESS', async () => {
+        setupDetachedPipelineResponse();
+        await createComponent();
+
+        expect(findRunPipelineBtn().props('isLoading')).toBe(false);
+
+        emitSubscriptionUpdate([inProgressRequest]);
+        await waitForPromises();
+
+        expect(findRunPipelineBtn().props('isLoading')).toBe(true);
+      });
+
+      it('does not duplicate pipelines already in the list', async () => {
+        await createComponent();
+
+        emitSubscriptionUpdate([succeededRequest]);
+        await waitForPromises();
+
+        expect(findPipelinesList().props('pipelines')).toHaveLength(2);
+
+        const anotherSucceededRequest = generatePipelineCreationRequest({
+          status: 'SUCCEEDED',
+          pipelineId: 'gid://gitlab/Ci::Pipeline/1000',
+        });
+
+        emitSubscriptionUpdate([succeededRequest, anotherSucceededRequest]);
+        await waitForPromises();
+
+        const pipelines = findPipelinesList().props('pipelines');
+        expect(pipelines).toHaveLength(3);
+        expect(pipelines[0].id).toBe(1000);
+        expect(pipelines[1].id).toBe(999);
       });
     });
   });

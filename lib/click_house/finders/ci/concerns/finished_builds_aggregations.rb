@@ -125,8 +125,17 @@ module ClickHouse # rubocop:disable Gitlab/BoundedContexts -- Existing module
             )
           end
 
+          # success / failed rates are computed against (success + failed) so canceled
+          # and skipped don't dilute them. canceled / skipped use the total count.
+          # Empty denominators yield NaN -> JSON null -> '-' in the UI.
           def build_rate_aggregate(status)
-            percentage = query_builder.division(build_count_aggregate(status), query_builder.count)
+            denominator = if %w[success failed].include?(status.to_s)
+                            build_count_aggregate('success') + build_count_aggregate('failed')
+                          else
+                            query_builder.count
+                          end
+
+            percentage = query_builder.division(build_count_aggregate(status), denominator)
             percentage_value = query_builder.multiply(percentage, 100)
 
             round(percentage_value).as("rate_of_#{status}")
@@ -162,6 +171,14 @@ module ClickHouse # rubocop:disable Gitlab/BoundedContexts -- Existing module
 
           def ms_to_s(node)
             query_builder.division(node, 1000.0)
+          end
+
+          def format_datetime64(time)
+            query_builder.func('toDateTime64', [
+              query_builder.quote(time.utc.strftime('%Y-%m-%d %H:%M:%S')),
+              6,
+              query_builder.quote('UTC')
+            ])
           end
         end
       end

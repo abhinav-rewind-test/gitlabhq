@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Use Auto DevOps to deploy to Amazon ECS
 ---
 
@@ -11,7 +11,7 @@ To get started on Auto DevOps to AWS ECS, you must add a specific CI/CD variable
 To do so, follow these steps:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Auto DevOps**.
 1. Specify which AWS platform to target during the Auto DevOps deployment
    by adding the `AUTO_DEVOPS_PLATFORM_TARGET` variable with one of the following values:

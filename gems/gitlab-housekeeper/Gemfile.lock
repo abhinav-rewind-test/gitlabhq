@@ -2,10 +2,11 @@ PATH
   remote: ../gitlab-rspec
   specs:
     gitlab-rspec (0.1.0)
-      activerecord (>= 6.1, < 8)
-      activesupport (>= 6.1, < 8)
-      gitlab_quality-test_tooling (>= 3.1, < 4)
+      activerecord (>= 7, < 9)
+      activesupport (>= 7, < 9)
+      gitlab_quality-test_tooling (>= 3.13, < 4)
       rspec (~> 3.0)
+      test-prof (~> 1.5)
 
 PATH
   remote: .
@@ -73,7 +74,6 @@ GEM
     crack (0.4.3)
       safe_yaml (~> 1.0.0)
     crass (1.0.6)
-    csv (3.3.5)
     date (3.4.1)
     debug_inspector (1.1.0)
     declarative (0.0.20)
@@ -135,13 +135,13 @@ GEM
       rubocop-performance (~> 1.15)
       rubocop-rails (~> 2.17)
       rubocop-rspec (~> 2.22)
-    gitlab_quality-test_tooling (3.1.0)
+    gitlab_quality-test_tooling (3.13.0)
       activesupport (>= 7.0)
       amatch (~> 0.4.1)
       fog-google (~> 1.24, >= 1.24.1)
       gitlab (>= 4.19, < 7.0)
       http (~> 5.0)
-      influxdb-client (~> 3.1)
+      http-cookie (>= 1.0, < 1.1.1)
       nokogiri (~> 1.10)
       parallel (>= 1, < 2)
       rainbow (>= 3, < 4)
@@ -198,8 +198,6 @@ GEM
       mutex_m
     i18n (1.14.1)
       concurrent-ruby (~> 1.0)
-    influxdb-client (3.2.0)
-      csv
     io-console (0.8.0)
     irb (1.14.3)
       rdoc (>= 4.0.0)
@@ -370,6 +368,7 @@ GEM
     table_print (1.5.7)
     terminal-table (4.0.0)
       unicode-display_width (>= 1.1.1, < 4)
+    test-prof (1.6.0)
     thor (1.3.2)
     timeout (0.4.3)
     tins (1.48.0)
@@ -433,7 +432,6 @@ CHECKSUMS
   connection_pool (2.4.1) sha256=0f40cf997091f1f04ff66da67eabd61a9fe0d4928b9a3645228532512fab62f4
   crack (0.4.3) sha256=5318ba8cd9cf7e0b5feb38948048503ba4b1fdc1b6ff30a39f0a00feb6036b29
   crass (1.0.6) sha256=dc516022a56e7b3b156099abc81b6d2b08ea1ed12676ac7a5657617f012bd45d
-  csv (3.3.5) sha256=6e5134ac3383ef728b7f02725d9872934f523cb40b961479f69cf3afa6c8e73f
   date (3.4.1) sha256=bf268e14ef7158009bfeaec40b5fa3c7271906e88b196d958a89d4b408abe64f
   debug_inspector (1.1.0) sha256=eaa5a2d0195e1d65fb4164e8e7e466cca2e7eb53bc5e608cf12b8bf02c3a8606
   declarative (0.0.20) sha256=8021dd6cb17ab2b61233c56903d3f5a259c5cf43c80ff332d447d395b17d9ff9
@@ -461,7 +459,7 @@ CHECKSUMS
   gitlab-housekeeper (0.1.0)
   gitlab-rspec (0.1.0)
   gitlab-styles (10.1.0) sha256=f42745f5397d042fe24cf2d0eb56c995b37f9f43d8fb79b834d197a1cafdc84a
-  gitlab_quality-test_tooling (3.1.0) sha256=0c0cb0f24e556eb06181a6c1b971efd963675171b52ed46025c7091263ec56f4
+  gitlab_quality-test_tooling (3.13.0) sha256=1d3ddf0a1b8c42649ed4161d8a40a88a3f78160d3212d4539597b178b8449c50
   google-apis-compute_v1 (0.136.0) sha256=04db183803f547265b0489df92e76d9761b2b7ce36be8ead88bc14ed36ab4582
   google-apis-core (0.18.0) sha256=96b057816feeeab448139ed5b5c78eab7fc2a9d8958f0fbc8217dedffad054ee
   google-apis-dns_v1 (0.49.0) sha256=4ffec461dfdbf2650470f3a0f44a9d9f7af34c672f079e740f366c36efec70ea
@@ -480,7 +478,6 @@ CHECKSUMS
   httparty (0.21.0) sha256=00ef7bf9a71f30a3bff88edeb5b16a34bea883ab67c246b3f0db2d6794fe1214
   httpclient (2.9.0) sha256=4b645958e494b2f86c2f8a2f304c959baa273a310e77a2931ddb986d83e498c8
   i18n (1.14.1) sha256=9d03698903547c060928e70a9bc8b6b87fda674453cda918fc7ab80235ae4a61
-  influxdb-client (3.2.0) sha256=dc1e8ec80542f64c9f31af6d9bfa4c147474bf32b9179a7f0cab970793b8e1f2
   io-console (0.8.0) sha256=cd6a9facbc69871d69b2cb8b926fc6ea7ef06f06e505e81a64f14a470fddefa2
   irb (1.14.3) sha256=c457f1f2f1438ae9ce5c5be3981ae2138dec7fb894c7d73777eeeb0a6c0d0752
   json (2.7.1) sha256=187ea312fb58420ff0c40f40af1862651d4295c8675267c6a1c353f1a0ac3265
@@ -554,6 +551,7 @@ CHECKSUMS
   sync (0.5.0) sha256=668356cc07c59ac7ed9ecf34fec3929831f179c07adb1f3e1c3b7a1609a638fd
   table_print (1.5.7) sha256=436664281f93387b882335795e16cfeeb839ad0c785ff7f9110fc0f17c68b5cb
   terminal-table (4.0.0) sha256=f504793203f8251b2ea7c7068333053f0beeea26093ec9962e62ea79f94301d2
+  test-prof (1.6.0) sha256=b04cee7b9684b9b31e23e258f835ba67ee5b4fd5f6cc7204d076ef695805c335
   thor (1.3.2) sha256=eef0293b9e24158ccad7ab383ae83534b7ad4ed99c09f96f1a6b036550abbeda
   timeout (0.4.3) sha256=9509f079b2b55fe4236d79633bd75e34c1c1e7e3fb4b56cb5fda61f80a0fe30e
   tins (1.48.0) sha256=547352491d5af17bc1af4ca8fcee884ffde3ff60c9799c7961977d697cde99c3

@@ -621,12 +621,12 @@ RSpec.describe Notes::QuickActionsService, feature_category: :text_editors do
     let(:service) { described_class.new(project, maintainer) }
 
     it_behaves_like 'note on noteable that supports quick actions' do
-      let_it_be(:issue, reload: true) { create(:issue, project: project) }
+      let_it_be_with_reload(:issue) { create(:issue, project: project) }
       let(:note) { build(:note_on_issue, project: project, noteable: issue) }
     end
 
     it_behaves_like 'note on noteable that supports quick actions' do
-      let_it_be(:incident, reload: true) { create(:incident, project: project) }
+      let_it_be_with_reload(:incident) { create(:incident, project: project) }
       let(:note) { build(:note_on_issue, project: project, noteable: incident) }
     end
 
@@ -639,7 +639,7 @@ RSpec.describe Notes::QuickActionsService, feature_category: :text_editors do
       let(:note) { build(:note, noteable: noteable, project: project, note: note_text) }
 
       context 'when noteable is a work item' do
-        let_it_be(:noteable) { create(:work_item, project: project) }
+        let_it_be(:noteable, freeze: false) { create(:work_item, project: project) }
 
         context 'when no branch name is provided' do
           let(:note_text) { '/create_merge_request' }
@@ -651,14 +651,15 @@ RSpec.describe Notes::QuickActionsService, feature_category: :text_editors do
           end
 
           context 'when work item type does not have the development widget' do
-            let(:work_item_type) { create(:work_item_type, :issue) }
+            let(:work_item_type) { build(:work_item_system_defined_type, :issue) }
             let(:noteable) { create(:work_item, project: project, work_item_type: work_item_type) }
 
             before do
               # the stub_all_work_item_widget does not work here as it not uses the get_widget method.
               # it uses the work_item.supported_quick_action_commands method that used the work_item_type.widget_classes
+              stub_all_work_item_widgets(development: false)
               widgets = work_item_type.widget_classes(project).reject { |widget| widget == WorkItems::Widgets::Development }
-              allow(noteable.work_item_type).to receive(:widget_classes).with(project).and_return(widgets)
+              allow(work_item_type).to receive(:widget_classes).with(project).and_return(widgets)
             end
 
             it 'does not create a merge request' do
@@ -680,7 +681,7 @@ RSpec.describe Notes::QuickActionsService, feature_category: :text_editors do
     end
 
     context 'note on work item that supports quick actions' do
-      let_it_be(:work_item, reload: true) { create(:work_item, project: project) }
+      let_it_be_with_reload(:work_item) { create(:work_item, project: project) }
 
       let(:note) { build(:note_on_work_item, project: project, noteable: work_item) }
 

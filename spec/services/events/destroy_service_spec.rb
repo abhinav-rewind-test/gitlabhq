@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Events::DestroyService, feature_category: :user_profile do
   subject(:service) { described_class.new(project) }
 
-  let_it_be(:project, reload: true) { create(:project, :repository) }
+  let_it_be_with_reload(:project) { create(:project, :repository) }
   let_it_be(:another_project) { create(:project) }
   let_it_be(:merge_request) { create(:merge_request, source_project: project) }
   let_it_be(:user) { create(:user) }
@@ -23,7 +23,7 @@ RSpec.describe Events::DestroyService, feature_category: :user_profile do
     it 'deletes the events' do
       response = nil
 
-      expect { response = subject.execute }.to change(Event, :count).by(-3)
+      expect { response = subject.execute }.to change { Event.count }.by(-3)
 
       expect(response).to be_success
       expect(unrelated_event.reload).to be_present
@@ -54,7 +54,7 @@ RSpec.describe Events::DestroyService, feature_category: :user_profile do
       end
 
       it 'does not delete events' do
-        expect { subject.execute }.not_to change(Event, :count)
+        expect { subject.execute }.not_to change { Event.count }
       end
     end
   end

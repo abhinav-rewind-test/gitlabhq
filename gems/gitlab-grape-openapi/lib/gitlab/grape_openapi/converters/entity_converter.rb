@@ -23,11 +23,10 @@ module Gitlab
 
             new(entity[:model], schema_registry).convert
           when Array
-            entity.each do |definition|
-              next unless definition.is_a?(Hash) && definition[:model] && grape_entity?(definition[:model])
-
-              new(definition[:model], schema_registry).convert
-            end
+            # Array elements may be Class (`success [Entities::Foo]`) or
+            # Hash-with-:model (`success [{ code:, model: Foo }]`). Recurse so
+            # both are registered. Mirrors `ResponseConverter`'s handling.
+            entity.each { |item| register(item, schema_registry) }
           end
         end
 
@@ -40,12 +39,12 @@ module Gitlab
           @schema_registry = schema_registry
         end
 
-        def convert
+        def convert(register: true)
           normalized_name = schema_registry.normalize_entity_class(entity_class)
           return schema_registry.schemas[normalized_name] if schema_registry.schemas.key?(normalized_name)
 
           schema = build_schema
-          schema_registry.register(entity_class, schema)
+          schema_registry.register(entity_class, schema) if register
           schema
         end
 
@@ -60,11 +59,42 @@ module Gitlab
 
         def build_properties
           root_exposures.each_with_object({}) do |exposure, properties|
-            # rubocop:disable GitlabSecurity/PublicSend - Forced to use private API
-            attribute = exposure.send(:options)[:as] || exposure.attribute
-            # rubocop:enable GitlabSecurity/PublicSend
-            properties[attribute] = build_property(exposure)
+            if inlineable_merge_exposure?(exposure)
+              # `merge: true` flattens the nested entity's exposures into the
+              # parent at runtime. Inline its properties instead of emitting a
+              # `$ref`, so the generated schema reflects the actual response.
+              inline_merged_properties!(properties, exposure)
+            else
+              properties[exposure.key] = build_property(exposure)
+            end
           end
+        end
+
+        def inlineable_merge_exposure?(exposure)
+          return false unless exposure.for_merge
+
+          nested = nested_entity_class(exposure)
+          nested.is_a?(Class) && self.class.grape_entity?(nested)
+        end
+
+        def inline_merged_properties!(properties, exposure)
+          nested_schema = build_or_fetch_nested_schema(nested_entity_class(exposure))
+          return unless nested_schema&.properties
+
+          # Grape Entity's `merge: true` lets later exposures override earlier
+          # ones with the same key, so merging into `properties` mirrors that.
+          properties.merge!(nested_schema.properties)
+        end
+
+        # Build the merged entity's schema without registering it as a
+        # standalone component. Entities only reached through `merge: true` are
+        # inlined into their parents and do not need their own component entry.
+        # `convert` still returns an already-registered schema when one exists
+        # (for entities also reached via a regular `using:` elsewhere), and
+        # `build_schema` still walks nested `using:` exposures, so any schema
+        # actually referenced by `$ref` remains registered.
+        def build_or_fetch_nested_schema(nested_class)
+          self.class.new(nested_class, schema_registry).convert(register: false)
         end
 
         def build_property(exposure)
@@ -75,14 +105,14 @@ module Gitlab
 
         def extract_basic_attributes(exposure)
           documentation = exposure_documentation(exposure)
-          options = exposure_options(exposure)
+          default_value = exposure_default(exposure)
 
           type = documentation[:type]
 
           if multiple_types?(type)
-            build_one_of_property(type, documentation, options)
+            build_one_of_property(type, documentation, default_value)
           else
-            build_single_type_property(type, documentation, options)
+            build_single_type_property(type, documentation, default_value)
           end
         end
 
@@ -90,16 +120,16 @@ module Gitlab
           type.is_a?(Array) && type.length > 1
         end
 
-        def build_one_of_property(types, documentation, options)
+        def build_one_of_property(types, documentation, default_value)
           {
             oneOf: types.map { |type| build_type_schema(type, documentation) },
             description: documentation[:desc],
-            default: options[:default],
+            default: default_value,
             example: documentation[:example]
           }
         end
 
-        def build_single_type_property(type, documentation, options)
+        def build_single_type_property(type, documentation, default_value)
           # Handle single element arrays
           actual_type = type.is_a?(Array) ? type.first : type
 
@@ -107,7 +137,7 @@ module Gitlab
             type: TypeResolver.resolve_type(actual_type) || DEFAULT_TYPE,
             description: documentation[:desc],
             format: TypeResolver.resolve_format(documentation[:format], actual_type),
-            default: options[:default],
+            default: default_value,
             example: documentation[:example]
           }
         end
@@ -134,6 +164,7 @@ module Gitlab
 
         def handle_array_property!(property, exposure)
           if nested_entity?(exposure)
+            register_nested_entity(exposure)
             reference = build_reference(exposure)
             set_array_property!(property, reference)
           else
@@ -142,8 +173,19 @@ module Gitlab
         end
 
         def handle_entity_reference!(property, exposure)
+          register_nested_entity(exposure)
           reference = build_reference(exposure)
           set_reference_property!(property, reference)
+        end
+
+        # Ensure schemas reachable from a route via nested `using:` exposures are
+        # registered too, so dropping the over-broad `Grape::Entity.descendants`
+        # seed in the generator does not leave dangling `$ref`s.
+        def register_nested_entity(exposure)
+          nested = nested_entity_class(exposure)
+          return unless nested.is_a?(Class)
+
+          self.class.register(nested, schema_registry)
         end
 
         def set_array_primitive_property!(property)
@@ -195,16 +237,25 @@ module Gitlab
           exposure.documentation || {}
         end
 
-        def exposure_options(exposure)
-          exposure.send(:options) || {} # rubocop:disable GitlabSecurity/PublicSend - Forced to use private API
+        # Grape Entity stores the `:default` option in `@default_value` but
+        # does not expose a public reader for it. Reaching for the ivar is the
+        # only way to read it without going through `send(:options)`, which the
+        # `GitlabSecurity/PublicSend` rule disallows.
+        def exposure_default(exposure)
+          exposure.instance_variable_get(:@default_value)
         end
 
         def nested_entity?(exposure)
           !nested_entity_class(exposure).nil?
         end
 
+        # Only `RepresentExposure` instances (i.e. exposures declared with
+        # `using:`) expose a `using_class_name` reader; for any other exposure
+        # type there is no nested entity to reference.
         def nested_entity_class(exposure)
-          exposure_options(exposure)[:using]
+          return unless exposure.respond_to?(:using_class_name)
+
+          exposure.using_class_name
         end
 
         def array_exposure?(exposure)

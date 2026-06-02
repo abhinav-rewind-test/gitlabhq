@@ -15,9 +15,9 @@ describe('NewEditForm', () => {
   let wrapper;
 
   const defaultPropsData = {
-    cancelButtonHref: '/-/organizations/default/groups_and_projects?display=projects',
+    cancelButtonHref: '/o/default/-/groups_and_projects?display=projects',
     loading: false,
-    previewMarkdownPath: '/-/organizations/preview_markdown',
+    previewMarkdownPath: '/o/-/preview_markdown',
   };
 
   const createComponent = ({ propsData = {} } = {}) => {
@@ -33,7 +33,7 @@ describe('NewEditForm', () => {
   const findGlFormFields = () => wrapper.findComponent(GlFormFields);
   const findNameField = () => wrapper.findByLabelText('Project name');
   const findIdField = () => wrapper.findByLabelText('Project ID');
-  const findDescriptionField = () => wrapper.findByLabelText('Project description (optional)');
+  const findDescriptionField = () => wrapper.find('textarea.note-textarea');
   const findDescriptionCharacterCounter = () =>
     wrapper.findByTestId('description-character-counter');
   const findDescriptionMarkdownField = () => wrapper.findComponent(MarkdownField);

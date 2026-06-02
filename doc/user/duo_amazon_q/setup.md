@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Set up and manage GitLab Duo with Amazon Q on a Self-Managed instance using AWS integration.
 title: Set up GitLab Duo with Amazon Q
 ---
@@ -79,7 +79,7 @@ Prerequisites:
 
 1. Sign in to GitLab.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **GitLab Duo with Amazon Q**.
 1. Select **View configuration setup**.
 1. Under step 1, copy the provider URL and audience. You will need them in the next step.
@@ -222,7 +222,7 @@ To finish setting up GitLab Duo with Amazon Q:
 
 1. Sign in to GitLab.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **GitLab Duo with Amazon Q**.
 1. Select **View configuration setup**.
 1. Under **IAM role's ARN**, paste the ARN.
@@ -241,7 +241,7 @@ To confirm that it was successful:
 - In the Amazon CloudWatch console log, check for a `204` status code. For more information, see
   [What is Amazon CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html)?
 - In GitLab, a notification that says `Amazon Q settings have been saved` is displayed.
-- In GitLab, on the left sidebar, select **Applications**. The Amazon Q OAuth application is displayed.
+- In GitLab, in the left sidebar, select **Applications**. The Amazon Q OAuth application is displayed.
 
 ## Allow administrators to use customer managed keys
 
@@ -299,7 +299,7 @@ You can configure GitLab to use the hosted AI Gateway on AWS.
    sudo gitlab-rails console
    ```
 
-1.To view the currently assigned service URL, run:
+1. To view the currently assigned service URL, run:
 
    ```ruby
    Ai::Setting.instance.ai_gateway_url
@@ -325,7 +325,7 @@ To turn off GitLab Duo with Amazon Q for the instance:
 
 1. Sign in to GitLab.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **GitLab Duo with Amazon Q**.
 1. Select **View configuration setup**.
 1. Select **Always off**.
@@ -339,8 +339,8 @@ Prerequisites:
 
 To turn off GitLab Duo with Amazon Q for a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Amazon Q**.
 1. Choose an option:
    - To turn it off for the group, but let other groups or projects turn it on, select **Off by default**.
@@ -355,8 +355,8 @@ Prerequisites:
 
 To turn off GitLab Duo with Amazon Q for a project:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Under **Amazon Q**, turn the toggle off.
 1. Select **Save changes**.

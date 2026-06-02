@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Services
 ---
 
@@ -26,6 +26,11 @@ case is to run a database container, for example:
 - [PostgreSQL](postgres.md)
 - [Redis](redis.md)
 - [GitLab](gitlab.md) as an example for a microservice offering a JSON API
+
+> [!warning]
+> To enable inter-service networking, set `FF_NETWORK_PER_BUILD` to `true`.
+> Without this flag, services may not work properly. For more information, see
+> [feature flags](https://docs.gitlab.com/runner/configuration/feature-flags)
 
 Consider that you're developing a content management system that uses database for storage.
 You need a database to test all features in the application. Running a database
@@ -102,15 +107,15 @@ The services feature does not add any software from the
 defined `services` images to the job's container.
 
 For example, if you have the following `services` defined in your job, the `php`,
-`node` or `go` commands are **not** available for your script, and the job fails:
+`node` or `go` commands are not available for your script, and the job fails:
 
 ```yaml
 job:
   services:
-    - php:7
+    - php:8.4
     - node:latest
-    - golang:1.10
-  image: alpine:3.7
+    - golang:1.25
+  image: alpine:3.23
   script:
     - php -v
     - node -v
@@ -133,17 +138,17 @@ default:
   before_script:
     - bundle install
 
-test:2.6:
-  image: ruby:2.6
+test:4.0:
+  image: ruby:4.0
   services:
-    - postgres:11.7
+    - postgres:18
   script:
     - bundle exec rake spec
 
-test:2.7:
-  image: ruby:2.7
+test:3.4:
+  image: ruby:3.4
   services:
-    - postgres:12.2
+    - postgres:17
   script:
     - bundle exec rake spec
 ```
@@ -154,10 +159,10 @@ for `image` and `services`:
 ```yaml
 default:
   image:
-    name: ruby:2.6
+    name: ruby:4.0
     entrypoint: ["/bin/bash"]
   services:
-    - name: my-postgres:11.7
+    - name: my-postgres:18
       alias: db,postgres,pg
       entrypoint: ["/usr/local/bin/db-postgres"]
       command: ["start"]
@@ -171,22 +176,11 @@ test:
 
 ## Accessing the services
 
-If you need a Wordpress instance to test API integration with
-your application, you can use the
-[`tutum/wordpress`](https://hub.docker.com/r/tutum/wordpress/) image in your
-`.gitlab-ci.yml` file:
-
-```yaml
-services:
-  - tutum/wordpress:latest
-```
-
 If you don't [specify a service alias](#available-settings-for-services),
-when the job runs, `tutum/wordpress` is started. You have
-access to it from your build container under two hostnames:
+you have access to it from your build container under two hostnames:
 
-- `tutum-wordpress`
-- `tutum__wordpress`
+- `namespace-projectname`
+- `namespace__projectname`
 
 Hostnames with underscores are not RFC valid and may cause problems in third-party
 applications.
@@ -218,10 +212,10 @@ end-to-end-tests:
       alias: firefox
     - name: registry.gitlab.com/organization/private-api:latest
       alias: backend-api
-    - name: postgres:16.10
+    - name: postgres:18
       alias: db postgres db
   variables:
-    FF_NETWORK_PER_BUILD: 1
+    FF_NETWORK_PER_BUILD: 1 # activate container-to-container networking
     POSTGRES_PASSWORD: supersecretpassword
     BACKEND_POSTGRES_HOST: postgres
   script:
@@ -252,12 +246,12 @@ variables:
 
 default:
   services:
-    - name: postgres:11.7
+    - name: postgres:18
       alias: db
       entrypoint: ["docker-entrypoint.sh"]
       command: ["postgres"]
   image:
-    name: ruby:2.6
+    name: ruby:4.0
     entrypoint: ["/bin/bash"]
   before_script:
     - bundle install
@@ -474,7 +468,7 @@ access-service:
   image: docker:20.10.16
   services:
     - docker:dind                    # necessary for docker run
-    - tutum/wordpress:latest
+    - traefik/whoami:latest
   variables:
     FF_NETWORK_PER_BUILD: "true"     # activate container-to-container networking
   script: |
@@ -482,7 +476,7 @@ access-service:
       --volume  "$(pwd)":"$(pwd)"    \
       --workdir "$(pwd)"             \
       --network=host                 \
-      curlimages/curl:7.74.0 curl "http://tutum-wordpress"
+      curlimages/curl:latest curl "http://traefik-whoami"
 ```
 
 For this solution to work, you must:
@@ -498,7 +492,7 @@ time.
 
 1. Create any service container: `mysql`, `postgresql`, `mongodb`, `redis`.
 1. Create a cache container to store all volumes as defined in `config.toml` and
-   `Dockerfile` of build image (`ruby:2.6` as in the previous examples).
+   `Dockerfile` of build image (`ruby:4.0` as in the previous examples).
 1. Create a build container and link any service container to build container.
 1. Start the build container, and send a job script to the container.
 1. Run the job script.
@@ -508,12 +502,6 @@ time.
 1. Remove the build container and all created service containers.
 
 ## Capturing service container logs
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab-runner/-/merge_requests/3680) in GitLab Runner 15.6.
-
-{{< /history >}}
 
 Logs generated by applications running in service containers can be captured for subsequent examination and debugging.
 View service container logs when a service container starts successfully but causes job failures due to unexpected behavior.

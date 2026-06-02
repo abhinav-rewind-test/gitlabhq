@@ -7,6 +7,7 @@ FactoryBot.define do
     description { "Description of #{name}" }
     enable_ssl_verification { false }
     project
+    filter { {} }
 
     trait :url_variables do
       url_variables { { 'abc' => 'supers3cret', 'def' => 'foobar' } }
@@ -14,6 +15,10 @@ FactoryBot.define do
 
     trait :token do
       token { generate(:token) }
+    end
+
+    trait :signing_token do
+      signing_token { "whsec_#{Base64.strict_encode64(SecureRandom.bytes(32))}" }
     end
 
     trait :all_events_enabled do

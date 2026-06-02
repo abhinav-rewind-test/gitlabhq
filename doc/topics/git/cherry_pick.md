@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Cherry-pick a Git commit when you want to add a single commit from one branch to another.
 title: Cherry-pick changes with Git
 ---
@@ -22,8 +22,8 @@ branch into your current branch. Cherry-picks help when you want to:
 - Apply an emergency production fix (hotfix) to a development branch.
 - Copy changes from a fork to the upstream repository.
 
-To learn about cherry-picking from the GitLab UI, see
-[Cherry-pick changes](../../user/project/merge_requests/cherry_pick_changes.md).
+For more information about cherry-picking from the GitLab UI, see
+[cherry-pick changes](../../user/project/merge_requests/cherry_pick_changes.md).
 
 When you cherry-pick a commit, Git:
 
@@ -78,7 +78,7 @@ To cherry-pick a single commit into your current working branch:
    Date:   Tue Aug 31 21:19:41 2021 +0000
 
        Fixes a regression we found yesterday
-    ```
+   ```
 
 1. Check out the branch you want to cherry-pick into:
 
@@ -123,7 +123,7 @@ into your desired target branch:
    Date:   Tue Aug 31 21:19:41 2021 +0000
 
        Adds tests to ensure the problem does not happen again
-    ```
+   ```
 
 1. Check out the branch (`release`) you want to cherry-pick into:
 
@@ -174,7 +174,7 @@ To cherry-pick the merge commit from branch `feature-1` into your current workin
    Date:   Tue Aug 31 21:19:41 2021 +0000
 
        Merges feature-1 into main
-    ```
+   ```
 
 1. Check out the branch you want to cherry-pick into:
 

@@ -6,7 +6,7 @@ RSpec.describe 'JobRetry', feature_category: :continuous_integration do
   include GraphqlHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :repository, maintainers: user) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, maintainers: user) }
   let_it_be(:sha) { project.repository.commit.sha }
   let_it_be(:pipeline) { create(:ci_pipeline, sha: sha, project: project, user: user) }
 
@@ -28,6 +28,16 @@ RSpec.describe 'JobRetry', feature_category: :continuous_integration do
 
   let(:mutation_response) { graphql_mutation_response(:job_retry) }
 
+  before do
+    project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
+  end
+
+  it_behaves_like 'authorizing granular token permissions for GraphQL', :retry_job do
+    let(:boundary_object) { project }
+    let(:mutation) { graphql_mutation(:job_retry, { id: job.to_global_id.to_s }, 'errors') }
+    let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+  end
+
   it 'returns an error if the user is not allowed to retry the job' do
     post_graphql_mutation(mutation, current_user: create(:user))
 
@@ -43,6 +53,19 @@ RSpec.describe 'JobRetry', feature_category: :continuous_integration do
 
       new_job = ::Ci::Build.find(new_job_id)
       expect(new_job).not_to be_retried
+    end
+
+    context "and the user does not have the ability to use variables" do
+      before do
+        project.update!(ci_pipeline_variables_minimum_override_role: :no_one_allowed)
+      end
+
+      it 'successfully retries the build' do
+        post_graphql_mutation(mutation, current_user: user)
+
+        expect(response).to have_gitlab_http_status(:success)
+        expect(mutation_response['errors']).to be_empty
+      end
     end
   end
 
@@ -90,6 +113,19 @@ RSpec.describe 'JobRetry', feature_category: :continuous_integration do
       expect(new_job.job_variables.first.key).to eq('MANUAL_VAR')
       expect(new_job.job_variables.first.value).to eq('test manual var')
       expect(new_job.job_variables.first.project_id).to eq(project.id)
+    end
+
+    context "and the user does not have the ability to use variables" do
+      before do
+        project.update!(ci_pipeline_variables_minimum_override_role: :no_one_allowed)
+      end
+
+      it 'returns an error' do
+        post_graphql_mutation(mutation, current_user: user)
+
+        expect(graphql_errors).not_to be_empty
+        expect_graphql_errors_to_include('Internal server error: 403 Forbidden')
+      end
     end
   end
 
@@ -181,20 +217,6 @@ RSpec.describe 'JobRetry', feature_category: :continuous_integration do
         expect(mutation_response['errors']).to contain_exactly(
           '`environment` input: `development` cannot be used because it is not in the list of allowed options'
         )
-      end
-    end
-
-    context 'when the ci_job_inputs feature flag is disabled' do
-      before do
-        stub_feature_flags(ci_job_inputs: false)
-      end
-
-      it 'returns an error when inputs are provided' do
-        post_graphql_mutation(mutation, current_user: user)
-
-        expect(response).to have_gitlab_http_status(:success)
-        expect(mutation_response['job']).to be_nil
-        expect(mutation_response['errors']).to eq(['The inputs argument is not available'])
       end
     end
   end

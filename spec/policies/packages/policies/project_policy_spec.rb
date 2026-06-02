@@ -165,7 +165,7 @@ RSpec.describe Packages::Policies::ProjectPolicy, feature_category: :package_reg
     end
 
     context 'when accessing a project from another project with job token' do
-      let_it_be(:other_project) { build_stubbed(:project) }
+      let_it_be(:other_project, freeze: false) { build_stubbed(:project) }
       let(:current_user) { guest }
 
       before do
@@ -190,7 +190,7 @@ RSpec.describe Packages::Policies::ProjectPolicy, feature_category: :package_reg
       end
 
       with_them do
-        it { expect(policy.allowed?(:read_package)).to eq(expect_to_be_allowed) }
+        it { expect_to_be_allowed ? expect_allowed(:read_package) : expect_disallowed(:read_package) }
       end
     end
   end

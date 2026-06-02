@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Resource weight events API
 ---
 
@@ -74,7 +74,7 @@ Example response:
 
 ### Retrieve single issue weight event
 
-Retrieves a single weight event for a specific project issue
+Retrieves a single weight event for a specific project issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_weight_events/:resource_weight_event_id

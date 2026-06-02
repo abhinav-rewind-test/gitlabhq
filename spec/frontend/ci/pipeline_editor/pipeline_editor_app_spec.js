@@ -1,5 +1,5 @@
 import Vue from 'vue';
-import { GlAlert, GlButton, GlLoadingIcon, GlSprintf, GlToast } from '@gitlab/ui';
+import { GlAlert, GlLoadingIcon, GlSprintf, GlToast } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import VueApollo from 'vue-apollo';
 
@@ -7,6 +7,7 @@ import mockCiLintMutationResponse from 'test_fixtures/graphql/ci/pipeline_editor
 import createMockApollo from 'helpers/mock_apollo_helper';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import waitForPromises from 'helpers/wait_for_promises';
+import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 
 import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '~/lib/utils/http_status';
 import { scrollTo } from '~/lib/utils/scroll_utils';
@@ -34,6 +35,7 @@ import getAppStatus from '~/ci/pipeline_editor/graphql/queries/client/app_status
 
 import PipelineEditorApp from '~/ci/pipeline_editor/pipeline_editor_app.vue';
 import PipelineEditorHome from '~/ci/pipeline_editor/pipeline_editor_home.vue';
+import ConfirmUnsavedChangesDialog from '~/vue_shared/components/confirm_unsaved_changes_dialog.vue';
 
 import {
   mockCiConfigPath,
@@ -56,7 +58,10 @@ jest.mock('~/lib/utils/url_utility', () => ({
 
 jest.mock('~/lib/utils/scroll_utils');
 
+const { bindInternalEventDocument } = useMockInternalEventsTracking();
+
 const defaultProvide = {
+  ciCatalogPath: '/explore/catalog',
   ciConfigPath: mockCiConfigPath,
   defaultBranch: mockDefaultBranch,
   emptyStateIllustrationPath: '/assets/illustrations/empty-state/empty-pipeline-md.svg',
@@ -148,8 +153,9 @@ describe('Pipeline editor app component', () => {
   const findAlert = () => wrapper.findComponent(GlAlert);
   const findEditorHome = () => wrapper.findComponent(PipelineEditorHome);
   const findEmptyState = () => wrapper.findComponent(PipelineEditorEmptyState);
-  const findEmptyStateButton = () => findEmptyState().findComponent(GlButton);
+  const findEmptyStateButton = () => findEmptyState().find('[data-testid="create-new-ci-button"]');
   const findValidationSegment = () => wrapper.findComponent(ValidationSegment);
+  const findConfirmUnsavedChangesDialog = () => wrapper.findComponent(ConfirmUnsavedChangesDialog);
 
   beforeEach(() => {
     mockBlobContentData = jest.fn();
@@ -264,6 +270,15 @@ describe('Pipeline editor app component', () => {
         expect(mockLatestCommitShaQuery).toHaveBeenCalledTimes(1);
       });
 
+      it('does not track visit_pipeline_editor_without_ci_config event', () => {
+        const { trackEventSpy } = bindInternalEventDocument(wrapper.element);
+        expect(trackEventSpy).not.toHaveBeenCalledWith(
+          'visit_pipeline_editor_without_ci_config',
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
       describe('when ciLint mutation succeeds', () => {
         it('transforms mutation response data before storing in ciConfigData', () => {
           const ciConfigData = findEditorHome().props('ciConfigData');
@@ -284,6 +299,33 @@ describe('Pipeline editor app component', () => {
       });
     });
 
+    describe('confirm unsaved changes dialog', () => {
+      it('renders the dialog with has-unsaved-changes false when content matches the last commit', async () => {
+        await createComponentWithApollo({
+          data: {
+            currentBranch: mockDefaultBranch,
+            lastCommittedContent: 'foo',
+            currentCiFileContent: 'foo',
+          },
+        });
+
+        expect(findConfirmUnsavedChangesDialog().exists()).toBe(true);
+        expect(findConfirmUnsavedChangesDialog().props('hasUnsavedChanges')).toBe(false);
+      });
+
+      it('binds has-unsaved-changes to true when current content diverges from the last commit', async () => {
+        await createComponentWithApollo({
+          data: {
+            currentBranch: mockDefaultBranch,
+            lastCommittedContent: 'foo',
+            currentCiFileContent: 'foo123',
+          },
+        });
+
+        expect(findConfirmUnsavedChangesDialog().props('hasUnsavedChanges')).toBe(true);
+      });
+    });
+
     describe('when no CI config file exists', () => {
       beforeEach(async () => {
         mockBlobContentData.mockResolvedValue(mockBlobContentQueryResponseNoCiFile);
@@ -295,32 +337,9 @@ describe('Pipeline editor app component', () => {
         });
       });
 
-      it('shows an empty state and does not show editor home component', () => {
+      it('shows the empty state and does not show editor home component', () => {
         expect(findEmptyState().exists()).toBe(true);
-        expect(findAlert().exists()).toBe(false);
         expect(findEditorHome().exists()).toBe(false);
-      });
-
-      it('calls once and does not  start poll for the commit sha', () => {
-        expect(mockLatestCommitShaQuery).toHaveBeenCalledTimes(1);
-      });
-
-      describe('because of a fetching error', () => {
-        it('shows a unkown error message', async () => {
-          const loadUnknownFailureText = 'The CI configuration was not loaded, please try again.';
-
-          mockBlobContentData.mockRejectedValueOnce();
-          await createComponentWithApollo({
-            stubs: {
-              PipelineEditorMessages,
-            },
-          });
-
-          expect(findEmptyState().exists()).toBe(false);
-
-          expect(findAlert().text()).toBe(loadUnknownFailureText);
-          expect(findEditorHome().exists()).toBe(true);
-        });
       });
     });
 

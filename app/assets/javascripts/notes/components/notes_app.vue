@@ -2,6 +2,8 @@
 import { mapState, mapActions } from 'pinia';
 import { v4 as uuidv4 } from 'uuid';
 import DuoCodeReviewSystemNote from 'ee_component/vue_shared/components/notes/duo_code_review_system_note.vue';
+import { createAlert } from '~/alert';
+import { __ } from '~/locale';
 import { InternalEvents } from '~/tracking';
 import { convertToGraphQLId, getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { TYPENAME_NOTE } from '~/graphql_shared/constants';
@@ -16,7 +18,7 @@ import PlaceholderNote from '~/vue_shared/components/notes/placeholder_note.vue'
 import PlaceholderSystemNote from '~/vue_shared/components/notes/placeholder_system_note.vue';
 import SkeletonLoadingContainer from '~/vue_shared/components/notes/skeleton_note.vue';
 import SystemNote from '~/vue_shared/components/notes/system_note.vue';
-import { Mousetrap } from '~/lib/mousetrap';
+import { Mousetrap, suppressShortcutsUntilInputFocus } from '~/lib/mousetrap';
 import { ISSUABLE_COMMENT_OR_REPLY, keysFor } from '~/behaviors/shortcuts/keybindings';
 import { CopyAsGFM } from '~/behaviors/markdown/copy_as_gfm';
 import { useNotes } from '~/notes/store/legacy_notes';
@@ -222,7 +224,13 @@ export default {
     },
     shouldShow() {
       if (!this.isNotesFetched) {
-        this.fetchNotes();
+        this.fetchNotes().catch((error) => {
+          createAlert({
+            message: __('Something went wrong while fetching comments. Please try again.'),
+            captureError: true,
+            error,
+          });
+        });
       }
 
       setTimeout(() => {
@@ -291,6 +299,8 @@ export default {
     async quoteReply() {
       if (!this.shouldShow) return;
 
+      suppressShortcutsUntilInputFocus();
+
       const discussionEl = querySelectionClosest('.js-discussion-container');
 
       if (!discussionEl) {
@@ -304,6 +314,10 @@ export default {
       this.$refs.commentForm.append(text);
     },
     discussionIsIndividualNoteAndNotConverted(discussion) {
+      if (discussion.notes?.[0]?.system && discussion.notes?.length === 1) {
+        return true;
+      }
+
       return (
         discussion.individual_note &&
         !this.convertedDisscussionIds.includes(discussion.id) &&
@@ -367,9 +381,7 @@ export default {
     <notes-activity-header
       :notes-filters="notesFilters"
       :notes-filter-value="notesFilterValue"
-      :ai-loading="aiLoading"
       :noteable-type="noteableType"
-      @set-ai-loading="setAiLoading"
     />
     <ai-summary v-if="aiLoading !== null" :ai-loading="aiLoading" @set-ai-loading="setAiLoading" />
     <ordered-layout :slot-keys="slotKeys">

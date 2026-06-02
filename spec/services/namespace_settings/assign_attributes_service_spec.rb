@@ -72,46 +72,10 @@ RSpec.describe NamespaceSettings::AssignAttributesService, feature_category: :gr
       let(:expected) { ::Gitlab::Access::BranchProtection.protected_against_developer_pushes.stringify_keys }
       let(:settings) { { default_branch_protection: ::Gitlab::Access::PROTECTION_DEV_CAN_MERGE } }
 
-      context 'when the user has the ability to update' do
-        before do
-          allow(Ability).to receive(:allowed?).with(user, :update_default_branch_protection, group).and_return(true)
-        end
-
-        context 'when group is root' do
-          before do
-            allow(group).to receive(:root?).and_return(true)
-          end
-
-          it "updates default_branch_protection_defaults from the default_branch_protection param" do
-            expect { service.execute }
-              .to change { namespace_settings.default_branch_protection_defaults }
-                    .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
-          end
-        end
-
-        context 'when group is not root' do
-          before do
-            allow(group).to receive(:root?).and_return(false)
-          end
-
-          it "updates default_branch_protection_defaults from the default_branch_protection param" do
-            expect { service.execute }
-              .to change { namespace_settings.default_branch_protection_defaults }
-                    .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
-          end
-        end
-      end
-
-      context 'when the user does not have the ability to update' do
-        before do
-          allow(Ability).to receive(:allowed?).with(user, :update_default_branch_protection, group).and_return(false)
-        end
-
-        it "does not update default_branch_protection_defaults and adds an error to the namespace_settings",
-          :aggregate_failures do
-          expect { service.execute }.not_to change { namespace_settings.default_branch_protection_defaults }
-          expect(group.namespace_settings.errors[:default_branch_protection]).to include('can only be changed by a group admin.')
-        end
+      it "updates default_branch_protection_defaults from the default_branch_protection param" do
+        expect { service.execute }
+          .to change { namespace_settings.default_branch_protection_defaults }
+                .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
       end
     end
 
@@ -121,46 +85,10 @@ RSpec.describe NamespaceSettings::AssignAttributesService, feature_category: :gr
       let(:expected) { branch_protection }
       let(:settings) { { default_branch_protection_defaults: branch_protection } }
 
-      context 'when the user has the ability to update' do
-        before do
-          allow(Ability).to receive(:allowed?).with(user, :update_default_branch_protection, group).and_return(true)
-        end
-
-        context 'when group is root' do
-          before do
-            allow(group).to receive(:root?).and_return(true)
-          end
-
-          it "updates default_branch_protection_defaults from the default_branch_protection param" do
-            expect { service.execute }
-              .to change { namespace_settings.default_branch_protection_defaults }
-                    .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
-          end
-        end
-
-        context 'when group is not root' do
-          before do
-            allow(group).to receive(:root?).and_return(false)
-          end
-
-          it "updates default_branch_protection_defaults from the default_branch_protection param" do
-            expect { service.execute }
-              .to change { namespace_settings.default_branch_protection_defaults }
-                    .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
-          end
-        end
-      end
-
-      context 'when the user does not have the ability to update' do
-        before do
-          allow(Ability).to receive(:allowed?).with(user, :update_default_branch_protection, group).and_return(false)
-        end
-
-        it "does not update default_branch_protection_defaults and adds an error to the namespace_settings",
-          :aggregate_failures do
-          expect { service.execute }.not_to change { namespace_settings.default_branch_protection_defaults }
-          expect(group.namespace_settings.errors[:default_branch_protection_defaults]).to include('can only be changed by a group admin.')
-        end
+      it "updates default_branch_protection_defaults from the default_branch_protection_defaults param" do
+        expect { service.execute }
+          .to change { namespace_settings.default_branch_protection_defaults }
+                .from(::Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected)
       end
     end
 
@@ -245,6 +173,36 @@ RSpec.describe NamespaceSettings::AssignAttributesService, feature_category: :gr
           expect { service.execute }.not_to change { subgroup.namespace_settings.jwt_ci_cd_job_token_enabled }
 
           expect(subgroup.namespace_settings.errors.messages[:jwt_ci_cd_job_token_enabled]).to include('only available on top-level groups.')
+        end
+      end
+    end
+
+    context 'when granular token enforcement params are assigned' do
+      let(:namespace_settings) { group.namespace_settings }
+
+      context 'for a root group' do
+        let(:settings) { { enforce_granular_tokens: true, granular_tokens_enforced_after: Date.tomorrow } }
+
+        it 'assigns both params' do
+          expect { service.execute }
+            .to change { namespace_settings.enforce_granular_tokens }.from(false).to(true)
+            .and change { namespace_settings.granular_tokens_enforced_after }.from(nil).to(Date.tomorrow)
+        end
+      end
+
+      context 'for a subgroup' do
+        let(:subgroup) { create(:group, parent: group) }
+        let(:settings) { { enforce_granular_tokens: true, granular_tokens_enforced_after: Date.tomorrow } }
+
+        subject(:service) { described_class.new(user, subgroup, settings) }
+
+        it 'does not assign the params and adds an error' do
+          expect { service.execute }
+            .to not_change { subgroup.namespace_settings.enforce_granular_tokens }
+            .and not_change { subgroup.namespace_settings.granular_tokens_enforced_after }
+
+          expect(subgroup.namespace_settings.errors.messages[:personal_access_token_settings])
+            .to include('can only be configured on a top-level group.')
         end
       end
     end

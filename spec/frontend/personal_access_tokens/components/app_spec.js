@@ -5,6 +5,7 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
+import { setUrlParams, updateHistory } from '~/lib/utils/url_utility';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import PersonalAccessTokensApp from '~/personal_access_tokens/components/app.vue';
 import PersonalAccessTokensTable from '~/personal_access_tokens/components/personal_access_tokens_table.vue';
@@ -12,12 +13,19 @@ import PersonalAccessTokenDrawer from '~/personal_access_tokens/components/perso
 import CreatePersonalAccessTokenDropdown from '~/personal_access_tokens/components/create_personal_access_token_dropdown.vue';
 import PersonalAccessTokenStatistics from '~/personal_access_tokens/components/personal_access_token_statistics.vue';
 import PersonalAccessTokenActions from '~/personal_access_tokens/components/personal_access_token_actions.vue';
+import PersonalAccessTokenDuplicateModal from '~/personal_access_tokens/components/personal_access_token_duplicate_modal.vue';
 import RotatedPersonalAccessToken from '~/personal_access_tokens/components/rotated_personal_access_token.vue';
 import getUserPersonalAccessTokens from '~/personal_access_tokens/graphql/get_user_personal_access_tokens.query.graphql';
 import { DEFAULT_SORT, PAGE_SIZE } from '~/personal_access_tokens/constants';
 import { mockTokens, mockPageInfo, mockQueryResponse } from '../mock_data';
 
 jest.mock('~/alert');
+
+jest.mock('~/lib/utils/url_utility', () => ({
+  ...jest.requireActual('~/lib/utils/url_utility'),
+  setUrlParams: jest.fn(() => '/-/personal_access_tokens'),
+  updateHistory: jest.fn(),
+}));
 
 Vue.use(VueApollo);
 
@@ -48,6 +56,7 @@ describe('PersonalAccessTokensApp', () => {
   const findDrawer = () => wrapper.findComponent(PersonalAccessTokenDrawer);
   const findStatistics = () => wrapper.findComponent(PersonalAccessTokenStatistics);
   const findActions = () => wrapper.findComponent(PersonalAccessTokenActions);
+  const findDuplicateModal = () => wrapper.findComponent(PersonalAccessTokenDuplicateModal);
   const findRotatedToken = () => wrapper.findComponent(RotatedPersonalAccessToken);
 
   beforeEach(() => {
@@ -90,6 +99,13 @@ describe('PersonalAccessTokensApp', () => {
         last: null,
         before: null,
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        1,
+        { sort: 'expires_asc', state: 'active' },
+        { url: 'http://test.host/', clearParams: true, decodeParams: true },
+      );
+      expect(updateHistory).toHaveBeenCalled();
     });
 
     it('passes tokens to the table', async () => {
@@ -124,6 +140,8 @@ describe('PersonalAccessTokensApp', () => {
         last: null,
         before: null,
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(2, { sort: 'expires_asc' }, expect.anything());
     });
 
     it('refetches when date field with less than operator is set', async () => {
@@ -148,6 +166,17 @@ describe('PersonalAccessTokensApp', () => {
         createdBefore: '2026-01-20',
         lastUsedBefore: '2026-01-20',
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        {
+          sort: 'expires_asc',
+          expires_before: '2026-01-20',
+          created_before: '2026-01-20',
+          last_used_before: '2026-01-20',
+        },
+        expect.anything(),
+      );
     });
 
     it('refetches when date field with greater than or equal to operator is set', async () => {
@@ -172,6 +201,17 @@ describe('PersonalAccessTokensApp', () => {
         createdAfter: '2026-01-20',
         lastUsedAfter: '2026-01-20',
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        {
+          sort: 'expires_asc',
+          expires_after: '2026-01-20',
+          created_after: '2026-01-20',
+          last_used_after: '2026-01-20',
+        },
+        expect.anything(),
+      );
     });
 
     it('refetches when when search term is set', async () => {
@@ -192,6 +232,12 @@ describe('PersonalAccessTokensApp', () => {
         before: null,
         search: 'token name',
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        { sort: 'expires_asc', search: 'token name' },
+        expect.anything(),
+      );
     });
 
     it('refetches when filter is submitted', async () => {
@@ -214,6 +260,12 @@ describe('PersonalAccessTokensApp', () => {
         last: null,
         before: null,
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        { sort: 'expires_asc', state: 'inactive', revoked: 'true' },
+        expect.anything(),
+      );
     });
 
     it('does not refetch if submit button is not clicked', async () => {
@@ -245,6 +297,12 @@ describe('PersonalAccessTokensApp', () => {
         last: null,
         before: null,
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        { sort: 'name_asc', state: 'active' },
+        expect.anything(),
+      );
     });
 
     it('updates sort direction when changed', async () => {
@@ -260,6 +318,12 @@ describe('PersonalAccessTokensApp', () => {
         last: null,
         before: null,
       });
+
+      expect(setUrlParams).toHaveBeenNthCalledWith(
+        2,
+        { sort: 'expires_desc', state: 'active' },
+        expect.anything(),
+      );
     });
   });
 
@@ -323,6 +387,59 @@ describe('PersonalAccessTokensApp', () => {
         after: null,
         last: PAGE_SIZE,
         before: 'cursor456',
+      });
+    });
+
+    describe('resets pagination on filter or sort change', () => {
+      const expectResetPagination = () =>
+        expect(mockQueryHandler).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            first: PAGE_SIZE,
+            after: null,
+            last: null,
+            before: null,
+          }),
+        );
+
+      beforeEach(async () => {
+        await waitForPromises();
+        await findPagination().vm.$emit('next', 'cursor123');
+        mockQueryHandler.mockClear();
+      });
+
+      it('resets pagination when filter is submitted', async () => {
+        findFilteredSearch().vm.$emit('input', [{ type: 'state', value: { data: 'INACTIVE' } }]);
+        findFilteredSearch().vm.$emit('submit');
+        await nextTick();
+
+        expectResetPagination();
+      });
+
+      it('resets pagination when filter is cleared', async () => {
+        findFilteredSearch().vm.$emit('clear');
+        await nextTick();
+
+        expectResetPagination();
+      });
+
+      it('resets pagination when sort column changes', async () => {
+        await findSorting().vm.$emit('sortByChange', 'name');
+
+        expectResetPagination();
+      });
+
+      it('resets pagination when sort direction changes', async () => {
+        await findSorting().vm.$emit('sortDirectionChange', false);
+
+        expectResetPagination();
+      });
+
+      it('resets pagination when statistics emits filter', async () => {
+        await findStatistics().vm.$emit('filter', [
+          { type: 'state', value: { data: 'ACTIVE', operator: '=' } },
+        ]);
+
+        expectResetPagination();
       });
     });
   });
@@ -437,6 +554,37 @@ describe('PersonalAccessTokensApp', () => {
         token: mockTokens[1],
         action: 'revoke',
       });
+    });
+  });
+
+  describe('duplicate token', () => {
+    it('renders the duplicate modal component', () => {
+      expect(findDuplicateModal().exists()).toBe(true);
+    });
+
+    it('passes null token to modal by default', () => {
+      expect(findDuplicateModal().props('token')).toBeNull();
+    });
+
+    it('sets the duplicate token when table emits duplicate', async () => {
+      await findTable().vm.$emit('duplicate', mockTokens[0]);
+
+      expect(findDuplicateModal().props('token')).toEqual(mockTokens[0]);
+    });
+
+    it('sets the duplicate token and keeps the drawer open when drawer emits duplicate', async () => {
+      await findTable().vm.$emit('select', mockTokens[0]);
+      await findDrawer().vm.$emit('duplicate', mockTokens[0]);
+
+      expect(findDuplicateModal().props('token')).toEqual(mockTokens[0]);
+      expect(findDrawer().props('token')).toEqual(mockTokens[0]);
+    });
+
+    it('clears the duplicate token when modal emits cancel', async () => {
+      await findTable().vm.$emit('duplicate', mockTokens[0]);
+      await findDuplicateModal().vm.$emit('cancel');
+
+      expect(findDuplicateModal().props('token')).toBeNull();
     });
   });
 });

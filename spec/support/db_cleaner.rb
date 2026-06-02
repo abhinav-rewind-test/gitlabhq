@@ -10,11 +10,10 @@ module DbCleaner
   end
 
   def all_connection_classes
-    ::ActiveRecord::Base
-      .connection_handler
-      .connection_pool_list(:writing)
-      .map { |pool| base_class_for(pool) }
-      .uniq
+    # In Rails 8, connection_pool_list(:writing) is no longer available.
+    # Use GitLab's database_base_models instead, which returns the model
+    # classes (ActiveRecord::Base, Ci::ApplicationRecord, etc.) directly.
+    Gitlab::Database.database_base_models.values
   end
 
   def delete_from_all_tables!(except: [])
@@ -25,8 +24,7 @@ module DbCleaner
 
   def deletion_except_tables
     %w[
-      work_item_types
-      work_item_widget_definitions work_item_related_link_restrictions
+      work_item_related_link_restrictions
     ]
   end
 
@@ -102,9 +100,6 @@ module DbCleaner
     return false unless any_connection_class_with_more_than_allowed_columns?
 
     recreate_all_databases!
-
-    # Seed required data as recreating DBs will delete it
-    TestEnv.seed_db
 
     true
   end

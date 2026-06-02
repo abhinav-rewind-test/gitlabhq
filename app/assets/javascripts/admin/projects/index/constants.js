@@ -1,4 +1,4 @@
-import { get } from 'lodash';
+import { get } from 'lodash-es';
 import emptyStateProjectsSvgPath from '@gitlab/svgs/dist/illustrations/empty-state/empty-projects-md.svg?url';
 import { __, s__ } from '~/locale';
 import ProjectsList from '~/vue_shared/components/projects_list/projects_list.vue';
@@ -75,7 +75,7 @@ const baseTab = {
       };
     }),
   sortOptions: SORT_OPTIONS,
-  defaultSortOption: SORT_OPTION_UPDATED,
+  defaultSortOption: SORT_OPTION_CREATED,
 };
 
 export const ACTIVE_TAB = {

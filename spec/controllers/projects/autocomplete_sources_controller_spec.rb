@@ -3,9 +3,9 @@
 require 'spec_helper'
 
 RSpec.describe Projects::AutocompleteSourcesController do
-  let_it_be(:group, reload: true) { create(:group) }
+  let_it_be_with_reload(:group) { create(:group) }
   let_it_be(:private_group) { create(:group, :private) }
-  let_it_be(:project) { create(:project, namespace: group) }
+  let_it_be(:project, freeze: false) { create(:project, namespace: group) }
   let_it_be(:public_project) { create(:project, :public, group: group) }
   let_it_be(:development) { create(:label, project: project, name: 'Development') }
   let_it_be(:private_issue) { create(:labeled_issue, project: project, labels: [development]) }
@@ -82,6 +82,27 @@ RSpec.describe Projects::AutocompleteSourcesController do
     end
   end
 
+  describe 'GET issues' do
+    before do
+      sign_in(user)
+    end
+
+    it 'returns the correct response', :aggregate_failures do
+      get :issues, format: :json, params: { namespace_id: group.path, project_id: public_project.path }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response).to be_an(Array)
+      expect(json_response).to include(
+        a_hash_including(
+          'iid' => issue.iid,
+          'title' => issue.title,
+          'icon_name' => issue.icon_name,
+          'reference' => issue.to_reference
+        )
+      )
+    end
+  end
+
   describe 'GET labels' do
     before do
       group.add_owner(user)
@@ -140,46 +161,11 @@ RSpec.describe Projects::AutocompleteSourcesController do
       end
 
       shared_examples 'all members are returned' do
-        before do
-          stub_feature_flags(disable_all_mention: false)
-        end
-
-        it 'returns an array of member object' do
+        it 'does not return the all mention user' do
           get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
-          expect(members_by_username('all').symbolize_keys).to include(
-            username: 'all',
-            name: 'All Project and Group Members',
-            count: 2)
-
-          expect(members_by_username(group.full_path).symbolize_keys).to include(
-            type: group.class.name,
-            name: group.full_name,
-            avatar_url: group.avatar_url,
-            count: 1)
-
-          expect(members_by_username(user.username).symbolize_keys).to include(
-            type: user.class.name,
-            name: user.name,
-            avatar_url: user.avatar_url)
-
-          expect(members_by_username(invited_private_member.username).symbolize_keys).to include(
-            type: invited_private_member.class.name,
-            name: invited_private_member.name,
-            avatar_url: invited_private_member.avatar_url)
-        end
-
-        context 'when `disable_all_mention` FF is enabled' do
-          before do
-            stub_feature_flags(disable_all_mention: true)
-          end
-
-          it 'does not return the all mention user' do
-            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
-
-            expect(json_response).not_to include(a_hash_including(
-              { username: 'all', name: 'All Project and Group Members' }))
-          end
+          expect(json_response).not_to include(a_hash_including(
+            { username: 'all', name: 'All Project and Group Members' }))
         end
       end
 
@@ -208,40 +194,11 @@ RSpec.describe Projects::AutocompleteSourcesController do
       end
 
       shared_examples 'returns all members of public project' do
-        before do
-          stub_feature_flags(disable_all_mention: false)
-        end
-
-        it 'returns members including those from invited private groups' do
+        it 'does not return the all mention user' do
           get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
-          expect(members_by_username('all').symbolize_keys).to include(
-            username: 'all',
-            name: 'All Project and Group Members',
-            count: 2)
-
-          expect(members_by_username(user.username).symbolize_keys).to include(
-            type: user.class.name,
-            name: user.name,
-            avatar_url: user.avatar_url)
-
-          expect(members_by_username(invited_private_member.username).symbolize_keys).to include(
-            type: invited_private_member.class.name,
-            name: invited_private_member.name,
-            avatar_url: invited_private_member.avatar_url)
-        end
-
-        context 'when `disable_all_mention` FF is enabled' do
-          before do
-            stub_feature_flags(disable_all_mention: true)
-          end
-
-          it 'does not return the all mention user' do
-            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
-
-            expect(json_response).not_to include(a_hash_including(
-              { username: 'all', name: 'All Project and Group Members' }))
-          end
+          expect(json_response).not_to include(a_hash_including(
+            { username: 'all', name: 'All Project and Group Members' }))
         end
       end
 
@@ -336,7 +293,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
 
     context 'when user cannot read wiki pages' do
       let_it_be(:group2) { create(:group, :public) }
-      let_it_be(:project2) { create(:project, :public, namespace: group2) }
+      let_it_be(:project2, freeze: false) { create(:project, :public, namespace: group2) }
 
       before do
         create(:wiki_page, project: project2, title: 'foo')

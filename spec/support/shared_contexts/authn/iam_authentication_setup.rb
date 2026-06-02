@@ -8,15 +8,18 @@ RSpec.shared_context 'with IAM authentication setup' do
   let(:kid) { 'test-key-id' }
 
   before do
-    stub_iam_service_config(enabled: true, url: iam_service_url, audience: iam_audience)
+    stub_iam_service_config(enabled: true, url: iam_service_url, jwt_audience: iam_audience,
+      jwt_issuer: iam_issuer)
     stub_iam_jwks_endpoint
   end
 
-  def stub_iam_service_config(enabled:, url:, audience: 'gitlab')
-    allow(Gitlab.config.authn.iam_service).to receive_messages(
-      enabled: enabled,
+  def stub_iam_service_config(enabled:, url:, jwt_audience: 'gitlab-rails', jwt_issuer: nil)
+    allow(Authn::IamAuthService).to receive_messages(
+      enabled?: enabled,
       url: url,
-      audience: audience
+      jwt_audience: jwt_audience,
+      jwt_issuer: jwt_issuer,
+      secret: nil
     )
   end
 
@@ -38,6 +41,7 @@ RSpec.shared_context 'with IAM authentication setup' do
     aud = options.fetch(:aud, iam_audience)
     sub = options.fetch(:sub, user.id.to_s)
     exclude_claims = options.fetch(:exclude_claims, [])
+    algorithm = options.fetch(:algorithm, 'RS256')
 
     payload = {
       sub: sub,
@@ -51,22 +55,6 @@ RSpec.shared_context 'with IAM authentication setup' do
 
     exclude_claims.each { |claim| payload.delete(claim.to_sym) }
 
-    headers = { kid: kid }
-    JWT.encode(payload, private_key, 'RS256', headers)
-  end
-
-  def stub_iam_jwks_key_rotation(old_key:, new_key:, url: nil, kid: nil)
-    url ||= iam_service_url
-    kid ||= self.kid
-
-    old_jwks = { 'keys' => [JWT::JWK.new(old_key.public_key, { use: 'sig', kid: kid }).export] }
-    new_jwks = { 'keys' => [JWT::JWK.new(new_key.public_key, { use: 'sig', kid: kid }).export] }
-
-    # Simulate key rotation: first call returns old key, second call returns new key
-    stub_request(:get, "#{url}/.well-known/jwks.json")
-      .to_return(
-        { status: 200, body: old_jwks.to_json, headers: { 'Content-Type' => 'application/json' } },
-        { status: 200, body: new_jwks.to_json, headers: { 'Content-Type' => 'application/json' } }
-      )
+    JWT.encode(payload, private_key, algorithm, { kid: kid })
   end
 end

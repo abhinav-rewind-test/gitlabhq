@@ -84,7 +84,7 @@ class Notify < ApplicationMailer
     return unless sender = User.find(sender_id)
 
     address = default_sender_address
-    address.display_name = sender_name.presence || "#{sender.name} (#{sender.to_reference})"
+    address.display_name = encode_display_name(sender_name.presence || "#{sender.name} (#{sender.to_reference})")
 
     if sender_email
       address.address = sender_email
@@ -146,7 +146,7 @@ class Notify < ApplicationMailer
 
     if Gitlab::Email::IncomingEmail.enabled? && @sent_notification
       headers['Reply-To'] = Mail::Address.new(Gitlab::Email::IncomingEmail.reply_address(reply_key)).tap do |address|
-        address.display_name = reply_display_name(model)
+        address.display_name = encode_display_name(reply_display_name(model))
       end
 
       fallback_reply_message_id = "<reply-#{reply_key}@#{Gitlab.config.gitlab.host}>"
@@ -239,13 +239,13 @@ class Notify < ApplicationMailer
     return unless object.respond_to?(:work_item_type)
     # Introduce a configuration check for the default type when we switched to system-defined types
     # See https://gitlab.com/groups/gitlab-org/-/epics/19879
-    return unless %w[issue ticket].include?(object.work_item_type&.base_type)
+    return unless %w[issue ticket].include?(object.work_item_type.base_type)
 
     prefix = "X-GitLab-Issue"
 
     headers["#{prefix}-ID"] = object.id
-    headers["#{prefix}-IID"] = object.iid if object.respond_to?(:iid)
-    headers["#{prefix}-State"] = object.state if object.respond_to?(:state)
+    headers["#{prefix}-IID"] = object.iid
+    headers["#{prefix}-State"] = object.state
   end
 
   def add_project_headers

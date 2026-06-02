@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab quick actions
 description: Commands, shortcuts, and inline actions.
 ---
@@ -134,11 +134,9 @@ Add up to six email participants.
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/350460) in GitLab 13.8 [with a flag](../../administration/feature_flags/list.md) named `issue_email_participants`. Enabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/350460) in GitLab 18.10. Feature flag `issue_email_participants` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag. For more information, see the history.
 
 **Availability**:
 
@@ -241,7 +239,9 @@ Assign one or more users to the work item.
 
 ### `assign_reviewer`
 
-Assign one or more users as reviewers.
+Assign one or more users as reviewers, or request a new review from existing reviewers.
+
+**Alias for [`/request_review`](#request_review).**
 
 **Availability**:
 
@@ -274,10 +274,13 @@ Assign one or more users as reviewers.
 
 **Additional details**:
 
+- If the user is not already a reviewer, assigns them as a reviewer.
+- If the user is already a reviewer, requests a new review from them (resets their review state and sends notifications).
 - You can assign multiple users in a single command by separating usernames with spaces.
-- `/reviewer` is an alias for `/assign_reviewer`.
+- `/reviewer` is also an alias for this command.
 - To replace reviewers, use [`/reassign_reviewer`](#reassign_reviewer).
 - To remove reviewers, use [`/unassign_reviewer`](#unassign_reviewer).
+- For more information, see [`/request_review`](#request_review).
 
 ### `award`
 
@@ -333,10 +336,11 @@ Mark the item as blocked by other items.
 - Epic
 - Incident
 - Issue
+- Merge request
 
 **Parameters**:
 
-- `<item1> <item2>`: One or more items that block this item. The value should be in the format of `#item`, `group/project#item`, or the full URL.
+- `<item1> <item2>`: One or more items that block this item. The value should be in the format of `#item`, `group/project#item`, or the full URL. For merge requests, use `!merge_request`, `group/project!merge_request`, or the merge request URL.
 
 **Examples**:
 
@@ -356,6 +360,12 @@ Mark the item as blocked by other items.
 
   ```plaintext
   /blocked_by https://gitlab.com/group/project/-/work_items/123
+  ```
+
+- Mark a merge request as blocked by another merge request:
+
+  ```plaintext
+  /blocked_by !456
   ```
 
 **Additional details**:
@@ -378,10 +388,11 @@ Mark the item as blocking other items.
 - Epic
 - Incident
 - Issue
+- Merge request
 
 **Parameters**:
 
-- `<item1> <item2>`: One or more items that this item blocks. The value should be in the format of `#item`, `group/project#item`, or the full URL.
+- `<item1> <item2>`: One or more items that this item blocks. The value should be in the format of `#item`, `group/project#item`, or the full URL. For merge requests, use `!merge_request`, `group/project!merge_request`, or the merge request URL.
 
 **Examples**:
 
@@ -401,6 +412,12 @@ Mark the item as blocking other items.
 
   ```plaintext
   /blocks https://gitlab.com/group/project/-/work_items/123
+  ```
+
+- Mark a merge request as blocking another merge request:
+
+  ```plaintext
+  /blocks !456
   ```
 
 **Additional details**:
@@ -803,7 +820,7 @@ Set the due date.
 
 **Additional details**:
 
-- For more date format examples, see [Chronic](https://gitlab.com/gitlab-org/ruby/gems/gitlab-chronic#examples).
+- For more date format examples, see [Chronic examples](https://gitlab.com/gitlab-org/ruby/gems/gitlab-chronic#examples).
 - To remove the due date, use [`/remove_due_date`](#remove_due_date).
 
 ### `duplicate`
@@ -1099,7 +1116,6 @@ Merge the changes.
 **Additional details**:
 
 - Depending on the project setting, this may be [when the pipeline succeeds](merge_requests/auto_merge.md), or adding to a [merge train](../../ci/pipelines/merge_trains.md).
-- To start a new pipeline and set auto-merge, use [`/ship`](#ship).
 
 ### `milestone`
 
@@ -1422,7 +1438,7 @@ Rebase the source branch on the latest commit of the target branch. If there are
 
 **Additional details**:
 
-- For help, see [troubleshooting information](../../topics/git/troubleshooting_git.md).
+- For help, see [troubleshooting Git](../../topics/git/troubleshooting_git.md).
 
 ### `relabel`
 
@@ -1590,11 +1606,9 @@ Remove up to six email participants.
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/350460) in GitLab 13.8 [with a flag](../../administration/feature_flags/list.md) named `issue_email_participants`. Enabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/350460) in GitLab 18.10. Feature flag `issue_email_participants` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag. For more information, see the history.
 
 **Availability**:
 
@@ -1831,7 +1845,9 @@ Assign a reviewer or request a new review from one or more users.
 
 **Additional details**:
 
-- Behaves like [`/assign_reviewer`](#assign_reviewer), but also requests a new review from currently assigned reviewers.
+- Can also be invoked using [`/assign_reviewer`](#assign_reviewer) or `/reviewer`.
+- If the user is not already a reviewer, assigns them as a reviewer.
+- If the user is already a reviewer, requests a new review from them (resets their review state and sends notifications).
 - For more information, see [request a review](merge_requests/reviews/_index.md#request-a-review).
 
 ### `run_pipeline`
@@ -1942,36 +1958,6 @@ Set the severity of an incident.
   ```plaintext
   /severity S1
   ```
-
-### `ship`
-
-Create a merge request pipeline and set auto-merge.
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/78998) in GitLab 18.6 [with a flag](../../administration/feature_flags/list.md) named `ship_mr_quick_action`. Disabled by default.
-
-{{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag. For more information, see the history.
-
-**Availability**:
-
-- Merge request
-
-**Examples**:
-
-- Ship the merge request:
-
-  ```plaintext
-  /ship
-  ```
-
-**Additional details**:
-
-- This is an experimental feature.
-- To merge immediately, use [`/merge`](#merge).
 
 ### `shrug`
 
@@ -2443,13 +2429,14 @@ Remove a link to another item.
 - Epic
 - Incident
 - Issue
+- Merge request
 - Task
 - Objective
 - Key Result
 
 **Parameters**:
 
-- `<item>`: The item to unlink. The value should be in the format of `#item`, `group/project#item`, or the full URL.
+- `<item>`: The item to unlink. The value should be in the format of `#item`, `group/project#item`, or the full URL. For merge requests, use `!merge_request`, `group/project!merge_request`, or the merge request URL.
 
 **Examples**:
 
@@ -2463,6 +2450,12 @@ Remove a link to another item.
 
   ```plaintext
   /unlink https://gitlab.com/group/project/-/work_items/123
+  ```
+
+- Remove a blocking relationship between merge requests:
+
+  ```plaintext
+  /unlink !456
   ```
 
 **Additional details**:

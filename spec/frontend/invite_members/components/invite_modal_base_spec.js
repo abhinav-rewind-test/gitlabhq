@@ -1,4 +1,4 @@
-import { GlDatepicker, GlFormGroup, GlSprintf, GlModal, GlIcon } from '@gitlab/ui';
+import { GlCollapse, GlDatepicker, GlFormGroup, GlSprintf, GlModal } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import { RENDER_ALL_SLOTS_TEMPLATE, stubComponent } from 'helpers/stub_component';
 import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
@@ -21,7 +21,12 @@ describe('InviteModalBase', () => {
   let wrapper;
   const dropdownItems = roleDropdownItems({ validRoles: propsData.accessLevels });
 
-  const createComponent = ({ props = {}, stubs = {}, mountFn = shallowMountExtended } = {}) => {
+  const createComponent = ({
+    props = {},
+    stubs = {},
+    slots = {},
+    mountFn = shallowMountExtended,
+  } = {}) => {
     const requiredStubs =
       mountFn === mountExtended
         ? {}
@@ -45,6 +50,7 @@ describe('InviteModalBase', () => {
         ...requiredStubs,
         ...stubs,
       },
+      slots,
     });
   };
 
@@ -53,13 +59,16 @@ describe('InviteModalBase', () => {
   const findLink = () => wrapper.findByTestId('invite-modal-help-link');
   const findAccessExpirationHelpLink = () =>
     wrapper.findByTestId('invite-modal-access-expiration-link');
-  const findIcon = () => wrapper.findComponent(GlIcon);
+
   const findIntroText = () => wrapper.findByTestId('modal-base-intro-text').text();
   const findMembersFormGroup = () => wrapper.findByTestId('members-form-group');
   const findDisabledInput = () => wrapper.findByTestId('disabled-input');
   const findCancelButton = () => wrapper.findByTestId('invite-modal-cancel');
   const findActionButton = () => wrapper.findByTestId('invite-modal-submit');
   const findModal = () => wrapper.findComponent(GlModal);
+  const findTemporaryAccessToggle = () => wrapper.findByTestId('temporary-access-toggle');
+  const findTemporaryAccessSection = () => wrapper.findByTestId('temporary-access-section');
+  const findCollapse = () => wrapper.findComponent(GlCollapse);
 
   describe('rendering the modal', () => {
     let trackingSpy;
@@ -155,9 +164,25 @@ describe('InviteModalBase', () => {
       });
     });
 
-    describe('rendering the access expiration date field', () => {
-      it('renders the datepicker', () => {
-        expect(findDatepicker().exists()).toBe(true);
+    describe('rendering the temporary access section', () => {
+      it('renders the toggle button', () => {
+        expect(findTemporaryAccessToggle().exists()).toBe(true);
+        expect(findTemporaryAccessToggle().text()).toContain('Grant temporary access');
+      });
+
+      it('is collapsed by default', () => {
+        expect(findCollapse().props('visible')).toBe(false);
+      });
+
+      it('expands when the toggle is clicked', async () => {
+        findTemporaryAccessToggle().vm.$emit('click');
+        await nextTick();
+
+        expect(findCollapse().props('visible')).toBe(true);
+      });
+
+      it('renders the datepicker inside the collapsible section', () => {
+        expect(findTemporaryAccessSection().findComponent(GlDatepicker).exists()).toBe(true);
       });
     });
 
@@ -171,9 +196,7 @@ describe('InviteModalBase', () => {
     it('renders description', () => {
       createComponent({ stubs: { GlFormGroup } });
 
-      expect(findMembersFormGroup().attributes('description')).toContain(
-        propsData.formGroupDescription,
-      );
+      expect(wrapper.findByTestId('label-description').text()).toBe(propsData.formGroupDescription);
     });
 
     describe('when users limit is reached', () => {
@@ -226,15 +249,13 @@ describe('InviteModalBase', () => {
     });
 
     describe('when users limit is not reached', () => {
-      const textRegex =
-        /Select maximum role\s*Invited members are assigned the selected role or the role they have in the group, whichever is lower. Learn more about roles.\s*Access expiration date \(optional\)/;
+      const textRegex = /Select maximum role\s*What are roles\?\s*Grant temporary access/;
 
       beforeEach(() => {
         createComponent({ props: { reachedLimit: false }, stubs: { GlModal, GlFormGroup } });
       });
 
       it('renders correct blocks', () => {
-        expect(findIcon().exists()).toBe(false);
         expect(findDisabledInput().exists()).toBe(false);
         expect(findRoleSelector().exists()).toBe(true);
         expect(findDatepicker().exists()).toBe(true);
@@ -279,5 +300,18 @@ describe('InviteModalBase', () => {
     findModal().vm.$emit('shown');
 
     expect(wrapper.emitted('shown')).toHaveLength(1);
+  });
+
+  describe('membership-selector slot', () => {
+    it('renders content passed to the membership-selector slot', () => {
+      createComponent({
+        stubs: { GlModal, GlFormGroup },
+        slots: {
+          'membership-selector': '<div data-testid="test-membership-slot">slot content</div>',
+        },
+      });
+
+      expect(wrapper.findByTestId('test-membership-slot').exists()).toBe(true);
+    });
   });
 });

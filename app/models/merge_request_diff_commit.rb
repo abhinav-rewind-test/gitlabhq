@@ -37,7 +37,11 @@ class MergeRequestDiffCommit < ApplicationRecord
   attribute :trailers, ::Gitlab::Database::Type::IndifferentJsonb.new
   validates :trailers, json_schema: { filename: 'git_trailers' }
 
-  scope :for_merge_request_diff, ->(diff_id) { where(merge_request_diff_id: diff_id) }
+  scope :for_merge_request_diff, ->(diff_id, project_id = nil) {
+    relation = where(merge_request_diff_id: diff_id)
+    relation = relation.where(project_id: project_id) if project_id
+    relation
+  }
 
   # A list of keys of which their values need to be trimmed before they can be
   # inserted into the merge_request_diff_commit_users table.
@@ -48,6 +52,8 @@ class MergeRequestDiffCommit < ApplicationRecord
   # when deduplication of commit data is confirmed to be stable.
   DEDUPLICATED_COLUMNS =
     %i[commit_author_id committer_id authored_date committed_date sha message].freeze
+
+  BULK_INSERT_BATCH_SIZE = 1000
 
   # Deprecated; use `bulk_insert!` from `BulkInsertSafe` mixin instead.
   # cf. https://gitlab.com/gitlab-org/gitlab/issues/207989 for progress
@@ -97,7 +103,11 @@ class MergeRequestDiffCommit < ApplicationRecord
 
     rows = commit_rows_with_metadata(project.id, merge_request_diff_id, rows)
 
-    ApplicationRecord.legacy_bulk_insert(self.table_name, rows) # rubocop:disable Gitlab/BulkInsert
+    transaction do
+      rows.each_slice(BULK_INSERT_BATCH_SIZE) do |batch|
+        ApplicationRecord.legacy_bulk_insert(self.table_name, batch) # rubocop:disable Gitlab/BulkInsert
+      end
+    end
   end
 
   def self.prepare_commits_for_bulk_insert(commits, organization_id)
@@ -121,7 +131,7 @@ class MergeRequestDiffCommit < ApplicationRecord
   def self.oldest_merge_request_id_per_commit(project_id, shas)
     # This method is defined here and not on MergeRequest, otherwise the SHA
     # values used in the WHERE below won't be encoded correctly.
-    select(['merge_request_diff_commits.sha AS sha', 'min(merge_requests.id) AS merge_request_id'])
+    relation = select(['merge_request_diff_commits.sha AS sha', 'min(merge_requests.id) AS merge_request_id'])
       .joins(:merge_request_diff)
       .joins(
         'INNER JOIN merge_requests ' \
@@ -135,9 +145,13 @@ class MergeRequestDiffCommit < ApplicationRecord
         }
       )
       .group(:sha)
+
+    relation = relation.where(project_id: project_id) if read_new_commits_table?(project_id)
+
+    relation
   end
 
-  def self.commit_shas_from_metadata(project_id:, limit:)
+  def self.commit_shas_from_metadata(project_id:, limit:, partition_enabled: false)
     # Until `merge_request_commits_metadata` records are backfilled, SHAs data may be in found in either table
     metadata_join_sql = <<~SQL.squish
       LEFT JOIN merge_request_commits_metadata
@@ -151,11 +165,20 @@ class MergeRequestDiffCommit < ApplicationRecord
     relation = self.joins(self.sanitize_sql_array([metadata_join_sql, project_id]))
       .order(:relative_order)
 
+    relation = relation.where(project_id: project_id) if partition_enabled
+
     relation = relation.limit(limit) if limit
 
     # rubocop:disable Database/AvoidUsingPluckWithoutLimit -- limit may be applied in the caller
     relation.pluck(shas_sql)
     # rubocop:enable Database/AvoidUsingPluckWithoutLimit
+  end
+
+  def self.read_new_commits_table?(project_id)
+    actor = Project.actor_from_id(project_id)
+
+    Feature.enabled?(:mr_diff_commits_read_new_table, actor) &&
+      Feature.enabled?(:merge_request_diff_commits_partition, actor)
   end
 
   def self.commit_rows_with_metadata(project_id, merge_request_diff_id, rows)

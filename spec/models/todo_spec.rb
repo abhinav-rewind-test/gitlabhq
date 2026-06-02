@@ -3,11 +3,11 @@
 require 'spec_helper'
 
 RSpec.describe Todo, feature_category: :notifications do
-  let_it_be(:issue) { create(:issue) }
+  let_it_be(:issue, freeze: false) { create(:issue) }
   let_it_be(:user) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:group) { create(:group, developers: user) }
-  let_it_be(:project) { create(:project, :repository, developers: user) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, developers: user) }
   let_it_be(:project2) { create(:project) }
 
   describe 'relationships' do
@@ -156,6 +156,8 @@ RSpec.describe Todo, feature_category: :notifications do
     end
 
     context 'when bypassing activerecord' do
+      let(:duo_code_review_bot) { Users::Internal.in_organization(user.organization_id).duo_code_review_bot }
+
       it 'prefers project_id' do
         todos_attributes = [{
           state: :pending,
@@ -163,7 +165,7 @@ RSpec.describe Todo, feature_category: :notifications do
           target_id: user.id,
           target_type: ::User,
           action: ::Todo::DUO_ENTERPRISE_ACCESS_GRANTED,
-          author_id: ::Users::Internal.duo_code_review_bot.id,
+          author_id: duo_code_review_bot.id,
           organization_id: user.organization_id,
           group_id: group.id,
           project_id: project.id
@@ -183,7 +185,7 @@ RSpec.describe Todo, feature_category: :notifications do
           target_id: user.id,
           target_type: ::User,
           action: ::Todo::DUO_ENTERPRISE_ACCESS_GRANTED,
-          author_id: ::Users::Internal.duo_code_review_bot.id,
+          author_id: duo_code_review_bot.id,
           organization_id: user.organization_id,
           group_id: group.id,
           project_id: nil
@@ -203,7 +205,7 @@ RSpec.describe Todo, feature_category: :notifications do
           target_id: user.id,
           target_type: ::User,
           action: ::Todo::DUO_ENTERPRISE_ACCESS_GRANTED,
-          author_id: ::Users::Internal.duo_code_review_bot.id,
+          author_id: duo_code_review_bot.id,
           organization_id: nil,
           group_id: nil,
           project_id: nil
@@ -283,7 +285,7 @@ RSpec.describe Todo, feature_category: :notifications do
     it 'changes state to done' do
       todo = create(:todo, state: :pending)
 
-      expect { todo.done }.to change(todo, :state).from('pending').to('done')
+      expect { todo.done }.to change { todo.state }.from('pending').to('done')
     end
 
     it 'does not raise error when is already done' do
@@ -318,20 +320,6 @@ RSpec.describe Todo, feature_category: :notifications do
       subject.target_type = 'Issue'
 
       expect(subject.for_design?).to eq(false)
-    end
-  end
-
-  describe '#for_alert?' do
-    it 'returns true when target is a Alert' do
-      subject.target_type = 'AlertManagement::Alert'
-
-      expect(subject.for_alert?).to eq(true)
-    end
-
-    it 'returns false when target is not a Alert' do
-      subject.target_type = 'Issue'
-
-      expect(subject.for_alert?).to eq(false)
     end
   end
 
@@ -432,7 +420,7 @@ RSpec.describe Todo, feature_category: :notifications do
     end
 
     context 'when the todo is coming from an issue' do
-      let_it_be(:issue) { create(:issue, project: project) }
+      let_it_be(:issue, freeze: false) { create(:issue, project: project) }
       let(:issue_path) { ::Gitlab::UrlBuilder.instance.issue_path(issue) }
 
       context 'when coming from the issue itself' do
@@ -463,7 +451,7 @@ RSpec.describe Todo, feature_category: :notifications do
     end
 
     context 'when the todo is coming from a work item' do
-      let_it_be(:work_item) { create(:work_item, :test_case, project: project) }
+      let_it_be(:work_item) { create(:work_item, :task, project: project) }
 
       context 'when coming from the work item itself' do
         let_it_be(:todo) { create(:todo, project: project, user: user, target: work_item, target_type: WorkItem.name) }
@@ -513,7 +501,7 @@ RSpec.describe Todo, feature_category: :notifications do
     end
 
     context 'when the todo is coming from a wiki page' do
-      let_it_be(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, project: project) }
+      let_it_be(:wiki_page_meta, freeze: false) { create(:wiki_page_meta, :for_wiki_page, project: project) }
 
       context 'when coming from the wiki page itself' do
         let_it_be(:todo) { create(:todo, project: project, user: user, target: wiki_page_meta) }
@@ -568,26 +556,6 @@ RSpec.describe Todo, feature_category: :notifications do
     end
   end
 
-  describe '#self_added?' do
-    let(:user_1) { build(:user) }
-
-    before do
-      subject.user = user_1
-    end
-
-    it 'is true when the user is the author' do
-      subject.author = user_1
-
-      expect(subject).to be_self_added
-    end
-
-    it 'is false when the user is not the author' do
-      subject.author = build(:user)
-
-      expect(subject).not_to be_self_added
-    end
-  end
-
   describe '#done?' do
     let_it_be(:todo1) { create(:todo, state: :pending) }
     let_it_be(:todo2) { create(:todo, state: :done) }
@@ -598,48 +566,6 @@ RSpec.describe Todo, feature_category: :notifications do
 
     it 'returns false for todos with state pending' do
       expect(todo1.done?).to be_falsey
-    end
-  end
-
-  describe '#self_assigned?' do
-    let(:user_1) { build(:user) }
-
-    context 'when self_added' do
-      before do
-        subject.user = user_1
-        subject.author = user_1
-      end
-
-      it 'returns true for ASSIGNED' do
-        subject.action = Todo::ASSIGNED
-
-        expect(subject).to be_self_assigned
-      end
-
-      it 'returns true for REVIEW_REQUESTED' do
-        subject.action = Todo::REVIEW_REQUESTED
-
-        expect(subject).to be_self_assigned
-      end
-
-      it 'returns false for other action' do
-        subject.action = Todo::MENTIONED
-
-        expect(subject).not_to be_self_assigned
-      end
-    end
-
-    context 'when todo is not self_added' do
-      before do
-        subject.user = user_1
-        subject.author = build(:user)
-      end
-
-      it 'returns false' do
-        subject.action = Todo::ASSIGNED
-
-        expect(subject).not_to be_self_assigned
-      end
     end
   end
 

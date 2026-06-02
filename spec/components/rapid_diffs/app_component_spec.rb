@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe RapidDiffs::AppComponent, type: :component, feature_category: :code_review_workflow do
-  let_it_be(:diffs_slice) { Array.new(2, build(:diff_file)) }
+  let_it_be(:diffs_slice, freeze: false) { Array.new(2, build(:diff_file)) }
   let(:diffs_stream_url) { '/stream' }
   let(:reload_stream_url) { '/reload_stream' }
   let(:show_whitespace) { true }
@@ -78,6 +78,31 @@ RSpec.describe RapidDiffs::AppComponent, type: :component, feature_category: :co
     expect(data['show_whitespace']).to eq(show_whitespace)
     expect(data['diff_view_type']).to eq(diff_view.to_s)
     expect(data['lazy']).to eq(lazy)
+    expect(data['file_by_file_mode']).to be(false)
+  end
+
+  context "when user has file by file mode enabled" do
+    let_it_be(:user) { build_stubbed(:user, view_diffs_file_by_file: true) }
+
+    before do
+      allow(component).to receive(:helpers).and_wrap_original do |original_method, *args|
+        helpers = original_method.call(*args)
+        allow(helpers).to receive_messages(
+          hide_whitespace?: !show_whitespace,
+          diff_view: diff_view,
+          api_v4_user_preferences_path: update_user_endpoint,
+          current_user: user
+        )
+        helpers
+      end
+    end
+
+    it "sets file_by_file_mode to true" do
+      render_component
+      app = page.find('[data-rapid-diffs]')
+      data = Gitlab::Json.parse(app['data-app-data'])
+      expect(data['file_by_file_mode']).to be(true)
+    end
   end
 
   context "with extra_app_data" do
@@ -172,6 +197,24 @@ RSpec.describe RapidDiffs::AppComponent, type: :component, feature_category: :co
     expect(result).to have_text('custom_after_content')
   end
 
+  describe '#parallel_view?' do
+    let(:diff_view) { :parallel }
+
+    it 'returns true when diff_view is parallel' do
+      render_component
+      expect(component.parallel_view?).to be(true)
+    end
+
+    context 'when diff_view is inline' do
+      let(:diff_view) { :inline }
+
+      it 'returns false' do
+        render_component
+        expect(component.parallel_view?).to be(false)
+      end
+    end
+  end
+
   it "renders diffs list" do
     render_component
     expect(page).to have_css('[data-diffs-list]')
@@ -240,6 +283,27 @@ RSpec.describe RapidDiffs::AppComponent, type: :component, feature_category: :co
         render_component
         expect(page).not_to have_text("There are no changes")
       end
+    end
+  end
+
+  context 'with custom empty_state slot' do
+    it 'renders slot content instead of default empty state' do
+      result = render_component do |c|
+        c.with_empty_state do
+          'custom empty state'
+        end
+      end
+      expect(result).to have_text('custom empty state')
+      expect(result).not_to have_text('There are no changes')
+    end
+
+    it 'does not render diff files' do
+      result = render_component do |c|
+        c.with_empty_state do
+          'custom empty state'
+        end
+      end
+      expect(result).not_to have_css('diff-file')
     end
   end
 

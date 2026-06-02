@@ -4,9 +4,16 @@ class Route < ApplicationRecord
   include CaseSensitivity
   include Gitlab::SQL::Pattern
   include EachBatch
+  include AfterCommitQueue
   include Cells::Claimable
 
-  cells_claims_attribute :path, type: CLAIMS_BUCKET_TYPE::ROUTES, feature_flag: :cells_claims_routes
+  cells_claims_scope do
+    where("strpos(path, '/') = 0")
+  end
+
+  cells_claims_attribute :path, type: CLAIMS_BUCKET_TYPE::ROUTES,
+    feature_flag: :cells_claims_routes,
+    if: ->(record) { record.path.exclude?('/') }
 
   cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::NAMESPACE, subject_key: :namespace_id
 
@@ -42,7 +49,25 @@ class Route < ApplicationRecord
   end
 
   def delete_conflicting_redirects
+    destroy_metadata = []
+
+    if RedirectRoute.cells_claims_enabled_for_attribute?(:path)
+      conflicting_redirects.each_batch(of: Cells::Claimable::BULK_CLAIMS_BATCH_SIZE) do |batch|
+        destroy_metadata.concat(
+          batch.filter_map { |record| record.build_destroy_metadata_for_worker(:path) }
+        )
+      end
+    end
+
     conflicting_redirects.delete_all
+
+    return if destroy_metadata.empty?
+
+    run_after_commit do
+      destroy_metadata.each_slice(Cells::Claimable::BULK_CLAIMS_BATCH_SIZE) do |slice|
+        Cells::BulkClaimsWorker.perform_async(RedirectRoute.name, 'path', { 'destroy_metadata' => slice })
+      end
+    end
   end
 
   def conflicting_redirects

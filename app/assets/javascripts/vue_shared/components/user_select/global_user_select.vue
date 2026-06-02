@@ -1,6 +1,6 @@
 <script>
 import { GlTokenSelector, GlAvatar, GlAvatarLabeled } from '@gitlab/ui';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { getUsers } from '~/rest_api';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 
@@ -11,6 +11,13 @@ export default {
     GlTokenSelector,
     GlAvatar,
     GlAvatarLabeled,
+  },
+  props: {
+    inputId: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
   data() {
     return {
@@ -25,6 +32,7 @@ export default {
     textInputAttrs() {
       return {
         'data-testid': 'global-user-select-input',
+        ...(this.inputId && { id: this.inputId }),
       };
     },
   },

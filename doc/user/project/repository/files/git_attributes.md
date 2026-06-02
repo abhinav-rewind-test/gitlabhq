@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Define custom Git attributes for your GitLab project to set options for file handling, display, locking, and storage.
 title: Git attributes
 ---
@@ -60,8 +60,8 @@ For more information, see [working-tree-encoding](https://git-scm.com/docs/gitat
 ## Syntax highlighting
 
 The `.gitattributes` file can be used to define which language to use when
-syntax highlighting files and diffs. For more information, see
-[Syntax highlighting](highlighting.md).
+syntax highlighting files and diffs.
+For more information, see [syntax highlighting](highlighting.md).
 
 ## Custom merge drivers
 
@@ -73,7 +73,8 @@ syntax highlighting files and diffs. For more information, see
 {{< /details >}}
 
 GitLab Self-Managed administrators can define [custom merge drivers](https://git-scm.com/docs/gitattributes#_defining_a_custom_merge_driver)
-in a GitLab configuration file, then use the custom merge drivers in a Git `.gitattributes` file. Custom merge drivers are not supported on GitLab.com.
+in a GitLab configuration file, then use the custom merge drivers in a Git `.gitattributes` file.
+Custom merge drivers are not supported on GitLab.com.
 
 Custom merge drivers are a Git feature that gives you advanced control over conflict
 resolution.

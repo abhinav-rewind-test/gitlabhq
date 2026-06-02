@@ -225,11 +225,52 @@ RSpec.describe Gitlab::Graphql::Authz::BoundaryExtractor, feature_category: :per
         it_behaves_like 'extracts group boundary'
       end
 
+      context 'when object responds to both :project and :group' do
+        context 'with a project label' do
+          let_it_be(:project_label) { create(:label, project: project) }
+          let(:arguments) { { resource_id: project_label.to_global_id } }
+
+          it_behaves_like 'extracts project boundary'
+        end
+
+        context 'with a group label' do
+          let_it_be(:group_label) { create(:group_label, group: group) }
+          let(:arguments) { { resource_id: group_label.to_global_id } }
+
+          it_behaves_like 'extracts group boundary'
+        end
+      end
+
       context 'when object type has no project or group method' do
         let_it_be(:user) { create(:user) }
         let(:arguments) { { resource_id: user.to_global_id } }
 
         it_behaves_like 'returns nil'
+      end
+
+      context 'when object has an owner method' do
+        # runners are an example of an object associated with a project or group via their owner
+        let_it_be(:project_runner) { create(:ci_runner, :project, projects: [project]) }
+        let_it_be(:group_runner) { create(:ci_runner, :group, groups: [group]) }
+        let_it_be(:instance_runner) { create(:ci_runner, :instance) }
+
+        context 'when owner returns a project' do
+          let(:arguments) { { resource_id: project_runner.to_global_id } }
+
+          it_behaves_like 'extracts project boundary'
+        end
+
+        context 'when owner returns a group' do
+          let(:arguments) { { resource_id: group_runner.to_global_id } }
+
+          it_behaves_like 'extracts group boundary'
+        end
+
+        context 'when owner returns neither a project nor a group' do
+          let(:arguments) { { resource_id: instance_runner.to_global_id } }
+
+          it_behaves_like 'returns nil'
+        end
       end
     end
   end

@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Product Planning
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group epic boards API
 ---
 
@@ -36,7 +36,8 @@ GET /groups/:id/epic_boards
 | `id`      | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group accessible by the authenticated user |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/epic_boards"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/epic_boards"
 ```
 
 Example response:
@@ -122,7 +123,8 @@ GET /groups/:id/epic_boards/:board_id
 | `board_id` | integer | yes | The ID of an epic board |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/epic_boards/1"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/epic_boards/1"
 ```
 
 Example response:
@@ -210,7 +212,8 @@ GET /groups/:id/epic_boards/:board_id/lists
 | `board_id` | integer | yes | The ID of an epic board |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/epic_boards/1/lists"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/epic_boards/1/lists"
 ```
 
 Example response:
@@ -274,7 +277,8 @@ GET /groups/:id/epic_boards/:board_id/lists/:list_id
 | `list_id` | integer | yes | The ID of an epic board's list |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/epic_boards/1/lists/1"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/epic_boards/1/lists/1"
 ```
 
 Example response:

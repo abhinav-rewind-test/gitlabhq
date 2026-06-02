@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::HookData::MergeRequestBuilder, feature_category: :code_review_workflow do
-  let_it_be(:merge_request) { create(:merge_request) }
+  let_it_be(:merge_request, freeze: false) { create(:merge_request) }
 
   let(:builder) { described_class.new(merge_request) }
 
@@ -53,6 +53,16 @@ RSpec.describe Gitlab::HookData::MergeRequestBuilder, feature_category: :code_re
       ].freeze
 
       expect(data).to include(*expected_additional_attributes)
+    end
+
+    context 'when the MR has a squash commit' do
+      before do
+        merge_request.update_column(:squash_commit_sha, 'b83d6e391c22777fca1ed3012fce84f633d7fed0')
+      end
+
+      it 'includes squash_commit_sha' do
+        expect(data[:squash_commit_sha]).to eq('b83d6e391c22777fca1ed3012fce84f633d7fed0')
+      end
     end
 
     context 'when the MR has an image in the description' do

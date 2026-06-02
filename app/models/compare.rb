@@ -40,7 +40,12 @@ class Compare
     [@project, :compare, diff_refs.hash]
   end
 
-  def commits
+  def commits(limit: nil)
+    if limit
+      decorated_commits = Commit.decorate(@compare.commits(limit: limit), project)
+      return CommitCollection.new(project, decorated_commits)
+    end
+
     @commits ||= begin
       decorated_commits = Commit.decorate(@compare.commits, project)
       CommitCollection.new(project, decorated_commits)
@@ -129,6 +134,6 @@ class Compare
   end
 
   def first_diffs_slice(limit, diff_options = {})
-    diffs(diff_options.merge(max_files: limit)).diff_files
+    diffs(diff_options.merge(max_files: limit))
   end
 end

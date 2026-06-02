@@ -22,7 +22,10 @@ describe('UserCounts component', () => {
   const createWrapper = (props = {}) => {
     wrapper = shallowMountExtended(UserCounts, {
       propsData: {
-        sidebarData: { ...mockSidebarData },
+        sidebarData: {
+          ...mockSidebarData,
+          ...props.sidebarData,
+        },
         ...props,
       },
     });
@@ -31,7 +34,6 @@ describe('UserCounts component', () => {
   it('applies counterClass to counter components', () => {
     const customClass = 'custom-counter-class';
     createWrapper({
-      sidebarData: mockSidebarData,
       counterClass: customClass,
     });
 
@@ -50,11 +52,19 @@ describe('UserCounts component', () => {
       const issuesCounter = findIssuesCounter();
       expect(issuesCounter.props('count')).toBe(userCounts.assigned_issues);
       expect(issuesCounter.props('href')).toBe(mockSidebarData.issues_dashboard_path);
-      expect(issuesCounter.props('label')).toBe('Assigned issues');
+      expect(issuesCounter.props('label')).toBe('Assigned work items');
+      expect(issuesCounter.props('icon')).toBe('work-items');
       expect(issuesCounter.attributes('data-track-action')).toBe('click_link');
       expect(issuesCounter.attributes('data-track-label')).toBe('issues_link');
       expect(issuesCounter.attributes('data-track-property')).toBe('nav_core_menu');
       expect(issuesCounter.attributes('class')).toContain('dashboard-shortcuts-issues');
+    });
+
+    it('updates issues counter when userCounts changes externally', async () => {
+      expect(findIssuesCounter().props('count')).toBe(userCounts.assigned_issues);
+      userCounts.assigned_issues = 123;
+      await nextTick();
+      expect(findIssuesCounter().props('count')).toBe(123);
     });
 
     it('renders merge requests counter', () => {

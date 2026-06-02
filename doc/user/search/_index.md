@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Global Search
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Searching in GitLab
 description: Basic, advanced, exact, search scope, and commit SHA search.
 ---
@@ -14,7 +14,7 @@ description: Basic, advanced, exact, search scope, and commit SHA search.
 {{< /details >}}
 
 Find what you need in a growing codebase or expanding organization.
-Save time by looking up specific code, issues, merge requests, and other content across your projects.
+Save time by looking up specific code, work items, merge requests, and other content across your projects.
 Choose from three types of search to match your needs: **basic search**,
 [**advanced search**](advanced_search.md), and [**exact code search**](exact_code_search.md).
 
@@ -36,10 +36,9 @@ The following scopes are available for basic search:
 | Code           |     {{< no >}}      | {{< no >}}  | {{< yes >}} |
 | Comments       |     {{< no >}}      | {{< no >}}  | {{< yes >}} |
 | Commits        |     {{< no >}}      | {{< no >}}  | {{< yes >}} |
-| Epics          |     {{< no >}}      | {{< yes >}} | {{< no >}} |
-| Issues         |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
+| Work items     |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
 | Merge requests |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
-| Milestones     |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
+| Milestones <sup>2</sup> |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
 | Projects       |     {{< yes >}}     | {{< yes >}} | {{< no >}} |
 | Users          |     {{< yes >}}     | {{< yes >}} | {{< yes >}} |
 | Wikis          |     {{< no >}}      | {{< no >}}  | {{< yes >}} |
@@ -47,6 +46,7 @@ The following scopes are available for basic search:
 **Footnotes**:
 
 1. An administrator can [disable global search scopes](#disable-global-search-scopes).
+1. Global basic search returns only project milestones, not group milestones.
 
 ## Specify a search type
 
@@ -105,7 +105,7 @@ To restrict `/search` to authenticated users only, do one of the following:
 To restrict global search to authenticated users only:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Search**.
+1. In the left sidebar, select **Settings** > **Search**.
 1. Expand **Visibility and access controls**
 1. Select the **Restrict global search to authenticated users only** checkbox.
 1. Select **Save changes**.
@@ -135,7 +135,7 @@ All global search scopes are enabled by default on GitLab Self-Managed instances
 To disable one or more global search scopes:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Search**.
+1. In the left sidebar, select **Settings** > **Search**.
 1. Expand **Visibility and access controls**.
 1. Clear the checkboxes for the scopes you want to disable.
 1. Select **Save changes**.
@@ -157,7 +157,7 @@ a scope is selected automatically based on context and availability.
 To configure a default search scope instead:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Search**.
+1. In the left sidebar, select **Settings** > **Search**.
 1. Expand **Visibility and access controls**.
 1. From the **Default search scope** dropdown list, select a scope.
    For automatic selection, select **System default (automatic)**.
@@ -215,28 +215,28 @@ As you type in the search box, autocomplete suggestions are displayed for:
 - Project features (for example, milestones)
 - Settings (for example, user settings)
 - Recently viewed merge requests
-- Recently viewed issues and epics
-- [GitLab Flavored Markdown references](../markdown.md#gitlab-specific-references) for issues in a project
+- Recently viewed work items
+- [GitLab Flavored Markdown references](../markdown.md#gitlab-specific-references) for work items in a project
 
 ## Search in all GitLab
 
 To search in all GitLab:
 
-1. On the top bar, select **Search or go to**.
+1. In the top bar, select **Search or go to**.
 1. Type your search query. You must type at least two characters.
 1. Press <kbd>Enter</kbd> to search, or select from the list.
 
-The results are displayed. To filter the results, on the left sidebar, select a filter.
+The results are displayed. To filter the results, in the left sidebar, select a filter.
 
 ## Search in a project
 
 To search in a project:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Select **Search or go to** again and type the string you want to search for.
 1. Press <kbd>Enter</kbd> to search, or select from the list.
 
-The results are displayed. To filter the results, on the left sidebar, select a filter.
+The results are displayed. To filter the results, in the left sidebar, select a filter.
 
 ## Include archived projects in search results
 
@@ -250,14 +250,14 @@ The results are displayed. To filter the results, on the left sidebar, select a 
 By default, archived projects are excluded from search results.
 To include archived projects in search results:
 
-1. On the search page, on the left sidebar, select the **Include archived** checkbox.
-1. On the left sidebar, select **Apply**.
+1. On the search page, in the left sidebar, select the **Include archived** checkbox.
+1. In the left sidebar, select **Apply**.
 
 ## Search for code
 
 To search for code in a project:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Select **Search or go to** again and type the code you want to search for.
 1. Press <kbd>Enter</kbd> to search, or select from the list.
 
@@ -288,14 +288,14 @@ where the results were found.
 
 To filter code search results by one or more languages:
 
-1. On the code search page, on the left sidebar, select one or more languages.
-1. On the left sidebar, select **Apply**.
+1. On the code search page, in the left sidebar, select one or more languages.
+1. In the left sidebar, select **Apply**.
 
 ## Search for a commit SHA
 
 To search for a commit SHA:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Select **Search or go to** again and type the commit SHA you want to search for.
 1. Press <kbd>Enter</kbd> to search, or select from the list.
 

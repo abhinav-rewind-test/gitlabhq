@@ -7,7 +7,6 @@ namespace :explore do
       get :inactive, to: 'projects#index', as: :inactive
       get :all, to: 'projects#index', as: :all
       get :trending
-      get :starred
       get :topics
       get 'topics/:topic_name', action: :topic, as: :topic, constraints: { format: /(html|atom)/, topic_name: /.+?/ }
     end
@@ -25,6 +24,9 @@ namespace :explore do
     get '/*full_path' => 'catalog#show', as: :catalog, constraints: { full_path: /.*/ }
   end
   resources :snippets, only: [:index]
+
+  resources :analytics_dashboards, path: 'analytics_dashboards(/*vueroute)', only: [:index]
+
   root to: 'projects#index'
 end
 

@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Pages API
 ---
 
@@ -24,11 +24,11 @@ The GitLab Pages feature must be enabled to use these endpoints.
 
 {{< /history >}}
 
+Unpublishes and removes Pages from the specified project.
+
 Prerequisites:
 
 - You must have the Maintainer or Owner role for the project.
-
-Remove Pages.
 
 ```plaintext
 DELETE /projects/:id/pages
@@ -44,7 +44,7 @@ curl --request DELETE \
   --url "https://gitlab.example.com/api/v4/projects/2/pages"
 ```
 
-## Get Pages settings for a project
+## Retrieve Pages settings for a project
 
 {{< history >}}
 
@@ -52,11 +52,11 @@ curl --request DELETE \
 
 {{< /history >}}
 
+Retrieves Pages settings for a specified project.
+
 Prerequisites:
 
 - You must have the Maintainer or Owner role for the project.
-
-List Pages settings for the project.
 
 ```plaintext
 GET /projects/:id/pages
@@ -128,11 +128,11 @@ Example response:
 
 {{< /history >}}
 
+Updates Pages settings for the specified project.
+
 Prerequisites:
 
 - You must have the Maintainer or Owner role for the project.
-
-Update Pages settings for the project.
 
 ```plaintext
 PATCH /projects/:id/pages

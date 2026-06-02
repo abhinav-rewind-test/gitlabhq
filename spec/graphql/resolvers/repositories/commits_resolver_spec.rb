@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :source_code_management do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:repository) { project.repository }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:repository, freeze: false) { project.repository }
 
   it { expect(described_class).to have_nullable_graphql_type(Types::Repositories::CommitType.connection_type) }
 
@@ -34,9 +34,8 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
       }
     end
 
-    subject(:resolved) do
-      field = ::Types::BaseField.from_options(
-        'field_value',
+    let(:field_instance) do
+      ::Types::BaseField.new(
         name: 'commits',
         owner: resolver_parent,
         resolver_class: described_class,
@@ -45,8 +44,10 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
         null: true,
         max_page_size: max_page_size
       )
+    end
 
-      resolve_field(field, repository, args: arguments, object_type: resolver_parent, schema: schema)
+    subject(:resolved) do
+      resolve_field(field_instance, repository, args: arguments, object_type: resolver_parent, schema: schema)
     end
 
     context 'when a valid ref is supplied' do
@@ -54,13 +55,10 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
         expect(commits).to eq(repository.list_commits(ref: ref).commits)
       end
 
-      it 'returns an externally paginated array' do
+      it 'returns an externally paginated array with nil cursors on last page' do
         is_expected.to be_a(Gitlab::Graphql::Pagination::ExternallyPaginatedArrayConnection)
-      end
-
-      it 'includes end_cursor for pagination' do
         expect(resolved.start_cursor).to be_nil
-        expect(resolved.end_cursor).to eq(Base64.encode64(repository.list_commits(ref: ref).next_cursor))
+        expect(resolved.end_cursor).to be_nil
       end
 
       describe 'query' do
@@ -76,6 +74,44 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
 
         it 'returns commits authored by the supplied author name pattern' do
           expect(commits.map(&:author_name)).to all start_with(author)
+        end
+      end
+
+      describe 'path' do
+        let(:arguments) { { ref: ref, path: 'files/ruby/popen.rb' } }
+
+        it 'returns only commits that touch the given path' do
+          expect(commits).to all satisfy { |c|
+            c.deltas.any? { |d| d.new_path == 'files/ruby/popen.rb' || d.old_path == 'files/ruby/popen.rb' }
+          }
+        end
+
+        it 'returns fewer commits than the unfiltered list' do
+          all_commits = repository.list_commits(ref: ref).commits
+          expect(commits.length).to be < all_commits.length
+          expect(commits.length).to be > 0
+        end
+
+        context 'when path is an empty string' do
+          let(:arguments) { { ref: ref, path: '' } }
+
+          it 'normalizes empty string to nil' do
+            expect(repository).to receive(:list_commits)
+              .with(hash_including(path: nil))
+              .and_call_original
+
+            commits
+          end
+        end
+      end
+
+      describe 'literal_pathspec' do
+        it 'passes literal_pathspec: true to list_commits' do
+          expect(repository).to receive(:list_commits)
+            .with(hash_including(literal_pathspec: true))
+            .and_call_original
+
+          commits
         end
       end
 
@@ -161,7 +197,28 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
             resolved
             expect(repository)
               .to have_received(:list_commits)
-              .with(a_hash_including(pagination_params: { limit: max_page_size, page_token: Base64.decode64(after) }))
+              .with(a_hash_including(pagination_params: { limit: max_page_size,
+                                                          page_token: Base64.decode64(after) }))
+          end
+        end
+
+        context 'with first: 0' do
+          let(:first) { 0 }
+
+          it 'does not call Gitaly and returns empty result' do
+            expect(resolved.items).to be_empty
+            expect(resolved.has_next_page).to be(false)
+            expect(repository).not_to have_received(:list_commits)
+          end
+        end
+
+        context 'with first: -1' do
+          let(:first) { -1 }
+
+          it 'does not call Gitaly and returns empty result' do
+            expect(resolved.items).to be_empty
+            expect(resolved.has_next_page).to be(false)
+            expect(repository).not_to have_received(:list_commits)
           end
         end
       end
@@ -211,6 +268,57 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
           end
         end
       end
+
+      describe 'hasNextPage accuracy' do
+        context 'when more commits exist than the requested limit' do
+          let(:max_page_size) { 2 }
+
+          it 'returns hasNextPage true and end_cursor present' do
+            expect(resolved.has_next_page).to be(true)
+            expect(resolved.end_cursor).to be_present
+            expect(commits.size).to eq(max_page_size)
+          end
+        end
+
+        context 'when on the last page of results' do
+          let(:max_page_size) { 1000 }
+
+          it 'returns hasNextPage false and nil end_cursor' do
+            expect(resolved.has_next_page).to be(false)
+            expect(resolved.end_cursor).to be_nil
+          end
+        end
+      end
+
+      describe 'tags' do
+        before do
+          allow(repository).to receive(:list_refs).and_call_original
+        end
+
+        context 'when the tags field is selected' do
+          it 'batch loads tags for all commits via list_refs' do
+            resolve_field(field_instance, repository,
+              args: arguments, object_type: resolver_parent, schema: schema,
+              extras: { lookahead: positive_lookahead })
+
+            expect(repository).to have_received(:list_refs).with(
+              [Gitlab::Git::TAG_REF_PREFIX],
+              pointing_at_oids: an_instance_of(Array),
+              peel_tags: true
+            )
+          end
+        end
+
+        context 'when the tags field is not selected' do
+          it 'does not load tags' do
+            resolve_field(field_instance, repository,
+              args: arguments, object_type: resolver_parent, schema: schema,
+              extras: { lookahead: negative_lookahead })
+
+            expect(repository).not_to have_received(:list_refs)
+          end
+        end
+      end
     end
 
     context 'when ref is not found' do
@@ -233,6 +341,68 @@ RSpec.describe Resolvers::Repositories::CommitsResolver, feature_category: :sour
       let(:error_msg) { "`null` is not a valid input for `String!`, please provide a value for this argument." }
 
       it { expect_graphql_error_to_be_created(error_class, error_msg) { resolved } }
+    end
+  end
+
+  describe 'commits filtering with author display name' do
+    let_it_be_with_reload(:user) { create(:user, name: 'Original Name', email: 'original@example.com') }
+
+    let_it_be(:project_with_user_commits, freeze: false) do
+      project = create(:project, :repository)
+      project.repository.create_file(
+        user,
+        'test.txt',
+        'test content',
+        message: 'Test commit',
+        branch_name: 'master'
+      )
+      project
+    end
+
+    before do
+      user.update!(name: 'Updated Display Name')
+    end
+
+    it 'returns commits when searching by the original git author name' do
+      field = ::Types::BaseField.new(
+        name: 'commits',
+        owner: resolver_parent,
+        resolver_class: described_class,
+        connection_extension: Gitlab::Graphql::Extensions::ForwardOnlyExternallyPaginatedArrayExtension,
+        calls_gitaly: true,
+        null: true,
+        max_page_size: 100
+      )
+
+      resolved_with_original_name = resolve_field(
+        field,
+        project_with_user_commits.repository,
+        args: { ref: 'master', author: 'Original Name' },
+        object_type: resolver_parent,
+        schema: GitlabSchema
+      )
+      expect(resolved_with_original_name.items).not_to be_empty
+    end
+
+    it 'returns commits when searching by the updated display name' do
+      field = ::Types::BaseField.new(
+        name: 'commits',
+        owner: resolver_parent,
+        resolver_class: described_class,
+        connection_extension: Gitlab::Graphql::Extensions::ForwardOnlyExternallyPaginatedArrayExtension,
+        calls_gitaly: true,
+        null: true,
+        max_page_size: 100
+      )
+
+      resolved_with_updated_name = resolve_field(
+        field,
+        project_with_user_commits.repository,
+        args: { ref: 'master', author: 'Updated Display Name' },
+        object_type: resolver_parent,
+        schema: GitlabSchema
+      )
+      expect(resolved_with_updated_name.items).not_to be_empty
     end
   end
 end

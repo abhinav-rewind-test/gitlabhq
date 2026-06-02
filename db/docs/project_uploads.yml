@@ -1,6 +1,7 @@
 ---
 table_name: project_uploads
 classes:
+- Geo::ProjectUpload
 - Project
 - Upload
 feature_categories:

@@ -4,8 +4,8 @@ require 'spec_helper'
 
 RSpec.describe 'Group milestones', feature_category: :team_planning do
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project_empty_repo, group: group) }
-  let_it_be(:user) { create(:group_member, :maintainer, user: create(:user), group: group).user }
+  let_it_be(:project, freeze: false) { create(:project_empty_repo, group: group) }
+  let_it_be(:user, freeze: false) { create(:group_member, :maintainer, user: create(:user), group: group).user }
 
   around do |example|
     freeze_time { example.run }
@@ -51,7 +51,13 @@ RSpec.describe 'Group milestones', feature_category: :team_planning do
 
       click_button 'Create milestone'
 
-      expect(find('.start_date')).to have_content(Date.today.at_beginning_of_month.strftime('%b %-d, %Y'))
+      wait_for_all_requests
+
+      expand_right_sidebar
+
+      page.within('.right-sidebar.right-sidebar-expanded') do
+        expect(find('.start_date')).to have_content(Date.today.at_beginning_of_month.strftime('%b %-d, %Y'))
+      end
     end
 
     it 'description input support autocomplete' do
@@ -73,7 +79,7 @@ RSpec.describe 'Group milestones', feature_category: :team_planning do
     context 'when milestones exists', :js do
       let_it_be(:other_project) { create(:project_empty_repo, group: group) }
 
-      let_it_be(:active_project_milestone1) do
+      let_it_be(:active_project_milestone1, freeze: false) do
         create(
           :milestone,
           project: project,
@@ -89,7 +95,7 @@ RSpec.describe 'Group milestones', feature_category: :team_planning do
       let_it_be(:closed_project_milestone2) { create(:milestone, project: other_project, state: 'closed', title: 'v2.0') }
       let_it_be(:active_group_milestone) { create(:milestone, group: group, state: 'active', title: 'GL-113') }
       let_it_be(:closed_group_milestone) { create(:milestone, group: group, state: 'closed') }
-      let_it_be(:issue) do
+      let_it_be(:issue, freeze: false) do
         create :issue, project: project, assignees: [user], author: user, milestone: active_project_milestone1
       end
 
@@ -224,5 +230,16 @@ RSpec.describe 'Group milestones', feature_category: :team_planning do
         end
       end
     end
+  end
+
+  private
+
+  def expand_right_sidebar
+    return unless page.has_css?('.right-sidebar.right-sidebar-collapsed', wait: 1) # rubocop: disable RSpec/AvoidConditionalStatements -- We need this to support both FOSS and EE runs of this spec
+
+    page.within('.right-sidebar.right-sidebar-collapsed') do
+      find('.js-sidebar-expand').click
+    end
+    expect(page).to have_selector('.right-sidebar .js-sidebar-collapse')
   end
 end

@@ -28,7 +28,7 @@ RSpec.shared_examples 'work items rolled up dates' do
       wait_for_all_requests
     end
 
-    context 'when using inheritable dates', :sidekiq_inline do
+    context 'when using inheritable dates', :sidekiq_inline, :clean_gitlab_redis_shared_state do
       def update_child_milestone(title:, milestone:)
         within_testid('links-child', text: title) do
           click_link(title)
@@ -51,7 +51,7 @@ RSpec.shared_examples 'work items rolled up dates' do
           wait_for_all_requests
         end
 
-        within_testid('work-item-drawer') do
+        within_testid('work-item-detail-panel') do
           find_and_click_edit work_item_due_dates_selector
           # set empty value before the value to ensure
           # the current value don't mess with the new value input
@@ -72,12 +72,12 @@ RSpec.shared_examples 'work items rolled up dates' do
 
       def add_new_child(title:, milestone: nil, start_date: nil, due_date: nil)
         within_testid('work-item-tree') do
-          click_button 'Add'
-          click_button 'New epic'
+          find_by_testid('add-tree-child-button').click
+          click_button 'New Epic'
           wait_for_all_requests
 
           fill_in 'Add a title', with: title
-          click_button 'Create epic'
+          click_button 'Create Epic'
           wait_for_all_requests
         end
 
@@ -90,8 +90,8 @@ RSpec.shared_examples 'work items rolled up dates' do
 
       def add_existing_child(child_work_item, type)
         within_testid('work-item-tree') do
-          click_button 'Add'
-          click_button "Existing #{type}"
+          find_by_testid('add-tree-child-button').click
+          click_button "Existing #{type.to_s.capitalize}"
 
           find_by_testid('work-item-token-select-input').set(child_work_item.title)
           wait_for_all_requests
@@ -99,7 +99,7 @@ RSpec.shared_examples 'work items rolled up dates' do
 
           send_keys :escape
 
-          click_button "Add #{type}"
+          click_button "Add #{type.to_s.capitalize}"
 
           wait_for_all_requests
         end
@@ -109,7 +109,7 @@ RSpec.shared_examples 'work items rolled up dates' do
       end
 
       context 'when adding existing work item with fixed dates as children' do
-        let_it_be(:child_work_item) do
+        let_it_be(:child_work_item, freeze: false) do
           create(
             :work_item,
             :epic_with_legacy_epic,
@@ -207,7 +207,7 @@ RSpec.shared_examples 'work items rolled up dates' do
           )
         end
 
-        let_it_be(:child_work_item) do
+        let_it_be(:child_work_item, freeze: false) do
           create(
             :work_item,
             :issue,

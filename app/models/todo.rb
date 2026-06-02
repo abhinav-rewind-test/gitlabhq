@@ -29,6 +29,7 @@ class Todo < ApplicationRecord
   DUO_PRO_ACCESS_GRANTED = 16 # This is an EE-only feature
   DUO_ENTERPRISE_ACCESS_GRANTED = 17 # This is an EE-only feature
   DUO_CORE_ACCESS_GRANTED = 18 # This is an EE-only feature
+  DUO_WORKFLOW_INPUT_REQUIRED = 19 # This is an EE-only feature
 
   # EE Action names should be defined in EE_ACTION_NAMES in ee/app/models/ee/todo.rb
   ACTION_NAMES = {
@@ -107,7 +108,7 @@ class Todo < ApplicationRecord
     preload(:target, :author, :note, group: :route, project: [:route, :group, { namespace: [:route, :owner] }, :project_setting])
   end
   scope :joins_issue_and_assignees, -> { left_joins(issue: :assignees) }
-  scope :for_internal_notes, -> { joins(:note).where(note: { confidential: true }) }
+  scope :for_internal_notes, -> { joins(:note).where(note: { internal: true }) }
   scope :with_preloaded_user, -> { preload(:user) }
   scope :without_banned_user, -> { joins("LEFT JOIN banned_users ON todos.author_id = banned_users.user_id").where(banned_users: { user_id: nil }) }
   scope :pending_without_hidden, -> { pending.without_banned_user }
@@ -292,10 +293,6 @@ class Todo < ApplicationRecord
     project || group
   end
 
-  def unmergeable?
-    action == UNMERGEABLE
-  end
-
   def build_failed?
     action == BUILD_FAILED
   end
@@ -304,20 +301,8 @@ class Todo < ApplicationRecord
     action == ASSIGNED
   end
 
-  def review_requested?
-    action == REVIEW_REQUESTED
-  end
-
-  def merge_train_removed?
-    action == MERGE_TRAIN_REMOVED
-  end
-
   def member_access_requested?
     action == MEMBER_ACCESS_REQUESTED
-  end
-
-  def review_submitted?
-    action == REVIEW_SUBMITTED
   end
 
   def member_access_type
@@ -360,16 +345,8 @@ class Todo < ApplicationRecord
     target_type == DesignManagement::Design.name
   end
 
-  def for_alert?
-    target_type == AlertManagement::Alert.name
-  end
-
   def for_issue_or_work_item?
     [Issue.name, WorkItem.name].any?(target_type)
-  end
-
-  def for_ssh_key?
-    target_type == Key.name
   end
 
   def parentless_type?
@@ -422,14 +399,6 @@ class Todo < ApplicationRecord
     when WikiPage::Meta
       build_wiki_page_target_url
     end
-  end
-
-  def self_added?
-    author == user
-  end
-
-  def self_assigned?
-    self_added? && (assigned? || review_requested?)
   end
 
   private

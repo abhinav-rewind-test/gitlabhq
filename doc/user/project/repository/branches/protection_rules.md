@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: How protection rules work with protected branches in GitLab, especially in complex scenarios.
 title: Protection rules and permissions
 ---
@@ -28,7 +28,7 @@ repository branches. These rules cover:
 When a branch matches multiple protection rules, these behaviors apply:
 
 - Group rules apply to all projects in a group and cannot be modified from project settings.
-  For more information, see [Rules across groups and projects](#rules-across-groups-and-projects).
+  For more information, see [rules across groups and projects](#rules-across-groups-and-projects).
 - When a branch matches multiple rules, the most permissive rule applies. However,
   [code owner approval](#code-owner-approval) uses the most restrictive rule.
 - Exact branch names like `main` do not override wildcard patterns like `m*`.
@@ -43,12 +43,12 @@ When a branch matches multiple protection rules, these behaviors apply:
 
 When a branch is protected, the default behavior enforces these restrictions:
 
-| Action                   | Who can do it                           |
-|:-------------------------|:----------------------------------------|
-| Protect a branch         | At least the Maintainer role.           |
+| Action                   | Who can do it |
+|:-------------------------|:--------------|
+| Protect a branch         | Users with the Maintainer or Owner role. |
 | Push to the branch       | Anyone with **Allowed** permission. (1) |
-| Force push to the branch | No one.                                 |
-| Delete the branch        | No one. (2)                             |
+| Force push to the branch | No one.       |
+| Delete the branch        | No one. (2)   |
 
 1. Users with the Developer role can create a project in a group, but might not be allowed to
    initially push to the [default branch](default.md).
@@ -113,20 +113,23 @@ require approval by a Code Owner before they can be merged.
 Branch protection rules can be set in both groups and projects:
 
 - Group rules apply to all projects in a group and cannot be modified from project settings.
-- Project rules apply only to that specific project.
+- Project rules apply only to the project where they're set.
 
-When both group and project rules exist that match a branch:
+When both group and project rules match a branch, GitLab evaluates all matching rules together:
 
-- All matching rules are evaluated together.
-- The most permissive rule applies for most settings.
+- For most settings, the most permissive rule applies.
 - For [code owner approval](#code-owner-approval), the most restrictive rule applies.
 
-You cannot edit or remove group rules from project settings, but you can add
-additional project rules for the same branch. For example:
+You cannot edit or remove group rules from project settings, but you can add project rules for
+the same branch. The combined evaluation can result in more permissive behavior than the group
+rule alone.
+
+For example:
 
 - A group rule for `main` disallows force push.
-- You can add a project rule for `main` that allows force push.
-- Both rules exist, but the more permissive project rule takes effect for force push settings.
+- A project maintainer adds a project rule for `main` that allows force push.
+- Both rules are evaluated together. The most permissive rule applies,
+  so force push is allowed on that project's `main` branch.
 
 ## Multiple branch rule examples
 

@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Upgrade a multi-node instance with zero downtime
 description: Upgrade a multi-node Linux package-based with zero downtime.
 ---
@@ -30,7 +30,7 @@ using specific load balancer or infrastructure capabilities. These techniques de
 infrastructure capabilities.
 
 For any additional information reach out to your GitLab representative or the
-[Support team](https://about.gitlab.com/support/).
+[Support team](https://support.gitlab.com/).
 
 ### Requirements
 
@@ -62,6 +62,7 @@ When considering a zero-downtime upgrade, be aware that:
   should verify the [version-specific upgrade notes](versions/_index.md) relevant to your [upgrade path](upgrade_paths.md) and be
   aware of any required upgrade stops:
 
+  - [GitLab 19 upgrade notes](versions/gitlab_19_changes.md)
   - [GitLab 18 upgrade notes](versions/gitlab_18_changes.md)
   - [GitLab 17 upgrade notes](versions/gitlab_17_changes.md)
   - [GitLab 16 upgrade notes](versions/gitlab_16_changes.md)
@@ -198,6 +199,14 @@ For Gitaly Cluster (Praefect) setups, you must deploy and upgrade Praefect in a 
 > Existing long-running Git requests that were started before the upgrade may eventually be dropped as this handover occurs.
 > In the future this functionality may be changed, [refer to this Epic](https://gitlab.com/groups/gitlab-org/-/epics/10328) for more information.
 
+When upgrading an instance that uses Gitaly Cluster (Praefect), upgrade components in this order:
+
+1. Praefect PostgreSQL database. The Linux package does not offer HA for this database, so this step
+   requires downtime unless you use a third-party HA database solution.
+1. Gitaly nodes. Upgrade these sequentially by using the [Gitaly upgrade steps](#upgrade-gitaly-nodes).
+1. Praefect nodes. Upgrade as described below, with one node designated as the deploy node running
+   database migrations.
+
 Praefect must also perform database migrations to upgrade any existing data. To avoid clashes,
 migrations should run on only one Praefect node. To do this, designate a **Praefect deploy node** that runs the migrations:
 
@@ -217,6 +226,14 @@ migrations should run on only one Praefect node. To do this, designate a **Praef
       ```shell
       sudo gitlab-ctl reconfigure
       ```
+
+   1. Verify that all Praefect database migrations have been applied before proceeding:
+
+      ```shell
+      sudo -u git -- /opt/gitlab/embedded/bin/praefect -config /var/opt/gitlab/praefect/config.toml sql-migrate-status
+      ```
+
+      All migrations should show as applied. Do not proceed to the remaining Praefect nodes until this is confirmed.
 
 1. On all **remaining Praefect nodes**:
 
@@ -261,8 +278,8 @@ In addition to the previous, Rails is where the main database migrations need to
 1. On the **Rails deploy node**:
 
    1. Drain the node of traffic gracefully. You can do this in various ways, but one
-   approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
-   As an example, you can do this by using the following shell script:
+      approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
+      As an example, you can do this by using the following shell script:
 
       ```shell
       # Send QUIT to NGINX master process to drain and exit
@@ -301,8 +318,8 @@ In addition to the previous, Rails is where the main database migrations need to
 1. On every **other Rails node** sequentially:
 
    1. Drain the node of traffic gracefully. You can do this in various ways, but one
-   approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
-   As an example, you can do this by using the following shell script:
+      approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
+      As an example, you can do this by using the following shell script:
 
       ```shell
       # Send QUIT to NGINX master process to drain and exit
@@ -418,8 +435,8 @@ The upgrade process is the same for both primary and secondary sites. However, y
 1. On the **Rails deploy node**:
 
    1. Drain the node of traffic gracefully. You can do this in various ways, but one
-   approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
-   As an example, you can do this by using the following shell script:
+      approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
+      As an example, you can do this by using the following shell script:
 
       ```shell
       # Send QUIT to NGINX master process to drain and exit
@@ -465,8 +482,8 @@ The upgrade process is the same for both primary and secondary sites. However, y
 1. On every **other Rails node** sequentially:
 
    1. Drain the node of traffic gracefully. You can do this in various ways, but one
-   approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
-   As an example, you can do this by using the following shell script:
+      approach is to use NGINX by sending it a `QUIT` signal and then stopping the service.
+      As an example, you can do this by using the following shell script:
 
       ```shell
       # Send QUIT to NGINX master process to drain and exit
@@ -554,5 +571,5 @@ Finally, head back to the primary site and finish the upgrade by running the pos
    1. Verify Geo status:
 
        ```shell
-       sudo gitlab-rake geo:status
+       sudo gitlab-rake gitlab:geo:status
        ```

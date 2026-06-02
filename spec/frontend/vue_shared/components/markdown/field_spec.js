@@ -1,9 +1,9 @@
-import $ from 'jquery';
 import { nextTick } from 'vue';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import { TEST_HOST, FIXTURES_PATH } from 'spec/test_constants';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_OK, HTTP_STATUS_INTERNAL_SERVER_ERROR } from '~/lib/utils/http_status';
+import GLForm from '~/gl_form';
 import MarkdownField from '~/vue_shared/components/markdown/field.vue';
 import MarkdownFieldHeader from '~/vue_shared/components/markdown/header.vue';
 import MarkdownToolbar from '~/vue_shared/components/markdown/toolbar.vue';
@@ -33,7 +33,7 @@ describe('Markdown field component', () => {
     axiosMock.restore();
   });
 
-  function createSubject({ lines = [], enablePreview = true, ...props } = {}) {
+  function createSubject({ enablePreview = true, ...props } = {}) {
     // We actually mount a wrapper component so that we can force Vue to rerender classes in order to test a regression
     // caused by mixing Vanilla JS and Vue.
     subject = mountExtended(
@@ -64,7 +64,6 @@ describe('Markdown field component', () => {
           markdownPreviewPath,
           isSubmitting: false,
           textareaValue,
-          lines,
           enablePreview,
           restrictedToolBarItems,
           supportsQuickActions: true,
@@ -90,7 +89,6 @@ describe('Markdown field component', () => {
         markdownPreviewPath,
         isSubmitting: false,
         textareaValue,
-        lines: [],
         enablePreview: true,
         restrictedToolBarItems,
         showContentEditorSwitcher: false,
@@ -109,7 +107,7 @@ describe('Markdown field component', () => {
   const findDropzone = () => subject.find('.div-dropzone');
   const findMarkdownHeader = () => subject.findComponent(MarkdownFieldHeader);
   const findMarkdownToolbar = () => subject.findComponent(MarkdownToolbar);
-  const findGlForm = () => $(subject.vm.$refs['gl-form']).data('glForm');
+  const findGlForm = () => GLForm.getInstance(subject.vm.$refs['gl-form']);
 
   describe('mounted', () => {
     const previewHTML = `
@@ -457,10 +455,18 @@ describe('Markdown field component', () => {
   });
 
   describe('suggestions', () => {
-    it('escapes new line characters', () => {
-      createSubject({ lines: [{ rich_text: 'hello world\\n' }] });
+    it('passes joined lines as lineContent to the header', () => {
+      createSubject({
+        codeSuggestionsConfig: { lines: ['first line', 'second line'] },
+      });
 
-      expect(findMarkdownHeader().props('lineContent')).toBe('hello world%br');
+      expect(findMarkdownHeader().props('lineContent')).toBe('first line\\nsecond line');
+    });
+
+    it('passes empty string as lineContent when no lines are provided', () => {
+      createSubject({ codeSuggestionsConfig: { lines: [] } });
+
+      expect(findMarkdownHeader().props('lineContent')).toBe('');
     });
   });
 
@@ -494,6 +500,18 @@ describe('Markdown field component', () => {
       createSubject({ showContentEditorSwitcher: true });
 
       expect(findMarkdownToolbar().props('showContentEditorSwitcher')).toBe(true);
+    });
+
+    it('adds gl-border-t class to toolbar when showContentEditorSwitcher is true', () => {
+      createSubject({ showContentEditorSwitcher: true });
+
+      expect(findMarkdownToolbar().classes()).toContain('gl-border-t');
+    });
+
+    it('does not add gl-border-t class to toolbar when showContentEditorSwitcher is false', () => {
+      createSubject({ showContentEditorSwitcher: false });
+
+      expect(findMarkdownToolbar().classes()).not.toContain('gl-border-t');
     });
   });
 

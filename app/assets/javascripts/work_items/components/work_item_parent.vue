@@ -1,18 +1,18 @@
 <script>
 import { GlIcon, GlLink, GlPopover } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { s__, sprintf } from '~/locale';
 import WorkItemSidebarDropdownWidget from '~/work_items/components/shared/work_item_sidebar_dropdown_widget.vue';
 import updateParentMutation from '~/work_items/graphql/update_parent.mutation.graphql';
 import { isValidURL } from '~/lib/utils/url_utility';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
 import {
   findMilestoneWidget,
   findHierarchyWidgetDefinition,
   isReference,
   newWorkItemId,
-  convertTypeEnumToName,
 } from '~/work_items/utils';
 import { updateParent } from '../graphql/cache_utils';
 import groupWorkItemsQuery from '../graphql/group_work_items.query.graphql';
@@ -21,11 +21,7 @@ import workItemsByReferencesQuery from '../graphql/work_items_by_references.quer
 import workItemAllowedParentTypesQuery from '../graphql/work_item_allowed_parent_types.query.graphql';
 import {
   I18N_WORK_ITEM_ERROR_UPDATING,
-  NAME_TO_ENUM_MAP,
-  NAME_TO_TEXT_LOWERCASE_MAP,
   NO_WORK_ITEM_IID,
-  WORK_ITEM_TYPE_NAME_EPIC,
-  WORK_ITEM_TYPE_NAME_ISSUE,
   WIDGET_TYPE_HIERARCHY,
 } from '../constants';
 
@@ -36,9 +32,10 @@ export default {
     GlLink,
     GlIcon,
     GlPopover,
-    IssuePopover: () => import('~/issuable/popover/components/issue_popover.vue'),
+    WorkItemPopover: () => import('~/issuable/popover/components/work_item_popover.vue'),
     WorkItemSidebarDropdownWidget,
   },
+  mixins: [glFeatureFlagsMixin()],
   inject: ['getWorkItemTypeConfiguration', 'workItemTypesConfiguration'],
   props: {
     workItemId: {
@@ -79,12 +76,8 @@ export default {
       required: false,
       default: false,
     },
-    isGroup: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
   },
+  emits: ['error', 'parentMilestone', 'updateWidgetDraft'],
   data() {
     return {
       searchTerm: '',
@@ -92,26 +85,20 @@ export default {
       searchStarted: false,
       localSelectedItem: this.parent?.id,
       oldParent: this.parent,
-      workspaceWorkItems: [],
+      namespaceWorkItems: [],
       workItemsByReference: [],
       allowedParentTypes: [],
     };
   },
   computed: {
-    isIssue() {
-      return this.workItemType === WORK_ITEM_TYPE_NAME_ISSUE;
-    },
-    isEpic() {
-      return this.workItemType === WORK_ITEM_TYPE_NAME_EPIC;
-    },
     isLoading() {
       return (
-        this.$apollo.queries.workspaceWorkItems.loading ||
+        this.$apollo.queries.namespaceWorkItems.loading ||
         this.$apollo.queries.workItemsByReference.loading
       );
     },
     availableWorkItems() {
-      return this.isSearchingByReference ? this.workItemsByReference : this.workspaceWorkItems;
+      return this.isSearchingByReference ? this.workItemsByReference : this.namespaceWorkItems;
     },
     shouldAddParent() {
       if (!this.parent) return false;
@@ -141,23 +128,24 @@ export default {
       return this.parent?.webUrl;
     },
     visibleWorkItems() {
-      return this.workItemsByReference.concat(this.workspaceWorkItems);
+      return this.workItemsByReference.concat(this.namespaceWorkItems);
     },
     isSelectedParentAvailable() {
       return this.localSelectedItem && this.visibleWorkItems.length;
     },
     selectedParentMilestone() {
       const selectedParent = this.visibleWorkItems?.find(({ id }) => id === this.localSelectedItem);
-      return findMilestoneWidget(selectedParent)?.milestone || null;
+      return (
+        (this.glFeatures?.workItemFeaturesField
+          ? selectedParent?.features?.milestone?.milestone
+          : findMilestoneWidget(selectedParent)?.milestone) || null
+      );
     },
     showCustomNoneValue() {
       return this.hasParent && this.parent === null;
     },
     isSearchingByReference() {
       return isReference(this.searchTerm) || isValidURL(this.searchTerm);
-    },
-    allowedParentTypesForNewWorkItemEnums() {
-      return this.allowedParentTypesForNewWorkItem.map((type) => NAME_TO_ENUM_MAP[type.name]) || [];
     },
     workItemConfig() {
       return this.getWorkItemTypeConfiguration(this.workItemType) || {};
@@ -168,18 +156,11 @@ export default {
       );
       return hierarchyWidgetDefinition?.propagatesMilestone;
     },
-    fetchGroupWorkItems() {
-      // original implementation
-      return this.isGroup || this.isIssue;
-    },
     areAnyAllowedParentTypesGroupWorkItems() {
-      /* we should be fetching group work items only if any of the allowed parents is a group work item */
-      /** Issues and Epics can have epics has parent types , so group work items make sense there */
-      const isAnyAllowedParentGroupType = this.allowedParentTypes.some(
-        (typename) =>
-          this.workItemTypesConfiguration[convertTypeEnumToName(typename)]?.isGroupWorkItemType,
+      return [...this.allowedParentTypes, ...this.allowedParentTypesForNewWorkItem].some(
+        ({ id }) =>
+          this.workItemTypesConfiguration.find((type) => type.id === id)?.isGroupWorkItemType,
       );
-      return isAnyAllowedParentGroupType || this.fetchGroupWorkItems;
     },
   },
   watch: {
@@ -189,11 +170,11 @@ export default {
       },
     },
     localSelectedItem() {
-      if (this.propagatesMilestone || this.isEpic) this.handleSelectedParentMilestone();
+      if (this.propagatesMilestone) this.handleSelectedParentMilestone();
     },
   },
   apollo: {
-    workspaceWorkItems: {
+    namespaceWorkItems: {
       query() {
         // The logic to fetch the Parent seems to be different than other pages
         // Below issue targets to have a common logic across work items app
@@ -203,16 +184,25 @@ export default {
           : projectWorkItemsQuery;
       },
       variables() {
-        // TODO: Remove the this.isIssue check once issues are migrated to work items
-        return {
-          fullPath: this.isIssue ? this.groupPath : this.fullPath,
+        const baseVariables = {
+          fullPath: this.areAnyAllowedParentTypesGroupWorkItems ? this.groupPath : this.fullPath,
           searchTerm: this.searchTerm,
-          types: [...this.allowedParentTypes, ...this.allowedParentTypesForNewWorkItemEnums],
+          workItemTypeIds: [
+            ...this.allowedParentTypes,
+            ...this.allowedParentTypesForNewWorkItem,
+          ].map((type) => type.id),
           in: this.searchTerm ? 'TITLE' : undefined,
           iid: null,
           isNumber: false,
           includeAncestors: true,
         };
+
+        // We don't consume any widgets in the project query
+        const conditionalVariables = this.areAnyAllowedParentTypesGroupWorkItems
+          ? { useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField) }
+          : {};
+
+        return { ...baseVariables, ...conditionalVariables };
       },
       skip() {
         return !this.searchStarted && !this.allowedChildTypes?.length;
@@ -259,11 +249,7 @@ export default {
         return this.workItemId === newWorkItemId(this.workItemType);
       },
       update(data) {
-        return (
-          findHierarchyWidgetDefinition(data.workItem)?.allowedParentTypes?.nodes.map(
-            (el) => NAME_TO_ENUM_MAP[el.name],
-          ) || []
-        );
+        return findHierarchyWidgetDefinition(data.workItem)?.allowedParentTypes?.nodes ?? [];
       },
     },
   },
@@ -324,7 +310,7 @@ export default {
         this.$emit(
           'error',
           sprintf(I18N_WORK_ITEM_ERROR_UPDATING, {
-            workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType],
+            workItemType: this.workItemType,
           }),
         );
         Sentry.captureException(error);
@@ -386,7 +372,7 @@ export default {
           :href="parentWebUrl"
           >{{ listboxText }}</gl-link
         >
-        <issue-popover
+        <work-item-popover
           v-if="parent"
           :cached-title="parent.title"
           :iid="parent.iid"
@@ -397,7 +383,12 @@ export default {
     </template>
     <template v-if="showCustomNoneValue" #none>
       <span id="parent-not-available" class="gl-cursor-help">
-        <gl-popover triggers="hover focus" placement="bottom" :target="'parent-not-available'">
+        <gl-popover
+          data-testid="inaccessible-parent-popover"
+          triggers="hover focus"
+          placement="bottom"
+          target="parent-not-available"
+        >
           <span>{{
             s__(`WorkItem|You don't have the necessary permission to view the ancestor.`)
           }}</span>

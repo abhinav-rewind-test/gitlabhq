@@ -10,42 +10,50 @@ module ActiveContext
       class_methods do
         def apply_embeddings(
           refs:,
-          unit_primitive:,
           content_field: :content,
           content_method: nil,
-          remove_content: true
+          remove_content: false,
+          next_model_only: false
         )
-          with_batch_handling(refs) do
+          infinite_retry_errors =
+            if defined?(::Gitlab::Llm::Concerns::ExponentialBackoff::RateLimitError)
+              [::Gitlab::Llm::Concerns::ExponentialBackoff::RateLimitError]
+            else
+              []
+            end
+
+          with_batch_handling(refs, infinite_retry_error_types: infinite_retry_errors) do
             docs_to_process = refs.flat_map do |ref|
-              next [] unless ref.embedding_versions.any?
+              models = ref.indexing_embedding_models(next_model_only: next_model_only)
+
+              next [] unless models.any?
 
               initialize_documents!(ref, content_method, content_field)
 
-              # Create a mapping of reference, document, and embedding versions for processing
+              # Create a mapping of reference, document, and embedding models for processing
               ref.documents.map do |doc|
                 {
                   ref: ref,
                   doc: doc,
-                  versions: ref.embedding_versions
+                  models: models
                 }
               end
             end
 
-            # Group documents by their embedding version configuration
+            # Group documents by their embedding model configuration
             # This allows processing similar documents together with the same embedding model
-            version_groups = docs_to_process.group_by { |item| item[:versions].map { |v| [v[:field], v[:model]] }.sort }
+            model_groups = docs_to_process.group_by { |item| item[:models].map { |m| [m.field, m.model_key] }.sort }
 
-            version_groups.each_value do |items|
-              versions = items.first[:versions]
+            model_groups.each_value do |items|
+              models = items.first[:models]
               contents = items.map { |item| item[:doc][content_field] }
 
-              embeddings_by_version = generate_embeddings_for_each_version(versions: versions, contents: contents,
-                unit_primitive: unit_primitive)
+              embeddings_by_model = generate_embeddings_for_each_model(models: models, contents: contents)
 
               # Apply the generated embeddings back to each document
               items.each.with_index do |item, index|
-                versions.each do |version|
-                  item[:doc][version[:field]] = embeddings_by_version[version[:field]][index]
+                models.each do |model|
+                  item[:doc][model.field] = embeddings_by_model[model.field][index]
                 end
 
                 item[:doc].delete(content_field) if remove_content
@@ -72,15 +80,10 @@ module ActiveContext
           end
         end
 
-        def generate_embeddings_for_each_version(versions:, contents:, unit_primitive:)
-          versions.each_with_object({}) do |version, embeddings_by_version|
-            embedding = ActiveContext::Embeddings.generate_embeddings(
-              contents,
-              version: version,
-              unit_primitive: unit_primitive,
-              batch_size: version[:batch_size]
-            )
-            embeddings_by_version[version[:field]] = embedding
+        def generate_embeddings_for_each_model(models:, contents:)
+          models.each_with_object({}) do |model, embeddings_by_model|
+            embedding = model.generate_embeddings(contents)
+            embeddings_by_model[model.field] = embedding
           end
         end
       end

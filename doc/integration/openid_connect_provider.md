@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab as OpenID Connect identity provider
 ---
 
@@ -26,7 +26,13 @@ You can use [OmniAuth::OpenIDConnect](https://github.com/omniauth/omniauth_openi
 applications and there are many other available [client implementations](https://openid.net/developers/certified-openid-connect-implementations/).
 
 GitLab uses the `doorkeeper-openid_connect` gem to provide OIDC service. For more information, see
-the [doorkeeper-openid_connect repository](https://github.com/doorkeeper-gem/doorkeeper-openid_connect "Doorkeeper::OpenidConnect repository").
+the [`doorkeeper-openid_connect` repository](https://github.com/doorkeeper-gem/doorkeeper-openid_connect "Doorkeeper::OpenidConnect repository").
+
+If some users use GitLab only as an OIDC provider and don't need access to
+GitLab projects or groups, consider assigning them the
+[Minimal Access](../user/permissions.md#users-with-minimal-access) role in their
+top-level group.
+Minimal Access users don't consume seats in the subscription, and still have access when [restricted access](../administration/settings/sign_up_restrictions.md#restricted-access) is active and no seats are available.
 
 ## Enable OIDC for OAuth applications
 
@@ -52,6 +58,8 @@ The following user information is shared with clients:
 | `name`               | `string`  | The user's full name | {{< yes >}} | {{< yes >}} |
 | `nickname`           | `string`  | The user's GitLab username | {{< yes >}}| {{< yes >}} |
 | `preferred_username` | `string`  | The user's GitLab username | {{< yes >}} | {{< yes >}} |
+| `given_name`         | `string`  | The user's first name | {{< yes >}} | {{< yes >}} |
+| `family_name`        | `string`  | The user's last name | {{< yes >}} | {{< yes >}} |
 | `email`              | `string`  | The user's primary email address | {{< yes >}} | {{< yes >}} |
 | `email_verified`     | `boolean` | Whether the user's email address is verified | {{< yes >}} | {{< yes >}} |
 | `website`            | `string`  | URL for the user's website | {{< yes >}} | {{< yes >}} |

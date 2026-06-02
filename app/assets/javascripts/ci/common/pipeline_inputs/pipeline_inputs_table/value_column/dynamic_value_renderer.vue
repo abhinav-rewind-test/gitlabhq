@@ -1,6 +1,6 @@
 <script>
 import { GlCollapsibleListbox, GlFormInput, GlFormTextarea } from '@gitlab/ui';
-import { __ } from '~/locale';
+import { __, sprintf } from '~/locale';
 import validation, { initForm } from '~/vue_shared/directives/validation';
 import BooleanCell from './boolean_cell.vue';
 
@@ -25,12 +25,14 @@ const INPUT_TYPES = {
   STRING: 'STRING',
 };
 
+const MAX_NUMBER_VALUE = Number.MAX_SAFE_INTEGER;
+const MIN_NUMBER_VALUE = Number.MIN_SAFE_INTEGER;
+
 const VALIDATION_MESSAGES = {
   ARRAY_FORMAT_MISMATCH: __(
     'The value must be a valid JSON array format: [1,2,3] or [{"key": "value"}]',
   ),
   GENERAL_FORMAT_MISMATCH: __('Please match the requested format.'),
-  NUMBER_TYPE_MISMATCH: __('The value must contain only numbers.'),
   REGEX_MISMATCH: __('The value must match the defined regular expression.'),
   VALUE_MISSING: __('This is required and must be defined.'),
 };
@@ -52,20 +54,6 @@ const feedbackMap = {
     },
     message: __('The value must be a valid JSON array format: [1,2,3] or [{"key": "value"}]'),
   },
-  numberTypeMismatch: {
-    isInvalid: (el) => {
-      const isInvalid =
-        el.dataset.fieldType === INPUT_TYPES.NUMBER &&
-        el.value &&
-        !Number.isFinite(Number(el.value));
-
-      // we use setCustomValidity to set the message that appears when the user clicks submit
-      el.setCustomValidity(isInvalid ? VALIDATION_MESSAGES.GENERAL_FORMAT_MISMATCH : '');
-
-      return isInvalid;
-    },
-    message: VALIDATION_MESSAGES.NUMBER_TYPE_MISMATCH,
-  },
   regexMismatch: {
     isInvalid: (el) => el.validity?.patternMismatch,
     message: VALIDATION_MESSAGES.REGEX_MISMATCH,
@@ -78,6 +66,8 @@ const feedbackMap = {
 
 export default {
   name: 'DynamicValueRenderer',
+  MAX_NUMBER_VALUE,
+  MIN_NUMBER_VALUE,
   components: {
     BooleanCell,
     GlCollapsibleListbox,
@@ -105,6 +95,7 @@ export default {
         },
         showValidation: true,
       }),
+      searchTerm: '',
     };
   },
   computed: {
@@ -121,18 +112,19 @@ export default {
       },
     },
     dropdownOptions() {
-      return this.item.options?.map((option) => ({ value: option, text: option })) || [];
+      return this.item.options?.map((option) => ({ value: option, text: String(option) })) || [];
+    },
+    filteredDropdownOptions() {
+      if (!this.searchTerm) {
+        return this.dropdownOptions;
+      }
+
+      const term = this.searchTerm.toLowerCase();
+      return this.dropdownOptions.filter((item) => item.text.toLowerCase().includes(term));
     },
     hasArrayFormatError() {
       const field = this.form.fields[this.item.name];
       return this.isArrayType && field?.feedback === feedbackMap.arrayFormatMismatch.message;
-    },
-    hasNumberTypeError() {
-      const field = this.form.fields[this.item.name];
-      return (
-        this.item.type === INPUT_TYPES.NUMBER &&
-        field?.feedback === feedbackMap.numberTypeMismatch.message
-      );
     },
     hasValidationFeedback() {
       return Boolean(this.validationFeedback);
@@ -143,9 +135,29 @@ export default {
     isBooleanType() {
       return this.item.type === INPUT_TYPES.BOOLEAN && !this.item.options?.length;
     },
+    isNumberType() {
+      return this.item.type === INPUT_TYPES.NUMBER && !this.item.options?.length;
+    },
     isDropdown() {
       return Boolean(this.item.options?.length);
     },
+    isMultiSelectDropdown() {
+      return this.isDropdown && this.item.type === INPUT_TYPES.ARRAY;
+    },
+    toggleText() {
+      if (!this.inputValue?.length) {
+        return __('Select option');
+      }
+
+      if (this.item.type === INPUT_TYPES.ARRAY) {
+        return this.inputValue.length > 1
+          ? sprintf(__('%{number} options selected'), { number: this.inputValue.length })
+          : this.inputValue[0];
+      }
+
+      return this.inputValue;
+    },
+
     validationFeedback() {
       const field = this.form.fields[this.item.name];
       const feedback = field?.feedback || '';
@@ -155,9 +167,9 @@ export default {
         : feedback;
     },
     validationState() {
-      // Override validation state for array format errors and number type errors for our custom validation
+      // Override validation state for array format errors for our custom validation
       // This is also responsible for turning the border red when the input is invalid
-      if (this.hasArrayFormatError || this.hasNumberTypeError) {
+      if (this.hasArrayFormatError) {
         return false;
       }
 
@@ -171,7 +183,9 @@ export default {
         return '';
       }
 
-      return this.item.type === INPUT_TYPES.ARRAY && Array.isArray(value)
+      return this.item.type === INPUT_TYPES.ARRAY &&
+        Array.isArray(value) &&
+        !this.isMultiSelectDropdown
         ? JSON.stringify(value)
         : value;
     },
@@ -192,10 +206,14 @@ export default {
       v-if="isDropdown"
       v-model="inputValue"
       block
+      searchable
+      :multiple="isMultiSelectDropdown"
       :aria-label="item.name"
       toggle-class="!gl-pl-4"
+      :toggle-text="toggleText"
       :header-text="__('Options')"
-      :items="dropdownOptions"
+      :items="filteredDropdownOptions"
+      @search="searchTerm = $event"
     />
 
     <!-- Button cell for boolean types -->
@@ -214,7 +232,23 @@ export default {
       rows="3"
     />
 
-    <!-- Regular input for strings and numbers without options -->
+    <!-- Number input for numbers without options -->
+    <gl-form-input
+      v-else-if="isNumberType"
+      v-model="inputValue"
+      v-validation:[form.showValidation]
+      step="any"
+      type="number"
+      :aria-label="item.name"
+      :data-field-type="item.type"
+      :min="$options.MIN_NUMBER_VALUE"
+      :max="$options.MAX_NUMBER_VALUE"
+      :name="item.name"
+      :required="item.required"
+      :state="validationState"
+    />
+
+    <!-- Text input for strings without options -->
     <gl-form-input
       v-else
       v-model="inputValue"

@@ -13,6 +13,10 @@ module Gitlab
         end
       end
 
+      def self.from_ref(repository, ref, commit: nil)
+        new(repository, ref.name, ref.target, commit)
+      end
+
       def active?
         self.dereferenced_target.committed_date >= STALE_BRANCH_THRESHOLD.ago
       end
@@ -27,6 +31,11 @@ module Gitlab
 
       def cache_key
         "branch:" + Digest::SHA1.hexdigest([name, target, dereferenced_target&.sha].join(':'))
+      end
+
+      def project
+        container = dereferenced_target&.repository&.container
+        container if container.is_a?(::Project)
       end
     end
   end

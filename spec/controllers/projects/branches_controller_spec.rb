@@ -561,6 +561,45 @@ RSpec.describe Projects::BranchesController, feature_category: :source_code_mana
         expect(json_response.length).to eq 1
         expect(json_response.first).to eq 'master'
       end
+
+      # In URLs, '+' in the query string is normally decoded as space. Branch names can contain
+      # literal '+', so we parse search from the raw query string to preserve it (see issue 589047).
+      context 'when search param contains literal + in raw query string (branch names can contain +)' do
+        before do
+          project.repository.create_branch('release+1.0', 'master')
+          request.env['QUERY_STRING'] = 'search=release+1.0'
+          request.env['HTTP_ACCEPT'] = 'application/json'
+        end
+
+        it 'preserves + in search term and filters branches correctly' do
+          get :index, format: :json, params: {
+            namespace_id: project.namespace,
+            project_id: project
+          }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response).to include('release+1.0')
+        end
+      end
+
+      # When the client sends '+' as %2B, we decode it back to '+' so the branch name matches.
+      context 'when search param is percent-encoded plus (%2B) in query string' do
+        before do
+          project.repository.create_branch('release+1.0', 'master')
+          request.env['QUERY_STRING'] = 'search=release%2B1.0'
+          request.env['HTTP_ACCEPT'] = 'application/json'
+        end
+
+        it 'decodes %2B to + and filters branches correctly' do
+          get :index, format: :json, params: {
+            namespace_id: project.namespace,
+            project_id: project
+          }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response).to include('release+1.0')
+        end
+      end
     end
 
     context 'when a branch has multiple pipelines' do
@@ -774,25 +813,26 @@ RSpec.describe Projects::BranchesController, feature_category: :source_code_mana
       end
     end
 
-    context 'when gitaly is not available' do
-      let(:request) { get :index, format: :html, params: { namespace_id: project.namespace, project_id: project } }
-
+    context 'when gitaly is unavailable' do
       before do
         allow_next_instance_of(Gitlab::GitalyClient::RefService) do |ref_service|
-          allow(ref_service).to receive(:local_branches).and_raise(GRPC::DeadlineExceeded)
+          allow(ref_service).to receive(:local_branches)
+            .and_raise(Gitlab::Git::CommandError, 'Gitaly unavailable')
         end
       end
 
-      it 'returns with a status 503' do
-        request
+      it 'returns 503 and sets gitaly_unavailable' do
+        get :index, format: :html, params: { namespace_id: project.namespace, project_id: project }
 
         expect(response).to have_gitlab_http_status(:service_unavailable)
+        expect(assigns(:gitaly_unavailable)).to be true
       end
 
-      it 'sets gitaly_unavailable variable' do
-        request
+      it 'tracks the exception' do
+        expect(Gitlab::ErrorTracking).to receive(:track_exception)
+          .with(instance_of(Gitlab::Git::CommandError))
 
-        expect(assigns[:gitaly_unavailable]).to be_truthy
+        get :index, format: :html, params: { namespace_id: project.namespace, project_id: project }
       end
     end
   end
@@ -853,6 +893,37 @@ RSpec.describe Projects::BranchesController, feature_category: :source_code_mana
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response.count).to be > 1
+      end
+    end
+
+    context 'when gitaly is unavailable' do
+      before do
+        allow_next_instance_of(Gitlab::Git::Finders::RefsFinder) do |finder|
+          allow(finder).to receive(:execute)
+            .and_raise(Gitlab::Git::CommandError, 'Gitaly unavailable')
+        end
+      end
+
+      it 'returns 503 and JSON error message' do
+        get :diverging_commit_counts, format: :json, params: {
+          namespace_id: project.namespace,
+          project_id: project,
+          names: %w[fix]
+        }
+
+        expect(response).to have_gitlab_http_status(:service_unavailable)
+        expect(json_response['error']).to be_present
+      end
+
+      it 'tracks the exception' do
+        expect(Gitlab::ErrorTracking).to receive(:track_exception)
+          .with(instance_of(Gitlab::Git::CommandError))
+
+        get :diverging_commit_counts, format: :json, params: {
+          namespace_id: project.namespace,
+          project_id: project,
+          names: %w[fix]
+        }
       end
     end
   end

@@ -16,7 +16,7 @@ module API
 
       def self.create_issue_mcp_params
         [
-          :id, :title, :description, :assignee_ids, :milestone_id, :labels, :confidential
+          :id, :title, :description, :assignee_ids, :milestone_id, :milestone, :labels, :confidential
         ]
       end
 
@@ -33,6 +33,7 @@ module API
           :add_labels,
           :remove_labels,
           :milestone_id,
+          :milestone,
           :state_event,
           :title,
           :issue_type
@@ -71,7 +72,8 @@ module API
         args[:not][:label_name] ||= args[:not].delete(:labels)
         args[:scope] = args[:scope].underscore if args[:scope]
         args[:sort] = "#{args[:order_by]}_#{args[:sort]}"
-        args[:issue_types] ||= args.delete(:issue_type) || ::WorkItems::TypesFilter.allowed_types_for_issues
+        args[:issue_types] ||= args.delete(:issue_type) ||
+          ::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues
 
         IssuesFinder.new(current_user, args)
       end

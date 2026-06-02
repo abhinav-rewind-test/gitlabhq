@@ -8,8 +8,6 @@ module Gitlab
         include Gitlab::Utils::StrongMemoize
 
         BATCH_SIZE = 100
-        SMALLER_BATCH_SIZE = 2
-        SMALL_BATCH_RELATIONS = %i[merge_requests ci_pipelines].freeze
 
         attr_reader :exported_objects_count
 
@@ -19,7 +17,30 @@ module Gitlab
           end
         end
 
-        def initialize(exportable, relations_schema, json_writer, current_user:, exportable_path:, logger: Gitlab::Export::Logger)
+        # @param exportable [Group, Project] the group or project being exported
+        # @param relations_schema [Hash] tree built from import_export.yml containing keys:
+        #   :only (included attributes), :except (excluded attributes), :methods (virtual
+        #   attributes), :include (nested relation definitions), :preload (AR preload hints),
+        #   :export_reorder (custom ordering per relation), and :include_if_exportable (conditional associations)
+        # @param json_writer [Gitlab::ImportExport::Json::NdjsonWriter] writer used to stream JSON output
+        # @param current_user [User] the user performing the export
+        # @param exportable_path [String] subdirectory path within the export that namespaces output files;
+        #   root attributes are written to "<exportable_path>.json" and each relation to
+        #   "<exportable_path>/<relation>.ndjson" (e.g. "project", "tree/project", "groups/123", or "" for
+        #   bulk imports where each relation is already isolated in its own export path)
+        # @param excluded_relations [Array<String>] relation names to skip during serialization
+        # @param logger [Logger] logger instance
+        # @param offline_export_id [Integer, nil] when present, scopes contributor caching to a single
+        #   offline export to prevent interference between concurrent exports of the same portable
+        def initialize(
+          exportable,
+          relations_schema,
+          json_writer,
+          current_user:,
+          exportable_path:,
+          excluded_relations: [],
+          logger: Gitlab::Export::Logger,
+          offline_export_id: nil)
           @exportable = exportable
           @current_user = current_user
           @exportable_path = exportable_path
@@ -27,6 +48,8 @@ module Gitlab
           @json_writer = json_writer
           @logger = logger
           @exported_objects_count = 0
+          @excluded_relations = Array.wrap(excluded_relations).map(&:to_s)
+          @offline_export_id = offline_export_id
         end
 
         def execute
@@ -55,6 +78,8 @@ module Gitlab
           raise ArgumentError, 'definition needs to have exactly one Hash element' unless definition.one?
 
           key, definition_options = definition.first
+
+          return if @excluded_relations.include?(key.to_s)
 
           record = exportable.public_send(key) # rubocop: disable GitlabSecurity/PublicSend
 
@@ -86,7 +111,7 @@ module Gitlab
           # https://gitlab.com/gitlab-org/gitlab/-/issues/504684
           key_preloads = preloads&.dig(key) unless [:epic, :epics].include?(key)
 
-          batch(records, key, batch_order: batch_order) do |batch|
+          batch(records, batch_order: batch_order) do |batch|
             next if batch.empty?
 
             batch_enumerator = Enumerator.new do |items|
@@ -162,8 +187,8 @@ module Gitlab
           record.to_authorized_json(keys_to_authorize, current_user, options)
         end
 
-        def batch(relation, key, batch_order:)
-          opts = { of: batch_size(key) }
+        def batch(relation, batch_order:)
+          opts = { of: BATCH_SIZE }
 
           if batch_order
             scope = relation.reorder(batch_order)
@@ -267,13 +292,6 @@ module Gitlab
             ])
         end
 
-        def batch_size(relation_name)
-          return SMALLER_BATCH_SIZE if Feature.enabled?(:export_reduce_relation_batch_size, exportable, type: :ops) &&
-            SMALL_BATCH_RELATIONS.include?(relation_name)
-
-          BATCH_SIZE
-        end
-
         def before_read_callback(record)
           remove_cached_external_diff(record)
         end
@@ -290,7 +308,7 @@ module Gitlab
         end
 
         def user_contributions_export_mapper
-          BulkImports::UserContributionsExportMapper.new(exportable)
+          BulkImports::UserContributionsExportMapper.new(exportable, offline_export_id: @offline_export_id)
         end
         strong_memoize_attr :user_contributions_export_mapper
 

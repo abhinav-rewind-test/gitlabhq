@@ -10,15 +10,10 @@ RSpec.describe 'Search bar', :js, feature_category: :team_planning do
   let_it_be(:issue) { create(:issue, project: project) }
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-
     project.add_maintainer(user)
+    create(:callout, user: user, feature_name: :work_items_onboarding_modal)
     sign_in(user)
-
-    visit project_issues_path(project)
+    visit project_work_items_path(project, sort: 'created_date')
   end
 
   describe 'keyboard navigation' do
@@ -26,7 +21,7 @@ RSpec.describe 'Search bar', :js, feature_category: :team_planning do
       click_filtered_search_bar
       send_keys :down, :enter
 
-      expect_token_segment 'Assignee'
+      expect_token_segment 'State'
     end
   end
 
@@ -79,7 +74,6 @@ RSpec.describe 'Search bar', :js, feature_category: :team_planning do
       expect_suggestion_count 2
 
       click_button 'Clear'
-      click_filtered_search_bar
 
       expect_suggestion_count(original_size)
     end

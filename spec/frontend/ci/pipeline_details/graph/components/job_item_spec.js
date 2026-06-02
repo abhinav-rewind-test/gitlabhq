@@ -2,6 +2,7 @@ import MockAdapter from 'axios-mock-adapter';
 import Vue, { nextTick } from 'vue';
 import { GlModal, GlToast } from '@gitlab/ui';
 import JobItem from '~/ci/pipeline_details/graph/components/job_item.vue';
+import JobSourceBadge from '~/ci/job_details/components/job_source_badge.vue';
 import axios from '~/lib/utils/axios_utils';
 import { useLocalStorageSpy } from 'helpers/local_storage_helper';
 import ActionComponent from '~/ci/common/private/job_action_component.vue';
@@ -32,6 +33,7 @@ describe('pipeline graph job item', () => {
   const findActionComponent = () => wrapper.findByTestId('ci-action-button');
   const findJobItemContent = () => wrapper.findByTestId('ci-job-item-content');
   const findBadge = () => wrapper.findByTestId('job-bridge-badge');
+  const findJobSourceBadge = () => wrapper.findComponent(JobSourceBadge);
   const findJobCiIcon = () => wrapper.findComponent(CiIcon);
   const findModal = () => wrapper.findComponent(GlModal);
 
@@ -293,7 +295,7 @@ describe('pipeline graph job item', () => {
           },
         });
 
-        await findActionVueComponent().vm.$emit('pipelineActionRequestComplete');
+        await findActionVueComponent().vm.$emit('pipeline-action-request-complete');
         await nextTick();
       });
 
@@ -419,6 +421,26 @@ describe('pipeline graph job item', () => {
     });
   });
 
+  describe('job source badge', () => {
+    it('renders JobSourceBadge in compact mode with the job source', () => {
+      createWrapper({
+        props: {
+          job: { ...mockJob, source: 'scan_execution_policy' },
+        },
+      });
+
+      expect(findJobSourceBadge().exists()).toBe(true);
+      expect(findJobSourceBadge().props('source')).toBe('scan_execution_policy');
+      expect(findJobSourceBadge().props('compact')).toBe(true);
+    });
+
+    it('does not render JobSourceBadge for regular jobs with null source', () => {
+      createWrapper();
+
+      expect(findJobSourceBadge().exists()).toBe(false);
+    });
+  });
+
   describe('confirmation modal', () => {
     describe('when clicking on the action component', () => {
       it.each`
@@ -458,6 +480,21 @@ describe('pipeline graph job item', () => {
           expect(findModal().exists()).toBe(exists);
         },
       );
+
+      it('displays quotes in custom message correctly', async () => {
+        const triggerJobWithConfirmationMessage = JSON.parse(JSON.stringify(triggerManualJob));
+        triggerJobWithConfirmationMessage.status.action.confirmationMessage =
+          "This is a custom message with 'quotes'.";
+        createWrapper({
+          props: {
+            job: triggerJobWithConfirmationMessage,
+          },
+        });
+        await findActionComponent().trigger('click');
+
+        expect(findModal().text()).toContain("This is a custom message with 'quotes'.");
+        expect(findModal().text()).not.toContain('&#39;');
+      });
     });
 
     describe('when showing the modal', () => {
@@ -524,7 +561,7 @@ describe('pipeline graph job item', () => {
           await findActionComponent().trigger('click');
           await actionBtn();
 
-          expect(wrapper.emitted().setSkipRetryModal).toBeUndefined();
+          expect(wrapper.emitted()['set-skip-retry-modal']).toBeUndefined();
           expect(localStorage.setItem).not.toHaveBeenCalled();
         },
       );
@@ -537,7 +574,7 @@ describe('pipeline graph job item', () => {
         ${'cancelling'} | ${clickOnModalCancelBtn}
         ${'confirming'} | ${clickOnModalPrimaryBtn}
       `(
-        'emits "setSkipRetryModal" and set local storage key on $actionName the modal',
+        'emits "set-skip-retry-modal" and set local storage key on $actionName the modal',
         async ({ actionBtn }) => {
           // We are passing the checkbox as a slot to the GlModal.
           // The way GlModal is mounted, we can neither click on the box
@@ -557,7 +594,7 @@ describe('pipeline graph job item', () => {
           await findActionComponent().trigger('click');
           await actionBtn();
 
-          expect(wrapper.emitted().setSkipRetryModal).toHaveLength(1);
+          expect(wrapper.emitted()['set-skip-retry-modal']).toHaveLength(1);
           expect(localStorage.setItem).toHaveBeenCalledWith('skip_retry_modal', 'true');
         },
       );

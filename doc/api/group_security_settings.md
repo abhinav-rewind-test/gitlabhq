@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Platform Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Update group security settings in GitLab. Configure secret push protection and other security policies for all projects within a group.
 title: Group security settings API
 ---
@@ -29,7 +29,7 @@ Updates group security settings for a specified group.
 
 Prerequisites:
 
-- You must have the Maintainer or Owner role for the group.
+- You must have the Security Manager, Maintainer or Owner role for the group.
 
 ```plaintext
 PUT /groups/:id/security_settings

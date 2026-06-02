@@ -53,7 +53,10 @@ class Projects::PipelineSchedulesController < Projects::ApplicationController
 
     if job_id
       pipelines_link = helpers.link_to('', project_pipelines_path(@project))
-      flash[:notice] = safe_format(_("Successfully scheduled a pipeline to run. Go to the %{pipelines_link_start}Pipelines page%{pipelines_link_end} for details."), tag_pair(pipelines_link, :pipelines_link_start, :pipelines_link_end))
+      flash[:notice] = safe_format(
+        _("Successfully scheduled a pipeline to run. " \
+          "Go to the %{pipelines_link_start}Pipelines page%{pipelines_link_end} for details."),
+        tag_pair(pipelines_link, :pipelines_link_start, :pipelines_link_end))
     else
       flash[:alert] = _('Unable to schedule a pipeline to run immediately')
     end
@@ -75,7 +78,8 @@ class Projects::PipelineSchedulesController < Projects::ApplicationController
     if schedule.destroy
       redirect_to pipeline_schedules_path(@project), status: :found
     else
-      redirect_to pipeline_schedules_path(@project), status: :forbidden, alert: _("Failed to remove the pipeline schedule")
+      redirect_to pipeline_schedules_path(@project), status: :forbidden,
+        alert: _("Failed to remove the pipeline schedule")
     end
   end
 
@@ -97,7 +101,7 @@ class Projects::PipelineSchedulesController < Projects::ApplicationController
   def schedule_params
     params.require(:schedule)
       .permit(:description, :cron, :cron_timezone, :ref, :active,
-        variables_attributes: [:id, :variable_type, :key, :secret_value, :_destroy])
+        variables_attributes: [:id, :variable_type, :key, :value, :_destroy])
   end
 
   def new_schedule

@@ -1,9 +1,9 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Webhookイベント
-description: "GitLab Webhookイベントとペイロードの一覧です。JSONの例が含まれています。"
+description: "GitLabのWebhookイベントとペイロードのリスト。JSONの例が含まれます。"
 ---
 
 {{< details >}}
@@ -13,7 +13,7 @@ description: "GitLab Webhookイベントとペイロードの一覧です。JSON
 
 {{< /details >}}
 
-GitLabを外部アプリケーションに接続し、Webhookを使用してワークフローを自動化します。GitLabで特定のイベントが発生すると、Webhookは詳細情報を含むHTTP POSTリクエストを設定済みのエンドポイントに送信します。手動での介入なしで、コード変更、デプロイ、コメント、その他のアクティビティーに反応する自動化されたプロセスをビルドします。
+GitLabを外部アプリケーションに接続し、Webhookを使用してワークフローを自動化します。GitLabで特定のイベントが発生すると、Webhookは詳細情報を含むHTTP POSTリクエストを設定済みのエンドポイントに送信します。手動での介入なしで、コード変更、デプロイ、コメント、その他のアクティビティに反応する自動化されたプロセスをビルドします。
 
 このページには、[プロジェクトWebhook](webhooks.md)と[グループWebhook](webhooks.md#group-webhooks)に対してトリガーされるイベントのリストがあります。
 
@@ -29,10 +29,10 @@ GitLabを外部アプリケーションに接続し、Webhookを使用してワ�
 | [機能フラグイベント](#feature-flag-events)                                    | 機能フラグがオンまたはオフになります。 |
 | [ジョブイベント](#job-events)                                                      | ジョブの状態が変更されます。 |
 | [マージリクエストイベント](#merge-request-events)                                  | マージリクエストが作成、編集、マージ、またはクローズされるか、コミットがソースブランチに追加されます。 |
-| [マイルストーンイベント](#milestone-events)                                          | マイルストーンが作成、クローズ、再オープン、または削除された場合にトリガーされます。 |
+| [マイルストーンイベント](#milestone-events)                                          | マイルストーンが作成、クローズ、再オープン、または削除されました。 |
 | [パイプラインイベント](#pipeline-events)                                            | パイプラインの状態が変化します。 |
 | [プロジェクトアクセストークンイベントまたはグループアクセストークンイベント](#project-and-group-access-token-events) | プロジェクトアクセストークンまたはグループアクセストークンの有効期限が7日後に切れます。 |
-| [プッシュイベント](#push-events)                                                    | リポジトリへのプッシュが行われます。 |
+| [プッシュイベント](#push-events)                                                    | プッシュがリポジトリに対して行われます。 |
 | [リリースイベント](#release-events)                                              | リリースが作成、編集、または削除されます。 |
 | [タグイベント](#tag-events)                                                      | リポジトリでタグが作成または削除されます。 |
 | [脆弱性イベント](#vulnerability-events)                                  | 脆弱性が作成または更新されます。 |
@@ -51,20 +51,20 @@ GitLabを外部アプリケーションに接続し、Webhookを使用してワ�
 | [プロジェクトイベント](#project-events)           | グループ内でプロジェクトが作成または削除されます。 |
 | [サブグループイベント](#subgroup-events)         | グループ内でサブグループが作成または削除されます。 |
 
-{{< alert type="note" >}}
-
-作成者が[GitLab](https://gitlab.com/-/user_settings/profile)プロファイルに公開メールアドレスをリストしていない場合、Webhookペイロードの`email`属性には値`[REDACTED]`が表示されます。
-
-{{< /alert >}}
+> [!note]
+> 作成者の[GitLabプロフィール](https://gitlab.com/-/user_settings/profile)に公開メールがリストされていない場合、Webhookペイロードの`email`属性には`[REDACTED]`の値が表示されます。
 
 ## プッシュイベント {#push-events}
 
-プッシュイベントはリポジトリへのプッシュ時にトリガーされます。ただし、次の場合を除きます:
+プッシュイベントはリポジトリへのプッシュ時にトリガーされます。ただし、次の場合を除きます。
 
 - タグをプッシュする場合。
 - 1回の[`push_event_hooks_limit`](../../../api/settings.md#available-settings)に、デフォルトで4つ以上のブランチの変更が含まれている場合（設定によって異なります）。
 
 一度に20個を超えるコミットをプッシュすると、ペイロードの`commits`属性には、最新の20個のコミットに関する情報のみが含まれます。詳細なコミットデータの読み込み操作はコストがかかるため、パフォーマンス上の理由からこの制限が存在します。`total_commits_count`属性に実際のコミットの数が含まれています。
+
+> [!note]
+> 個別のプッシュイベントを作成するか、アクティビティフィードで一括プッシュイベントを作成するかは、個別の設定`push_event_activities_limit`によってGitLabが制御します。詳細については、[プッシュイベントアクティビティ制限](../../../administration/settings/push_event_activities_limit.md)を参照してください。
 
 新しいコミットなしでブランチを作成してプッシュすると、ペイロードの`commits`属性は空になります。
 
@@ -158,9 +158,9 @@ X-Gitlab-Event: Push Hook
 
 タグイベントは、リポジトリでタグを作成または削除するとトリガーされます。
 
-このフックは、1回のプッシュに4つ以上のタグの変更が含まれている場合（設定によって異なります）、デフォルトで実行されません。この制限は、`push_event_hooks_limit`設定（デフォルト: `3`）によって制御され、タグとブランチの両方に適用されます。制限を超えると、そのプッシュイベントに対してWebhookは一切トリガーされません。
+デフォルトでは、単一のプッシュに3つ以上のタグに対する変更が含まれる場合、このフックは実行されません。この制限は、タグとブランチの両方に適用される`push_event_hooks_limit`設定（デフォルト：`3`）によって制御されます。これを超過した場合、そのプッシュイベントに対してWebhookは一切トリガーされません。
 
-GitLab Self-Managedインスタンスの場合、管理者は[Application Settings API](../../../api/settings.md#available-settings)を使用してこの制限を変更できます。
+GitLab Self-Managedインスタンスの場合、管理者は[アプリケーション設定API](../../../api/settings.md#available-settings)を使用してこの制限を変更できます。
 
 リクエストヘッダー:
 
@@ -225,11 +225,11 @@ X-Gitlab-Event: Tag Push Hook
 
 - `object_attributes`の`type`属性は、GitLab 17.2で[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/467415)されました。
 - エピックのサポートは、GitLab 17.3で[導入](https://gitlab.com/groups/gitlab-org/-/epics/13056)されました。[エピックの新しい外観](../../group/epics/_index.md#epics-as-work-items)を有効にする必要があります。
-- GitLab 18.1で、エピックのサポートが[一般的に利用可能](https://gitlab.com/gitlab-org/gitlab/-/issues/468310)になりました。
+- エピックのサポートはGitLab 18.1で[一般提供](https://gitlab.com/gitlab-org/gitlab/-/issues/468310)されました。
 
 {{< /history >}}
 
-作業アイテムイベントは、作業アイテムが作成、編集、完了、または再度オープンされるとトリガーされます。サポートされている作業アイテムのタイプは次のとおりです:
+作業アイテムイベントは、作業アイテムが作成、編集、完了、または再度オープンされるとトリガーされます。サポートされている作業アイテムのタイプは次のとおりです。
 
 - [エピック](../../group/epics/_index.md)
 - [イシュー](../issues/_index.md)
@@ -243,7 +243,7 @@ X-Gitlab-Event: Tag Push Hook
 
 作業アイテムのタイプが`Epic`の場合、変更のイベントを取得するには、Webhookをグループに登録する必要があります。
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
 - `open`
 - `close`
@@ -423,14 +423,14 @@ X-Gitlab-Event: Issue Hook
 
 ノートデータは`object_attributes`（`note`や`noteable_type`など）に保存されます。ペイロードには、コメント対象に関する情報が含まれています。たとえば、イシューに関するコメントでは、`issue`キーの下に特定のイシュー情報が含まれています。
 
-使用可能なターゲットの種類は次のとおりです:
+使用可能なターゲットの種類は次のとおりです。
 
 - `commit`
 - `merge_request`
 - `issue`
 - `snippet`
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
 - `create`
 - `update`
@@ -482,6 +482,7 @@ X-Gitlab-Event: Note Hook
   },
   "object_attributes": {
     "id": 1243,
+    "internal": false,
     "note": "This is a commit comment. How does this work?",
     "noteable_type": "Commit",
     "author_id": 1,
@@ -566,6 +567,7 @@ X-Gitlab-Event: Note Hook
   },
   "object_attributes": {
     "id": 1244,
+    "internal": false,
     "note": "This MR needs work.",
     "noteable_type": "MergeRequest",
     "author_id": 1,
@@ -728,6 +730,7 @@ X-Gitlab-Event: Note Hook
   },
   "object_attributes": {
     "id": 1241,
+    "internal": false,
     "note": "Hello world",
     "noteable_type": "Issue",
     "author_id": 1,
@@ -835,6 +838,7 @@ X-Gitlab-Event: Note Hook
   },
   "object_attributes": {
     "id": 1245,
+    "internal": false,
     "note": "Is this snippet doing what it's supposed to be doing?",
     "noteable_type": "Snippet",
     "author_id": 1,
@@ -869,45 +873,288 @@ X-Gitlab-Event: Note Hook
 
 ## マージリクエストイベント {#merge-request-events}
 
-マージリクエストイベントは、次の場合にトリガーされます:
+マージリクエストイベントは、次の場合にトリガーされます。
 
 - 新しいマージリクエストが作成された場合。
 - 既存のマージリクエストが更新、（必要なすべての承認者により）承認、承認解除、マージ、またはクローズされた場合。
 - 個々のユーザーが既存のマージリクエストへの承認を追加または削除した場合。
+- レビュアーがマージリクエストの再レビューをリクエストされました。
 - コミットがソースブランチに追加された場合。
 - マージリクエストですべてのスレッドが解決された場合。
 
 マージリクエストイベントは、`changes`フィールドが空の場合でもトリガーできます。Webhookレシーバーは、常に`changes`フィールドの内容を調べてマージリクエストの実際の変更を確認する必要があります。
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+### ペイロード構造 {#payload-structure}
 
-- `open`
-- `close`
-- `reopen`
-- `update`
-- `approval`: 個々のユーザーが承認を追加しました。
-- `approved`: マージリクエストが必要なすべての承認者によって完全に承認されました。
-- `unapproval`: 個々のユーザーが手動またはシステムによって承認を削除しました。
-- `unapproved`: 以前に承認されたマージリクエストは、手動またはシステムによって承認ステータスを失いました。
+WebhookペイロードのJSON構造は、すべてのアクションタイプで一貫しています。違いは、どのフィールドにデータが含まれるか、また`oldrev`、`system`、`system_action`などの条件付きフィールドが存在するかどうかにあります。
 
-- `merge`
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
-フィールド`object_attributes.oldrev`は、次のような実際のコーディング変更がある場合にのみ使用できます:
+- `open`: マージリクエストが作成されます。
+- `close`: マージリクエストがクローズされました。
+- `reopen`: クローズされたマージリクエストが再オープンされました。
+- `update`: マージリクエストが更新されました。これには、一般的な更新および再リクエストされたレビューアクションが含まれます。更新の特定の種類を判断するには、`changes`フィールドを確認してください。
+- `approval`: ユーザーが承認を追加します。
+- `approved`: マージリクエストは、必要なすべての承認者によって完全に承認されました。
+- `unapproval`: ユーザーが、手動またはシステムによって承認を取り消しました。
+- `unapproved`: 以前に承認されたマージリクエストは、手動またはシステムによって承認ステータスを失います。
+- `merge`: マージリクエストがマージされました。
 
-- 新しいコーディングがプッシュされた場合。
+マージリクエストWebhookペイロードには、これらのトップレベルフィールドが含まれています:
+
+| フィールド               | 種類   | 説明 |
+|---------------------|--------|-------------|
+| `object_kind`       | 文字列 | `"merge_request"` |
+| `event_type`        | 文字列 | `"merge_request"` |
+| `user`              | オブジェクト | イベントをトリガーしたユーザー。 |
+| `project`           | オブジェクト | ターゲットプロジェクト。 |
+| `object_attributes` | オブジェクト | マージリクエストデータ。 |
+| `changes`           | オブジェクト | アクション中に変更された属性が含まれています。 |
+| `assignees`         | 配列  | 現在割り当てられているユーザー。 |
+| `reviewers`         | 配列  | 現在割り当てられているレビュアー。 |
+| `labels`            | 配列  | ラベルオブジェクト。 |
+| `repository`        | オブジェクト | 非推奨。代わりに`project`を使用してください。リポジトリ情報。 |
+
+### 非推奨のフィールド {#deprecated-fields}
+
+以下のフィールドは非推奨であり、下位互換性のためのみに含まれています。代わりに推奨される代替を使用してください:
+
+| 非推奨フィールド                     | 推奨される代替 |
+|--------------------------------------|-------------------------|
+| `object_attributes.assignee_id`      | `object_attributes.assignee_ids` |
+| `object_attributes.work_in_progress` | `object_attributes.draft` |
+| `project.http_url`                   | `project.git_http_url`  |
+| `project.homepage`                   | `project.web_url`       |
+| `project.ssh_url`                    | `project.git_ssh_url`   |
+| `project.url`                        | `project.git_ssh_url`または`project.git_http_url` |
+| `repository`                         | `project`               |
+
+### `object_attributes`フィールド {#object_attributes-field}
+
+{{< history >}}
+
+- `actioned_at`はGitLab 18.10で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224849)。
+
+{{< /history >}}
+
+`object_attributes`フィールドには、マージリクエストの現在の状態が含まれています。以下のフィールドが含まれています:
+
+| フィールド                           | 種類    | 説明 |
+|---------------------------------|---------|-------------|
+| `action`                        | 文字列  | Webhookをトリガーしたアクション。たとえば、`open`、`update`、`merge`などです。 |
+| `actioned_at`                   | 文字列  | Webhookをトリガーしたアクションが発生した日時。 |
+| `approval_rules`                | 配列   | 承認ルールオブジェクトの配列（EEのみ）。 |
+| `assignee_ids`                  | 配列   | 割り当てられたユーザーIDの配列。 |
+| `author_id`                     | 整数 | マージリクエスト作成者のID。 |
+| `blocking_discussions_resolved` | ブール値 | ブロックしているディスカッションが解決されたかどうか。 |
+| `created_at`                    | 文字列  | マージリクエストが作成された日時。 |
+| `description`                   | 文字列  | マージリクエストの説明。 |
+| `detailed_merge_status`         | 文字列  | 詳細なマージステータス情報。潜在的な値のリストについては、[マージステータス](../../../api/merge_requests.md#merge-status)を参照してください。 |
+| `draft`                         | ブール値 | マージリクエストがドラフトであるかどうか。 |
+| `first_contribution`            | ブール値 | これが作成者の最初のコントリビュートであるかどうか。 |
+| `head_pipeline_id`              | 整数 | HEADパイプラインのID。 |
+| `human_time_change`             | 文字列  | 人間が判読できる時間の変更。 |
+| `human_time_estimate`           | 文字列  | 人間が判読できる時間見積もり。 |
+| `human_total_time_spent`        | 文字列  | 人間が判読できる総所要時間。 |
+| `id`                            | 整数 | マージリクエストID。 |
+| `iid`                           | 整数 | マージリクエストの内部ID。 |
+| `labels`                        | 配列   | ラベルオブジェクトの配列。 |
+| `last_commit`                   | オブジェクト  | 詳細を含む最後のコミットオブジェクト。 |
+| `last_edited_at`                | 文字列  | マージリクエストが最後に編集された日時。 |
+| `last_edited_by_id`             | 整数 | 最後に編集したユーザーのID。 |
+| `merge_commit_sha`              | 文字列  | マージコミットのSHA。 |
+| `merge_error`                   | 文字列  | マージエラーメッセージ。 |
+| `merge_params`                  | オブジェクト  | マージパラメータ。 |
+| `merge_status`                  | 文字列  | マージリクエストの状態。 |
+| `merge_user_id`                 | 整数 | それをマージしたユーザーのID。 |
+| `merge_when_pipeline_succeeds`  | ブール値 | 自動マージが有効になっているかどうか。 |
+| `milestone_id`                  | 整数 | マイルストーンのID。 |
+| `oldrev`                        | 文字列  | 古いコミットSHA（プッシュ関連イベントの場合にのみ存在）。 |
+| `prepared_at`                   | 文字列  | マージリクエストが準備されたときのタイムスタンプ。このフィールドは、すべての[準備手順](../../../api/merge_requests.md#preparation-steps)が完了した後に1回だけ入力され、それ以上の変更が加えられても更新されません。 |
+| `reviewer_ids`                  | 配列   | レビュアーIDの配列。 |
+| `source_branch`                 | 文字列  | ソースブランチ名。 |
+| `source`                        | オブジェクト  | ソースプロジェクトの詳細。たとえば、名前と説明。 |
+| `source_project_id`             | 整数 | ソースプロジェクトのID。 |
+| `state_id`                      | 整数 | 状態ID（`1`: オープン済み、`2`: クローズ済み、`3`: マージ済み、`4`: ロック済み）。 |
+| `state`                         | 文字列  | マージリクエストの状態（`opened`、`closed`、`merged`、`locked`）。 |
+| `system_action`                 | 文字列  | システムアクション（`system`が`true`の場合にのみ存在）。 |
+| `system`                        | ブール値 | イベントがシステムによって開始されたかどうか。 |
+| `target_branch`                 | 文字列  | ターゲットブランチ名。 |
+| `target`                        | オブジェクト  | ターゲットプロジェクトの詳細。たとえば、名前と説明。 |
+| `target_project_id`             | 整数 | ターゲットプロジェクトのID。 |
+| `time_change`                   | 整数 | 費やされた時間の秒単位での変更。 |
+| `time_estimate`                 | 整数 | 秒単位での時間見積もり。 |
+| `title`                         | 文字列  | マージリクエストのタイトル。 |
+| `total_time_spent`              | 整数 | 合計経過時間 (秒)。 |
+| `updated_at`                    | 文字列  | マージリクエストが最後に更新された日時。 |
+| `updated_by_id`                 | 整数 | 最後に更新したユーザーのID。 |
+| `url`                           | 文字列  | マージリクエストへのURL。 |
+
+### `changes`フィールド {#changes-field}
+
+`changes`フィールドには、アクション中に変更されたフィールドのみが含まれます。`object_attributes`のすべてのフィールドが`changes`に表示されるわけではありません。
+
+各変更されたフィールドは次の形式に従います:
+
+```json
+{
+  "field_name": {
+    "previous": "old_value",
+    "current": "new_value"
+  }
+}
+```
+
+#### 属性 {#attributes}
+
+- `assignees`
+- `blocking_discussions_resolved`
+- `description`
+- `draft`
+- `head_pipeline_id`
+- `labels`
+- `last_edited_at`
+- `last_edited_by_id`
+- `merge_commit_sha`
+- `merge_error`
+- `merge_params`
+- `merge_status`
+- `merge_user_id`
+- `merge_when_pipeline_succeeds`
+- `milestone_id`
+- `prepared_at`
+- `reviewer_ids`
+- `reviewers`
+- `state_id`
+- `target_branch`
+- `time_change`
+- `time_estimate`
+- `title`
+- `total_time_spent`
+- `updated_at`
+- `updated_by_id`
+
+### マージリクエストのアクション固有のフィールド {#merge-request-action-specific-fields}
+
+`object_attributes.oldrev`フィールドは、`update`アクションが実際にコード変更がある場合にのみ使用できます。たとえば、次のとおりです:
+
+- 新しいコードがソースブランチにプッシュされます。
 - [提案](../merge_requests/reviews/suggestions.md)が適用された場合。
+
+次の例は、`update`イベントと`oldrev`（部分的なペイロード）を示しています:
+
+```json
+{
+  "object_kind": "merge_request",
+  "event_type": "merge_request",
+  "object_attributes": {
+    "action": "update",
+    "oldrev": "e59094b8de0f2f91abbe4760a52d9137260252d8"
+  }
+}
+```
 
 ### システムによって開始されたマージリクエストイベント {#system-initiated-merge-request-events}
 
-一部のマージリクエストイベントは、新しいコミットのプッシュが原因で承認がリセットされる場合など、システムによって自動的にトリガーされます。これらのシステムによって開始されたWebhookイベントは、プッシュイベントによってのみトリガーされ、ペイロードにさらに多くのフィールドが含まれます:
+新しいコミットのプッシュによって承認がリセットされるなど、一部のマージリクエストイベントはシステムによって自動的にトリガーされます。これらのシステムによって開始されたWebhookイベントは、プッシュイベントによってのみトリガーされ、ペイロードにはより多くのフィールドが含まれます:
 
-- `system`: ブール値フィールド。`true`の場合、イベントはシステムによってトリガーされました。`false`の場合、ユーザーアクションがイベントをトリガーしました。
-- `system_action`: 文字列フィールド。`system`が`true`の場合にのみ存在します。システムアクションに関する詳細なコンテキストを提供します。使用可能な値は次のとおりです:
+- `object_attributes.system`: ブール型フィールド。`true`の場合、イベントはシステムによってトリガーされました。`false`の場合、ユーザーアクションがイベントをトリガーしました。
+- `object_attributes.system_action`: 文字列フィールドで、`system`が`true`の場合にのみ存在します。システムアクションに関するより多くのコンテキストを提供します。使用可能な値は次のとおりです:
 
-  - `approvals_reset_on_push`: プロジェクトで**プッシュ時の承認のリセット**が有効になっており、新しいコミットがプッシュされました。
-  - `code_owner_approvals_reset_on_push`: プロジェクトで**Selective code owner removals**（選択的コードオーナー削除）が有効になっており、CODEOWNERSルールに一致するファイルの変更により、コードオーナーの承認がリセットされました。
+  - `approvals_reset_on_push`: プロジェクトで**プッシュ時の承認リセット**が有効になっており、新しいコミットがプッシュされました。
+  - `code_owner_approvals_reset_on_push`: プロジェクトで**Selective code owner removals**が有効になっており、CODEOWNERSルールに一致するファイルの変更により、コードオーナー承認がリセットされました。
 
-その他の承認リセットシナリオでは、Webhookはトリガーされません。
+その他の承認リセットシナリオはWebhookをトリガーしません。
+
+次の例は、システムによって開始されたイベント（部分的なペイロード）を示しています:
+
+```json
+{
+  "object_kind": "merge_request",
+  "event_type": "merge_request",
+  "object_attributes": {
+    "action": "update",
+    "system": true,
+    "system_action": "approvals_reset_on_push"
+  }
+}
+```
+
+### レビュアーの状態追跡 {#reviewer-state-tracking}
+
+マージリクエストWebhookペイロードの`reviewers`配列には、各レビュアーの`state`フィールドが含まれています。`state`フィールドは、レビュアーの現在のレビュー状態を示します:
+
+- `unreviewed`: レビュアーはまだマージリクエストをレビューしていません。
+- `review_started`: レビュアーはレビューを開始しましたが、完了していません。
+- `reviewed`: レビュアーはレビューを完了しました。
+- `requested_changes`: レビュアーが変更のリクエストを行いました。
+- `approved`: レビュアーがマージリクエストを承認しました。
+- `unapproved`: レビュアーは以前に承認しましたが、その承認が削除されました。
+
+次の例は、レビュアー配列（部分的なペイロード）を示しています:
+
+```json
+{
+  "reviewers": [
+    {
+      "id": 6,
+      "name": "User1",
+      "username": "user1",
+      "state": "unreviewed",
+      "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon",
+      "email": "user1@example.com"
+    }
+  ]
+}
+```
+
+### 再リクエストされたレビューイベント {#re-request-review-events}
+
+レビュアーがマージリクエストの再リクエストをされた場合、Webhookが`action: "update"`でトリガーされ、`changes`オブジェクトに拡張情報が含まれます。変更ペイロードには以下が含まれます:
+
+- **Previous state** (最初の配列): 再リクエスト前のレビュアーの状態を`re_requested: false`で表示します。
+- **Current state** (2番目の配列): 再リクエスト後のレビュアーの更新された状態を、再リクエストされたレビュアーに対して`re_requested: true`で表示します。
+- **State transitions**: レビュアーの状態がどのように変更されたかを示します（例：`approved`から`unreviewed`へ）。
+
+次の例は、再リクエストされたレビューの変更点（部分的なペイロード）を示しています:
+
+```json
+{
+  "object_kind": "merge_request",
+  "event_type": "merge_request",
+  "object_attributes": {
+    "action": "update"
+  },
+  "changes": {
+    "reviewers": [
+      [
+        {
+          "id": 6,
+          "name": "User1",
+          "username": "user1",
+          "state": "approved",
+          "re_requested": false,
+          "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon",
+          "email": "user1@example.com"
+        }
+      ],
+      [
+        {
+          "id": 6,
+          "name": "User1",
+          "username": "user1",
+          "state": "unreviewed",
+          "re_requested": true,
+          "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon",
+          "email": "user1@example.com"
+        }
+      ]
+    ]
+  }
+}
+```
+
+### 完全なペイロードの例 {#complete-payload-example}
 
 リクエストヘッダー:
 
@@ -915,7 +1162,7 @@ X-Gitlab-Event: Note Hook
 X-Gitlab-Event: Merge Request Hook
 ```
 
-ペイロードの例:
+次の例は、`open`アクションの完全なマージリクエストWebhookペイロードです。非推奨フィールドは明確にするために省略されています。非推奨フィールドとその推奨される代替のリストについては、[非推奨フィールド](#deprecated-fields)を参照してください。
 
 ```json
 {
@@ -923,209 +1170,207 @@ X-Gitlab-Event: Merge Request Hook
   "event_type": "merge_request",
   "user": {
     "id": 1,
-    "name": "Administrator",
-    "username": "root",
-    "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon",
-    "email": "admin@example.com"
+    "name": "Alex Garcia",
+    "username": "agarcia",
+    "avatar_url": "https://www.gravatar.com/avatar/1a29da0ccd099482194440fac762f5ccb4ec53227761d1859979367644a889a5?s=80&d=identicon",
+    "email": "agarcia@example.com"
   },
   "project": {
-    "id": 1,
-    "name":"Gitlab Test",
-    "description":"Aut reprehenderit ut est.",
-    "web_url":"http://example.com/gitlabhq/gitlab-test",
-    "avatar_url":null,
-    "git_ssh_url":"git@example.com:gitlabhq/gitlab-test.git",
-    "git_http_url":"http://example.com/gitlabhq/gitlab-test.git",
-    "namespace":"GitlabHQ",
-    "visibility_level":20,
-    "path_with_namespace":"gitlabhq/gitlab-test",
-    "default_branch":"master",
-    "ci_config_path":"",
-    "homepage":"http://example.com/gitlabhq/gitlab-test",
-    "url":"http://example.com/gitlabhq/gitlab-test.git",
-    "ssh_url":"git@example.com:gitlabhq/gitlab-test.git",
-    "http_url":"http://example.com/gitlabhq/gitlab-test.git"
-  },
-  "repository": {
-    "name": "Gitlab Test",
-    "url": "http://example.com/gitlabhq/gitlab-test.git",
-    "description": "Aut reprehenderit ut est.",
-    "homepage": "http://example.com/gitlabhq/gitlab-test"
+    "id": 2,
+    "name": "Flight Management",
+    "description": "Flight management application for tracking aircraft status.",
+    "web_url": "http://gitlab.example.com/flightjs/flight-management",
+    "avatar_url": null,
+    "git_ssh_url": "ssh://git@gitlab.example.com:flightjs/flight-management.git",
+    "git_http_url": "http://gitlab.example.com/flightjs/flight-management.git",
+    "namespace": "Flightjs",
+    "visibility_level": 0,
+    "path_with_namespace": "flightjs/flight-management",
+    "default_branch": "main",
+    "ci_config_path": null
   },
   "object_attributes": {
-    "id": 99,
-    "iid": 1,
-    "target_branch": "master",
-    "source_branch": "ms-viewport",
-    "source_project_id": 14,
-    "author_id": 51,
-    "assignee_ids": [6],
-    "assignee_id": 6,
-    "reviewer_ids": [6],
-    "title": "MS-Viewport",
-    "created_at": "2013-12-03T17:23:34Z",
-    "updated_at": "2013-12-03T17:23:34Z",
-    "last_edited_at": "2013-12-03T17:23:34Z",
-    "last_edited_by_id": 1,
-    "milestone_id": null,
-    "state_id": 1,
-    "state": "opened",
-    "blocking_discussions_resolved": true,
-    "work_in_progress": false,
+    "author_id": 1,
+    "created_at": "2026-01-16 05:56:22 UTC",
+    "description": "This merge request adds input validation to the booking form.",
     "draft": false,
+    "head_pipeline_id": null,
+    "id": 93,
+    "iid": 16,
+    "last_edited_at": null,
+    "last_edited_by_id": null,
+    "merge_commit_sha": null,
+    "merge_error": null,
+    "merge_params": {
+      "force_remove_source_branch": "1"
+    },
+    "merge_status": "checking",
+    "merge_user_id": null,
+    "merge_when_pipeline_succeeds": false,
+    "milestone_id": 8,
+    "source_branch": "feature/booking-validation",
+    "source_project_id": 2,
+    "state_id": 1,
+    "target_branch": "main",
+    "target_project_id": 2,
+    "time_estimate": 0,
+    "title": "Add input validation to booking form",
+    "updated_at": "2026-01-16 05:56:25 UTC",
+    "updated_by_id": null,
+    "prepared_at": "2026-01-16 05:56:25 UTC",
+    "assignee_ids": [
+      1
+    ],
+    "blocking_discussions_resolved": true,
+    "detailed_merge_status": "checking",
     "first_contribution": true,
-    "merge_status": "unchecked",
-    "target_project_id": 14,
-    "description": "",
-    "prepared_at": "2013-12-03T19:23:34Z",
-    "total_time_spent": 1800,
-    "time_change": 30,
-    "human_total_time_spent": "30m",
-    "human_time_change": "30s",
-    "human_time_estimate": "30m",
-    "url": "http://example.com/diaspora/merge_requests/1",
-    "source": {
-      "name":"Awesome Project",
-      "description":"Aut reprehenderit ut est.",
-      "web_url":"http://example.com/awesome_space/awesome_project",
-      "avatar_url":null,
-      "git_ssh_url":"git@example.com:awesome_space/awesome_project.git",
-      "git_http_url":"http://example.com/awesome_space/awesome_project.git",
-      "namespace":"Awesome Space",
-      "visibility_level":20,
-      "path_with_namespace":"awesome_space/awesome_project",
-      "default_branch":"master",
-      "homepage":"http://example.com/awesome_space/awesome_project",
-      "url":"http://example.com/awesome_space/awesome_project.git",
-      "ssh_url":"git@example.com:awesome_space/awesome_project.git",
-      "http_url":"http://example.com/awesome_space/awesome_project.git"
-    },
-    "target": {
-      "name":"Awesome Project",
-      "description":"Aut reprehenderit ut est.",
-      "web_url":"http://example.com/awesome_space/awesome_project",
-      "avatar_url":null,
-      "git_ssh_url":"git@example.com:awesome_space/awesome_project.git",
-      "git_http_url":"http://example.com/awesome_space/awesome_project.git",
-      "namespace":"Awesome Space",
-      "visibility_level":20,
-      "path_with_namespace":"awesome_space/awesome_project",
-      "default_branch":"master",
-      "homepage":"http://example.com/awesome_space/awesome_project",
-      "url":"http://example.com/awesome_space/awesome_project.git",
-      "ssh_url":"git@example.com:awesome_space/awesome_project.git",
-      "http_url":"http://example.com/awesome_space/awesome_project.git"
-    },
+    "human_time_change": null,
+    "human_time_estimate": null,
+    "human_total_time_spent": null,
+    "labels": [
+      {
+        "id": 19,
+        "title": "enhancement",
+        "color": "#adb21a",
+        "project_id": null,
+        "created_at": "2026-01-07 00:03:52 UTC",
+        "updated_at": "2026-01-07 00:03:52 UTC",
+        "template": false,
+        "description": null,
+        "type": "GroupLabel",
+        "group_id": 24
+      }
+    ],
     "last_commit": {
-      "id": "da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
-      "message": "fixed readme",
-      "title": "Update file README.md",
-      "timestamp": "2012-01-03T23:36:29+02:00",
-      "url": "http://example.com/awesome_space/awesome_project/commits/da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
+      "id": "e59094b8de0f2f91abbe4760a52d9137260252d8",
+      "message": "Add email format validation",
+      "title": "Add email format validation",
+      "timestamp": "2026-01-16T05:01:10+00:00",
+      "url": "http://gitlab.example.com/flightjs/flight-management/-/commit/e59094b8de0f2f91abbe4760a52d9137260252d8",
       "author": {
-        "name": "GitLab dev user",
-        "email": "gitlabdev@dv6700.(none)"
+        "name": "Alex Garcia",
+        "email": "agarcia@example.com"
       }
     },
-    "labels": [{
-      "id": 206,
-      "title": "API",
-      "color": "#ffffff",
-      "project_id": 14,
-      "created_at": "2013-12-03T17:15:43Z",
-      "updated_at": "2013-12-03T17:15:43Z",
-      "template": false,
-      "description": "API related issues",
-      "type": "ProjectLabel",
-      "group_id": 41
-    }],
-    "action": "open",
-    "detailed_merge_status": "mergeable"
-  },
-  "labels": [{
-    "id": 206,
-    "title": "API",
-    "color": "#ffffff",
-    "project_id": 14,
-    "created_at": "2013-12-03T17:15:43Z",
-    "updated_at": "2013-12-03T17:15:43Z",
-    "template": false,
-    "description": "API related issues",
-    "type": "ProjectLabel",
-    "group_id": 41
-  }],
-  "changes": {
-    "updated_by_id": {
-      "previous": null,
-      "current": 1
+    "reviewer_ids": [
+      25
+    ],
+    "source": {
+      "id": 2,
+      "name": "Flight Management",
+      "description": "Flight management application for tracking aircraft status.",
+      "web_url": "http://gitlab.example.com/flightjs/flight-management",
+      "avatar_url": null,
+      "git_ssh_url": "ssh://git@gitlab.example.com:flightjs/flight-management.git",
+      "git_http_url": "http://gitlab.example.com/flightjs/flight-management.git",
+      "namespace": "Flightjs",
+      "visibility_level": 0,
+      "path_with_namespace": "flightjs/flight-management",
+      "default_branch": "main",
+      "ci_config_path": null
     },
-    "draft": {
-      "previous": true,
-      "current": false
+    "state": "opened",
+    "system": false,
+    "target": {
+      "id": 2,
+      "name": "Flight Management",
+      "description": "Flight management application for tracking aircraft status.",
+      "web_url": "http://gitlab.example.com/flightjs/flight-management",
+      "avatar_url": null,
+      "git_ssh_url": "ssh://git@gitlab.example.com:flightjs/flight-management.git",
+      "git_http_url": "http://gitlab.example.com/flightjs/flight-management.git",
+      "namespace": "Flightjs",
+      "visibility_level": 0,
+      "path_with_namespace": "flightjs/flight-management",
+      "default_branch": "main",
+      "ci_config_path": null
+    },
+    "time_change": 0,
+    "total_time_spent": 0,
+    "url": "http://gitlab.example.com/flightjs/flight-management/-/merge_requests/16",
+    "approval_rules": [
+      {
+        "id": 4,
+        "approvals_required": 0,
+        "name": "All Members",
+        "rule_type": "any_approver",
+        "report_type": null,
+        "merge_request_id": 93,
+        "section": null,
+        "modified_from_project_rule": false,
+        "orchestration_policy_idx": null,
+        "vulnerabilities_allowed": 0,
+        "scanners": [],
+        "severity_levels": [],
+        "vulnerability_states": [
+          "new_needs_triage",
+          "new_dismissed"
+        ],
+        "security_orchestration_policy_configuration_id": null,
+        "scan_result_policy_id": null,
+        "applicable_post_merge": null,
+        "project_id": 2,
+        "approval_policy_rule_id": null,
+        "updated_at": "2026-01-16 05:56:22 UTC",
+        "created_at": "2026-01-16 05:56:22 UTC"
+      }
+    ],
+    "action": "open",
+    "actioned_at": "2026-01-16 05:56:26 UTC"
+  },
+  "labels": [
+    {
+      "id": 19,
+      "title": "enhancement",
+      "color": "#adb21a",
+      "project_id": null,
+      "created_at": "2026-01-07 00:03:52 UTC",
+      "updated_at": "2026-01-07 00:03:52 UTC",
+      "template": false,
+      "description": null,
+      "type": "GroupLabel",
+      "group_id": 24
+    }
+  ],
+  "changes": {
+    "merge_status": {
+      "previous": "preparing",
+      "current": "checking"
     },
     "updated_at": {
-      "previous": "2017-09-15 16:50:55 UTC",
-      "current":"2017-09-15 16:52:00 UTC"
+      "previous": "2026-01-16 05:56:22 UTC",
+      "current": "2026-01-16 05:56:25 UTC"
     },
-    "labels": {
-      "previous": [{
-        "id": 206,
-        "title": "API",
-        "color": "#ffffff",
-        "project_id": 14,
-        "created_at": "2013-12-03T17:15:43Z",
-        "updated_at": "2013-12-03T17:15:43Z",
-        "template": false,
-        "description": "API related issues",
-        "type": "ProjectLabel",
-        "group_id": 41
-      }],
-      "current": [{
-        "id": 205,
-        "title": "Platform",
-        "color": "#123123",
-        "project_id": 14,
-        "created_at": "2013-12-03T17:15:43Z",
-        "updated_at": "2013-12-03T17:15:43Z",
-        "template": false,
-        "description": "Platform related issues",
-        "type": "ProjectLabel",
-        "group_id": 41
-      }]
-    },
-    "last_edited_at": {
+    "prepared_at": {
       "previous": null,
-      "current": "2023-03-15 00:00:10 UTC"
-    },
-    "last_edited_by_id": {
-      "previous": null,
-      "current": 3278533
+      "current": "2026-01-16 05:56:25 UTC"
     }
   },
   "assignees": [
     {
-      "id": 6,
-      "name": "User1",
-      "username": "user1",
-      "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon"
+      "id": 1,
+      "name": "Alex Garcia",
+      "username": "agarcia",
+      "avatar_url": "https://www.gravatar.com/avatar/1a29da0ccd099482194440fac762f5ccb4ec53227761d1859979367644a889a5?s=80&d=identicon",
+      "email": "[REDACTED]"
     }
   ],
   "reviewers": [
     {
-      "id": 6,
-      "name": "User1",
-      "username": "user1",
-      "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon"
+      "id": 25,
+      "name": "Sidney Jones",
+      "username": "sjones",
+      "avatar_url": "https://www.gravatar.com/avatar/1be419860e7f852e20ca2691e6b55949f7809177e7765181da42e4448491e367?s=80&d=identicon",
+      "email": "[REDACTED]",
+      "state": "unreviewed",
+      "re_requested": false
     }
   ]
 }
 ```
 
-{{< alert type="note" >}}
-
-フィールド`assignee_id`と`merge_status`は[非推奨](../../../api/merge_requests.md)です。
-
-{{< /alert >}}
+> [!note]
+> フィールド`assignee_id`と`merge_status`は[非推奨](../../../api/merge_requests.md)です。
 
 ## Wikiページイベント {#wiki-page-events}
 
@@ -1605,7 +1850,7 @@ X-Gitlab-Event: Job Hook
 
 ## デプロイメントイベント {#deployment-events}
 
-デプロイメントイベントは、デプロイメントが次の状態になるとトリガーされます:
+デプロイメントイベントは、デプロイメントが次の状態になるとトリガーされます。
 
 - 開始
 - 成功
@@ -1682,7 +1927,7 @@ X-Gitlab-Event: Deployment Hook
 
 これらのイベントは、[グループWebhook](webhooks.md#group-webhooks)に対してのみトリガーされます。
 
-メンバーイベントは、次の場合にトリガーされます:
+メンバーイベントは、次の場合にトリガーされます。
 
 - ユーザーがグループメンバーとして追加された場合。
 - ユーザーのアクセスレベルが変更された場合。
@@ -1861,7 +2106,7 @@ X-Gitlab-Event: Member Hook
 
 これらのイベントは、[グループWebhook](webhooks.md#group-webhooks)に対してのみトリガーされます。
 
-プロジェクトイベントは、次の場合にトリガーされます:
+プロジェクトイベントは、次の場合にトリガーされます。
 
 - [プロジェクトがグループで作成された](#create-a-project-in-a-group)場合。
 - [プロジェクトがグループで削除された](#delete-a-project-in-a-group)場合。
@@ -1932,7 +2177,7 @@ X-Gitlab-Event: Project Hook
 
 これらのイベントは、[グループWebhook](webhooks.md#group-webhooks)に対してのみトリガーされます。
 
-サブグループイベントは、次の場合にトリガーされます:
+サブグループイベントは、次の場合にトリガーされます。
 
 - [グループ内にサブグループが作成された](#create-a-subgroup-in-a-group)場合。
 - [グループからサブグループが削除された](#remove-a-subgroup-from-a-group)場合。
@@ -2055,7 +2300,7 @@ X-Gitlab-Event: Feature Flag Hook
 
 リリースイベントは、リリースが作成、更新、または削除されるとトリガーされます。
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
 - `create`
 - `update`
@@ -2151,7 +2396,7 @@ X-Gitlab-Event: Release Hook
 
 マイルストーンイベントは、マイルストーンが作成、クローズ、再オープン、または削除されたときにトリガーされます。
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
 - `create`
 - `close`
@@ -2215,7 +2460,7 @@ X-Gitlab-Event: Milestone Hook
 
 {{< /history >}}
 
-絵文字イベントは、[絵文字リアクション](../../emoji_reactions.md)が以下のものに追加または削除されたときにトリガーされます:
+絵文字イベントは、[絵文字リアクション](../../emoji_reactions.md)が以下のものに追加または削除されたときにトリガーされます。
 
 - イシュー
 - マージリクエスト
@@ -2226,7 +2471,7 @@ X-Gitlab-Event: Milestone Hook
   - プロジェクトスニペット
   - コミット
 
-ペイロードの`object_attributes.action`に使用できる値は次のとおりです:
+ペイロードの`object_attributes.action`に使用できる値は次のとおりです。
 
 - `award`（リアクションを追加する）
 - `revoke`（リアクションを削除する）
@@ -2361,14 +2606,19 @@ X-Gitlab-Event: Emoji Hook
 
 {{< /history >}}
 
-アクセストークンの有効期限イベントは、[アクセストークン](../../../security/tokens/_index.md)が有効期限切れになる前にトリガーされます。これらのイベントは、次の場合にトリガーされます:
+アクセストークンの有効期限イベントは、[アクセストークン](../../../security/tokens/_index.md)が有効期限切れになる前にトリガーされます。これらのイベントは、次の場合にトリガーされます。
 
 - トークンの有効期限の1日前
 - トークンの有効期限の7日前
-- この機能が有効になっている場合、トークンの有効期限の30日前。
-- この機能が有効になっている場合、トークンの有効期限の60日前。
+- トークンの有効期限が切れる30日前（設定が必要）。
+- トークンの有効期限が切れる60日前（設定が必要）。
 
-ペイロードの`event_name`に使用できる値は次のとおりです:
+30日間および60日間の通知の設定に関する情報については、以下を参照してください:
+
+- [プロジェクトアクセストークン有効期限の追加Webhookトリガー](../settings/_index.md#add-additional-webhook-triggers-for-project-access-token-expiration)を追加します。
+- [グループアクセストークン有効期限の追加Webhookトリガー](../../group/manage.md#add-additional-webhook-triggers-for-group-access-token-expiration)を追加します。
+
+ペイロードの`event_name`に使用できる値は次のとおりです。
 
 - `expiring_access_token`
 
@@ -2406,7 +2656,8 @@ X-Gitlab-Event: Resource Access Token Hook
     "created_at": "2024-01-24 16:27:40 UTC",
     "id": 25,
     "name": "acd",
-    "expires_at": "2024-01-26"
+    "expires_at": "2024-01-26",
+    "last_used_at": "2024-01-20 10:15:30 UTC"
   },
   "event_name": "expiring_access_token"
 }
@@ -2428,9 +2679,69 @@ X-Gitlab-Event: Resource Access Token Hook
     "created_at": "2024-01-24 16:27:40 UTC",
     "id": 25,
     "name": "acd",
-    "expires_at": "2024-01-26"
+    "expires_at": "2024-01-26",
+    "last_used_at": "2024-01-20 10:15:30 UTC"
   },
   "event_name": "expiring_access_token"
+}
+```
+
+## プロジェクトおよびグループデプロイトークンイベント {#project-and-group-deploy-token-events}
+
+{{< history >}}
+
+- GitLab 18.4で`project_deploy_token_expiring_notifications`[フラグ](../../../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/196804)されました。デフォルトでは無効になっています。
+
+{{< /history >}}
+
+デプロイトークンの有効期限イベントは、[デプロイトークン](../../../security/tokens/_index.md)の有効期限が切れる前にトリガーされます。これらのイベントは、次の場合にトリガーされます。
+
+- トークンの有効期限が切れる7日前。
+- トークンの有効期限が切れる30日前。
+- トークンの有効期限が切れる60日前。
+
+ペイロードの`event_name`に使用できる値は次のとおりです。
+
+- `expiring_deploy_token`
+
+リクエストヘッダー:
+
+```plaintext
+X-Gitlab-Event: Resource Deploy Token Hook
+```
+
+プロジェクトのペイロードの例:
+
+```json
+{
+  "object_kind": "deploy_token",
+  "project": {
+    "id": 2,
+    "name": "Gitlab Test",
+    "description": "Voluptates sit architecto quos distinctio.",
+    "web_url": "https://gitlab.example.com/gitlab-org/gitlab-test",
+    "avatar_url": null,
+    "git_ssh_url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "git_http_url": "https://gitlab.example.com/gitlab-org/gitlab-test.git",
+    "namespace": "Gitlab Org",
+    "visibility_level": 10,
+    "path_with_namespace": "gitlab-org/gitlab-test",
+    "default_branch": "master",
+    "ci_config_path": null,
+    "homepage": "https://gitlab.example.com/gitlab-org/gitlab-test",
+    "url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "ssh_url": "ssh://git@gitlab.example.com:2222/gitlab-org/gitlab-test.git",
+    "http_url": "https://gitlab.example.com/gitlab-org/gitlab-test.git"
+  },
+  "object_attributes": {
+    "id": 79,
+    "name": "seven-days-6days",
+    "expires_at": "2025-08-03 07:57:25 UTC",
+    "created_at": "2025-07-28 07:57:25 UTC",
+    "revoked": false,
+    "deploy_token_type": "project_type"
+  },
+  "event_name": "expiring_deploy_token"
 }
 ```
 
@@ -2444,7 +2755,7 @@ X-Gitlab-Event: Resource Access Token Hook
 
 {{< /history >}}
 
-脆弱性イベントは、次の場合にトリガーされます:
+脆弱性イベントは、次の場合にトリガーされます。
 
 - 脆弱性が作成された場合。
 - 脆弱性の[状態が変更された](../../application_security/vulnerabilities/_index.md#vulnerability-status-values)場合。

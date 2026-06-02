@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Troubleshoot common issues with the GitLab MCP server.
 title: Troubleshooting the GitLab MCP server
 ---
@@ -23,6 +23,14 @@ This error occurs when GitLab Duo Core or beta and experimental features are tur
 
 To resolve this issue, ensure you meet all [prerequisites for the GitLab MCP server](mcp_server.md#prerequisites).
 
+## `/api/v4/mcp` returns `404 Not Found`
+
+After the OAuth flow completes successfully, you might still encounter
+an error where `POST /api/v4/mcp` returns `404 Not Found`.
+
+To resolve this issue, on GitLab Self-Managed,
+[ensure GitLab Duo is turned on for the instance](../../duo_agent_platform/turn_on_off.md#for-an-instance).
+
 ## Error: `Server's protocol version is not supported: 2025-06-18`
 
 In GitLab 18.6 and earlier, you might get this error when the MCP client library
@@ -43,7 +51,6 @@ to update their client implementation.
 ## Troubleshoot the GitLab MCP Server on the CLI with mcp-remote
 
 1. Install [Node.js](https://nodejs.org/en/download) version 20 or later.
-
 1. To test the exact same command as the IDEs and desktop clients:
    1. Extract the MCP configuration.
    1. Assemble the `npx` command string into one line.

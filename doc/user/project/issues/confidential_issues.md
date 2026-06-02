@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Confidential issues
 ---
 
@@ -29,7 +29,7 @@ You can make an issue confidential when you create or edit an issue.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project to convert an existing issue to confidential.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project to convert an existing issue to confidential.
 - If the issue you want to make confidential has any child [tasks](../../tasks.md),
   you must first make all the child tasks confidential.
   A confidential issue can have only confidential children.
@@ -44,7 +44,7 @@ When you create a confidential issue in a project, the project becomes listed in
 
 To create a confidential issue:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the upper-right corner, select **Create new** ({{< icon name="plus" >}}).
 1. From the dropdown list, select **New issue**.
 1. Complete the [fields](create_issues.md#fields-in-the-new-issue-form).
@@ -55,9 +55,8 @@ To create a confidential issue:
 
 To change the confidentiality of an existing issue:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**.
-1. Select the title of your issue to view it.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Work items**, then filter by **Type** = **Issue** and select your issue.
 1. In the upper-right corner, select **Issue actions** ({{< icon name="ellipsis_v" >}}) and then **Turn on confidentiality** (or **Turn off confidentiality** to make the issue non-confidential).
 
 Alternatively, you can use the [`/confidential` quick action](../quick_actions.md#confidential).
@@ -70,7 +69,7 @@ Alternatively, you can use the [`/confidential` quick action](../quick_actions.m
 
 {{< /history >}}
 
-When an issue is made confidential, only users with at least the Planner role
+When an issue is made confidential, only users with the Planner, Reporter, Developer, Maintainer, or Owner role
 for the project have access to the issue.
 Users with Guest or [Minimal](../../permissions.md#users-with-minimal-access) roles can't access
 the issue even if they were actively participating before the change.
@@ -96,7 +95,7 @@ Likewise, while inside the issue, you can see the confidential ({{< icon name="e
 the issue number. There is also an indicator in the comment area that the
 issue you are commenting on is confidential.
 
-There is also an indicator on the sidebar denoting confidentiality.
+There is also an indicator in the sidebar denoting confidentiality.
 
 Every change from regular to confidential and vice versa, is indicated by a
 system note in the issue's comments, for example:

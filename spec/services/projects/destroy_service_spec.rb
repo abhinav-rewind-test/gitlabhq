@@ -6,7 +6,6 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
   include ContainerRegistryHelpers
   include ProjectForksHelper
   include BatchDestroyDependentAssociationsHelper
-  include Namespaces::StatefulHelpers
 
   let_it_be(:user) { create(:user) }
 
@@ -100,10 +99,11 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
         context 'with different pipeline sources' do
           before do
             # We're creating many pipelines
-            allow(Gitlab::QueryLimiting).to receive(:threshold).and_return(479)
+            allow(Gitlab::QueryLimiting).to receive(:threshold).and_return(513)
 
             external_pull_request = create(:external_pull_request, project: project)
-            create(:ci_pipeline, project: project, source: :external_pull_request_event, external_pull_request: external_pull_request)
+            create(:ci_pipeline, project: project, source: :external_pull_request_event,
+              external_pull_request: external_pull_request)
 
             create(:ci_pipeline, project: project)
               .update_attribute(:source, :unknown) # Skip validation to create pipeline with unknown source
@@ -127,7 +127,9 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
       end
 
       context 'when project is undergoing refresh' do
-        let!(:build_artifacts_size_refresh) { create(:project_build_artifacts_size_refresh, :pending, project: project) }
+        let!(:build_artifacts_size_refresh) do
+          create(:project_build_artifacts_size_refresh, :pending, project: project)
+        end
 
         it 'does not log about artifact deletion but continues to delete artifacts' do
           expect(Gitlab::ProjectStatsRefreshConflictsLogger).not_to receive(:warn_artifact_deletion_during_stats_refresh)
@@ -158,11 +160,18 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
       expect(project.reload.pending_delete).to be(false)
     end
 
-    it 'stores an error message in `projects.delete_error`' do
+    it 'stores an error message in deletion_error' do
       destroy_project(project, user, {})
 
-      expect(project.reload.delete_error).to be_present
-      expect(project.delete_error).to match(error_message)
+      expect(project.reload.deletion_error).to be_present
+      expect(project.deletion_error).to match(error_message)
+    end
+
+    it 'stores the error message after the state transition so it is not overwritten' do
+      destroy_project(project, user, {})
+
+      expect(project.reload.deletion_error).to be_present
+      expect(project.deletion_error).to match(error_message)
     end
 
     context 'when parent group visibility was made more restrictive while project was marked "pending deletion"' do
@@ -188,7 +197,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
     before do
       project.update!(pending_delete: true)
-      set_state(project.project_namespace, :deletion_scheduled)
+      project.project_namespace.update!(state: :deletion_scheduled)
     end
 
     it 'unsets the pending_delete on project' do
@@ -204,15 +213,15 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
         expect(project).to receive(:cancel_deletion!).with(transition_user: unauthorized_user).and_call_original
 
         expect { destroy_project(project, unauthorized_user) }.to change { project.reload.state }
-         .from(Namespaces::Stateful::STATES[:deletion_scheduled])
-         .to(Namespaces::Stateful::STATES[:ancestor_inherited])
+         .from('deletion_scheduled')
+         .to('ancestor_inherited')
       end
     end
   end
 
   context 'when the parent group has been marked for deletion' do
     let_it_be(:parent_group) do
-      create(:group_with_deletion_schedule)
+      create(:group, :deletion_scheduled)
     end
 
     let(:project) { create(:project, namespace: parent_group) }
@@ -306,7 +315,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
       merge_request_diffs = merge_request.merge_request_diffs
       expect(merge_request_diffs.size).to eq(1)
 
-      expect { destroy_project(project, user, {}) }.to change(MergeRequestDiff, :count).by(-1)
+      expect { destroy_project(project, user, {}) }.to change { MergeRequestDiff.count }.by(-1)
       expect { another_project_mr.reload }.not_to raise_error
     end
   end
@@ -315,7 +324,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
     let!(:deployment) { create(:deployment, project: project) }
 
     it 'deletes deployments' do
-      expect { destroy_project(project, user, {}) }.to change(Deployment, :count).by(-1)
+      expect { destroy_project(project, user, {}) }.to change { Deployment.count }.by(-1)
     end
   end
 
@@ -388,7 +397,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
     it 'destroys project and export' do
       expect do
         destroy_project(project_with_export, user, {})
-      end.to change(ImportExportUpload, :count).by(-1)
+      end.to change { ImportExportUpload.count }.by(-1)
 
       expect(Project.all).not_to include(project_with_export)
     end
@@ -413,10 +422,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
     end
 
     it { expect(Project.all).not_to include(project) }
-
-    it do
-      expect(project.gitlab_shell.repository_exists?(project.repository_storage, path + '.git')).to be_falsey
-    end
+    it { expect(project.gitlab_shell.repository_exists?(project.repository_storage, path + '.git')).to be_falsey }
   end
 
   context 'when flushing caches fail due to Git errors' do
@@ -528,7 +534,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
           end.to raise_error(Exception, 'Other error message')
 
           expect(project.reload.pending_delete).to be(false)
-          expect(project.delete_error).to include("Other error message")
+          expect(project.deletion_error).to include("Other error message")
         end
       end
     end
@@ -726,24 +732,28 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
   context 'with related storage move records' do
     context 'when project has active repository storage move records' do
-      let!(:project_repository_storage_move) { create(:project_repository_storage_move, :scheduled, container: project) }
+      let!(:project_repository_storage_move) do
+        create(:project_repository_storage_move, :scheduled, container: project)
+      end
 
       it 'does not delete the project' do
         expect(destroy_project(project, user)).to be_falsey
 
-        expect(project.delete_error).to eq "Couldn't remove the project. A project repository storage move is in progress. Try again when it's complete."
+        expect(project.deletion_error).to eq "Couldn't remove the project. A project repository storage move is in progress. Try again when it's complete."
         expect(project.pending_delete).to be_falsey
       end
     end
 
     context 'when project has active snippet storage move records' do
       let(:project_snippet) { create(:project_snippet, project: project) }
-      let!(:snippet_repository_storage_move) { create(:snippet_repository_storage_move, :started, container: project_snippet) }
+      let!(:snippet_repository_storage_move) do
+        create(:snippet_repository_storage_move, :started, container: project_snippet)
+      end
 
       it 'does not delete the project' do
         expect(destroy_project(project, user)).to be_falsey
 
-        expect(project.delete_error).to eq "Couldn't remove the project. A related snippet repository storage move is in progress. Try again when it's complete."
+        expect(project.deletion_error).to eq "Couldn't remove the project. A related snippet repository storage move is in progress. Try again when it's complete."
         expect(project.pending_delete).to be_falsey
       end
     end
@@ -815,7 +825,8 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
     let!(:snippet2) { create(:project_snippet, project: project, author: user) }
 
     it 'does not include snippets when deleting in batches' do
-      expect(project).to receive(:destroy_dependent_associations_in_batches).with({ exclude: [:container_repositories, :snippets] })
+      expect(project).to receive(:destroy_dependent_associations_in_batches).with({ exclude: [:container_repositories,
+        :snippets] })
 
       destroy_project(project, user)
     end
@@ -829,7 +840,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
       expect do
         destroy_project(project, user)
-      end.to change(Snippet, :count).by(-2)
+      end.to change { Snippet.count }.by(-2)
     end
 
     context 'when an error is raised deleting snippets' do
@@ -864,7 +875,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
       expect do
         destroy_project(project, user)
-      end.to change(WebHook, :count).by(-2)
+      end.to change { WebHook.count }.by(-2)
     end
 
     context 'when an error is raised deleting webhooks' do
@@ -902,7 +913,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
     it 'deletes events from the project' do
       expect do
         destroy_project(project, user)
-      end.to change(Event, :count).by(-1)
+      end.to change { Event.count }.by(-1)
     end
 
     context 'when an error is returned while deleting events' do
@@ -912,7 +923,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
         end
 
         expect(destroy_project(project, user)).to be_falsey
-        expect(project.delete_error).to include('Failed to remove events')
+        expect(project.deletion_error).to include('Failed to remove events')
       end
     end
   end
@@ -928,7 +939,9 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
       allow_any_instance_of(Ci::Build).to receive(:destroy).and_raise('boom')
       destroy_project(project, user, {})
 
-      allow_any_instance_of(Ci::Build).to receive(:destroy).and_call_original
+      allow_next_instance_of(Ci::Build) do |instance|
+        allow(instance).to receive(:destroy).and_call_original
+      end
       destroy_project(project, user, {})
 
       expect(Project.unscoped.all).not_to include(project)
@@ -939,16 +952,16 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
     context 'when project state is deletion_scheduled' do
       before do
-        set_state(project.project_namespace, :deletion_scheduled)
+        project.project_namespace.update!(state: :deletion_scheduled)
         allow(project).to receive(:destroy!).and_raise(StandardError)
       end
 
-      it 'calls reschedule_deletion to transition state back' do
-        expect(project).to receive(:reschedule_deletion!).with(transition_user: user).and_call_original
-
+      it 'calls reschedule_deletion to transition state back with deletion_error' do
         destroy_project(project, user, {})
 
-        expect(project.reload.state).to eq(Namespaces::Stateful::STATES[:deletion_scheduled])
+        project.reload
+        expect(project.state).to eq('deletion_scheduled')
+        expect(project.deletion_error).to be_present
       end
     end
   end
@@ -992,14 +1005,13 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
       it 'raises a clear error message about the failed deletion' do
         expect(destroy_project(project, user)).to be_falsey
-        expect(project.delete_error).to eq 'Cannot delete record because dependent pipeline artifacts exist'
+        expect(project.deletion_error).to eq 'Cannot delete record because dependent pipeline artifacts exist'
       end
     end
   end
 
   describe '#delete_commit_statuses' do
     let(:service) { described_class.new(project, user, {}) }
-    let(:batch_size) { described_class::BATCH_SIZE }
 
     context 'when there are no commit statuses' do
       it 'does not delete anything and logs zero count' do
@@ -1010,7 +1022,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
           orphaned_commit_status_count: 0
         )
 
-        expect { service.send(:delete_commit_statuses) }.not_to change(::CommitStatus, :count)
+        expect { service.send(:delete_commit_statuses) }.not_to change { ::CommitStatus.count }
       end
     end
 
@@ -1054,7 +1066,6 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
   describe '#delete_environments' do
     let(:service) { described_class.new(project, user, {}) }
-    let(:batch_size) { described_class::BATCH_SIZE }
 
     context 'when there are no environments' do
       it 'does not delete anything and logs zero count' do
@@ -1065,7 +1076,7 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
           deleted_environment_count: 0
         )
 
-        expect { service.send(:delete_environments) }.not_to change(Environment, :count)
+        expect { service.send(:delete_environments) }.not_to change { Environment.count }
       end
     end
 
@@ -1103,6 +1114,51 @@ RSpec.describe Projects::DestroyService, :aggregate_failures, :event_store_publi
 
         expect { service.send(:delete_environments) }
           .to change { Environment.for_project(project).count }.from(3).to(0)
+      end
+    end
+  end
+
+  context 'deleting a project with lfs_objects_projects' do
+    let!(:lfs_objects_projects) { create_list(:lfs_objects_project, 2, project: project) }
+
+    it 'deletes lfs_objects_projects and logs the count' do
+      allow(Gitlab::AppLogger).to receive(:info)
+      expect(Gitlab::AppLogger).to receive(:info).with(
+        class: described_class.name,
+        project_id: project.id,
+        message: 'Deleting LFS objects projects completed',
+        deleted_lfs_objects_project_count: 2
+      )
+
+      expect { destroy_project(project, user, {}) }
+        .to change { LfsObjectsProject.where(project_id: project.id).count }.from(2).to(0)
+    end
+
+    it 'does not delete lfs_objects_projects belonging to other projects' do
+      other_project = create(:project)
+      create_list(:lfs_objects_project, 2, project: other_project)
+
+      expect { destroy_project(project, user, {}) }
+        .not_to change { LfsObjectsProject.where(project_id: other_project.id).count }
+    end
+
+    context 'when there are more lfs_objects_projects than the batch size' do
+      before do
+        stub_const("#{described_class}::BATCH_SIZE", 2)
+        create(:lfs_objects_project, project: project)
+      end
+
+      it 'deletes lfs_objects_projects in multiple batches and logs the total count' do
+        allow(Gitlab::AppLogger).to receive(:info)
+        expect(Gitlab::AppLogger).to receive(:info).with(
+          class: described_class.name,
+          project_id: project.id,
+          message: 'Deleting LFS objects projects completed',
+          deleted_lfs_objects_project_count: 3
+        )
+
+        expect { destroy_project(project, user, {}) }
+          .to change { LfsObjectsProject.where(project_id: project.id).count }.from(3).to(0)
       end
     end
   end

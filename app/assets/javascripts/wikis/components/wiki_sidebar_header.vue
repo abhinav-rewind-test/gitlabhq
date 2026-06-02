@@ -14,6 +14,7 @@ export default {
       default: false,
     },
   },
+  emits: ['toggle-pages-list'],
   computed: {
     headerClasses() {
       return {
@@ -36,7 +37,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-flex gl-items-center gl-pb-3 gl-pt-4" :class="headerClasses">
+  <div class="gl-ml-2 gl-flex gl-items-center gl-pb-3 gl-pt-4" :class="headerClasses">
     <wiki-sidebar-toggle
       action="close"
       class="toggle-close block gutter-toggle js-sidebar-wiki-toggle-close gl-mr-3 gl-block gl-flex-none !gl-pt-0"

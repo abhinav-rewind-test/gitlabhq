@@ -17,14 +17,15 @@ module Clusters
 
     self.reactive_cache_work_type = :external_dependency
 
-    belongs_to :user
+    belongs_to :user, optional: true
     belongs_to :management_project, class_name: '::Project', optional: true
+    belongs_to :organization, class_name: 'Organizations::Organization', optional: true
 
     has_many :cluster_projects, class_name: 'Clusters::Project'
     has_many :projects, through: :cluster_projects, class_name: '::Project'
     has_one :cluster_project, -> { order(id: :desc) }, class_name: 'Clusters::Project'
     has_many :deployment_clusters
-    has_many :deployments, inverse_of: :cluster, through: :deployment_clusters
+    has_many :deployments, through: :deployment_clusters
     has_many :environments, -> { distinct }, through: :deployments
 
     has_many :cluster_groups, class_name: 'Clusters::Group'
@@ -39,7 +40,7 @@ module Clusters
 
     has_one :agent_migration, class_name: 'Clusters::AgentMigration', inverse_of: :cluster
 
-    def self.has_one_cluster_application(name) # rubocop:disable Naming/PredicateName
+    def self.has_one_cluster_application(name) # rubocop:disable Naming/PredicatePrefix
       application = APPLICATIONS[name.to_s]
       has_one application.association_name, class_name: application.to_s, inverse_of: :cluster
     end
@@ -352,24 +353,6 @@ module Clusters
       result = ::Gitlab::Kubernetes::KubeClient.graceful_request(id) { kubeclient.core_client.discover }
 
       { connection_status: result[:status], connection_error: result[:connection_error] }.compact
-    end
-
-    # To keep backward compatibility with AUTO_DEVOPS_DOMAIN
-    # environment variable, we need to ensure KUBE_INGRESS_BASE_DOMAIN
-    # is set if AUTO_DEVOPS_DOMAIN is set on any of the following options:
-    # ProjectAutoDevops#Domain, project variables or group variables,
-    # as the AUTO_DEVOPS_DOMAIN is needed for CI_ENVIRONMENT_URL
-    #
-    # This method should is scheduled to be removed on
-    # https://gitlab.com/gitlab-org/gitlab-foss/issues/56959
-    def legacy_auto_devops_domain
-      if project_type?
-        project&.auto_devops&.domain.presence ||
-          project.variables.find_by(key: 'AUTO_DEVOPS_DOMAIN')&.value.presence ||
-          project.group&.variables&.find_by(key: 'AUTO_DEVOPS_DOMAIN')&.value.presence
-      elsif group_type?
-        group.variables.find_by(key: 'AUTO_DEVOPS_DOMAIN')&.value.presence
-      end
     end
 
     def restrict_modification

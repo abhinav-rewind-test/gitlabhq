@@ -10,9 +10,9 @@ RSpec.describe WorkItems::BulkUpdateService, feature_category: :team_planning do
   let_it_be(:parent_group) { create(:group, :private, developers: developer, guests: guest) }
   let_it_be(:group) { create(:group, :private, parent: parent_group) }
   let_it_be(:project) { create(:project, :private, group: group) }
-  let_it_be(:label1) { create(:group_label, group: parent_group) }
-  let_it_be(:label2) { create(:group_label, group: parent_group) }
-  let_it_be(:label3) { create(:group_label, group: private_group) }
+  let_it_be(:label1, freeze: false) { create(:group_label, group: parent_group) }
+  let_it_be(:label2, freeze: false) { create(:group_label, group: parent_group) }
+  let_it_be(:label3, freeze: false) { create(:group_label, group: private_group) }
   let_it_be(:assignee) { create(:user, developer_of: group) }
   let_it_be(:milestone) { create(:milestone, group: group) }
   let_it_be_with_reload(:work_item1) { create(:work_item, :group_level, namespace: group, labels: [label1]) }
@@ -151,16 +151,6 @@ RSpec.describe WorkItems::BulkUpdateService, feature_category: :team_planning do
             .to receive(:available_widgets).and_call_original
 
           service_result
-        end
-
-        context 'when work_item_system_defined_type flag is disabled' do
-          it 'returns WidgetDefinition' do
-            stub_feature_flags(work_item_system_defined_type: false)
-
-            expect(::WorkItems::WidgetDefinition).to receive(:available_widgets).and_call_original
-
-            service_result
-          end
         end
       end
 

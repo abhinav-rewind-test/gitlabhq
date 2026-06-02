@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Stages of Auto DevOps
 ---
 
@@ -126,6 +126,12 @@ tests, it's up to you to add them.
 > [Testpack API](https://devcenter.heroku.com/articles/testpack-api) are supported.
 
 <!-- vale gitlab_base.Spelling = YES -->
+
+Auto Test provisions a temporary PostgreSQL database and sets `DATABASE_URL` to point to it.
+
+The Auto Test job is defined in the
+[`Jobs/Test.gitlab-ci.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Jobs/Test.gitlab-ci.yml)
+template.
 
 ### Currently supported languages
 
@@ -301,7 +307,7 @@ set a `DAST_WEBSITE` CI/CD variable to the URL for DAST to scan.
 
 > [!warning]
 > If [DAST Full Scan](../../user/application_security/dast/browser/_index.md) is
-> enabled, GitLab strongly advises **not**
+> enabled, GitLab strongly advises not
 > to set `DAST_WEBSITE` to any staging or production environment. DAST Full Scan
 > actively attacks the target, which can take down your application and lead to
 > data loss or corruption.
@@ -431,7 +437,6 @@ To use Auto Deploy on a Kubernetes 1.16+ cluster:
 
 1. If you are deploying your application for the first time in GitLab 13.0 or
    later, no configuration should be required.
-
 1. If you have an in-cluster PostgreSQL database installed with
    `AUTO_DEVOPS_POSTGRES_CHANNEL` set to `1`, follow the
    [guide to upgrade PostgreSQL](upgrading_postgresql.md).

@@ -531,6 +531,41 @@ RSpec.describe API::Repositories, feature_category: :source_code_management do
     end
   end
 
+  describe 'HEAD /projects/:id/repository/archive' do
+    let(:route) { "/projects/#{project.id}/repository/archive" }
+
+    it 'returns 200 OK with headers for authenticated user' do
+      expect(Gitlab::Workhorse).not_to receive(:send_git_archive)
+
+      head api(route, user)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      # Content-Type is aligned with Workhorse: application/octet-stream for non-zip formats
+      expect(response.headers['Content-Type']).to include('application/octet-stream')
+      expect(response.headers['Content-Disposition']).to include('attachment')
+    end
+
+    context 'when project is public' do
+      let_it_be(:public_project) { create(:project, :public, :repository) }
+
+      it 'returns 200 OK for unauthenticated user' do
+        head api("/projects/#{public_project.id}/repository/archive")
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.headers['Content-Type']).to include('application/octet-stream')
+      end
+    end
+
+    context 'with specific format' do
+      it 'returns correct content type for zip' do
+        head api("#{route}.zip", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.headers['Content-Type']).to include('application/zip')
+      end
+    end
+  end
+
   describe 'GET /projects/:id/repository/compare' do
     let(:route) { "/projects/#{project.id}/repository/compare" }
 
@@ -1265,6 +1300,36 @@ RSpec.describe API::Repositories, feature_category: :source_code_management do
       it_behaves_like '422 response' do
         let(:request) { get api("/projects/#{project.id}/repository/changelog", user), params: { version: 'v0.0.0' } }
         let(:message) { 'Failed to generate the changelog: The commit start range is unspecified, and no previous tag could be found to use instead' }
+      end
+    end
+
+    context 'with format extension' do
+      let(:release_notes) { '## 1.0.0 (2020-01-01)' }
+
+      before do
+        allow_next_instance_of(::Repositories::ChangelogService) do |service|
+          allow(service).to receive(:execute).with(commit_to_changelog: false).and_return(release_notes)
+        end
+      end
+
+      it 'returns plain text markdown with .txt extension', :aggregate_failures do
+        get(
+          api("/projects/#{project.id}/repository/changelog.txt", user),
+          params: { version: '1.0.0' }
+        )
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.content_type).to start_with('text/plain')
+        expect(response.body).to eq(release_notes)
+      end
+
+      it 'returns 404 with an unsupported extension', :aggregate_failures do
+        get(
+          api("/projects/#{project.id}/repository/changelog.zip", user),
+          params: { version: '1.0.0' }
+        )
+
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
 

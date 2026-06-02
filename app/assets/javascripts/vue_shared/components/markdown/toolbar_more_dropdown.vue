@@ -1,6 +1,6 @@
 <script>
 import { GlTooltip, GlDisclosureDropdown } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import Tracking from '~/tracking';
 import { __ } from '~/locale';
 import { updateText } from '~/lib/utils/text_markdown';
@@ -37,6 +37,7 @@ export default {
             this.insertMarkdown(
               '<details>\n<summary>Click to expand</summary>\n\n{text}\n\n</details>',
               'details',
+              'Click to expand',
             ),
         },
         {
@@ -86,9 +87,9 @@ export default {
   },
   methods: {
     getCurrentTextArea() {
-      return this.$el.closest('.md-area')?.querySelector('textarea');
+      return this.$el.closest('.md-area')?.querySelector('textarea.js-gfm-input');
     },
-    insertMarkdown(markdownText, trackingProperty) {
+    insertMarkdown(markdownText, trackingProperty, selectText) {
       const textArea = this.getCurrentTextArea();
       if (!textArea) return;
 
@@ -97,6 +98,7 @@ export default {
         tag: markdownText,
         cursorOffset: 0,
         wrap: false,
+        select: selectText,
       });
 
       Tracking.event(undefined, TOOLBAR_CONTROL_TRACKING_ACTION, {

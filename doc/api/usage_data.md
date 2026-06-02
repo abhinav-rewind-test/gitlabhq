@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Service Ping API
 ---
 
@@ -22,7 +22,7 @@ Use this API to interact with the GitLab Service Ping process.
 
 {{< /history >}}
 
-Exports the JSON payload collected in Service Ping. If no payload data is available in the application cache, it returns empty response.
+Exports the JSON payload collected in Service Ping. If no payload data is available in the application cache, it returns an empty response.
 If payload data is empty, make sure the [Service Ping feature is enabled](../administration/settings/usage_statistics.md#enable-or-disable-service-ping) and
 wait for the cron job to be executed, or generate payload data manually.
 

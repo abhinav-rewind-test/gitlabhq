@@ -1,4 +1,4 @@
-import { GlLoadingIcon, GlPagination } from '@gitlab/ui';
+import { GlLoadingIcon, GlKeysetPagination, GlAlert } from '@gitlab/ui';
 import { createWrapper, shallowMount } from '@vue/test-utils';
 import MockAdapter from 'axios-mock-adapter';
 import Vue, { nextTick } from 'vue';
@@ -45,6 +45,7 @@ import {
   MR_NEXT_FILE_IN_DIFF,
   MR_PREVIOUS_FILE_IN_DIFF,
   MR_TOGGLE_REVIEW,
+  MR_TOGGLE_DIFF_VIEW_TYPE,
 } from '~/behaviors/shortcuts/keybindings';
 import { useNotes } from '~/notes/store/legacy_notes';
 import { useBatchComments } from '~/batch_comments/store';
@@ -89,7 +90,6 @@ describe('diffs/components/app', () => {
       propsData: {
         shouldShow: true,
         endpointCoverage: `${TEST_HOST}/diff/endpointCoverage`,
-        endpointCodequality: '',
         sastReportAvailable: false,
         projectPath: 'namespace/project',
         currentUser: {},
@@ -241,7 +241,7 @@ describe('diffs/components/app', () => {
     it('does not render empty state when diff files exist', async () => {
       createComponent();
       store.diffFiles = [{ id: 1 }];
-      useFileBrowser().treeEntries = { 1: { type: 'blob', id: 1 } };
+      useFileBrowser().tree = [{ type: 'blob', id: 1 }];
 
       await nextTick();
 
@@ -382,6 +382,30 @@ describe('diffs/components/app', () => {
         expect(store.setFileCollapsedByUser).not.toHaveBeenCalled();
       });
     });
+
+    describe('toggleDiffViewType', () => {
+      const toggleDiffView = () => Mousetrap.trigger(keysFor(MR_TOGGLE_DIFF_VIEW_TYPE)[0]);
+
+      beforeEach(() => {
+        createComponent();
+      });
+
+      it('switches from inline to side-by-side when shortcut is triggered', () => {
+        store.diffViewType = 'inline';
+
+        toggleDiffView();
+
+        expect(store.setDiffViewType).toHaveBeenCalledWith('parallel');
+      });
+
+      it('switches from side-by-side to inline when shortcut is triggered', () => {
+        store.diffViewType = 'parallel';
+
+        toggleDiffView();
+
+        expect(store.setDiffViewType).toHaveBeenCalledWith('inline');
+      });
+    });
   });
 
   describe('jumpToFile', () => {
@@ -389,7 +413,7 @@ describe('diffs/components/app', () => {
     const prevFile = () => Mousetrap.trigger(keysFor(MR_PREVIOUS_FILE_IN_DIFF)[0]);
 
     beforeEach(() => {
-      useFileBrowser().treeEntries = [
+      useFileBrowser().tree = [
         { type: 'blob', fileHash: '111', path: '111.js' },
         { type: 'blob', fileHash: '222', path: '222.js' },
         { type: 'blob', fileHash: '333', path: '333.js' },
@@ -544,9 +568,7 @@ describe('diffs/components/app', () => {
           store.plainDiffPath = 'plain diff path';
           store.emailPatchPath = 'email patch path';
           store.size = 1;
-          useFileBrowser().treeEntries = {
-            111: { type: 'blob', fileHash: '111', path: '111.js' },
-          };
+          useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
           createComponent();
 
           expect(wrapper.findComponent(HiddenFilesWarning).exists()).toBe(true);
@@ -588,11 +610,11 @@ describe('diffs/components/app', () => {
 
     it('should display diff file if there are diff files', () => {
       store.diffFiles = [{ file_hash: '111', file_path: '111.js' }];
-      useFileBrowser().treeEntries = {
-        111: { type: 'blob', fileHash: '111', path: '111.js' },
-        123: { type: 'blob', fileHash: '123', path: '123.js' },
-        312: { type: 'blob', fileHash: '312', path: '312.js' },
-      };
+      useFileBrowser().tree = [
+        { type: 'blob', fileHash: '111', path: '111.js' },
+        { type: 'blob', fileHash: '123', path: '123.js' },
+        { type: 'blob', fileHash: '312', path: '312.js' },
+      ];
       createComponent();
 
       expect(wrapper.findComponent(DynamicScroller).exists()).toBe(true);
@@ -602,7 +624,7 @@ describe('diffs/components/app', () => {
     describe('File browser', () => {
       it('should render file browser when files are present', () => {
         store.realSize = '20';
-        useFileBrowser().treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
         createComponent();
         expect(wrapper.findComponent(DiffsFileTree).exists()).toBe(true);
         expect(wrapper.findComponent(DiffsFileTree).props('totalFilesCount')).toBe('20');
@@ -611,14 +633,14 @@ describe('diffs/components/app', () => {
       it('should provide linked file path', () => {
         store.diffFiles = [{ file_hash: '111', file_path: '111.js' }];
         store.linkedFileHash = '111';
-        useFileBrowser().treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
         createComponent();
         expect(wrapper.findComponent(DiffsFileTree).props('linkedFilePath')).toBe('111.js');
       });
 
       it('should provide current diff file id', () => {
         store.currentDiffFileId = '111';
-        useFileBrowser().treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
         createComponent();
         expect(wrapper.findComponent(DiffsFileTree).props('currentDiffFileId')).toStrictEqual(
           '111',
@@ -633,7 +655,7 @@ describe('diffs/components/app', () => {
 
       it('should handle clickFile events', () => {
         const file = { path: '111.js', fileHash: '111' };
-        useFileBrowser().treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
         createComponent();
         wrapper.findComponent(DiffsFileTree).vm.$emit('clickFile', file);
         expect(store[types.SET_CURRENT_DIFF_FILE]).toHaveBeenLastCalledWith(file.fileHash);
@@ -642,7 +664,7 @@ describe('diffs/components/app', () => {
 
       it('should handle toggleFolder events', () => {
         const file = { path: '111.js' };
-        useFileBrowser().treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '111', path: '111.js' }];
         createComponent();
         wrapper.findComponent(DiffsFileTree).vm.$emit('toggleFolder', file);
         expect(useFileBrowser().toggleTreeOpen).toHaveBeenCalledWith(file);
@@ -656,17 +678,17 @@ describe('diffs/components/app', () => {
     });
 
     it('hides files browser with only 1 file', async () => {
-      useFileBrowser().treeEntries = { 123: { type: 'blob', fileHash: '123' } };
+      useFileBrowser().tree = [{ type: 'blob', fileHash: '123' }];
       createComponent();
       await waitForPromises();
       expect(useFileBrowser().setFileBrowserVisibility).toHaveBeenCalledWith(false);
     });
 
     it('shows file browser with more than 1 file', async () => {
-      useFileBrowser().treeEntries = {
-        111: { type: 'blob', fileHash: '111', path: '111.js' },
-        123: { type: 'blob', fileHash: '123', path: '123.js' },
-      };
+      useFileBrowser().tree = [
+        { type: 'blob', fileHash: '111', path: '111.js' },
+        { type: 'blob', fileHash: '123', path: '123.js' },
+      ];
       createComponent();
       await waitForPromises();
       expect(useFileBrowser().setFileBrowserVisibility).toHaveBeenCalledWith(true);
@@ -680,7 +702,7 @@ describe('diffs/components/app', () => {
       'sets browser visibility from cookie value: $fileBrowserVisible',
       async ({ fileBrowserVisible }) => {
         setCookie(FILE_BROWSER_VISIBLE, fileBrowserVisible);
-        useFileBrowser().treeEntries = { 123: { sha: '123' } };
+        useFileBrowser().tree = [{ type: 'blob', sha: '123' }];
         createComponent();
         await waitForPromises();
 
@@ -697,10 +719,10 @@ describe('diffs/components/app', () => {
     });
 
     it('renders a single diff', async () => {
-      useFileBrowser().treeEntries = {
-        123: { type: 'blob', fileHash: '123' },
-        312: { type: 'blob', fileHash: '312' },
-      };
+      useFileBrowser().tree = [
+        { type: 'blob', fileHash: '123' },
+        { type: 'blob', fileHash: '312' },
+      ];
       store.diffFiles.push({ file_hash: '312' });
       store.viewDiffsFileByFile = true;
       createComponent();
@@ -749,39 +771,39 @@ describe('diffs/components/app', () => {
 
     describe('pagination', () => {
       const fileByFileNav = () => wrapper.find('[data-testid="file-by-file-navigation"]');
-      const paginator = () => fileByFileNav().findComponent(GlPagination);
+      const paginator = () => fileByFileNav().findComponent(GlKeysetPagination);
 
       it('sets previous button as disabled', async () => {
-        useFileBrowser().treeEntries = {
-          123: { type: 'blob', fileHash: '123' },
-          312: { type: 'blob', fileHash: '312' },
-        };
+        useFileBrowser().tree = [
+          { type: 'blob', fileHash: '123' },
+          { type: 'blob', fileHash: '312' },
+        ];
         store.viewDiffsFileByFile = true;
         createComponent();
 
         await nextTick();
 
-        expect(paginator().attributes('prevpage')).toBe(undefined);
-        expect(paginator().attributes('nextpage')).toBe('2');
+        expect(paginator().props('hasPreviousPage')).toBe(false);
+        expect(paginator().props('hasNextPage')).toBe(true);
       });
 
       it('sets next button as disabled', async () => {
-        useFileBrowser().treeEntries = {
-          123: { type: 'blob', fileHash: '123' },
-          312: { type: 'blob', fileHash: '312' },
-        };
+        useFileBrowser().tree = [
+          { type: 'blob', fileHash: '123' },
+          { type: 'blob', fileHash: '312' },
+        ];
         store.currentDiffFileId = '312';
         store.viewDiffsFileByFile = true;
         createComponent();
 
         await nextTick();
 
-        expect(paginator().attributes('prevpage')).toBe('1');
-        expect(paginator().attributes('nextpage')).toBe(undefined);
+        expect(paginator().props('hasPreviousPage')).toBe(true);
+        expect(paginator().props('hasNextPage')).toBe(false);
       });
 
       it("doesn't display when there's fewer than 2 files", async () => {
-        useFileBrowser().treeEntries = { 123: { type: 'blob', fileHash: '123' } };
+        useFileBrowser().tree = [{ type: 'blob', fileHash: '123' }];
         store.currentDiffFileId = '123';
         store.viewDiffsFileByFile = true;
         createComponent();
@@ -792,24 +814,24 @@ describe('diffs/components/app', () => {
       });
 
       it.each`
-        currentDiffFileId | targetFile
-        ${'123'}          | ${2}
-        ${'312'}          | ${1}
+        currentDiffFileId | direction | expectedIndex
+        ${'123'}          | ${'next'} | ${1}
+        ${'312'}          | ${'prev'} | ${0}
       `(
-        'calls navigateToDiffFileIndex with $index when $link is clicked',
-        async ({ currentDiffFileId, targetFile }) => {
-          useFileBrowser().treeEntries = {
-            123: { type: 'blob', fileHash: '123', filePaths: { old: '1234', new: '123' } },
-            312: { type: 'blob', fileHash: '312', filePaths: { old: '3124', new: '312' } },
-          };
+        'calls navigateToDiffFileIndex with correct index when $direction is clicked',
+        async ({ currentDiffFileId, direction, expectedIndex }) => {
+          useFileBrowser().tree = [
+            { type: 'blob', fileHash: '123', filePaths: { old: '1234', new: '123' } },
+            { type: 'blob', fileHash: '312', filePaths: { old: '3124', new: '312' } },
+          ];
           store.currentDiffFileId = currentDiffFileId;
           store.viewDiffsFileByFile = true;
           createComponent();
 
           await nextTick();
-          paginator().vm.$emit('input', targetFile);
+          paginator().vm.$emit(direction);
           await nextTick();
-          expect(store.navigateToDiffFileIndex).toHaveBeenLastCalledWith(targetFile - 1);
+          expect(store.navigateToDiffFileIndex).toHaveBeenLastCalledWith(expectedIndex);
         },
       );
     });
@@ -818,20 +840,20 @@ describe('diffs/components/app', () => {
       describe('in single-file review mode', () => {
         beforeEach(() => {
           window.location.hash = '123';
-          useFileBrowser().treeEntries = {
-            123: {
+          useFileBrowser().tree = [
+            {
               type: 'blob',
               fileHash: '123',
               filePaths: { old: '1234', new: '123' },
               parentPath: '/',
             },
-            312: {
+            {
               type: 'blob',
               fileHash: '312',
               filePaths: { old: '3124', new: '312' },
               parentPath: '/',
             },
-          };
+          ];
           store.diffFiles = [{ file_hash: '123' }, { file_hash: '312' }];
           store.viewDiffsFileByFile = true;
           createComponent();
@@ -858,20 +880,20 @@ describe('diffs/components/app', () => {
       describe('in "normal" (multi-file) mode', () => {
         beforeEach(() => {
           window.location.hash = '123';
-          useFileBrowser().treeEntries = {
-            123: {
+          useFileBrowser().tree = [
+            {
               type: 'blob',
               fileHash: '123',
               filePaths: { old: '1234', new: '123' },
               parentPath: '/',
             },
-            312: {
+            {
               type: 'blob',
               fileHash: '312',
               filePaths: { old: '3124', new: '312' },
               parentPath: '/',
             },
-          };
+          ];
           store.diffFiles = [{ file_hash: '123' }, { file_hash: '312' }];
           createComponent();
         });
@@ -931,7 +953,7 @@ describe('diffs/components/app', () => {
     const linkedFileUrl = 'http://localhost.test/linked-file';
 
     beforeEach(() => {
-      useFileBrowser().treeEntries = { 1: { type: 'blob', id: 1 } };
+      useFileBrowser().tree = [{ type: 'blob', id: 1 }];
       store.fetchLinkedFile.mockResolvedValue();
     });
 
@@ -1124,6 +1146,33 @@ describe('diffs/components/app', () => {
       await nextTick();
       Mousetrap.trigger(keysFor(ISSUABLE_COMMENT_OR_REPLY)[0]);
       expect(quoteReplyHandler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('error display', () => {
+    const findErrorAlert = () => wrapper.findComponent(GlAlert);
+
+    it('displays Gitaly error message when gitalyErrorMessage is set', async () => {
+      const gitalyErrorMessage = 'The git server, Gitaly, is not available at this time.';
+      createComponent();
+      store.batchLoadingState = 'error';
+      store.gitalyErrorMessage = gitalyErrorMessage;
+      await nextTick();
+
+      const alert = findErrorAlert();
+      expect(alert.exists()).toBe(true);
+      expect(alert.text()).toContain(gitalyErrorMessage);
+    });
+
+    it('displays generic error message when gitalyErrorMessage is not set', async () => {
+      createComponent();
+      store.batchLoadingState = 'error';
+      store.gitalyErrorMessage = null;
+      await nextTick();
+
+      const alert = findErrorAlert();
+      expect(alert.exists()).toBe(true);
+      expect(alert.text()).toContain("Couldn't load some or all of the changes");
     });
   });
 });

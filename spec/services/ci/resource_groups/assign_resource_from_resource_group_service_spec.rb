@@ -28,6 +28,15 @@ RSpec.describe Ci::ResourceGroups::AssignResourceFromResourceGroupService, featu
         expect(ci_build.resource).to be_present
       end
 
+      it 'pre-computes pending build args outside the transaction' do
+        expect(Ci::PendingBuild).to receive(:args_from_build).with(ci_build).and_call_original
+        expect(Ci::PendingBuild).to receive(:upsert_from_args!)
+          .with(a_hash_including(:build, :project, :namespace))
+          .and_call_original
+
+        subject
+      end
+
       it_behaves_like 'internal event tracking' do
         let(:event) { 'job_enqueued_by_resource_group' }
         let(:category) { described_class.name }
@@ -36,15 +45,21 @@ RSpec.describe Ci::ResourceGroups::AssignResourceFromResourceGroupService, featu
 
       context 'when failed to request resource' do
         before do
-          allow_next_instance_of(Ci::Build) do |job|
-            allow(job).to receive(:enqueue_waiting_for_resource) { false }
+          allow_next_found_instance_of(Ci::Build) do |job|
+            allow(job).to receive(:enqueue_waiting_for_resource).and_return(false)
           end
         end
 
         it 'has a build waiting for resource' do
           subject
 
-          expect(ci_build).to be_waiting_for_resource
+          expect(ci_build.reload).to be_waiting_for_resource
+        end
+
+        it 'does not track the internal event' do
+          expect(Gitlab::InternalEvents).not_to receive(:track_event)
+
+          subject
         end
       end
 

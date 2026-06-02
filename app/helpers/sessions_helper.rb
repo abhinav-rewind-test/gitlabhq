@@ -27,21 +27,20 @@ module SessionsHelper
   end
 
   def verification_data(user)
-    permitted_to_skip = permitted_to_skip_email_otp_in_grace_period?(user)
+    permitted_to_skip = permitted_to_skip_email_otp_in_warning_period?(user)
 
     {
       username: user.username,
       obfuscated_email: obfuscated_email(user.email),
       verify_path: session_path(:user),
       resend_path: users_resend_verification_code_path,
-      skip_path: permitted_to_skip ? users_skip_verification_for_now_path : nil
+      skip_path: permitted_to_skip ? users_skip_verification_for_now_path : nil,
+      show_resend_after: show_email_otp_resend_after(user)
     }
   end
 
   def fallback_to_email_otp_permitted?(user)
-    Feature.enabled?(:email_based_mfa, user) &&
-      user.email_otp_required_after&.past? &&
-      !treat_as_locked?(user)
+    user.email_based_otp_required? && !treat_as_locked?(user)
   end
 
   def passkey_authentication_data(params)
@@ -86,4 +85,10 @@ module SessionsHelper
       is_remember_me_enabled: remember_me_enabled?
     }.to_json
   end
+
+  def registration_path_params(invite_email)
+    { invite_email: invite_email }
+  end
 end
+
+SessionsHelper.prepend_mod

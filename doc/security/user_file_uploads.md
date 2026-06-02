@@ -1,7 +1,8 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Manage access control and security for files uploaded to issues, merge requests, and epics.
 title: User file uploads
 ---
 
@@ -60,8 +61,8 @@ Prerequisites:
 
 To configure authentication settings for all media files:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Scroll to **Project visibility** and select **Require authentication to view media files**.
 
@@ -96,6 +97,6 @@ mutation{
 }
 ```
 
-Project members that do not have the Owner or Maintainer role cannot access this GraphQL endpoint.
+Project members that do not have the Maintainer or Owner role cannot access this GraphQL endpoint.
 
 You can also use the REST API for [projects](../api/project_markdown_uploads.md#delete-an-uploaded-file-by-secret-and-filename) or [groups](../api/group_markdown_uploads.md#delete-an-uploaded-file-by-secret-and-filename) to delete an uploaded file.

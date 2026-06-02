@@ -8,7 +8,7 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
   let(:service) { described_class.new }
   let(:dates) { { start_date: Date.today.beginning_of_week, end_date: Date.today.next_week } }
 
-  let_it_be(:user, reload: true) { create :user }
+  let_it_be_with_reload(:user) { create :user }
   let_it_be(:project) { create(:project) }
 
   shared_examples 'it records the event in the event counter' do
@@ -315,8 +315,8 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
 
   describe '#wiki_event' do
     let_it_be(:user) { create(:user) }
-    let_it_be(:wiki_page) { create(:wiki_page) }
-    let_it_be(:meta) { create(:wiki_page_meta, :for_wiki_page, wiki_page: wiki_page) }
+    let_it_be(:wiki_page, freeze: false) { create(:wiki_page) }
+    let_it_be(:meta, freeze: false) { create(:wiki_page_meta, :for_wiki_page, wiki_page: wiki_page) }
 
     let(:fingerprint) { generate(:sha) }
 
@@ -343,11 +343,18 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
 
       it 'is idempotent', :aggregate_failures do
         event = nil
-        expect { event = create_event }.to change(Event, :count).by(1)
+        expect { event = create_event }.to change { Event.count }.by(1)
         duplicate = nil
-        expect { duplicate = create_event }.not_to change(Event, :count)
+        expect { duplicate = create_event }.not_to change { Event.count }
 
         expect(duplicate).to eq(event)
+      end
+
+      it_behaves_like 'internal event tracking' do
+        let(:event) { 'performed_wiki_action' }
+        let(:category) { described_class.name }
+        let(:project) { meta.project }
+        let(:additional_properties) { { label: action.to_s } }
       end
 
       it_behaves_like "it records a git write event"
@@ -646,6 +653,33 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
 
         expect { subject }.not_to change { Gitlab::UsageDataCounters::HLLRedisCounter.unique_events(**tracking_params) }
       end
+    end
+  end
+
+  describe 'composite identity attribution', :request_store do
+    let_it_be(:service_account) do
+      create(:user, :service_account, composite_identity_enforced: true, developer_of: project)
+    end
+
+    let_it_be(:human) { create(:user, developer_of: project) }
+    let_it_be(:issue) { create(:issue, project: project) }
+
+    before do
+      ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, human, context: :authentication)
+    end
+
+    it 'attributes Event.author to the service account when SA acts via OAuth' do
+      service.open_issue(issue, human)
+
+      expect(Event.where(target: issue, action: :created).last.author).to eq(service_account)
+    end
+
+    it 'attributes bulk Event.author to the service account' do
+      design = create(:design, issue: issue)
+
+      service.save_designs(human, create: [design])
+
+      expect(Event.where(target: design, action: :created).last.author).to eq(service_account)
     end
   end
 end

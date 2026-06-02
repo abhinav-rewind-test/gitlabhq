@@ -13,20 +13,24 @@ module API
         namespace 'admin' do
           namespace 'ci' do
             namespace 'variables' do
-              desc 'List all instance-level variables' do
+              desc 'List all instance variables' do
+                detail 'Lists all instance-level variables. Use the `page` and `per_page` pagination parameters to ' \
+                  'control the pagination of results.'
                 success Entities::Ci::Variable
                 tags %w[ci_variables]
               end
               params do
                 use :pagination
               end
+              route_setting :authorization, permissions: :read_variable, boundary_type: :instance
               get '/' do
                 variables = ::Ci::InstanceVariable.all
 
                 present paginate(variables), with: Entities::Ci::Variable
               end
 
-              desc 'Get the details of a specific instance-level variable' do
+              desc 'Retrieve instance variable details' do
+                detail 'Retrieves details of a specified instance-level variable.'
                 success Entities::Ci::Variable
                 failure [{ code: 404, message: 'Instance Variable Not Found' }]
                 tags %w[ci_variables]
@@ -34,6 +38,7 @@ module API
               params do
                 requires :key, type: String, desc: 'The key of a variable'
               end
+              route_setting :authorization, permissions: :read_variable, boundary_type: :instance
               get ':key' do
                 key = params[:key]
                 variable = ::Ci::InstanceVariable.find_by_key(key)
@@ -43,7 +48,9 @@ module API
                 present variable, with: Entities::Ci::Variable
               end
 
-              desc 'Create a new instance-level variable' do
+              desc 'Create instance variable' do
+                detail 'Creates a instance-level variable. The maximum number of instance-level variables can be ' \
+                  'changed.'
                 success Entities::Ci::Variable
                 failure [{ code: 400, message: '400 Bad Request' }]
                 tags %w[ci_variables]
@@ -79,6 +86,7 @@ module API
                   values: ::Ci::InstanceVariable.variable_types.keys,
                   desc: 'The type of a variable. Available types are: env_var (default) and file'
               end
+              route_setting :authorization, permissions: :create_variable, boundary_type: :instance
               post '/' do
                 variable_params = declared_params(include_missing: false)
 
@@ -91,7 +99,8 @@ module API
                 end
               end
 
-              desc 'Update an instance-level variable' do
+              desc 'Update an instance variable' do
+                detail 'Updates a specified instance variable.'
                 success Entities::Ci::Variable
                 failure [{ code: 404, message: 'Instance Variable Not Found' }]
                 tags %w[ci_variables]
@@ -127,6 +136,7 @@ module API
                   values: ::Ci::InstanceVariable.variable_types.keys,
                   desc: 'The type of a variable. Available types are: env_var (default) and file'
               end
+              route_setting :authorization, permissions: :update_variable, boundary_type: :instance
               put ':key' do
                 variable = ::Ci::InstanceVariable.find_by_key(params[:key])
 
@@ -141,7 +151,8 @@ module API
                 end
               end
 
-              desc 'Delete an existing instance-level variable' do
+              desc 'Delete instance variable' do
+                detail 'Deletes a specified instance variable.'
                 success Entities::Ci::Variable
                 failure [{ code: 404, message: 'Instance Variable Not Found' }]
                 tags %w[ci_variables]
@@ -149,6 +160,7 @@ module API
               params do
                 requires :key, type: String, desc: 'The key of a variable'
               end
+              route_setting :authorization, permissions: :delete_variable, boundary_type: :instance
               delete ':key' do
                 variable = ::Ci::InstanceVariable.find_by_key(params[:key])
                 not_found!('InstanceVariable') unless variable

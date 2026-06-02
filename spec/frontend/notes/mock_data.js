@@ -120,7 +120,7 @@ export const individualNote = {
   reply_id: '0fb4e0e3f9276e55ff32eb4195add694aece4edd',
 };
 
-export const note = {
+export const createNoteMock = () => ({
   id: '546',
   attachment: {
     url: null,
@@ -177,7 +177,9 @@ export const note = {
   report_abuse_path:
     '/abuse_reports/new?ref_url=http%3A%2F%2Flocalhost%3A3000%2Fgitlab-org%2Fgitlab-ce%2Fissues%2F7%23note_546&user_id=1',
   path: '/gitlab-org/gitlab-foss/notes/546',
-};
+});
+
+export const note = createNoteMock();
 
 export const createDiscussionMock = () => ({
   id: '9e3bd2f71a01de45fd166e6719eb380ad9f270b1',
@@ -1363,6 +1365,7 @@ export const singleNoteResponseFactory = ({
                   ],
                 },
                 note_html: 'my quick note',
+                body_first_line_html: 'my quick note',
                 created_at: '2020-01-01T10:00:00.000Z',
                 last_edited_at: null,
                 last_edited_by: null,

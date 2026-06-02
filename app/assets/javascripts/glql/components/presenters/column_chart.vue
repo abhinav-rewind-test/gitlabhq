@@ -1,14 +1,16 @@
 <script>
-import { GlStackedColumnChart, GlColumnChart } from '@gitlab/ui/src/charts';
 import { GlSkeletonLoader } from '@gitlab/ui';
-import { formatDate } from '~/lib/utils/datetime/date_format_utility';
 import { __ } from '~/locale';
+import { dimensionsOf, metricsOf } from '../../utils/chart_data';
+import SingleDimensionColumnChart from './column_chart/single_dimension_column_chart.vue';
+import TwoDimensionsColumnChart from './column_chart/two_dimensions_column_chart.vue';
 
 export default {
+  name: 'ColumnChartPresenter',
   components: {
-    GlStackedColumnChart,
-    GlColumnChart,
     GlSkeletonLoader,
+    SingleDimensionColumnChart,
+    TwoDimensionsColumnChart,
   },
   props: {
     data: {
@@ -16,148 +18,56 @@ export default {
       type: Object,
       default: () => ({ nodes: [] }),
     },
+    fields: {
+      required: false,
+      type: Array,
+      default: () => [],
+    },
     loading: {
       required: false,
-      type: [Boolean, Number],
+      type: Boolean,
       default: false,
     },
-    aggregate: {
+    displayConfig: {
       required: false,
-      type: Array,
-      default: null,
-    },
-    groupBy: {
-      required: false,
-      type: Array,
-      default: null,
+      type: Object,
+      default: () => ({}),
     },
   },
+  emits: { error: null },
   computed: {
-    primaryMetric() {
-      if (!this.aggregate) return null;
-
-      return this.aggregate[0];
+    dimensions() {
+      return dimensionsOf(this.fields);
     },
-    primaryDimension() {
-      if (!this.groupBy) return null;
-
-      return this.groupBy[0];
+    metrics() {
+      return metricsOf(this.fields);
     },
-    secondaryDimension() {
-      if (!this.groupBy) return null;
-
-      return this.groupBy[1];
+    validationError() {
+      if (!this.fields.length) return null;
+      if (this.dimensions.length === 0) {
+        return __('columnChart requires at least one dimension');
+      }
+      if (this.dimensions.length > 2) {
+        return __('columnChart supports a maximum of 2 dimensions');
+      }
+      if (this.metrics.length === 0) {
+        return __('columnChart requires at least one metric');
+      }
+      if (this.dimensions.length === 2 && this.metrics.length > 1) {
+        return __('columnChart with 2 dimensions supports only a single metric');
+      }
+      return null;
     },
-    secondaryMetric() {
-      if (!this.aggregate) return null;
-
-      return this.aggregate[1];
-    },
-    primaryChartData() {
-      return this.chartData(this.primaryMetric);
-    },
-    secondaryChartData() {
-      return this.chartData(this.secondaryMetric);
-    },
-    chartOptions() {
-      if (!this.primaryDimension || !this.primaryMetric) return {};
-
-      return {
-        xAxis: {
-          type: 'category',
-          name: this.primaryDimension.field.label,
-        },
-        yAxis: {
-          name: this.primaryMetric.label,
-          axisLabel: {
-            formatter: '{value}',
-          },
-        },
-      };
-    },
-    primaryStackedChartData() {
-      return this.stackedChartData(this.primaryMetric);
-    },
-    secondaryStackedChartData() {
-      return this.stackedChartData(this.secondaryMetric).bars;
-    },
-    groups() {
-      return this.primaryStackedChartData.groups;
-    },
-    bars() {
-      return this.primaryStackedChartData.bars;
+    stacked() {
+      return this.displayConfig?.stacked === true;
     },
   },
-  methods: {
-    dimensionValue(datapoint, dimension) {
-      const data = datapoint[dimension.field.key];
-      if (dimension.fn.type === 'time') {
-        const { unit } = dimension.fn;
-        // TODO handle unit > 1. Need to somehow show 'from x to y'
-        const fromDate = new Date(data.range.from).getTime();
-        switch (unit) {
-          case 'd': // day
-            return formatDate(fromDate, 'yyyy-mm-dd');
-          case 'w': // week
-            return formatDate(fromDate, 'yyyy-mm-dd');
-          case 'm': // month
-            return formatDate(fromDate, 'mmm yy');
-          case 'y': // year
-            return formatDate(fromDate, 'yyyy');
-          default:
-            break;
-        }
-      }
-      if (dimension.fn.type === 'user') {
-        return data.user.value;
-      }
-      return __('Unknown');
-    },
-    chartData(metric) {
-      if (!this.data.nodes?.length || !this.primaryDimension || !metric) return [];
-
-      return [
-        {
-          name: metric.label,
-          data: this.data.nodes.map((node) => [
-            this.dimensionValue(node, this.primaryDimension),
-            node[metric.key] || 0,
-          ]),
-        },
-      ];
-    },
-    stackedChartData(metric) {
-      if (
-        !this.data.nodes?.length ||
-        !this.primaryDimension ||
-        !this.secondaryDimension ||
-        !metric
-      ) {
-        return { groups: [], bars: [] };
-      }
-
-      const groups = [];
-      const bars = {};
-
-      this.data.nodes.forEach((node) => {
-        const primaryDimensionValue = this.dimensionValue(node, this.primaryDimension);
-        const secondaryDimensionValue = this.dimensionValue(node, this.secondaryDimension);
-
-        if (groups.indexOf(primaryDimensionValue) === -1) {
-          groups.push(primaryDimensionValue);
-        }
-
-        if (!bars[secondaryDimensionValue]) {
-          bars[secondaryDimensionValue] = [];
-        }
-
-        bars[secondaryDimensionValue].push(node[metric.key] || 0);
-      });
-
-      return {
-        groups,
-        bars: Object.entries(bars).map(([key, val]) => ({ name: key, data: val })),
-      };
+  watch: {
+    validationError: {
+      immediate: true,
+      handler(message) {
+        if (message) this.$emit('error', new Error(message));
+      },
     },
   },
 };
@@ -166,28 +76,20 @@ export default {
 <template>
   <div class="gl-px-5 gl-py-5">
     <gl-skeleton-loader v-if="loading" />
-    <template v-else-if="primaryDimension && primaryMetric">
-      <gl-column-chart
-        v-if="groupBy.length === 1"
-        :bars="primaryChartData"
-        :option="chartOptions"
-        x-axis-type="category"
-        :x-axis-title="primaryDimension.field.label"
-        :y-axis-title="primaryMetric.label"
-        :secondary-data="secondaryChartData"
-        :secondary-data-title="secondaryMetric && secondaryMetric.label"
+    <template v-else-if="!validationError">
+      <single-dimension-column-chart
+        v-if="dimensions.length === 1"
+        :data="data"
+        :dimension="dimensions[0]"
+        :metrics="metrics"
+        :stacked="stacked"
       />
-      <gl-stacked-column-chart
-        v-else-if="groupBy.length === 2"
-        x-axis-type="category"
-        :x-axis-title="primaryDimension.field.label"
-        :y-axis-title="primaryMetric.label"
-        :group-by="groups"
-        :presentation="secondaryMetric ? 'stacked' : 'tiled'"
-        :bars="bars"
-        :secondary-data="secondaryStackedChartData"
-        :secondary-data-title="secondaryMetric && secondaryMetric.label"
-        :include-legend-avg-max="false"
+      <two-dimensions-column-chart
+        v-else-if="dimensions.length === 2"
+        :data="data"
+        :primary-dimension="dimensions[0]"
+        :secondary-dimension="dimensions[1]"
+        :metric="metrics[0]"
       />
     </template>
   </div>

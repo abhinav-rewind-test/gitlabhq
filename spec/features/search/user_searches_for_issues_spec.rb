@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limiting, feature_category: :global_search do
+RSpec.describe 'User searches for issues', :js, feature_category: :global_search do
   include ListboxHelpers
   let_it_be(:user) { create(:user) }
   let_it_be(:project) { create(:project, namespace: user.namespace) }
@@ -10,9 +10,9 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
   let!(:issue1) { create(:issue, title: 'issue Foo', project: project, created_at: 1.hour.ago) }
   let!(:issue2) { create(:issue, :closed, :confidential, title: 'issue Bar', project: project) }
 
-  def search_for_issue(search)
+  def search_for_work_items(search)
     submit_dashboard_search(search)
-    select_search_scope('Issue')
+    select_search_scope('Work items')
   end
 
   context 'when signed in' do
@@ -31,7 +31,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
           allow(service).to receive(:search_results).and_raise(ActiveRecord::QueryCanceled)
         end
 
-        visit(search_path(search: 'test', scope: 'issues', type: 'issue'))
+        visit(search_path(search: 'test', scope: 'work_items'))
       end
 
       it 'renders timeout information' do
@@ -39,12 +39,12 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
       end
 
       it 'sets tab count to 0' do
-        expect(find_by_testid('search-filter')).to have_text('Issue')
+        expect(find_by_testid('search-filter')).to have_text('Work items')
       end
     end
 
-    it 'finds an issue' do
-      search_for_issue(issue1.title)
+    it 'finds an issue as work item' do
+      search_for_work_items(issue1.title)
 
       page.within('.results') do
         expect(page).to have_link(issue1.title)
@@ -52,24 +52,24 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
       end
     end
 
-    it 'hides confidential icon for non-confidential issues' do
-      search_for_issue(issue1.title)
+    it 'hides confidential icon for non-confidential work items' do
+      search_for_work_items(issue1.title)
 
       page.within('.results') do
         expect(page).not_to have_css('[data-testid="eye-slash-icon"]')
       end
     end
 
-    it 'shows confidential icon for confidential issues' do
-      search_for_issue(issue2.title)
+    it 'shows confidential icon for confidential work items' do
+      search_for_work_items(issue2.title)
 
       page.within('.results') do
         expect(page).to have_css('[data-testid="eye-slash-icon"]')
       end
     end
 
-    it 'shows correct badge for open issues' do
-      search_for_issue(issue1.title)
+    it 'shows correct badge for open work items' do
+      search_for_work_items(issue1.title)
 
       page.within('.results') do
         expect(page).to have_css('.badge-success')
@@ -77,8 +77,8 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
       end
     end
 
-    it 'shows correct badge for closed issues' do
-      search_for_issue(issue2.title)
+    it 'shows correct badge for closed work items' do
+      search_for_work_items(issue2.title)
 
       page.within('.results') do
         expect(page).not_to have_css('.badge-success')
@@ -87,7 +87,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
     end
 
     it 'sorts by created date' do
-      search_for_issue('issue')
+      search_for_work_items('issue')
 
       page.within('.results') do
         expect(page.all('.search-result-row').first).to have_link(issue2.title)
@@ -103,7 +103,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
     end
 
     context 'when on a project page' do
-      it 'finds an issue' do
+      it 'finds a work item' do
         find_by_testid('project-filter').click
 
         wait_for_requests
@@ -112,7 +112,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
           select_listbox_item project.name
         end
 
-        search_for_issue(issue1.title)
+        search_for_work_items(issue1.title)
 
         page.within('.results') do
           expect(page).to have_link(issue1.title)
@@ -122,7 +122,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
     end
 
     it 'shows scopes when there is no search term' do
-      search_for_issue('')
+      search_for_work_items('')
 
       within_testid('search-filter') do
         expect(page).to have_selector('[data-testid="nav-item"]', minimum: 5)
@@ -130,11 +130,12 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
     end
   end
 
-  context 'when signed out' do
+  context 'when signed out', :disable_rate_limiter do
     context 'when global_search_block_anonymous_searches_enabled is disabled' do
       let_it_be(:project) { create(:project, :public) }
 
       before do
+        stub_current_organization(project.organization)
         stub_application_setting(global_search_block_anonymous_searches_enabled: false)
 
         visit(search_path)
@@ -142,8 +143,9 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
 
       include_examples 'top right search form'
 
-      it 'finds an issue' do
-        search_for_issue(issue1.title)
+      it 'finds a work item' do
+        submit_dashboard_search(issue1.title)
+        select_search_scope('Work items')
 
         page.within('.results') do
           expect(page).to have_link(issue1.title)
@@ -154,6 +156,7 @@ RSpec.describe 'User searches for issues', :js, :clean_gitlab_redis_rate_limitin
 
     context 'when global_search_block_anonymous_searches_enabled is enabled' do
       before do
+        stub_current_organization(project.organization)
         stub_application_setting(global_search_block_anonymous_searches_enabled: true)
       end
 

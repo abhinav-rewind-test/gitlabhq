@@ -84,7 +84,8 @@ module Gitlab
           limit: limit.to_i
         )
 
-        response = gitaly_client_call(@repository.storage, :commit_service, :tree_entry, request, timeout: GitalyClient.medium_timeout)
+        timeout = Gitlab::Ci::Config::GitalyTimeout.current_timeout || GitalyClient.medium_timeout
+        response = gitaly_client_call(@repository.storage, :commit_service, :tree_entry, request, timeout: timeout)
 
         entry = nil
         data = []
@@ -156,13 +157,11 @@ module Gitlab
 
       # Count commits in the repository.
       #
-      # @param ref [String] The revision to count commits from (soft deprecated, use revisions instead)
-      # @param options [Hash] Options for counting commits
-      # @option options [Array<String>] :revisions Multiple revisions to count commits from.
+      # @param revisions [String, Array<String>] Single revision or array of revisions to count.
+      #   Strings are automatically wrapped in an array.
       #   Supports pseudo-revisions like --all, --branches, --tags, --not, --glob.
-      #   Takes precedence over :all and ref parameters.
-      # @option options [Boolean] :all Count commits from all refs (soft deprecated, use revisions: ['--all'])
-      # @option options [Boolean] :first_parent Only follow first parent on merge commits
+      # @param options [Hash] Options for counting commits
+      # @option options [Boolean] :first_parent Only follow first parent commits
       # @option options [Time] :after Only count commits after this time
       # @option options [Time] :before Only count commits before this time
       # @option options [String] :path Only count commits that touch this path
@@ -173,34 +172,32 @@ module Gitlab
       # @example Count commits in a single branch
       #   commit_count('master')
       #
-      # @example Count commits across multiple branches using revisions
-      #   commit_count(nil, revisions: ['feature-a', 'feature-b'])
+      # @example Count commits across multiple branches
+      #   commit_count(['feature-a', 'feature-b'])
       #
-      # @example Count commits in all branches using revisions
-      #   commit_count(nil, revisions: ['--all'])
+      # @example Count commits in all branches
+      #   commit_count('--all')
       #
       # @example Count commits in branch-2 but not in branch-1
-      #   commit_count(nil, revisions: ['branch-2', '--not', 'branch-1'])
+      #   commit_count(['branch-2', '--not', 'branch-1'])
       #
-      def commit_count(ref, options = {})
+      # @example Count commits with filters
+      #   commit_count('master', path: 'app/', after: 1.week.ago)
+      #
+      def commit_count(revisions, options = {})
+        revisions_array = Array.wrap(revisions)
+        raise ArgumentError, 'revisions is required' if revisions_array.empty?
+
         request = Gitaly::CountCommitsRequest.new(
           repository: @gitaly_repo,
           first_parent: !!options[:first_parent]
         )
 
-        revisions = if options[:revisions].present?
-                      Array.wrap(options[:revisions])
-                    elsif options[:all]
-                      ['--all']
-                    elsif ref
-                      [ref]
-                    end
-
-        request.revisions = encode_repeated(revisions) if revisions.present?
+        request.revisions = encode_repeated(revisions_array)
 
         request.after = Google::Protobuf::Timestamp.new(seconds: options[:after].to_i) if options[:after].present?
         request.before = Google::Protobuf::Timestamp.new(seconds: options[:before].to_i) if options[:before].present?
-        request.path = encode_binary(options[:path]) if options[:path].present?
+        request.path = encode_binary(options[:path]) if options[:path] && !options[:path].empty?
         request.max_count = options[:max_count] if options[:max_count].present?
 
         gitaly_client_call(@repository.storage, :commit_service, :count_commits, request, timeout: GitalyClient.medium_timeout).count
@@ -332,7 +329,8 @@ module Gitlab
           revisions: revisions,
           reverse: !!params[:reverse],
           ignore_case: params[:ignore_case],
-          pagination_params: params[:pagination_params]
+          pagination_params: params[:pagination_params],
+          global_options: parse_global_options!(literal_pathspec: params[:literal_pathspec])
         )
 
         request.order = params[:order].upcase if params[:order].present?
@@ -343,6 +341,7 @@ module Gitlab
         end
 
         request.author = encode_binary(params[:author]) if params[:author]
+        request.paths.push(encode_binary(params[:path])) if params[:path].present?
         request.before = GitalyClient.timestamp(params[:before]) if params[:before]
         request.after = GitalyClient.timestamp(params[:after]) if params[:after]
 
@@ -438,7 +437,7 @@ module Gitlab
         request = Gitaly::CommitLanguagesRequest.new(repository: @gitaly_repo, revision: encode_binary(ref) || '')
         response = gitaly_client_call(@repository.storage, :commit_service, :commit_languages, request, timeout: GitalyClient.long_timeout)
 
-        response.languages.map { |l| { value: l.share.round(2), label: l.name, color: l.color, highlight: l.color } }
+        response.languages.map { |l| { value: l.share.round(2), label: l.name, color: l.color, highlight: l.color, language_id: l.language_id } }
       end
 
       def raw_blame(revision, path, range:, ignore_revisions_blob: nil)
@@ -523,7 +522,7 @@ module Gitlab
         request.author   = encode_binary(options[:author]) if options[:author]
         request.order    = options[:order].upcase.sub('DEFAULT', 'NONE') if options[:order].present?
 
-        request.paths = encode_repeated(Array(options[:path])) if options[:path].present?
+        request.paths = encode_repeated(Array(options[:path])) if options[:path] && !options[:path].empty?
 
         response = gitaly_client_call(@repository.storage, :commit_service, :find_commits, request, timeout: GitalyClient.medium_timeout)
         consume_commits_response(response)
@@ -727,6 +726,13 @@ module Gitlab
 
             Gitaly::FindChangedPathsRequest::Request.new(
               commit_request: Gitaly::FindChangedPathsRequest::Request::CommitRequest.new(commit_revision: object.sha)
+            )
+          when String
+            next unless Gitlab::Git.commit_id?(object)
+            next if Gitlab::Git.blank_ref?(object)
+
+            Gitaly::FindChangedPathsRequest::Request.new(
+              commit_request: Gitaly::FindChangedPathsRequest::Request::CommitRequest.new(commit_revision: object)
             )
           end
         end

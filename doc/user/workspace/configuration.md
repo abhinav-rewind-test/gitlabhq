@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Remote Development
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure your GitLab workspaces to manage your GitLab development environments.
 title: Configure workspaces
 ---
@@ -35,13 +35,14 @@ To set up infrastructure for workspaces, regardless of cloud provider, you must:
 1. In the Kubernetes cluster:
    1. Verify that a [default storage class](https://kubernetes.io/docs/concepts/storage/storage-classes/)
       is defined so that volumes can be dynamically provisioned for each workspace.
-1. Complete all steps in the [Tutorial: Set up the GitLab agent for Kubernetes](set_up_gitlab_agent_and_proxies.md).
+1. Complete all steps in the [set up the GitLab agent for Kubernetes tutorial](set_up_gitlab_agent_and_proxies.md).
 1. Optional. [Build and run containers in a workspace](#build-and-run-containers-in-a-workspace).
 1. Optional. [Configure support for private container registries](#configure-support-for-private-container-registries).
 1. Optional. [Configure sudo access for a workspace](#configure-sudo-access-for-a-workspace).
 
-If you use AWS, you can use our OpenTofu tutorial. For more information, see
-[Tutorial: Set up workspaces infrastructure on AWS](set_up_infrastructure.md).
+If you use AWS, you can use our OpenTofu tutorial.
+For more information, see the
+[set up workspaces infrastructure on AWS tutorial](set_up_infrastructure.md).
 
 ## Create a workspace
 
@@ -69,8 +70,8 @@ Prerequisites:
 
 {{< tab title="From a project" >}}
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Edit** > **New workspace**.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Code** > **New workspace**.
 1. From the **Cluster agent** dropdown list, select a cluster agent owned by the group the project belongs to.
 1. From the **Git reference** dropdown list, select the branch, tag, or commit hash
    GitLab uses to create the workspace. By default, this is the branch you're viewing.
@@ -85,8 +86,8 @@ Prerequisites:
 
 {{< tab title="From a merge request" >}}
 
-1. On the top bar, select **Search or go to** and find your project.
-1. On the left sidebar, select **Code** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Code** > **Merge requests**.
 1. Select the merge request you want to create a workspace for.
 1. Select **Code** > **Open in Workspace**.
 1. From the **Cluster agent** dropdown list, select a cluster agent owned by the group the project belongs to.
@@ -110,7 +111,8 @@ You also have access to the terminal and can install any necessary dependencies.
 ### Monitor workspace startup progress
 
 When you start a workspace, you can monitor the progress of initialization tasks and `postStart`
-events by checking the workspace logs. For more information, see [Workspace logs directory](_index.md#workspace-logs-directory).
+events by checking the workspace logs.
+For more information, see the [workspace logs directory](_index.md#workspace-logs-directory).
 
 ## Platform compatibility
 
@@ -119,7 +121,7 @@ The platform requirements for workspaces depend on your development needs.
 For basic workspace functionality, workspaces run on any `linux/amd64` Kubernetes cluster that supports
 the GitLab agent for Kubernetes, regardless of the underlying operating system.
 
-To choose a method that fits your platform requirements, see [Configure sudo access for a workspace](#configure-sudo-access-for-a-workspace).
+To choose a method that fits your platform requirements, see [configure sudo access for a workspace](#configure-sudo-access-for-a-workspace).
 
 ## Build and run containers in a workspace
 
@@ -131,7 +133,7 @@ To choose a method that fits your platform requirements, see [Configure sudo acc
 
 Development environments often require building and running containers to manage and use dependencies
 during runtime.
-To build and run containers in a workspace, see [configure sudo access for a workspace with Sysbox](#with-sysbox).
+To build and run containers in a workspace, see [configure sudo access for a workspace](#configure-sudo-access-for-a-workspace).
 
 ## Configure support for private container registries
 
@@ -242,7 +244,7 @@ To connect to a workspace with an SSH client:
 
 1. Get the name of the workspace:
 
-   1. On the top bar, select **Search or go to**.
+   1. In the top bar, select **Search or go to**.
    1. Select **Your work**.
    1. Select **Workspaces**.
    1. Copy the name of the workspace you want to connect to.
@@ -268,7 +270,7 @@ You can update your custom workspace images in two ways.
 If your workspace image is based on the [workspace base image](_index.md#workspace-base-image),
 SSH support is already configured and ready to use. This approach ensures your image has all
 necessary workspace configurations.
-For detailed instructions, see [Create a custom workspace image](create_image.md).
+For more information, see [create a custom workspace image](create_image.md).
 
 If you prefer not to use the workspace base image, you can build from your own base image. If you do
 this, configure SSH support manually in your runtime images:

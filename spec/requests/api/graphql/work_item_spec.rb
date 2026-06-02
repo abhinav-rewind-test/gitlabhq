@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
+RSpec.describe 'Query.work_item(id)', :with_current_organization, feature_category: :team_planning do
   include_context 'with work item request context'
 
   let_it_be(:user) { create(:user) }
@@ -69,6 +69,22 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
 
     it_behaves_like 'a working graphql query'
 
+    it_behaves_like 'authorizing granular token permissions for GraphQL',
+      [:read_work_item, :update_work_item, :create_issue_note] do
+      let(:user) { developer }
+      let(:boundary_object) { project }
+      let(:work_item_fields) { all_graphql_fields_for('WorkItem', max_depth: 1) }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_work_item do
+      let(:user) { developer }
+      let(:boundary_object) { project }
+      # createNoteEmail requires write permissions since it can be used to create issues and notes.
+      let(:work_item_fields) { all_graphql_fields_for('WorkItem', max_depth: 1, excluded: ["createNoteEmail"]) }
+      let(:request) { post_graphql(query, token: { personal_access_token: pat }) }
+    end
+
     it 'returns all fields' do
       expect(work_item_data).to include(
         'description' => work_item.description,
@@ -104,27 +120,27 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
       )
     end
 
-    context 'when work_item_planning_view is disabled' do
+    context 'when using a read_api scoped token' do
+      let(:read_api_token) { create(:personal_access_token, user: current_user, scopes: [:read_api]) }
+
       before do
-        stub_feature_flags(work_item_planning_view: false)
-        post_graphql(query, current_user: current_user)
+        post_graphql(
+          graphql_query_for('workItem', { 'id' => global_id }, 'createNoteEmail'),
+          current_user: current_user,
+          token: { personal_access_token: read_api_token }
+        )
       end
 
-      it 'uses the issues path for webPath and webUrl' do
-        expect(work_item_data).to include(
-          'webPath' => Gitlab::UrlBuilder.build(work_item, only_path: true).to_s,
-          'webUrl' => Gitlab::UrlBuilder.build(work_item, only_path: false).to_s
-        )
+      it 'does not return createNoteEmail' do
+        expect(work_item_data).to include('createNoteEmail' => nil)
       end
     end
 
-    context 'when work_item_planning_view is enabled' do
-      it 'uses the work items path for webPath and webUrl' do
-        expect(work_item_data).to include(
-          'webPath' => Gitlab::Routing.url_helpers.project_work_item_path(work_item.project, work_item.iid).to_s,
-          'webUrl' => Gitlab::Routing.url_helpers.project_work_item_url(work_item.project, work_item.iid).to_s
-        )
-      end
+    it 'uses the work items path for webPath and webUrl' do
+      expect(work_item_data).to include(
+        'webPath' => Gitlab::Routing.url_helpers.project_work_item_path(work_item.project, work_item.iid).to_s,
+        'webUrl' => Gitlab::Routing.url_helpers.project_work_item_url(work_item.project, work_item.iid).to_s
+      )
     end
 
     context 'when querying work item type information' do
@@ -258,7 +274,7 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
         end
 
         context 'for N+1 queries checks' do
-          let_it_be(:work_item) { create(:work_item, project: project) }
+          let_it_be(:work_item, freeze: false) { create(:work_item, project: project) }
           let_it_be(:another_project) { create(:project, :repository) }
           let_it_be(:another_label) { create(:label, project: another_project) }
           let_it_be(:another_milestone) do
@@ -327,7 +343,10 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
         end
 
         context 'when requesting child item' do
-          let_it_be(:work_item) { create(:work_item, :task, project: project, description: '- List item') }
+          let_it_be(:work_item, freeze: false) do
+            create(:work_item, :task, project: project, description: '- List item')
+          end
+
           let_it_be(:parent_link) { create(:parent_link, work_item: work_item) }
 
           it 'returns parent information' do
@@ -688,7 +707,7 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
             created_at: Time.current + 1.day)
         end
 
-        let_it_be(:link2) do
+        let_it_be(:link2, freeze: false) do
           create(:work_item_link, source: work_item, target: blocked_item, link_type: 'blocks',
             created_at: Time.current + 2.days)
         end
@@ -818,8 +837,12 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
       end
 
       describe 'linked resources widget' do
-        let_it_be(:linked_resources_type) { create(:work_item_type, :non_default, widgets: [:linked_resources]) }
-        let_it_be(:work_item) { create(:work_item, project: project, work_item_type: linked_resources_type) }
+        # already have linked resources
+        let_it_be(:linked_resources_type) { build(:work_item_system_defined_type, :task) }
+        let_it_be(:work_item, freeze: false) do
+          create(:work_item, project: project, work_item_type: linked_resources_type)
+        end
+
         let_it_be(:resource1) do
           create(:zoom_meeting, issue_id: work_item.id, project: project, url: 'https://zoom.us/j/123456789')
         end
@@ -969,7 +992,9 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
           GRAPHQL
         end
 
-        let_it_be(:note) { create(:note, project: work_item.project, noteable: work_item, author: developer) }
+        let_it_be(:note, freeze: false) do
+          create(:note, project: work_item.project, noteable: work_item, author: developer)
+        end
 
         before_all do
           create(:award_emoji, awardable: note, name: 'rocket', user: developer)
@@ -1680,7 +1705,9 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
 
     describe 'external author' do
       let_it_be(:email) { 'user@example.com' }
-      let_it_be(:work_item) { create(:work_item, :ticket, project: project, service_desk_reply_to: email) }
+      let_it_be(:work_item, freeze: false) do
+        create(:work_item, :ticket, project: project, service_desk_reply_to: email)
+      end
 
       let(:work_item_fields) do
         <<~GRAPHQL
@@ -1815,6 +1842,263 @@ RSpec.describe 'Query.work_item(id)', feature_category: :team_planning do
             'reportSpam' => true
           )
       )
+    end
+  end
+
+  describe 'authorization for nested project traversal' do
+    let_it_be(:public_group) { create(:group, :public) }
+    let_it_be(:public_project) { create(:project, :public, group: public_group) }
+    let_it_be(:private_project) do
+      create(:project, :private, group: public_group, description: 'private project description')
+    end
+
+    let_it_be(:public_work_item) { create(:work_item, project: public_project) }
+    let_it_be(:group_developer) { create(:user, developer_of: public_group) }
+
+    let(:global_id) { public_work_item.to_gid.to_s }
+
+    context 'when traversing workItem -> project -> group -> projects' do
+      let(:work_item_fields) do
+        <<~GRAPHQL
+          id
+          project {
+            group {
+              projects {
+                nodes {
+                  name
+                  visibility
+                  description
+                }
+              }
+            }
+          }
+        GRAPHQL
+      end
+
+      context 'when queried by an unauthenticated user' do
+        before do
+          post_graphql(query)
+        end
+
+        it 'returns only public projects' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :project, :group, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).to include(public_project.name)
+          expect(project_names).not_to include(private_project.name)
+        end
+      end
+
+      context 'when queried by an unauthorized user' do
+        let(:current_user) { user }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it 'does not return private projects' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :project, :group, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).not_to include(private_project.name)
+          expect(project_names).to include(public_project.name)
+        end
+      end
+
+      context 'when queried by an authorized user' do
+        let(:current_user) { group_developer }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it 'returns private projects for authorized users' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :project, :group, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).to include(private_project.name, public_project.name)
+        end
+      end
+    end
+
+    context 'when traversing workItem -> namespace -> rootNamespace' do
+      let(:work_item_fields) do
+        <<~GRAPHQL
+          id
+          namespace {
+            rootNamespace {
+              name
+              fullPath
+              description
+              projects {
+                nodes {
+                  name
+                  description
+                }
+              }
+            }
+          }
+        GRAPHQL
+      end
+
+      def root_namespace_data
+        graphql_dig_at(graphql_data, :work_item, :namespace, :root_namespace)
+      end
+
+      def root_namespace_project_names
+        root_namespace_data.dig('projects', 'nodes')&.pluck('name') || []
+      end
+
+      shared_examples 'returns root namespace metadata' do
+        it 'returns the root namespace name and path' do
+          expect(root_namespace_data['name']).to eq(public_group.name)
+          expect(root_namespace_data['fullPath']).to eq(public_group.full_path)
+        end
+      end
+
+      context 'when queried by an unauthenticated user' do
+        before do
+          post_graphql(query)
+        end
+
+        it_behaves_like 'returns root namespace metadata'
+
+        it 'returns only public projects' do
+          expect(root_namespace_project_names).to include(public_project.name)
+          expect(root_namespace_project_names).not_to include(private_project.name)
+        end
+      end
+
+      context 'when queried by an unauthorized user' do
+        let(:current_user) { user }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it_behaves_like 'returns root namespace metadata'
+
+        it 'does not return private projects' do
+          expect(root_namespace_project_names).to include(public_project.name)
+          expect(root_namespace_project_names).not_to include(private_project.name)
+        end
+      end
+
+      context 'when queried by an authorized user' do
+        let(:current_user) { group_developer }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it_behaves_like 'returns root namespace metadata'
+
+        it 'returns all accessible projects with their metadata' do
+          expect(root_namespace_project_names).to include(public_project.name, private_project.name)
+
+          private_project_data = root_namespace_data.dig('projects', 'nodes')
+            .find { |p| p['name'] == private_project.name }
+          expect(private_project_data['description']).to eq(private_project.description)
+        end
+      end
+
+      context 'when the root namespace is a private group' do
+        let_it_be(:private_root_group) { create(:group, :private, description: 'secret root description') }
+        let_it_be(:private_child_group) { create(:group, :private, parent: private_root_group) }
+        let_it_be(:private_child_project) { create(:project, :private, group: private_child_group) }
+        let_it_be(:private_work_item) { create(:work_item, project: private_child_project) }
+        let_it_be(:child_project_developer) { create(:user, developer_of: private_child_project) }
+
+        let(:global_id) { private_work_item.to_gid.to_s }
+
+        context 'when queried by a user with access to the child project' do
+          let(:current_user) { child_project_developer }
+
+          before do
+            post_graphql(query, current_user: current_user)
+          end
+
+          it 'returns private root namespace metadata' do
+            expect(root_namespace_data['name']).to eq(private_root_group.name)
+            expect(root_namespace_data['description']).to eq(private_root_group.description)
+          end
+        end
+
+        context 'when queried by a user without access' do
+          let(:current_user) { user }
+
+          before do
+            post_graphql(query, current_user: current_user)
+          end
+
+          it 'does not expose the private root namespace metadata' do
+            expect(graphql_dig_at(graphql_data, :work_item)).to be_nil
+            expect(root_namespace_data).to be_nil
+          end
+        end
+      end
+    end
+
+    context 'when traversing workItem -> namespace -> projects (with includeSiblingProjects)' do
+      let(:work_item_fields) do
+        <<~GRAPHQL
+          id
+          namespace {
+            projects(includeSiblingProjects: true) {
+              nodes {
+                name
+                visibility
+                description
+              }
+            }
+          }
+        GRAPHQL
+      end
+
+      context 'when queried by an unauthenticated user' do
+        before do
+          post_graphql(query)
+        end
+
+        it 'returns only public projects' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :namespace, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).to include(public_project.name)
+          expect(project_names).not_to include(private_project.name)
+        end
+      end
+
+      context 'when queried by an unauthorized user' do
+        let(:current_user) { user }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it 'does not return private projects' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :namespace, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).not_to include(private_project.name)
+          expect(project_names).to include(public_project.name)
+        end
+      end
+
+      context 'when queried by an authorized user' do
+        let(:current_user) { group_developer }
+
+        before do
+          post_graphql(query, current_user: current_user)
+        end
+
+        it 'returns private projects for authorized users' do
+          projects_data = graphql_dig_at(graphql_data, :work_item, :namespace, :projects, :nodes)
+          project_names = projects_data&.pluck('name') || []
+
+          expect(project_names).to include(private_project.name, public_project.name)
+        end
+      end
     end
   end
 end

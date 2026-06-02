@@ -8,17 +8,17 @@ module Sidebars
 
         override :link
         def link
-          issues_dashboard_path(assignee_username: @context.current_user.username)
+          work_items_dashboard_path(assignee_username: @context.current_user.username)
         end
 
         override :title
         def title
-          _('Issues')
+          _('Work items')
         end
 
         override :sprite_icon
         def sprite_icon
-          'work-item-issue'
+          'work-items'
         end
 
         override :render?
@@ -28,7 +28,7 @@ module Sidebars
 
         override :active_routes
         def active_routes
-          { path: 'dashboard#issues' }
+          { path: %w[dashboard#issues dashboard#work_items] }
         end
 
         override :has_pill?

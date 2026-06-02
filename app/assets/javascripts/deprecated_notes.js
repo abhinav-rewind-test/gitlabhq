@@ -13,7 +13,7 @@ deprecated_notes_spec.js is the spec for the legacy, jQuery notes application. I
 import { GlSkeletonLoader } from '@gitlab/ui';
 import Autosize from 'autosize';
 import $ from 'jquery';
-import { escape, uniqueId } from 'lodash';
+import { escape, uniqueId } from 'lodash-es';
 import Vue from 'vue';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
 import { createAlert, VARIANT_INFO } from '~/alert';
@@ -123,6 +123,11 @@ export default class Notes {
     if ($anchor) {
       this.loadLazyDiff({ currentTarget: $anchor });
     }
+
+    const notesList = document.getElementById('notes-list');
+    if (notesList) {
+      renderGFM(notesList);
+    }
   }
 
   setViewType(view) {
@@ -185,7 +190,7 @@ export default class Notes {
     // when a key is clicked on the notes
     this.$wrapperEl.on('keydown', '.js-note-text', this.keydownNoteText);
     // When the URL fragment/hash has changed, `#note_xxx`
-    $(window).on('hashchange', this.onHashChange);
+    window.addEventListener('hashchange', this.onHashChange);
   }
 
   cleanBinding() {
@@ -209,7 +214,7 @@ export default class Notes {
     this.$wrapperEl.off('ajax:success', '.js-main-target-form');
     this.$wrapperEl.off('ajax:success', '.js-discussion-note-form');
     this.$wrapperEl.off('ajax:complete', '.js-main-target-form');
-    $(window).off('hashchange', this.onHashChange);
+    window.removeEventListener('hashchange', this.onHashChange);
   }
 
   static initCommentTypeToggle(form) {
@@ -340,7 +345,7 @@ export default class Notes {
         const { notes } = data;
         this.last_fetched_at = data.last_fetched_at;
         this.setPollingInterval(data.notes.length);
-        $.each(notes, (i, note) => this.renderNote(note));
+        notes.forEach((note) => this.renderNote(note));
 
         this.refreshing = false;
       })
@@ -660,7 +665,7 @@ export default class Notes {
    * show the form
    */
   setupNoteForm(form, enableGFM = defaultAutocompleteConfig) {
-    this.glForm = new GLForm(form, enableGFM);
+    this.glForm = new GLForm(form.jquery ? form[0] : form, enableGFM);
     const textarea = form.find('.js-note-text');
     const key = [
       s__('NoteForm|Note'),
@@ -759,11 +764,11 @@ export default class Notes {
 
     $noteAvatar.append($targetNoteBadge);
     this.revertNoteEditForm($targetNote);
-    renderGFM(Notes.getNodeToRender($noteEntityEl));
     // Find the note's `li` element by ID and replace it with the updated HTML
     const $note_li = $(`.note-row-${noteEntity.id}`);
 
     $note_li.replaceWith($noteEntityEl);
+    renderGFM(Notes.getNodeToRender($noteEntityEl));
     this.setupNewNote($noteEntityEl);
   }
 
@@ -834,6 +839,7 @@ export default class Notes {
     if (this.updatedNotesTrackingMap[noteId]) {
       const $newNote = $(this.updatedNotesTrackingMap[noteId].html);
       $note.replaceWith($newNote);
+      renderGFM(Notes.getNodeToRender($newNote));
       this.setupNewNote($newNote);
       // Now that we have taken care of the update, clear it out
       delete this.updatedNotesTrackingMap[noteId];
@@ -1134,8 +1140,8 @@ export default class Notes {
    */
   removeDiscussionNoteForm(form) {
     const row = form.closest('tr');
-    const glForm = form.data('glForm');
-    glForm.destroy();
+    const glForm = GLForm.getInstance(form);
+    glForm?.destroy();
     form.find('.js-note-text').each(function reset() {
       this.$autosave.reset();
     });
@@ -1255,7 +1261,7 @@ export default class Notes {
     const targetId = $originalContentEl.data('targetId');
     const targetType = $originalContentEl.data('targetType');
 
-    this.glForm = new GLForm($editForm.find('form'), this.enableGFM);
+    this.glForm = new GLForm($editForm.find('form')[0], this.enableGFM);
 
     $editForm.find('form').attr('action', `${postUrl}?html=true`).attr('data-remote', 'true');
     $editForm.find('.js-form-target-id').val(targetId);
@@ -1396,7 +1402,7 @@ export default class Notes {
     if (note_ids.length === 0) {
       note_ids = Notes.getNotesIds();
     }
-    const isNewEntry = $.inArray(noteEntity.id, note_ids) === -1;
+    const isNewEntry = !note_ids.includes(noteEntity.id);
     if (isNewEntry) {
       note_ids.push(noteEntity.id);
     }
@@ -1439,12 +1445,12 @@ export default class Notes {
     const $note = $(noteHtml);
 
     $note.addClass('fade-in-full');
-    renderGFM(Notes.getNodeToRender($note));
     if ($notesList.find('.discussion-reply-holder').length) {
       $notesList.children('.timeline-entry').last().after($note);
     } else {
       $notesList.append($note);
     }
+    renderGFM(Notes.getNodeToRender($note));
     return $note;
   }
 
@@ -1452,8 +1458,8 @@ export default class Notes {
     const $updatedNote = $(noteHtml);
 
     $updatedNote.addClass('fade-in');
-    renderGFM(Notes.getNodeToRender($updatedNote));
     $note.replaceWith($updatedNote);
+    renderGFM(Notes.getNodeToRender($updatedNote));
     return $updatedNote;
   }
 
@@ -1472,8 +1478,7 @@ export default class Notes {
   getFormData($form) {
     const content = $form.find('.js-note-text').val();
     return {
-      // eslint-disable-next-line no-jquery/no-serialize
-      formData: $form.serialize(),
+      formData: new URLSearchParams(new FormData($form.get(0))).toString(),
       formContent: escape(content),
       formAction: $form.attr('action'),
       formContentOriginal: content,

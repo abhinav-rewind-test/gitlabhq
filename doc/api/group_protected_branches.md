@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group-level protected branches API
 ---
 
@@ -18,7 +18,6 @@ title: Group-level protected branches API
 
 {{< /history >}}
 
-Use this API to manage [protected branch settings](../user/project/repository/branches/protected.md#in-a-group).
 Use this API to manage [protected branch settings](../user/project/repository/branches/protected.md#in-a-group)
 that are inherited by all projects in a group.
 Group protected branches only support [valid access levels](#valid-access-levels). Individual users

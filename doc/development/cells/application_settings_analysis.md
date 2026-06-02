@@ -14,11 +14,11 @@ title: Application Settings analysis
 
 ## Statistics
 
-- Number of attributes: 516
+- Number of attributes: 517
 - Number of encrypted attributes: 42 (8.0%)
 - Number of attributes documented: 298 (57.99999999999999%)
-- Number of attributes on GitLab.com different from the defaults: 224 (43.0%)
-- Number of attributes with `clusterwide` set: 516 (100.0%)
+- Number of attributes on GitLab.com different from the defaults: 223 (43.0%)
+- Number of attributes with `clusterwide` set: 517 (100.0%)
 - Number of attributes with `clusterwide: true` set: 141 (27.0%)
 
 ## Individual columns
@@ -81,7 +81,6 @@ title: Application Settings analysis
 | `compliance_frameworks` | `false` | `smallint[]` | `` | `true` | `'{}'::smallint[]` | `false` | `false`| `false` |
 | `container_expiration_policies_enable_historic_entries` | `false` | `boolean` | `boolean` | `true` | `false` | `true` | `true`| `true` |
 | `container_registry_cleanup_tags_service_max_list_size` | `false` | `integer` | `integer` | `true` | `200` | `false` | `false`| `true` |
-| `container_registry_data_repair_detail_worker_max_concurrency` | `false` | `integer` | `` | `true` | `2` | `true` | `false`| `false` |
 | `container_registry_db_enabled` | `false` | `boolean` | `` | `true` | `false` | `true` | `true`| `false` |
 | `container_registry_delete_tags_service_timeout` | `false` | `integer` | `integer` | `true` | `250` | `false` | `false`| `true` |
 | `container_registry_expiration_policies_caching` | `false` | `boolean` | `boolean` | `true` | `true` | `false` | `false`| `true` |
@@ -130,6 +129,7 @@ title: Application Settings analysis
 | `deletion_adjourned_period` | `false` | `integer` | `integer` | `true` | `30` | `false` | `false`| `true` |
 | `deny_all_requests_except_allowed` | `false` | `boolean` | `` | `true` | `false` | `false` | `false`| `false` |
 | `dependency_proxy_ttl_group_policy_worker_capacity` | `false` | `smallint` | `` | `true` | `2` | `false` | `false`| `false` |
+| `diagram_proxy` | `false` | `jsonb` | `` | `true` | `'{}'::jsonb` | `false` | `false`| `false` |
 | `diagramsnet_enabled` | `false` | `boolean` | `boolean` | `true` | `true` | `false` | `false`| `true` |
 | `diagramsnet_url` | `false` | `text` | `string` | `false` | `'https://embed.diagrams.net'::text` | `false` | `false`| `true` |
 | `diff_max_files` | `false` | `integer` | `integer` | `true` | `1000` | `true` | `true`| `true` |
@@ -156,6 +156,7 @@ title: Application Settings analysis
 | `duo_remote_flows_enabled` | `false` | `boolean` | `` | `true` | `true` | `false` | `false`| `false` |
 | `duo_sast_fp_detection_enabled` | `false` | `boolean` | `` | `true` | `true` | `false` | `false`| `false` |
 | `duo_workflow` | `false` | `jsonb` | `` | `false` | `'{}'::jsonb` | `true` | `true`| `false` |
+| `duo_workflows_default_image_registry` | `false` | `text` | `` | `false` | `null` | `false` | `true`| `false` |
 | `ecdsa_key_restriction` | `false` | `integer` | `integer` | `true` | `0` | `false` | `false`| `true` |
 | `ecdsa_sk_key_restriction` | `false` | `integer` | `integer` | `true` | `0` | `false` | `false`| `true` |
 | `ed25519_key_restriction` | `false` | `integer` | `integer` | `true` | `0` | `false` | `false`| `true` |
@@ -318,7 +319,6 @@ title: Application Settings analysis
 | `mirror_max_delay` | `false` | `integer` | `integer` | `true` | `300` | `true` | `false`| `true` |
 | `model_prompt_cache_enabled` | `false` | `boolean` | `` | `true` | `true` | `false` | `false`| `false` |
 | `namespace_aggregation_schedule_lease_duration_in_seconds` | `false` | `integer` | `` | `true` | `300` | `false` | `false`| `false` |
-| `namespace_deletion_settings` | `false` | `jsonb` | `` | `true` | `'{}'::jsonb` | `true` | `true`| `false` |
 | `namespace_storage_forks_cost_factor` | `false` | `double` | `` | `true` | `1.0` | `true` | `false`| `false` |
 | `new_user_signups_cap` | `false` | `integer` | `` | `false` | `null` | `false` | `false`| `false` |
 | `notes_create_limit` | `false` | `integer` | `` | `true` | `300` | `true` | `true`| `false` |

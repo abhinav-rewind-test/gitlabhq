@@ -1,5 +1,5 @@
 import toast from '~/vue_shared/plugins/global_toast';
-import { sprintf, __ } from '~/locale';
+import { sprintf, __, s__ } from '~/locale';
 import {
   ACTION_COPY_ID,
   ACTION_EDIT,
@@ -8,6 +8,7 @@ import {
   ACTION_LEAVE,
   ACTION_RESTORE,
   ACTION_ARCHIVE,
+  ACTION_TRANSFER,
   ACTION_UNARCHIVE,
 } from '~/vue_shared/components/list_actions/constants';
 
@@ -26,24 +27,20 @@ export const availableGraphQLGroupActions = ({
 
   // Rules
   const canEdit = userPermissions.viewEditPage;
-  const canArchive =
-    userPermissions.archiveGroup && !archived && !markedForDeletion && gon.features?.archiveGroup;
+  const canTransfer = userPermissions.changeGroup;
+  const canArchive = userPermissions.archiveGroup && !archived && !markedForDeletion;
   const canUnarchive = userPermissions.archiveGroup && isSelfArchived;
   const canRestore = userPermissions.removeGroup && isSelfDeletionScheduled;
   const { canLeave } = userPermissions;
   // Groups that are not marked for deletion can be deleted (delayed)
   const canDelete = userPermissions.removeGroup && !markedForDeletion;
-  // Groups with self deletion scheduled can be deleted immediately if the
-  // allow_immediate_namespaces_deletion application setting is enabled
-  const canDeleteImmediately =
-    userPermissions.removeGroup &&
-    isSelfDeletionScheduled &&
-    gon?.allow_immediate_namespaces_deletion;
+  const canDeleteImmediately = userPermissions.removeGroup && isSelfDeletionScheduled;
 
   // Actions mapped to rules
   const actions = {
     [ACTION_COPY_ID]: true,
     [ACTION_EDIT]: canEdit,
+    [ACTION_TRANSFER]: canTransfer,
     [ACTION_ARCHIVE]: canArchive,
     [ACTION_UNARCHIVE]: canUnarchive,
     [ACTION_RESTORE]: canRestore,
@@ -107,6 +104,19 @@ export const renderUnarchiveSuccessToast = (group) => {
     sprintf(__("Group '%{group_name}' has been successfully unarchived."), {
       group_name: group.fullName,
     }),
+  );
+};
+
+export const renderTransferSuccessToast = (group) => {
+  toast(
+    sprintf(
+      s__(
+        "TransferGroup|Group '%{group_name}' transfer has been scheduled. Users with the Maintainer or Owner role will be notified when it completes.",
+      ),
+      {
+        group_name: group.fullName,
+      },
+    ),
   );
 };
 

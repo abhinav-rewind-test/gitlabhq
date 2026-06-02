@@ -6,8 +6,9 @@ import {
   GlFormCheckboxGroup,
   GlFormCheckbox,
   GlPopover,
+  GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
-import { xor } from 'lodash';
+import { xor } from 'lodash-es';
 import { groupPermissionsByResourceAndCategory } from '~/personal_access_tokens/utils';
 
 export default {
@@ -19,17 +20,27 @@ export default {
     GlFormCheckboxGroup,
     GlFormCheckbox,
     GlPopover,
+    GlAnimatedChevronRightDownIcon,
   },
   props: {
+    value: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
     permissions: {
       type: Array,
       required: false,
       default: () => [],
     },
-    value: {
-      type: Array,
-      required: false,
-      default: () => [],
+    scope: {
+      type: String,
+      required: true,
+      validator: (value) => ['namespace', 'user'].includes(value),
+    },
+    isFiltering: {
+      type: Boolean,
+      required: true,
     },
   },
   emits: ['input'],
@@ -56,7 +67,7 @@ export default {
       this.expanded = xor(this.expanded, [category]);
     },
     isExpanded(category) {
-      return this.expanded.includes(category);
+      return this.isFiltering || this.expanded.includes(category);
     },
   },
 };
@@ -64,11 +75,16 @@ export default {
 <template>
   <gl-form-checkbox-group v-model="selected">
     <div v-for="category in resourcesGroupedByCategory" :key="category.key" class="gl-mb-4">
-      <gl-button category="tertiary" class="gl-font-bold" @click="toggle(category.key)">
-        <gl-icon :name="isExpanded(category.key) ? 'chevron-down' : 'chevron-right'" />
-        <span>
-          {{ category.name }}
-        </span>
+      <gl-button
+        category="tertiary"
+        class="!gl-border-none"
+        :class="{ 'gl-pointer-events-none': isFiltering }"
+        button-text-classes="gl-flex gl-gap-3 gl-font-bold gl-text-gray-900"
+        :disabled="isFiltering"
+        @click="toggle(category.key)"
+      >
+        <gl-animated-chevron-right-down-icon :is-on="isExpanded(category.key)" />
+        {{ category.name }}
       </gl-button>
 
       <gl-collapse :visible="isExpanded(category.key)">
@@ -82,8 +98,17 @@ export default {
           </gl-form-checkbox>
 
           <span v-if="resource.description" class="gl-ml-3 gl-mt-2">
-            <gl-icon :id="resource.key" name="information-o" class="gl-cursor-pointer" />
-            <gl-popover :target="resource.key" triggers="focus" no-fade boundary="viewport">
+            <gl-icon
+              :id="`${scope}-${resource.key}`"
+              name="information-o"
+              class="gl-cursor-pointer"
+            />
+            <gl-popover
+              :target="`${scope}-${resource.key}`"
+              triggers="focus"
+              no-fade
+              boundary="viewport"
+            >
               {{ resource.description }}
             </gl-popover>
           </span>

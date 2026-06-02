@@ -98,6 +98,10 @@ RSpec.describe Gitlab::InstrumentationHelper, :clean_gitlab_redis_repository_cac
       let(:conn) { instance_double(Net::LDAP::Connection, search: search) }
       let(:search) { double(:search, result_code: 200) } # rubocop: disable RSpec/VerifiedDoubles
 
+      before do
+        stub_feature_flags(ldap_raise_on_search_error: false)
+      end
+
       it 'adds LDAP data' do
         allow_next_instance_of(Net::LDAP) do |net_ldap|
           allow(net_ldap).to receive(:use_connection).and_yield(conn)
@@ -314,6 +318,57 @@ RSpec.describe Gitlab::InstrumentationHelper, :clean_gitlab_redis_repository_cac
 
           expect(payload).not_to include(:path_traversal_check_duration_s)
         end
+      end
+    end
+
+    context 'when GVL timers are enabled' do
+      before do
+        allow(GVLTools::LocalTimer).to receive(:monotonic_time).and_return(1_000_000_000, 2_500_000_000)
+        allow(GVLTools::GlobalTimer).to receive(:monotonic_time).and_return(3_000_000_000, 5_000_000_000)
+        allow(GVLTools::LocalTimer).to receive(:enabled?).and_return(true)
+        allow(GVLTools::GlobalTimer).to receive(:enabled?).and_return(true)
+        described_class.init_instrumentation_data
+      end
+
+      it 'adds GVL data to payload' do
+        subject
+
+        expect(payload[:gvl_thread_wait_s]).to eq(1.5)
+        expect(payload[:gvl_process_wait_s]).to eq(2.0)
+      end
+    end
+
+    context 'when GVL timers are not enabled' do
+      before do
+        allow(GVLTools::LocalTimer).to receive(:enabled?).and_return(false)
+        allow(GVLTools::GlobalTimer).to receive(:enabled?).and_return(false)
+      end
+
+      it 'does not add GVL data to payload' do
+        subject
+
+        expect(payload).not_to include(:gvl_thread_wait_s)
+        expect(payload).not_to include(:gvl_process_wait_s)
+      end
+    end
+
+    context 'when GVL timers are disabled by another thread after initialization' do
+      before do
+        allow(GVLTools::LocalTimer).to receive(:monotonic_time).and_return(1_000_000_000)
+        allow(GVLTools::GlobalTimer).to receive(:monotonic_time).and_return(3_000_000_000)
+        allow(GVLTools::LocalTimer).to receive(:enabled?).and_return(true)
+        allow(GVLTools::GlobalTimer).to receive(:enabled?).and_return(true)
+        described_class.init_instrumentation_data
+
+        allow(GVLTools::LocalTimer).to receive(:enabled?).and_return(false)
+        allow(GVLTools::GlobalTimer).to receive(:enabled?).and_return(false)
+      end
+
+      it 'does not add GVL data to payload' do
+        subject
+
+        expect(payload).not_to include(:gvl_thread_wait_s)
+        expect(payload).not_to include(:gvl_process_wait_s)
       end
     end
   end

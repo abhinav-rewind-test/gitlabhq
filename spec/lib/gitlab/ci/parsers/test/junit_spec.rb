@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
+RSpec.describe Gitlab::Ci::Parsers::Test::Junit, feature_category: :code_testing do
   describe '#parse!' do
     subject { described_class.new.parse!(junit, test_report, job: job) }
 
@@ -18,9 +18,9 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
     context 'when data is JUnit style XML' do
       context 'when there are no <testcases> in <testsuite>' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuite></testsuite>
-          EOF
+          XML
         end
 
         it 'ignores the case' do
@@ -32,9 +32,9 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when there are no <testcases> in <testsuites>' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuites><testsuite /></testsuites>
-          EOF
+          XML
         end
 
         it 'ignores the case' do
@@ -44,15 +44,32 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
         end
       end
 
+      context 'when <testsuites> is empty' do
+        let(:junit) do
+          <<~XML
+            <?xml version="1.0" encoding="utf-8"?>
+            <testsuites>
+            </testsuites>
+          XML
+        end
+
+        it 'parses without error and returns no test cases' do
+          expect { subject }.not_to raise_error
+
+          expect(test_cases.count).to eq(0)
+          expect(test_suite.suite_error).to be_nil
+        end
+      end
+
       context 'when there is only one <testsuite> in <testsuites>' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuites>
               <testsuite name='Math'>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
               </testsuite>
             </testsuites>
-          EOF
+          XML
         end
 
         it 'parses XML and adds a test case to a suite' do
@@ -67,13 +84,13 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when there is <testcase>' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
               <testsuite name='Math'>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'>
                   #{testcase_content}
                 </testcase>
               </testsuite>
-          EOF
+          XML
         end
 
         let(:test_case) { test_cases[0] }
@@ -103,12 +120,12 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
             'Some failure'
         end
 
-        context 'and has failure with no message but has system-err' do
+        context 'and has failure with no message but one system-err' do
           let(:testcase_content) do
-            <<-EOF.strip_heredoc
+            <<~XML
               <failure></failure>
               <system-err>Some failure</system-err>
-            EOF
+            XML
           end
 
           it_behaves_like '<testcase> XML parser',
@@ -116,18 +133,48 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
             "System Err:\n\nSome failure"
         end
 
-        context 'and has failure with message, system-out and system-err' do
+        context 'and has failure with no message but two system-err tags' do
           let(:testcase_content) do
-            <<-EOF.strip_heredoc
+            <<~XML
+              <failure></failure>
+              <system-err>Some failure</system-err>
+              <system-err>Second failure</system-err>
+            XML
+          end
+
+          it_behaves_like '<testcase> XML parser',
+            ::Gitlab::Ci::Reports::TestCase::STATUS_FAILED,
+            "System Err:\n\nSome failure\n\nSecond failure"
+        end
+
+        context 'and has failure with message, single system-out and system-err' do
+          let(:testcase_content) do
+            <<~XML
               <failure>Some failure</failure>
               <system-out>This is the system output</system-out>
               <system-err>This is the system err</system-err>
-            EOF
+            XML
           end
 
           it_behaves_like '<testcase> XML parser',
             ::Gitlab::Ci::Reports::TestCase::STATUS_FAILED,
             "Some failure\n\nSystem Out:\n\nThis is the system output\n\nSystem Err:\n\nThis is the system err"
+        end
+
+        context 'and has failure with message, two system-out and two system-err tags' do
+          let(:testcase_content) do
+            <<~XML
+              <failure>Some failure</failure>
+              <system-out>This is the system output</system-out>
+              <system-out>Second output</system-out>
+              <system-err>This is the system err</system-err>
+              <system-err>Second system err</system-err>
+            XML
+          end
+
+          it_behaves_like '<testcase> XML parser',
+            ::Gitlab::Ci::Reports::TestCase::STATUS_FAILED,
+            "Some failure\n\nSystem Out:\n\nThis is the system output\n\nSecond output\n\nSystem Err:\n\nThis is the system err\n\nSecond system err"
         end
 
         context 'and has error' do
@@ -138,12 +185,12 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
             'Some error'
         end
 
-        context 'and has error with no message but has system-err' do
+        context 'and has error with no message but one system-err' do
           let(:testcase_content) do
-            <<-EOF.strip_heredoc
+            <<~XML
               <error></error>
               <system-err>Some error</system-err>
-            EOF
+            XML
           end
 
           it_behaves_like '<testcase> XML parser',
@@ -151,18 +198,34 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
             "System Err:\n\nSome error"
         end
 
-        context 'and has error with message, system-out and system-err' do
+        context 'and has error with no message and two system-err tags' do
           let(:testcase_content) do
-            <<-EOF.strip_heredoc
-              <error>Some error</error>
-              <system-out>This is the system output</system-out>
-              <system-err>This is the system err</system-err>
-            EOF
+            <<~XML
+              <error></error>
+              <system-err>Some error</system-err>
+              <system-err>Second error</system-err>
+            XML
           end
 
           it_behaves_like '<testcase> XML parser',
             ::Gitlab::Ci::Reports::TestCase::STATUS_ERROR,
-            "Some error\n\nSystem Out:\n\nThis is the system output\n\nSystem Err:\n\nThis is the system err"
+            "System Err:\n\nSome error\n\nSecond error"
+        end
+
+        context 'and has error with messages, two system-out and two system-err tags' do
+          let(:testcase_content) do
+            <<~XML
+              <error>Some error</error>
+              <system-out>This is the system output</system-out>
+              <system-out>Second system output</system-out>
+              <system-err>This is the system err</system-err>
+              <system-err>Second system err</system-err>
+            XML
+          end
+
+          it_behaves_like '<testcase> XML parser',
+            ::Gitlab::Ci::Reports::TestCase::STATUS_ERROR,
+            "Some error\n\nSystem Out:\n\nThis is the system output\n\nSecond system output\n\nSystem Err:\n\nThis is the system err\n\nSecond system err"
         end
 
         context 'and has skipped' do
@@ -194,11 +257,27 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
             ::Gitlab::Ci::Reports::TestCase::STATUS_SUCCESS,
             nil
         end
+
+        context 'and is success with one system-out' do
+          let(:testcase_content) { '<system-out>Some output</system-out>' }
+
+          it_behaves_like '<testcase> XML parser',
+            ::Gitlab::Ci::Reports::TestCase::STATUS_SUCCESS,
+            "System Out:\n\nSome output"
+        end
+
+        context 'and is success with two system-out tags' do
+          let(:testcase_content) { '<system-out>Some output</system-out><system-out>Second output</system-out>' }
+
+          it_behaves_like '<testcase> XML parser',
+            ::Gitlab::Ci::Reports::TestCase::STATUS_SUCCESS,
+            "System Out:\n\nSome output\n\nSecond output"
+        end
       end
 
       context 'PHPUnit' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
           <testsuites>
             <testsuite name="Project Test Suite" tests="1" assertions="1" failures="0" errors="0" time="1.376748">
               <testsuite name="XXX\\FrontEnd\\WebBundle\\Tests\\Controller\\LogControllerTest" file="/Users/mcfedr/projects/xxx/server/tests/XXX/FrontEnd/WebBundle/Tests/Controller/LogControllerTest.php" tests="1" assertions="1" failures="0" errors="0" time="1.376748">
@@ -206,7 +285,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               </testsuite>
             </testsuite>
           </testsuites>
-          EOF
+          XML
         end
 
         it 'parses XML and adds a test case to a suite' do
@@ -220,12 +299,12 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when there are two test cases' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuite name='Math'>
               <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
               <testcase classname='Calculator' name='sumTest2' time='0.02'></testcase>
             </testsuite>
-          EOF
+          XML
         end
 
         it 'parses XML and adds test cases to a suite' do
@@ -244,7 +323,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when there are two test suites' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuites>
               <testsuite name='Math'>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
@@ -255,7 +334,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
                 <testcase classname='Statemachine' name='unhappy path' time='200'></testcase>
               </testsuite>
             </testsuites>
-          EOF
+          XML
         end
 
         it 'parses XML and adds test cases to a suite' do
@@ -302,7 +381,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
         context 'and test cases are unique' do
           let(:junit) do
-            <<-EOF.strip_heredoc
+            <<~XML
             <testsuites>
               <testsuite>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
@@ -313,7 +392,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
                 <testcase classname='Statemachine' name='unhappy path' time='200'></testcase>
               </testsuite>
             </testsuites>
-            EOF
+            XML
           end
 
           it_behaves_like 'rejecting too many test cases'
@@ -321,7 +400,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
         context 'and test cases are duplicates' do
           let(:junit) do
-            <<-EOF.strip_heredoc
+            <<~XML
             <testsuites>
               <testsuite>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
@@ -332,7 +411,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
                 <testcase classname='Calculator' name='sumTest2' time='0.02'></testcase>
               </testsuite>
             </testsuites>
-            EOF
+            XML
           end
 
           it_behaves_like 'rejecting too many test cases'
@@ -351,12 +430,12 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when data is malformed JUnit XML' do
       let(:junit) do
-        <<-EOF.strip_heredoc
+        <<~XML
           <testsuite>
             <testcase classname='Calculator' name='sumTest1' time='0.01'></testcase>
             <testcase classname='Calculator' name='sumTest2' time='0.02'></testcase
           </testsuite>
-        EOF
+        XML
       end
 
       it 'attaches an error to the TestSuite object' do
@@ -406,7 +485,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when attachment is specified in failed test case' do
       let(:junit) do
-        <<~EOF
+        <<~XML
           <testsuites>
             <testsuite>
               <testcase classname='Calculator' name='sumTest1' time='0.01'>
@@ -415,7 +494,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               </testcase>
             </testsuite>
           </testsuites>
-        EOF
+        XML
       end
 
       it 'assigns correct attributes to the test case' do
@@ -429,7 +508,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when attachment is way too long' do
         let(:junit) do
-          <<~EOF
+          <<~XML
             <testsuites>
               <testsuite>
                 <testcase classname='Calculator' name='sumTest1' time='0.01'>
@@ -438,7 +517,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
                 </testcase>
               </testsuite>
             </testsuites>
-          EOF
+          XML
         end
 
         it 'assigns correct attributes to the test case' do
@@ -454,7 +533,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when data contains multiple attachments tag' do
       let(:junit) do
-        <<~EOF
+        <<~XML
           <testsuites>
             <testsuite>
               <testcase classname='Calculator' name='sumTest1' time='0.01'>
@@ -466,7 +545,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               </testcase>
             </testsuite>
           </testsuites>
-        EOF
+        XML
       end
 
       it 'adds the first match attachment to a test case' do
@@ -479,7 +558,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when data does not match attachment tag regex' do
       let(:junit) do
-        <<~EOF
+        <<~XML
           <testsuites>
             <testsuite>
               <testcase classname='Calculator' name='sumTest1' time='0.01'>
@@ -488,7 +567,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               </testcase>
             </testsuite>
           </testsuites>
-        EOF
+        XML
       end
 
       it 'does not add attachment to a test case' do
@@ -501,7 +580,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when attachment is specified in test case with error' do
       let(:junit) do
-        <<~EOF
+        <<~XML
           <testsuites>
             <testsuite>
               <testcase classname='Calculator' name='sumTest1' time='0.01'>
@@ -510,7 +589,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               </testcase>
             </testsuite>
           </testsuites>
-        EOF
+        XML
       end
 
       it 'assigns correct attributes to the test case' do
@@ -519,6 +598,29 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
         expect(test_cases[0].has_attachment?).to be_truthy
         expect(test_cases[0].attachment).to eq("some/path.png")
 
+        expect(test_cases[0].job).to eq(job)
+      end
+    end
+
+    context 'when attachment is specified in successful test case' do
+      let(:junit) do
+        <<~XML
+          <testsuites>
+            <testsuite>
+              <testcase classname='Calculator' name='sumTest1' time='0.01'>
+                <system-out>[[ATTACHMENT|some/path.png]]</system-out>
+              </testcase>
+            </testsuite>
+          </testsuites>
+        XML
+      end
+
+      it 'assigns correct attributes to the test case' do
+        expect { subject }.not_to raise_error
+
+        expect(test_cases[0].status).to eq(::Gitlab::Ci::Reports::TestCase::STATUS_SUCCESS)
+        expect(test_cases[0].has_attachment?).to be_truthy
+        expect(test_cases[0].attachment).to eq("some/path.png")
         expect(test_cases[0].job).to eq(job)
       end
     end
@@ -576,14 +678,14 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
       context 'when <testcase> elements have a `time` attribute' do
         let(:junit) do
-          <<-EOF.strip_heredoc
+          <<~XML
             <testsuites>
               <testsuite>
                 <testcase name="test1" time="1.02"/>
                 <testcase name="test2" time="2.08"/>
               </testsuite>
             </testsuites>
-          EOF
+          XML
         end
 
         it 'calculates `total_time` from individual test cases' do
@@ -602,7 +704,7 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
 
     context 'when <testsuites> have multiple <testsuite>s' do
       let(:junit) do
-        <<-EOF.strip_heredoc
+        <<~XML
           <testsuites>
             <testsuite time="7.02">
               <testcase name="test1" />
@@ -611,13 +713,21 @@ RSpec.describe Gitlab::Ci::Parsers::Test::Junit do
               <testcase name="test2"/>
             </testsuite>
           </testsuites>
-        EOF
+        XML
       end
 
       it 'calculates `total_time` by summin testsuite `time` attributes' do
         expect { subject }.not_to raise_error
 
         expect(test_suite.total_time).to eq(13.68)
+      end
+    end
+
+    describe '#dig_into_testsuites' do
+      let(:parser) { described_class.new }
+
+      it 'returns nil when root is nil' do
+        expect(parser.send(:dig_into_testsuites, nil, 'time')).to be_nil
       end
     end
 

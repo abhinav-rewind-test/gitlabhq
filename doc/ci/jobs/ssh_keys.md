@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Using SSH keys with GitLab CI/CD
 ---
 
@@ -52,11 +52,19 @@ check the [visibility of your pipelines](../pipelines/settings.md#change-which-u
 
 To add an SSH key to your project, add the key as a [file type CI/CD variable](../variables/_index.md#for-a-project):
 
-- Set **Visibility** to **Visible**. Any other setting prevents the variable from having multiple lines.
-- In the **Key** field, enter the name of the variable. For example, `SSH_PRIVATE_KEY`.
-- In the **Value** field, paste the content of the private key. The variable value must end in a newline (`LF` character).
-  To add a newline, press <kbd>Enter</kbd> or <kbd>Return</kbd> at the end of the last line of the SSH key
-  before saving it in the CI/CD settings.
+1. Set **Visibility** to **Visible**.
+
+   > [!note]
+   > The visibility setting must be **Visible** because SSH keys contain whitespace characters,
+   > and **Masked** or **Masked and hidden** variables cannot contain whitespace characters.
+   > Never run a command like `cat` or `tee` on the variable because the SSH key is not masked
+   > if it appears in the job log.
+
+1. In the **Key** text box, enter the name of the variable. For example, `SSH_PRIVATE_KEY`.
+1. In the **Value** text box, paste the private key content.
+   The value must end with a newline (`LF` character).
+   To add a newline, press <kbd>Enter</kbd> or <kbd>Return</kbd> at the end of the last line
+   before saving.
 
 ### Add an SSH key as a regular variable
 
@@ -110,7 +118,6 @@ When your CI/CD jobs run in Docker containers, the environment is isolated. To d
    or per-job.
 
 1. Make sure the private server's [SSH host keys are verified](#verifying-the-ssh-host-keys).
-
 1. As a final step, add the public key from the one you created in the first
    step to the services that you want to have an access to from inside the build
    environment. If you are accessing a private GitLab repository you must add
@@ -128,7 +135,6 @@ You can generate the SSH key from the machine that GitLab Runner is installed
 on, and use that key for all projects that are run on this machine.
 
 1. First, sign in to the server that runs your jobs.
-
 1. Then, from the terminal, sign in as the `gitlab-runner` user:
 
    ```shell
@@ -138,7 +144,6 @@ on, and use that key for all projects that are run on this machine.
 1. [Generate a new SSH key pair](../../user/ssh.md#generate-an-ssh-key-pair).
    Do not add a passphrase to the SSH key, or the `before_script` will
    prompt for it.
-
 1. As a final step, add the public key from the one you created earlier to the
    services that you want to have an access to from inside the build environment.
    If you are accessing a private GitLab repository you must add it as a
@@ -185,7 +190,7 @@ must be collected in the **Value** of the variable, one key per line.
 > if the host domain name changes for some reason. Also, the values are predefined
 > by you, meaning that if the host keys suddenly change, the CI/CD job doesn't fail,
 > so there's something wrong with the server or the network.
-> 
+>
 > Do not run `ssh-keyscan` directly in a CI/CD job, as it is a security risk vulnerable
 > to machine-in-the-middle attacks.
 
@@ -203,11 +208,35 @@ before_script:
 
 ## Troubleshooting
 
-### `Error loading key "/builds/path/SSH_PRIVATE_KEY": error in libcrypto` message
+### Error: `... error in libcrypto`
 
-This message can be returned if there is a formatting error with the SSH key.
+You might get the following error when you load an SSH key in a CI/CD job:
 
-When saving the SSH key as a [file type CI/CD variable](../variables/_index.md#use-file-type-cicd-variables),
-the value must end with a newline (`LF` character). To add a newline, press <kbd>Enter</kbd> or <kbd>Return</kbd>
-at the end of the `-----END OPENSSH PRIVATE KEY-----` line of the SSH key before saving
-the variable.
+```plaintext
+Error loading key "/builds/path/SSH_PRIVATE_KEY": error in libcrypto
+```
+
+This issue can happen when the SSH key value does not end with a newline (`LF` character).
+
+To resolve this issue, edit the
+[file type CI/CD variable](../variables/_index.md#use-file-type-cicd-variables)
+and press <kbd>Enter</kbd> or <kbd>Return</kbd> at the end of the `-----END OPENSSH PRIVATE KEY-----`
+line of the SSH key before saving the variable.
+
+### Error: `... value cannot contain...`
+
+You might get an error when you save an SSH key as a CI/CD variable:
+
+```plaintext
+Unable to create masked variable because: The value cannot contain the
+following characters: whitespace characters.
+```
+
+This issue occurs when the variable **Visibility** is set to **Masked** or **Masked and hidden**.
+Masked variables must be a single line with no spaces, but SSH keys contain whitespace characters
+that are incompatible with masking.
+
+To resolve this issue, set **Visibility** to **Visible** when you
+[add the SSH key as a file type variable](#add-an-ssh-key-as-a-file-type-variable).
+File type variables are not exposed in job logs, which provides an additional layer of protection
+for the key value.

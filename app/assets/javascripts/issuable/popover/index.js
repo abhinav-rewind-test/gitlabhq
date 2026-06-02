@@ -2,18 +2,21 @@ import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import IterationPopover from 'ee_component/issuable/popover/components/iteration_popover.vue';
 import createDefaultClient from '~/lib/graphql';
-import IssuePopover from './components/issue_popover.vue';
+import { dispose as disposeTooltip } from '~/tooltips';
+import CommitPopover from './components/commit_popover.vue';
+import WorkItemPopover from './components/work_item_popover.vue';
 import MRPopover from './components/mr_popover.vue';
 import MilestonePopover from './components/milestone_popover.vue';
 import CommentPopover from './components/comment_popover.vue';
 
 export const componentsByReferenceTypeMap = {
-  epic: IssuePopover,
-  issue: IssuePopover,
-  work_item: IssuePopover,
+  epic: WorkItemPopover,
+  issue: WorkItemPopover,
+  work_item: WorkItemPopover,
   merge_request: MRPopover,
   milestone: MilestonePopover,
   iteration: IterationPopover,
+  commit: CommitPopover,
 };
 
 let renderFn;
@@ -29,6 +32,8 @@ const handleIssuablePopoverMouseOut = ({ target }) => {
 const popoverMountedAttr = 'data-popover-mounted';
 
 function isCommentPopover(target) {
+  if (!target.href) return false;
+
   const targetUrl = new URL(target.href);
   const noteId = targetUrl.hash;
 
@@ -57,8 +62,10 @@ export const handleIssuablePopoverMount = ({
   apolloProvider,
   namespacePath,
   title,
+  titleHtml,
   iid,
   milestone,
+  iteration,
   innerText,
   referenceType,
   target,
@@ -73,15 +80,26 @@ export const handleIssuablePopoverMount = ({
     } else {
       const PopoverComponent = Vue.extend(componentsByReferenceType[referenceType]);
 
+      const isCommit = referenceType === 'commit';
+
       new PopoverComponent({
         propsData: {
           target,
-          namespacePath,
-          iid,
-          placement,
-          milestoneId: milestone,
-          cachedTitle: title || innerText,
-          show: true,
+          ...(isCommit
+            ? {
+                commitSha: target.dataset.commit,
+                projectPath: target.dataset.projectPath,
+              }
+            : {
+                namespacePath,
+                iid,
+                placement,
+                milestoneId: milestone,
+                iterationId: iteration,
+                cachedTitle: title || innerText,
+                cachedTitleHtml: titleHtml,
+                show: true,
+              }),
         },
         apolloProvider,
       }).$mount();
@@ -101,23 +119,36 @@ export default (elements, issuablePopoverMount = handleIssuablePopoverMount) => 
     const listenerAddedAttr = 'data-popover-listener-added';
 
     elements.forEach((el) => {
-      const { projectPath, groupPath, iid, referenceType, milestone, placement } = el.dataset;
+      const { projectPath, groupPath, iid, referenceType, milestone, iteration, placement } =
+        el.dataset;
       let { namespacePath } = el.dataset;
       const title = el.dataset.mrTitle || el.title;
+      const { titleHtml } = el.dataset;
       const { innerText } = el;
       namespacePath = namespacePath || groupPath || projectPath;
       const isIssuable = Boolean(namespacePath && title && iid);
       const isMilestone = Boolean(milestone);
+      const isIteration = Boolean(iteration);
+      const isCommit = referenceType === 'commit' && Boolean(el.dataset.commit && projectPath);
 
-      if (!el.getAttribute(listenerAddedAttr) && referenceType && (isIssuable || isMilestone)) {
+      if (
+        !el.getAttribute(listenerAddedAttr) &&
+        referenceType &&
+        (isIssuable || isMilestone || isIteration || isCommit)
+      ) {
         el.addEventListener('mouseenter', ({ target }) => {
           if (!el.getAttribute(popoverMountedAttr)) {
+            target.removeAttribute('title');
+            target.classList.remove('has-tooltip');
+            disposeTooltip(target);
             issuablePopoverMount({
               apolloProvider,
               namespacePath,
               title,
+              titleHtml,
               iid,
               milestone,
+              iteration,
               innerText,
               referenceType,
               target,

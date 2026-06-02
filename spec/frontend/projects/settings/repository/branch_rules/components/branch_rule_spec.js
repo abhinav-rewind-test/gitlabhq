@@ -6,7 +6,6 @@ import createMockApollo from 'helpers/mock_apollo_helper';
 import BranchRule from '~/projects/settings/repository/branch_rules/components/branch_rule.vue';
 import GroupInheritancePopover from '~/vue_shared/components/settings/group_inheritance_popover.vue';
 import GroupBadge from '~/projects/settings/repository/branch_rules/components/group_badge.vue';
-import PolicyBadge from '~/projects/settings/repository/branch_rules/components/policy_badge.vue';
 import ProtectedBadge from '~/vue_shared/components/badges/protected_badge.vue';
 import squashOptionQuery from '~/projects/settings/branch_rules/queries/squash_option.query.graphql';
 import {
@@ -14,6 +13,7 @@ import {
   branchRulePropsMock,
   branchRuleWithoutDetailsPropsMock,
   squashOptionMockResponse,
+  accessLevelsWithDeployKeyMockResponse,
 } from '../mock_data';
 
 Vue.use(VueApollo);
@@ -38,6 +38,8 @@ describe('Branch rule', () => {
         GroupBadge: {
           template: '<div>Stubbed GroupBadge</div>',
         },
+        PolicyBadge: true,
+        DisabledByPolicyPopover: true,
       },
       propsData: { ...branchRulePropsMock, ...props },
     });
@@ -47,7 +49,6 @@ describe('Branch rule', () => {
   const findDefaultBadge = () => wrapper.findByText('default');
   const findProtectedBadge = () => wrapper.findByText('protected');
   const findGroupBadge = () => wrapper.findComponent(GroupBadge);
-  const findPolicyBadge = () => wrapper.findComponent(PolicyBadge);
   const findBranchName = () => wrapper.findByText(branchRulePropsMock.name);
   const findProtectionDetailsList = () => wrapper.findByRole('list');
   const findProtectionDetailsListItems = () => wrapper.findAllByRole('listitem');
@@ -88,10 +89,6 @@ describe('Branch rule', () => {
       await createComponent(branchRuleProps);
 
       expect(findGroupBadge().exists()).toBe(true);
-    });
-
-    it('does not render policy badge by default', () => {
-      expect(findPolicyBadge().exists()).toBe(false);
     });
   });
 
@@ -147,6 +144,54 @@ describe('Branch rule', () => {
 
       await createComponent(branchRuleProps);
       expect(findProtectionDetailsListItems().at(2).text()).toBe('Squash commits: Encourage');
+    });
+  });
+
+  describe('access levels rendering', () => {
+    it('does not render access levels text when both are empty', async () => {
+      await createComponent({
+        branchProtection: {
+          mergeAccessLevels: { edges: [] },
+        },
+      });
+
+      const detailsText = findProtectionDetailsListItems()
+        .wrappers.map((item) => item.text())
+        .join(' ');
+
+      expect(detailsText).not.toContain('Allowed to merge:');
+    });
+
+    it('renders push access levels with deploy key instead of Maintainers', async () => {
+      await createComponent({
+        branchProtection: {
+          ...branchRulePropsMock.branchProtection,
+          pushAccessLevels: {
+            edges: accessLevelsWithDeployKeyMockResponse,
+          },
+        },
+      });
+
+      const detailsText = findProtectionDetailsListItems().wrappers.map((item) => item.text());
+
+      expect(detailsText).toContain('Allowed to push and merge: No one, 1 deploy key');
+    });
+
+    it('renders merge access levels text with roles and deploy keys', async () => {
+      await createComponent({
+        branchProtection: {
+          mergeAccessLevels: {
+            edges: [
+              { node: { accessLevel: 40 } },
+              { node: { accessLevel: 40, deployKey: { id: '1', title: 'Key' } } },
+            ],
+          },
+        },
+      });
+
+      const detailsText = findProtectionDetailsListItems().wrappers.map((item) => item.text());
+
+      expect(detailsText).toContain('Allowed to merge: Maintainers, 1 deploy key');
     });
   });
 });

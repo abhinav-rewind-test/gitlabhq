@@ -1,5 +1,5 @@
 <script>
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import issuableLabelsSubscription from 'ee_else_ce/sidebar/queries/issuable_labels.subscription.graphql';
 import { mutationOperationMode, getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { createAlert } from '~/alert';
@@ -181,16 +181,10 @@ export default {
         return !isDropdownVariantSidebar(this.variant) || !this.iid;
       },
       variables() {
-        const queryVariables = {
+        return {
           iid: this.iid,
           fullPath: this.fullPath,
         };
-
-        if (this.issuableType === TYPE_TEST_CASE) {
-          queryVariables.types = ['TEST_CASE'];
-        }
-
-        return queryVariables;
       },
       update(data) {
         return data.namespace?.issuable;

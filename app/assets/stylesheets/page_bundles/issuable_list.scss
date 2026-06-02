@@ -80,8 +80,6 @@
 
     @include gl-container-width-down(lg, panel) {
       .task-status,
-      .issuable-due-date,
-      .issuable-weight,
       .project-ref-path {
         display: none;
       }
@@ -109,7 +107,8 @@
   }
 }
 
-.issuable-list-container {
+.issuable-list-container,
+.planning-view {
   .sticky-filter {
     position: fixed;
     top: $calc-application-header-height;
@@ -171,13 +170,14 @@
   border-bottom: 2px solid transparent !important;
   border-radius: 0;
 
-  &:hover, &:focus, &:active {
-    border-bottom: 2px solid $gray-200 !important;
+  &:hover, &:active {
+    border-bottom: 2px solid var(--gl-border-color-strong) !important;
+    background-color: var(--gl-action-neutral-background-color-hover) !important;
   }
 
-  &:focus-visible {
+  &:focus, &:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px var(--gl-focus-ring-outer-color), inset 0 0 0 3px var(--gl-focus-ring-inner-color);
+    box-shadow: inset 0 0 0 2px var(--gl-focus-ring-outer-color), inset 0 0 0 3px var(--gl-focus-ring-inner-color) !important;
     border-radius: 0.5rem !important;
     border-bottom: 2px solid transparent !important;
   }
@@ -189,14 +189,15 @@
 }
 
 .default-selector-active, .saved-view-selector-active .gl-button {
-  border-bottom: 2px solid $blue-500 !important;
+  border-bottom: 2px solid var(--gl-tab-selected-indicator-color-default) !important;
   font-weight: $gl-font-weight-bold;
 
   &:hover, &:focus, &:active {
-    border-bottom-color: $blue-500 !important;
+    border-bottom-color: var(--gl-tab-selected-indicator-color-default) !important;
   }
 }
 
+// stylelint-disable-next-line gitlab/no-has -- scoped to a specific modal element
 .gl-modal:has(.saved-view-confirm-modal) {
   .modal-body {
     min-height: auto;

@@ -209,7 +209,7 @@ module Trigger
     DEFAULT_DEBIAN_IMAGE = "debian:bookworm-slim"
     DEFAULT_ALPINE_IMAGE = "alpine:3.20"
     DEFAULT_SKIPPED_JOBS = %w[final-images-listing].freeze
-    DEFAULT_SKIPPED_JOB_REGEX = "/#{DEFAULT_SKIPPED_JOBS.join('|')}/".freeze
+    DEFAULT_SKIPPED_JOB_REGEX = "/^(#{DEFAULT_SKIPPED_JOBS.join('|')})$/".freeze
     STABLE_BASE_JOBS = %w[alpine-stable debian-stable].freeze
 
     def variables
@@ -395,7 +395,7 @@ module Trigger
     #
     # @return [String]
     def skip_job_regex
-      "/#{[*DEFAULT_SKIPPED_JOBS, *STABLE_BASE_JOBS, *skippable_jobs].join('|')}/"
+      "/^(#{[*DEFAULT_SKIPPED_JOBS, *STABLE_BASE_JOBS, *skippable_jobs].join('|')})$/"
     end
 
     # Branch existence check
@@ -611,24 +611,39 @@ module Trigger
     end
 
     #
-    # Remove a remote environment in the docs-gitlab-com project.
+    # Stop a remote environment in the docs-gitlab-com project.
     #
     def cleanup!
-      environment = com_gitlab_client.environments(downstream_project_path, name: downstream_environment).first
-      return unless environment
+      puts "=> Looking for downstream environment '#{downstream_environment}' in project '#{downstream_project_path}'"
 
-      environment = com_gitlab_client.stop_environment(downstream_project_path, environment.id)
-      if environment.state == 'stopped'
-        puts "=> Downstream environment '#{downstream_environment}' stopped."
+      environment = com_gitlab_client.environments(downstream_project_path, name: downstream_environment).first
+
+      unless environment
+        puts "=> No environment found matching '#{downstream_environment}'. Nothing to clean up."
+        return
+      end
+
+      puts "=> Found environment: id=#{environment.id}, state=#{environment.state}"
+
+      begin
+        environment = com_gitlab_client.stop_environment(downstream_project_path, environment.id)
+      rescue Gitlab::Error::ResponseError => e
+        puts "=> Failed to stop downstream environment '#{downstream_environment}': #{e.message}"
+        exit 1
+      end
+
+      if %w[stopped stopping].include?(environment.state)
+        puts "=> Downstream environment '#{downstream_environment}' (id=#{environment.id}) stopped."
       else
-        puts "=> Downstream environment '#{downstream_environment}' failed to stop."
+        puts "=> Downstream environment '#{downstream_environment}' (id=#{environment.id}) failed to stop. State: #{environment.state}"
+        exit 1
       end
     end
 
     private
 
     def downstream_environment
-      "upstream-review/mr-${CI_MERGE_REQUEST_IID}"
+      "review/mr-#{review_slug}"
     end
 
     def review_slug
@@ -671,6 +686,10 @@ module Trigger
         'charts'
       when 'gitlab-org/cloud-native/gitlab-operator'
         'operator'
+      when 'gitlab-org/cli'
+        'cli'
+      when 'gitlab-org/orbit/knowledge-graph'
+        'orbit'
       when 'gitlab-org/gitlab-environment-toolkit'
         'get'
       end
@@ -687,11 +706,16 @@ module Trigger
 
   class DatabaseTesting < Base
     IDENTIFIABLE_NOTE_TAG = 'gitlab-org/database-team/gitlab-com-database-testing:identifiable-note'
+    COMMIT_STATUS_NAME = 'database-testing'
+    COMMIT_STATUS_DESCRIPTION = 'Database testing pipeline running on ops.gitlab.net and it needs to finish'
 
     def invoke!
       pipeline = super
       project_path = variables['TOP_UPSTREAM_SOURCE_PROJECT']
       merge_request_id = variables['TOP_UPSTREAM_MERGE_REQUEST_IID']
+
+      post_pending_commit_status(project_path, variables['UPSTREAM_TARGET_SHA'])
+
       comment = <<~COMMENT.strip
         <!-- #{IDENTIFIABLE_NOTE_TAG} -->
         Started database testing [pipeline](https://ops.gitlab.net/#{downstream_project_path}/-/pipelines/#{pipeline.id}) (limited access). This comment will be updated once the pipeline has finished running.
@@ -739,7 +763,14 @@ module Trigger
       {
         'GITLAB_COMMIT_SHA' => Trigger.non_empty_variable_value('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA') || ENV['CI_COMMIT_SHA'],
         'TRIGGERED_USER_LOGIN' => ENV['GITLAB_USER_LOGIN'],
-        'TOP_UPSTREAM_SOURCE_SHA' => Trigger.non_empty_variable_value('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA') || ENV['CI_COMMIT_SHA']
+        'TOP_UPSTREAM_SOURCE_SHA' => Trigger.non_empty_variable_value('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA') || ENV['CI_COMMIT_SHA'],
+        # Forwarded to the ops notifier so it can update the same `database-testing`
+        # commit status entry on the upstream project when the downstream pipeline
+        # finishes. Uses CI_COMMIT_SHA (the merge-commit SHA in merged-results
+        # pipelines) so the status lands on the SHA that the MR's head pipeline
+        # runs against and surfaces in the pipeline graph.
+        # See https://gitlab.com/gitlab-org/database-team/gitlab-com-database-testing/-/issues/172.
+        'UPSTREAM_TARGET_SHA' => ENV['CI_COMMIT_SHA']
       }
     end
 
@@ -749,6 +780,21 @@ module Trigger
 
     def primary_ref
       'master'
+    end
+
+    # Post a pending `database-testing` commit status on the upstream project so
+    # the gitlab.com merge gate waits for the downstream ops pipeline. The ops
+    # notifier updates this same status to success/failed when the pipeline
+    # finishes.
+    def post_pending_commit_status(project_path, sha)
+      com_gitlab_client.update_commit_status(
+        project_path,
+        sha,
+        'pending',
+        name: COMMIT_STATUS_NAME,
+        target_url: ENV['CI_JOB_URL'],
+        description: COMMIT_STATUS_DESCRIPTION
+      )
     end
   end
 

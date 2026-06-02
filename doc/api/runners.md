@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Runners API
 ---
 
@@ -14,7 +14,7 @@ title: Runners API
 
 Use this API to manage [runners](../ci/runners/_index.md) registered to an instance.
 
-To create new instance, group, or project runners, use the [`POST /user/runners`](users.md#create-a-runner-linked-to-a-user) endpoint.
+To create a new instance, group, or project runner, use the [`POST /user/runners`](users.md#create-a-runner-linked-to-a-user) endpoint.
 Use this API to manage existing runners.
 
 [Pagination](rest/_index.md#pagination) is available on the following API endpoints (they return 20 items by default):
@@ -55,7 +55,7 @@ Lists all runners available to the user.
 Prerequisites:
 
 - For group runners, you must have the Owner role in the owner namespace.
-- For project runners, you must have the Maintainer or Owner role in a project assigned to the runner.
+- For project runners, you must have the Security Manager, Maintainer or Owner role in a project assigned to the runner.
 
 ```plaintext
 GET /runners
@@ -76,7 +76,8 @@ GET /runners?tag_list=tag1,tag2
 | `version_prefix` | string       | no       | The prefix of the version of the runners to return. For example, `15.0`, `14`, `16.1.241` |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners"
 ```
 
 > [!warning]
@@ -110,7 +111,8 @@ Example response:
         "runner_type": "project_type",
         "name": null,
         "online": true,
-        "status": "online"
+        "status": "online",
+        "job_execution_status": "idle"
     },
     {
         "active": true,
@@ -122,7 +124,8 @@ Example response:
         "runner_type": "group_type",
         "name": null,
         "online": false,
-        "status": "offline"
+        "status": "offline",
+        "job_execution_status": "idle"
     }
 ]
 ```
@@ -161,7 +164,8 @@ GET /runners/all?tag_list=tag1,tag2
 | `version_prefix` | string       | no       | The prefix of the version of the runners to return. For example, `15.0`, `16.1.241` |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/all"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/all"
 ```
 
 > [!warning]
@@ -195,7 +199,8 @@ Example response:
         "runner_type": "instance_type",
         "name": null,
         "online": true,
-        "status": "online"
+        "status": "online",
+        "job_execution_status": "idle"
     },
     {
         "active": true,
@@ -207,7 +212,8 @@ Example response:
         "runner_type": "instance_type",
         "name": null,
         "online": false,
-        "status": "offline"
+        "status": "offline",
+        "job_execution_status": "idle"
     },
     {
         "active": true,
@@ -219,7 +225,8 @@ Example response:
         "runner_type": "project_type",
         "name": null,
         "online": true,
-        "status": "paused"
+        "status": "paused",
+        "job_execution_status": "idle"
     },
     {
         "active": true,
@@ -231,7 +238,8 @@ Example response:
         "runner_type": "group_type",
         "name": null,
         "online": false,
-        "status": "offline"
+        "status": "offline",
+        "job_execution_status": "idle"
     }
 ]
 ```
@@ -247,11 +255,9 @@ Instance runner details are available to all authenticated users through this en
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - For group runners: The Maintainer or Owner role in the owner namespace.
-  - For project runners: The Maintainer or Owner role in the project that owns the runner.
+  - For project runners: The Security Manager, Maintainer or Owner role in the project that owns the runner.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -263,7 +269,8 @@ GET /runners/:id
 | `id`      | integer | yes      | The ID of a runner |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/6"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/6"
 ```
 
 > [!warning]
@@ -303,6 +310,7 @@ Example response:
     "name": null,
     "online": true,
     "status": "online",
+    "job_execution_status": "idle",
     "platform": null,
     "projects": [
         {
@@ -335,12 +343,10 @@ PUT /runners/:id
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - For instance runners: Administrator access to the GitLab instance.
   - For group runners: Owner role in the owner namespace.
   - For project runners: The Maintainer or Owner role in a project assigned to the runner.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 | Attribute          | Type    | Required | Description |
@@ -357,8 +363,11 @@ Prerequisites:
 | `maintenance_note` | string  | no       | Free-form maintenance notes for the runner (1024 characters) |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/6" \
-     --form "description=test-1-20150125-test" --form "tag_list=ruby,mysql,tag1,tag2"
+curl --request PUT \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/6" \
+     --form "description=test-1-20150125-test" \
+     --form "tag_list=ruby,mysql,tag1,tag2"
 ```
 
 > [!warning]
@@ -391,6 +400,7 @@ Example response:
     "name": null,
     "online": true,
     "status": "online",
+    "job_execution_status": "idle",
     "platform": null,
     "projects": [
         {
@@ -421,12 +431,10 @@ Pause a runner.
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - For instance runners: Administrator access to the GitLab instance.
   - For group runners: Owner role in the owner namespace.
   - For project runners: The Maintainer or Owner role in a project assigned to the runner.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -443,14 +451,18 @@ PUT --form "active=false" /runners/:runner_id
 | `runner_id` | integer | yes      | The ID of a runner |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
-     --form "paused=true"  "https://gitlab.example.com/api/v4/runners/6"
+curl --request PUT \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --form "paused=true"  \
+     --url "https://gitlab.example.com/api/v4/runners/6"
 
 # --or--
 
 # Deprecated: removal planned in 16.0
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
-     --form "active=false"  "https://gitlab.example.com/api/v4/runners/6"
+curl --request PUT \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --form "active=false"  \
+     --url "https://gitlab.example.com/api/v4/runners/6"
 ```
 
 > [!warning]
@@ -476,7 +488,8 @@ GET /runners/:id/jobs
 | `sort`      | string  | no       | Sort jobs in `asc` or `desc` order (default: `desc`). If `sort` is specified, `order_by` must be specified as well |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/1/jobs?status=running"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/1/jobs?status=running"
 ```
 
 Example response:
@@ -561,7 +574,8 @@ GET /runners/:id/managers
 | `id`      | integer | yes      | The ID of a runner |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/1/managers"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/1/managers"
 ```
 
 Example response:
@@ -578,7 +592,8 @@ Example response:
       "created_at": "2024-06-09T11:12:02.507Z",
       "contacted_at": "2024-06-09T06:30:09.355Z",
       "ip_address": "127.0.0.1",
-      "status": "offline"
+      "status": "offline",
+      "job_execution_status": "idle"
     },
     {
       "id": 2,
@@ -590,7 +605,8 @@ Example response:
       "created_at": "2024-06-09T09:12:02.507Z",
       "contacted_at": "2024-06-09T06:30:09.355Z",
       "ip_address": "127.0.0.1",
-      "status": "offline"
+      "status": "offline",
+      "job_execution_status": "idle"
     }
 ]
 ```
@@ -623,7 +639,8 @@ GET /projects/:id/runners?tag_list=tag1,tag2
 | `version_prefix` | string         | no       | The prefix of the version of the runners to return. For example, `15.0`, `14`, `16.1.241` |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/9/runners"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/9/runners"
 ```
 
 > [!warning]
@@ -657,7 +674,8 @@ Example response:
         "runner_type": "project_type",
         "name": null,
         "online": false,
-        "status": "offline"
+        "status": "offline",
+        "job_execution_status": "idle"
     },
     {
         "active": true,
@@ -669,7 +687,8 @@ Example response:
         "runner_type": "instance_type",
         "name": null,
         "online": true,
-        "status": "online"
+        "status": "online",
+        "job_execution_status": "idle"
     }
 ]
 ```
@@ -695,7 +714,9 @@ POST /projects/:id/runners
 | `runner_id` | integer        | yes      | The ID of a runner |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/9/runners" \
+curl --request POST \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/9/runners" \
      --form "runner_id=9"
 ```
 
@@ -719,7 +740,8 @@ Example response:
     "runner_type": "project_type",
     "name": null,
     "online": true,
-    "status": "online"
+    "status": "online",
+    "job_execution_status": "idle"
 }
 ```
 
@@ -733,10 +755,8 @@ Prerequisites:
 
 - You must not lock the runner, unless you are an administrator.
 - User access: You must have one of the following:
-
   - The Maintainer or Owner role in the project you want to unassign.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -749,7 +769,9 @@ DELETE /projects/:id/runners/:runner_id
 | `runner_id` | integer        | yes      | The ID of a runner |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/9/runners/9"
+curl --request DELETE \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/9/runners/9"
 ```
 
 ## List all of a group's runners
@@ -759,11 +781,9 @@ Lists all runners available in the group and its ancestor groups, including [any
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - Administrator access to the GitLab instance.
   - Owner or Auditor role in the group.
   - A custom role with the `admin_runners` permission in the group.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -794,7 +814,8 @@ GET /groups/:id/runners?tag_list=tag1,tag2
 >   Use the `paused` attribute instead.
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/9/runners"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/groups/9/runners"
 ```
 
 > [!warning]
@@ -819,7 +840,8 @@ Example response:
     "runner_type": "instance_type",
     "name": "gitlab-runner",
     "online": null,
-    "status": "never_contacted"
+    "status": "never_contacted",
+    "job_execution_status": "idle"
   },
   {
     "id": 6,
@@ -831,7 +853,8 @@ Example response:
     "runner_type": "instance_type",
     "name": "gitlab-runner",
     "online": false,
-    "status": "offline"
+    "status": "offline",
+    "job_execution_status": "idle"
   },
   {
     "id": 8,
@@ -843,7 +866,8 @@ Example response:
     "runner_type": "group_type",
     "name": "gitlab-runner",
     "online": null,
-    "status": "never_contacted"
+    "status": "never_contacted",
+    "job_execution_status": "idle"
   }
 ]
 ```
@@ -882,7 +906,8 @@ POST /runners
 | `maintenance_note` | string       | no       | Free-form maintenance notes for the runner (1024 characters) |
 
 ```shell
-curl --request POST "https://gitlab.example.com/api/v4/runners" \
+curl --request POST \
+     --url "https://gitlab.example.com/api/v4/runners" \
      --form "token=<registration_token>" --form "description=test-1-20150125-test" \
      --form "tag_list=ruby,mysql,tag1,tag2"
 ```
@@ -919,12 +944,10 @@ To delete the runner by ID, use your access token with the runner's ID:
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - For instance runners: Administrator access to the GitLab instance.
   - For group runners: Owner role in the owner namespace.
   - For project runners: The Maintainer or Owner role in the project that owns the runner.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -936,7 +959,9 @@ DELETE /runners/:id
 | `id`      | integer | yes      | The ID of a runner. The ID is visible in the UI under **Settings** > **CI/CD**. Expand **Runners**, and below **Remove Runner** is an ID preceded by the pound sign, for example, `#6`. |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/runners/6"
+curl --request DELETE \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/6"
 ```
 
 ### Delete a runner by authentication token
@@ -952,7 +977,8 @@ DELETE /runners
 | `token`   | string | yes      | The runner's [authentication token](#registration-and-authentication-tokens). |
 
 ```shell
-curl --request DELETE "https://gitlab.example.com/api/v4/runners" \
+curl --request DELETE \
+     --url "https://gitlab.example.com/api/v4/runners" \
      --form "token=<authentication_token>"
 ```
 
@@ -976,7 +1002,8 @@ POST /runners/verify
 | `system_id` | string | no       | The runner's system identifier. This attribute is required if the `token` starts with `glrt-`. |
 
 ```shell
-curl --request POST "https://gitlab.example.com/api/v4/runners/verify" \
+curl --request POST \
+     --url "https://gitlab.example.com/api/v4/runners/verify" \
      --form "token=<authentication_token>"
 ```
 
@@ -1005,7 +1032,7 @@ Example response:
 > Use the [runner creation workflow](https://docs.gitlab.com/runner/register/#register-with-a-runner-authentication-token)
 > to generate an authentication token to register runners. This process provides full
 > traceability of runner ownership and enhances your runner fleet's security.
-> 
+>
 > For more information, see
 > [Migrating to the new runner registration workflow](../ci/runners/new_creation_workflow.md).
 
@@ -1016,8 +1043,9 @@ POST /runners/reset_registration_token
 ```
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/runners/reset_registration_token"
+curl --request POST \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/reset_registration_token"
 ```
 
 ## Reset project's runner registration token
@@ -1038,8 +1066,9 @@ POST /projects/:id/runners/reset_registration_token
 ```
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/projects/9/runners/reset_registration_token"
+curl --request POST \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/9/runners/reset_registration_token"
 ```
 
 ## Reset group's runner registration token
@@ -1060,8 +1089,9 @@ POST /groups/:id/runners/reset_registration_token
 ```
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/groups/9/runners/reset_registration_token"
+curl --request POST \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/groups/9/runners/reset_registration_token"
 ```
 
 ## Reset runner's authentication token by using the runner ID
@@ -1071,12 +1101,10 @@ Reset the runner's authentication token by using its runner ID.
 Prerequisites:
 
 - User access: You must have one of the following:
-
   - For instance runners: Administrator access to the GitLab instance.
   - For group runners: Owner role in the owner namespace.
   - For project runners: The Maintainer or Owner role in a project assigned to the runner.
   - A custom role with the `admin_runners` permission in the relevant group or project.
-
 - An access token with the `manage_runner` scope and the appropriate role.
 
 ```plaintext
@@ -1088,8 +1116,9 @@ POST /runners/:id/reset_authentication_token
 | `id`      | integer | yes      | The ID of a runner |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/runners/1/reset_authentication_token"
+curl --request POST \
+     --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/runners/1/reset_authentication_token"
 ```
 
 Example response:
@@ -1114,8 +1143,9 @@ POST /runners/reset_authentication_token
 | `token`   | string | yes      | The authentication token of the runner |
 
 ```shell
-curl --request POST --form "token=<current token>" \
-     "https://gitlab.example.com/api/v4/runners/reset_authentication_token"
+curl --request POST \
+     --form "token=<current token>" \
+     --url "https://gitlab.example.com/api/v4/runners/reset_authentication_token"
 ```
 
 Example response:
@@ -1147,7 +1177,7 @@ GET /runners/router/discovery
 
 ```shell
 curl --header "Runner-Token: <runner_authentication_token>" \
-     "https://gitlab.example.com/api/v4/runners/router/discovery"
+     --url "https://gitlab.example.com/api/v4/runners/router/discovery"
 ```
 
 Response:

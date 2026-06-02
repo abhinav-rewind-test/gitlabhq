@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Indicate the wildcard domain used by the Web IDE to isolate VS Code extensions and web views
 title: Web IDE extension host domain
 ---
@@ -18,10 +18,10 @@ using [Extension Marketplace](../../user/project/web_ide/_index.md#manage-extens
 relies on the web browser's [same origin](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy)
 policy to run extensions in a sandbox environment.
 
-GitLab provides a default extension host domain `cdn.web-ide.gitlab-static.net` that is available to all
-GitLab offerings by default. This domain name points to an external HTTP server that hosts VS Code static assets.
-In offline environments, a user's web browser can't connect to this external HTTP server which,
-in turn, limits the Web IDE's capabilities.
+GitLab provides a default extension host domain `*.cdn.web-ide.gitlab-static.net` that is available to all
+GitLab offerings by default. This wildcard domain points to an external HTTP server that hosts VS Code static
+assets. Each extension is served from its own subdomain. In offline environments, a user's web browser can't
+connect to this external HTTP server, which, in turn, limits the Web IDE's capabilities.
 
 To circumvent this limitation, GitLab instance administrators can set up a custom extension host domain. The
 custom extension host domain points to the GitLab instance itself which can also serve the VS Code static
@@ -77,10 +77,33 @@ should adapt this guide to other installation methods.
 
 1. Save the file and [reconfigure GitLab](../restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect. Then, open the GitLab application.
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Web IDE**.
 1. In the **Extension host domain** text box, enter the custom extension host domain.
 1. Select **Save changes**.
 
 After saving the changes, you can open a project in the Web IDE to verify that the custom
 extension host is used by the editor.
+
+## Single origin fallback
+
+> [!warning]
+> The single origin fallback is enabled by default and has security risks. You should disable the fallback and, instead, ensure that the extension host domain is not blocked by CORS configuration, web browser security policies, or a proxy server.
+
+By default, the Web IDE runs in multi-origin mode, which serves VS Code static assets from a separate extension host domain. This isolation prevents malicious actors from exploiting the extension host to make authenticated requests to the GitLab instance.
+
+However, when the extension host domain is unreachable due to network or CORS restrictions, the Web IDE automatically falls back to single-origin mode. In this mode, the WebIDE serves VS Code assets from the same origin as the GitLab application, which increases the attack surface and creates security vulnerabilities.
+
+The **Enable single origin fallback** setting controls whether the Web IDE can fall back to single-origin mode when the extension host domain is unreachable.
+
+Prerequisites:
+
+- Administrator access.
+
+To configure this setting:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings** > **General**.
+1. Expand **Web IDE**.
+1. Select or clear the **Enable single origin fallback** checkbox.
+1. Select **Save changes**.

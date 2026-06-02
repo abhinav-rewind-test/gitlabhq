@@ -9,7 +9,7 @@ import {
   convertFromGraphQLIds,
   convertNodeIdsFromGraphQLIds,
   getNodesOrDefault,
-  toggleQueryPollingByVisibility,
+  setupQueryPollingByVisibility,
   etagQueryHeaders,
   calculateGraphQLPaginationQueryParams,
 } from '~/graphql_shared/utils';
@@ -146,37 +146,43 @@ describe('getNodesOrDefault', () => {
   });
 });
 
-describe('toggleQueryPollingByVisibility', () => {
+describe('setupQueryPollingByVisibility', () => {
   let query;
   let changeFn;
   let interval;
   let hidden;
+  const VISIBILITY_LISTENER_ID = 42;
 
   beforeEach(() => {
     hidden = jest.spyOn(Visibility, 'hidden').mockReturnValue(true);
     jest.spyOn(Visibility, 'change').mockImplementation((fn) => {
       changeFn = fn;
+      return VISIBILITY_LISTENER_ID;
     });
+    jest.spyOn(Visibility, 'unbind').mockImplementation(() => {});
 
     query = { startPolling: jest.fn(), stopPolling: jest.fn() };
     interval = 5000;
-
-    toggleQueryPollingByVisibility(query, 5000);
   });
 
   it('starts polling not hidden', () => {
     hidden.mockReturnValue(false);
 
+    setupQueryPollingByVisibility(query, interval);
     changeFn();
     expect(query.startPolling).toHaveBeenCalledWith(interval);
   });
 
   it('stops polling when hidden', () => {
-    query.stopPolling.mockReset();
-    hidden.mockReturnValue(true);
-
+    setupQueryPollingByVisibility(query, interval);
     changeFn();
     expect(query.stopPolling).toHaveBeenCalled();
+  });
+
+  it('returns a cleanup function that unbinds the visibility listener', () => {
+    const cleanup = setupQueryPollingByVisibility(query, interval);
+    cleanup();
+    expect(Visibility.unbind).toHaveBeenCalledWith(VISIBILITY_LISTENER_ID);
   });
 });
 

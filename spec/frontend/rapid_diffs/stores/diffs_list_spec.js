@@ -7,10 +7,13 @@ import waitForPromises from 'helpers/wait_for_promises';
 import { toPolyfillReadable } from '~/streaming/polyfills';
 import { DiffFile } from '~/rapid_diffs/web_components/diff_file';
 import { performanceMarkAndMeasure } from '~/performance/utils';
+import { createAlert } from '~/alert';
+import setWindowLocation from 'helpers/set_window_location_helper';
 
 jest.mock('~/streaming/polyfills');
 jest.mock('~/streaming/render_html_streams');
 jest.mock('~/performance/utils');
+jest.mock('~/alert');
 
 describe('Diffs list store', () => {
   let store;
@@ -87,15 +90,31 @@ describe('Diffs list store', () => {
       <div data-rapid-diffs>
         <div id="js-stream-container"></div>
         <div data-diffs-overlay></div>
+        <div class="flash-container" data-diffs-list-alert></div>
         <div data-diffs-list>Existing data</div>
         <div data-list-loading hidden></div>
       </div>
     `);
     global.fetch = jest.fn();
     toPolyfillReadable.mockImplementation((obj) => obj);
-    streamResponse = { body: {} };
+    streamResponse = { status: 200, body: {} };
     global.fetch.mockResolvedValue(streamResponse);
   });
+
+  const itHandlesServerErrors = (action) => {
+    it.each([500, 502, 503])('shows alert and does not stream on HTTP %i', async (status) => {
+      global.fetch.mockResolvedValue({ status, body: {} });
+      action();
+      await waitForPromises();
+      expect(createAlert).toHaveBeenCalledWith({
+        message: 'Could not fetch all changes. Try reloading the page.',
+        parent: document.querySelector('[data-rapid-diffs]'),
+        containerSelector: '[data-diffs-list-alert]',
+      });
+      expect(renderHtmlStreams).not.toHaveBeenCalled();
+      expect(store.status).toBe(statuses.error);
+    });
+  };
 
   describe('#streamRemainingDiffs', () => {
     it('streams request', async () => {
@@ -138,9 +157,21 @@ describe('Diffs list store', () => {
       });
     });
 
+    it('shows loading indicator while the fetch promise is still pending', async () => {
+      global.fetch.mockImplementation(() => new Promise(() => {}));
+
+      expect(findLoadingIndicator().hidden).toBe(true);
+
+      store.streamRemainingDiffs('/stream', findStreamContainer());
+      await waitForPromises();
+
+      expect(findLoadingIndicator().hidden).toBe(false);
+    });
+
     itCancelsRunningRequest(() => store.streamRemainingDiffs('/stream'));
     itSetsStatuses(() => store.streamRemainingDiffs('/stream'));
     itShowsLoadingIndicator(() => store.streamRemainingDiffs('/stream', findStreamContainer()));
+    itHandlesServerErrors(() => store.streamRemainingDiffs('/stream', findStreamContainer()));
   });
 
   describe('#reloadDiffs', () => {
@@ -158,6 +189,7 @@ describe('Diffs list store', () => {
     itCancelsRunningRequest(() => store.reloadDiffs('/stream'));
     itSetsStatuses(() => store.reloadDiffs('/stream'));
     itShowsLoadingIndicator(() => store.reloadDiffs('/stream'));
+    itHandlesServerErrors(() => store.reloadDiffs('/stream'));
 
     it('sets loading state', () => {
       store.reloadDiffs('/stream');
@@ -175,6 +207,25 @@ describe('Diffs list store', () => {
       expect(findDiffsList().innerHTML).toBe('');
       expect(findDiffsOverlay().dataset.loading).toBe(undefined);
     });
+
+    it('clears linked file data on non-initial reload', async () => {
+      setWindowLocation('https://example.com/diffs?file_path=app%2Fmodels%2Fuser.rb');
+      store.setLinkedFileData({ old_path: 'app/models/user.rb', new_path: 'app/models/user.rb' });
+      store.reloadDiffs('/stream');
+      await waitForPromises();
+      expect(store.linkedFileData).toBe(null);
+      expect(window.location.search).not.toContain('file_path');
+    });
+
+    it('preserves linked file data on initial reload', async () => {
+      store.setLinkedFileData({ old_path: 'app/models/user.rb', new_path: 'app/models/user.rb' });
+      store.reloadDiffs('/stream', true);
+      await waitForPromises();
+      expect(store.linkedFileData).toEqual({
+        old_path: 'app/models/user.rb',
+        new_path: 'app/models/user.rb',
+      });
+    });
   });
 
   it('#fillInLoadedFiles', () => {
@@ -182,6 +233,24 @@ describe('Diffs list store', () => {
     jest.spyOn(DiffFile, 'getAll').mockReturnValue([{ id: 'foo' }]);
     store.fillInLoadedFiles();
     expect(store.loadedFiles).toStrictEqual(loadedFiles);
+  });
+
+  describe('#streamInitialDiffs', () => {
+    it('includes linked file params in fetch URL', async () => {
+      store.setLinkedFileData({ old_path: 'app/models/user.rb', new_path: 'app/models/user.rb' });
+      store.streamInitialDiffs('/stream');
+      await waitForPromises();
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('file_path=app%2Fmodels%2Fuser.rb'),
+        expect.any(Object),
+      );
+    });
+
+    it('fetches without linked file params when none set', async () => {
+      store.streamInitialDiffs('/stream');
+      await waitForPromises();
+      expect(global.fetch).toHaveBeenCalledWith('/stream', expect.any(Object));
+    });
   });
 
   it('#addLoadedFile', () => {
@@ -193,6 +262,43 @@ describe('Diffs list store', () => {
     store.status = statuses.idle;
     store.loadedFiles = {};
     expect(store.isEmpty).toBe(true);
+  });
+
+  describe('linked file', () => {
+    it('#setLinkedFileData sets and clears linked file data', () => {
+      store.setLinkedFileData({ old_path: 'old.rb', new_path: 'new.rb' });
+      expect(store.linkedFileData).toEqual({ old_path: 'old.rb', new_path: 'new.rb' });
+      store.setLinkedFileData(null);
+      expect(store.linkedFileData).toBe(null);
+    });
+
+    it('#linkedFilePath prefers old_path', () => {
+      store.setLinkedFileData({ old_path: 'old.rb', new_path: 'new.rb' });
+      expect(store.linkedFilePath).toBe('old.rb');
+    });
+
+    it('#linkedFilePath falls back to new_path', () => {
+      store.setLinkedFileData({ new_path: 'new.rb' });
+      expect(store.linkedFilePath).toBe('new.rb');
+    });
+
+    it('#linkedFilePath returns null when no linked file', () => {
+      expect(store.linkedFilePath).toBe(null);
+    });
+
+    it('#isLinkedFile returns true for matching paths', () => {
+      store.setLinkedFileData({ old_path: 'old.rb', new_path: 'new.rb' });
+      expect(store.isLinkedFile({ oldPath: 'old.rb', newPath: 'new.rb' })).toBe(true);
+    });
+
+    it('#isLinkedFile returns false for non-matching paths', () => {
+      store.setLinkedFileData({ old_path: 'old.rb', new_path: 'new.rb' });
+      expect(store.isLinkedFile({ oldPath: 'other.rb', newPath: 'new.rb' })).toBe(false);
+    });
+
+    it('#isLinkedFile returns false when no linked file', () => {
+      expect(store.isLinkedFile({ oldPath: 'old.rb', newPath: 'new.rb' })).toBe(false);
+    });
   });
 
   describe('#isLoading', () => {

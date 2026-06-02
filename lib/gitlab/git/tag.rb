@@ -117,12 +117,17 @@ module Gitlab
       def can_use_lazy_cached_signature?
         return false unless @repository.container.is_a?(Project)
 
-        (signature_type == :SSH && render_ssh?) ||
+        signature_type == :SSH ||
           (signature_type == :PGP && render_gpg?)
       end
 
       def cache_key
         "tag:" + Digest::SHA1.hexdigest([name, message, target, target_commit&.sha].join)
+      end
+
+      def project
+        container = repository&.container
+        container if container.is_a?(::Project)
       end
 
       private
@@ -133,10 +138,6 @@ module Gitlab
 
       def render_gpg?
         Feature.enabled?(:render_gpg_signed_tags_verification_status, @repository.container)
-      end
-
-      def render_ssh?
-        Feature.enabled?(:render_ssh_signed_tags_verification_status, @repository.container)
       end
 
       def message_from_gitaly_tag

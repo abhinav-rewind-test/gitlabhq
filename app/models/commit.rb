@@ -21,10 +21,6 @@ class Commit
   participant :author
   participant :committer
   participant :notes_with_associations
-
-  attr_accessor :redacted_description_html
-  attr_accessor :redacted_title_html
-  attr_accessor :redacted_full_title_html
   attr_reader :container
 
   delegate :repository, to: :container
@@ -159,7 +155,7 @@ class Commit
     end
   end
 
-  attr_accessor :raw
+  attr_accessor :redacted_description_html, :redacted_title_html, :redacted_full_title_html, :raw
 
   def initialize(raw_commit, container)
     raise "Nil as raw commit passed" unless raw_commit
@@ -369,7 +365,15 @@ class Commit
   def diff_stats
     return unless diff_refs
 
-    container.repository.diff_stats(diff_refs.base_sha, diff_refs.head_sha)
+    left_sha = diff_refs.base_sha
+
+    # If `base_sha` is a blank ref, it means the commit has no parent (e.g. the
+    # initial commit of a repository or an orphaned branch). We use `empty_tree_id`
+    # so Gitaly can compute the diff against an empty tree instead of returning
+    # empty stats.
+    left_sha = container.repository.empty_tree_id if Gitlab::Git.blank_ref?(left_sha)
+
+    container.repository.diff_stats(left_sha, diff_refs.head_sha)
   end
   strong_memoize_attr(:diff_stats)
 
@@ -402,6 +406,12 @@ class Commit
         Gitlab::Ssh::Commit.new(self).signature
       end
     end
+  end
+
+  def verified_committer
+    return unless signature&.verified_committer?
+
+    signature.signed_by_user
   end
 
   def gpg_commit
@@ -598,12 +608,12 @@ class Commit
     raw_diffs.any?(&:encoded_file_path)
   end
 
-  def valid_full_sha
-    id.match(Gitlab::Git::Commit::FULL_SHA_PATTERN).to_s
+  def first_diffs_slice(limit, diff_options = {})
+    diffs(diff_options.merge(max_files: limit))
   end
 
-  def first_diffs_slice(limit, diff_options = {})
-    diffs(diff_options.merge(max_files: limit)).diff_files
+  def has_agent_session?
+    false
   end
 
   private

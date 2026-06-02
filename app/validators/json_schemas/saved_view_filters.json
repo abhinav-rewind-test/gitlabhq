@@ -20,6 +20,12 @@
         "type": "integer"
       }
     },
+    "work_item_type_ids": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
     "author_ids": {
       "type": "array",
       "items": {
@@ -52,6 +58,9 @@
       "items": {
         "type": "integer"
       }
+    },
+    "label_wildcard_id": {
+      "type": "string"
     },
     "milestone_ids": {
       "type": "array",
@@ -255,6 +264,12 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "work_item_type_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
           }
         },
         "health_status_filter": {

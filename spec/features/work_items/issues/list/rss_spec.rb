@@ -3,27 +3,21 @@
 require 'spec_helper'
 
 RSpec.describe 'Project Issues RSS', :js, feature_category: :team_planning do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:group) { create(:group, developers: user) }
-  let_it_be(:project) { create(:project, group: group, visibility_level: Gitlab::VisibilityLevel::PUBLIC) }
-  let_it_be(:path) { project_issues_path(project) }
-  let_it_be(:issue) { create(:issue, project: project, assignees: [user]) }
-
-  before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-  end
+  let_it_be(:project, freeze: false) { create(:project, group: group, visibility_level: Gitlab::VisibilityLevel::PUBLIC) }
+  let_it_be(:path) { project_work_items_path(project) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project, assignees: [user]) }
 
   context 'when signed in' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user, freeze: false) { create(:user) }
 
     before_all do
       project.add_developer(user)
     end
 
     before do
+      create(:callout, user: user, feature_name: :work_items_onboarding_modal)
       sign_in(user)
       visit path
       click_button 'Actions'
@@ -44,12 +38,16 @@ RSpec.describe 'Project Issues RSS', :js, feature_category: :team_planning do
   end
 
   describe 'feeds' do
+    before do
+      create(:callout, user: user, feature_name: :work_items_onboarding_modal)
+    end
+
     it_behaves_like 'updates atom feed link', :project, 'assignee_username' do
-      let(:path) { project_issues_path(project, assignee_id: user.id) }
+      let(:path) { project_work_items_path(project, assignee_id: user.id) }
     end
 
     it_behaves_like 'updates atom feed link', :group, 'assignee_username' do
-      let(:path) { issues_group_path(group, assignee_id: user.id) }
+      let(:path) { group_work_items_path(group, assignee_id: user.id) }
     end
   end
 end

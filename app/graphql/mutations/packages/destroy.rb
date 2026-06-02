@@ -5,9 +5,9 @@ module Mutations
     class Destroy < ::Mutations::BaseMutation
       graphql_name 'DestroyPackage'
 
-      include Mutations::Packages::DeleteProtection
-
       authorize :destroy_package
+      authorize_granular_token permissions: :delete_package,
+        boundary_argument: :id, boundary_type: :project
 
       argument :id,
         ::Types::GlobalIDType[::Packages::Package],
@@ -16,8 +16,6 @@ module Mutations
 
       def resolve(id:)
         package = authorized_find!(id: id)
-
-        return { errors: [deletion_protected_error_message] } if protected_for_delete?(package)
 
         result = ::Packages::MarkPackageForDestructionService.new(
           container: package,

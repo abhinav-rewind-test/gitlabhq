@@ -1,10 +1,9 @@
 import { produce } from 'immer';
-import { map, isEqual } from 'lodash';
+import { map, isEqual } from 'lodash-es';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
 import { apolloProvider } from '~/graphql_shared/issuable_client';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
 import { getBaseURL } from '~/lib/utils/url_utility';
-import { convertEachWordToTitleCase } from '~/lib/utils/text_utility';
 import { getDraft, clearDraft } from '~/lib/utils/autosave';
 import {
   newWorkItemOptimisticUserPermissions,
@@ -21,9 +20,12 @@ import {
   WIDGET_TYPE_ITERATION,
   WIDGET_TYPE_HEALTH_STATUS,
   WIDGET_TYPE_DESCRIPTION,
+  WIDGET_TYPE_AWARD_EMOJI,
+  WIDGET_TYPE_NOTES,
   WIDGET_TYPE_CRM_CONTACTS,
   NEW_WORK_ITEM_IID,
   WIDGET_TYPE_LINKED_ITEMS,
+  WIDGET_TYPE_LINKED_RESOURCES,
   STATE_CLOSED,
   WIDGET_TYPE_CUSTOM_FIELDS,
   WIDGET_TYPE_STATUS,
@@ -39,16 +41,25 @@ import {
   newWorkItemFullPath,
   newWorkItemId,
   getWorkItemWidgets,
+  getWorkItemFeatures,
 } from '../utils';
 import workItemByIidQuery from './work_item_by_iid.query.graphql';
 import workItemByIdQuery from './work_item_by_id.query.graphql';
 import getWorkItemTreeQuery from './work_item_tree.query.graphql';
 
-const getNotesWidgetFromSourceData = (draftData) => findNotesWidget(draftData?.namespace?.workItem);
+const getNotesWidgetFromSourceData = (draftData) =>
+  draftData?.namespace?.workItem?.features
+    ? draftData?.namespace?.workItem?.features.notes
+    : findNotesWidget(draftData?.namespace?.workItem);
 
 const updateNotesWidgetDataInDraftData = (draftData, notesWidget) => {
-  const noteWidgetIndex = draftData.namespace.workItem.widgets.findIndex(isNotesWidget);
-  draftData.namespace.workItem.widgets[noteWidgetIndex] = notesWidget;
+  if (draftData?.namespace?.workItem?.features) {
+    draftData.namespace.workItem.features.notes = notesWidget;
+  } else {
+    const noteWidgetIndex = draftData.namespace.workItem.widgets.findIndex(isNotesWidget);
+
+    draftData.namespace.workItem.widgets[noteWidgetIndex] = notesWidget;
+  }
 };
 
 /**
@@ -65,7 +76,8 @@ export const updateCacheAfterCreatingNote = (currentNotes, newNote, { prepend = 
   return produce(currentNotes, (draftData) => {
     const notesWidget = getNotesWidgetFromSourceData(draftData);
 
-    if (!notesWidget.discussions) {
+    // Early return if notesWidget or discussions is not available
+    if (!notesWidget || !notesWidget.discussions) {
       return;
     }
 
@@ -102,7 +114,8 @@ export const updateCacheAfterDeletingNote = (currentNotes, subscriptionData) => 
   return produce(currentNotes, (draftData) => {
     const notesWidget = getNotesWidgetFromSourceData(draftData);
 
-    if (!notesWidget.discussions) {
+    // Early return if notesWidget or discussions is not available
+    if (!notesWidget || !notesWidget.discussions) {
       return;
     }
 
@@ -138,7 +151,8 @@ function updateNoteAwardEmojiCache(currentNotes, note, callback) {
   return produce(currentNotes, (draftData) => {
     const notesWidget = getNotesWidgetFromSourceData(draftData);
 
-    if (!notesWidget.discussions) {
+    // Early return if notesWidget or discussions is not available
+    if (!notesWidget || !notesWidget.discussions) {
       return;
     }
 
@@ -273,7 +287,11 @@ export const removeHierarchyChild = ({ cache, id, workItem }) => {
 export const updateParent = ({ cache, fullPath, iid, workItem }) => {
   const queryArgs = {
     query: workItemByIidQuery,
-    variables: { fullPath, iid },
+    variables: {
+      fullPath,
+      iid,
+      useWorkItemFeatures: Boolean(window.gon.features.workItemFeaturesField),
+    },
   };
   const sourceData = cache.readQuery(queryArgs);
 
@@ -294,7 +312,11 @@ export const updateParent = ({ cache, fullPath, iid, workItem }) => {
 export const updateWorkItemCurrentTodosWidget = ({ cache, fullPath, iid, todos }) => {
   const query = {
     query: workItemByIidQuery,
-    variables: { fullPath, iid },
+    variables: {
+      fullPath,
+      iid,
+      useWorkItemFeatures: Boolean(window.gon.features.workItemFeaturesField),
+    },
   };
 
   const sourceData = cache.readQuery(query);
@@ -312,6 +334,258 @@ export const updateWorkItemCurrentTodosWidget = ({ cache, fullPath, iid, todos }
 };
 
 export const getNewWorkItemSharedCache = ({
+  fullPath,
+  context,
+  workItemType,
+  relatedItemId,
+  isValidWorkItemDescription,
+  workItemDescription = '',
+  widgetDefinitions,
+}) => {
+  const widgetsAutosaveKey = getNewWorkItemWidgetsAutoSaveKey({ fullPath, context, relatedItemId });
+  const fullDraftAutosaveKey = getNewWorkItemAutoSaveKey({
+    fullPath,
+    context,
+    workItemType,
+    relatedItemId,
+  });
+
+  const workItemTypeSpecificFeatures =
+    getWorkItemFeatures(JSON.parse(getDraft(fullDraftAutosaveKey))) || {};
+  const draftWorkItemCache = JSON.parse(getDraft(widgetsAutosaveKey)) || {};
+
+  const draftTitle = draftWorkItemCache.TITLE || '';
+  const draftDescription = draftWorkItemCache[WIDGET_TYPE_DESCRIPTION]?.description || null;
+
+  const widgetDefinitionsHash = widgetDefinitions.reduce((acc, widget) => {
+    return { ...acc, [widget.type]: { ...widget } };
+  }, {});
+
+  const startAndDueDateWidgetDefinitionHash = widgetDefinitionsHash[WIDGET_TYPE_START_AND_DUE_DATE];
+
+  const features = {
+    description: {
+      __typename: 'WorkItemWidgetDescription',
+      type: WIDGET_TYPE_DESCRIPTION,
+      description: isValidWorkItemDescription ? workItemDescription : draftDescription,
+      descriptionHtml: '',
+      lastEditedAt: null,
+      lastEditedBy: null,
+      taskCompletionStatus: null,
+    },
+    assignees: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_ASSIGNEES],
+      assignees: {
+        nodes: draftWorkItemCache[WIDGET_TYPE_ASSIGNEES]?.assignees?.nodes || [],
+        __typename: 'UserCoreConnection',
+      },
+      __typename: 'WorkItemWidgetAssignees',
+    },
+    labels: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_LABELS],
+      labels: {
+        nodes: draftWorkItemCache[WIDGET_TYPE_LABELS]?.labels?.nodes || [],
+        __typename: 'LabelConnection',
+      },
+      __typename: 'WorkItemWidgetLabels',
+    },
+    milestone: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_MILESTONE],
+      milestone: draftWorkItemCache[WIDGET_TYPE_MILESTONE]?.milestone || null,
+      __typename: 'WorkItemWidgetMilestone',
+    },
+    iteration: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_ITERATION],
+      iteration: draftWorkItemCache[WIDGET_TYPE_ITERATION]?.iteration || null,
+      __typename: 'WorkItemWidgetIteration',
+    },
+    weight: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_WEIGHT],
+      weight: draftWorkItemCache[WIDGET_TYPE_WEIGHT]?.weight || null,
+      __typename: 'WorkItemWidgetWeight',
+    },
+    startAndDueDate: {
+      ...startAndDueDateWidgetDefinitionHash,
+      type: WIDGET_TYPE_START_AND_DUE_DATE,
+      dueDate: startAndDueDateWidgetDefinitionHash?.dueDate || null,
+      startDate: startAndDueDateWidgetDefinitionHash?.startDate || null,
+      isFixed: startAndDueDateWidgetDefinitionHash?.isFixed || false,
+      rollUp: false,
+      __typename: 'WorkItemWidgetStartAndDueDate',
+    },
+    healthStatus: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_HEALTH_STATUS],
+      healthStatus: draftWorkItemCache[WIDGET_TYPE_HEALTH_STATUS]?.healthStatus || null,
+      __typename: 'WorkItemWidgetHealthStatus',
+    },
+    color: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_COLOR],
+      color: draftWorkItemCache[WIDGET_TYPE_COLOR]?.color || '#1068bf',
+      textColor: '#FFFFFF',
+      __typename: 'WorkItemWidgetColor',
+    },
+    status: (() => {
+      const statusWidgetDefinition = widgetDefinitionsHash[WIDGET_TYPE_STATUS];
+      const { defaultOpenStatus, allowedStatuses } = statusWidgetDefinition || {};
+      const cachedStatus = draftWorkItemCache[WIDGET_TYPE_STATUS]?.status;
+      const isCachedStatusAllowed =
+        cachedStatus && allowedStatuses?.some((s) => s.name === cachedStatus.name);
+      return {
+        ...statusWidgetDefinition,
+        status: isCachedStatusAllowed ? cachedStatus : defaultOpenStatus || null,
+        __typename: 'WorkItemWidgetStatus',
+      };
+    })(),
+    hierarchy: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_HIERARCHY],
+      hasChildren: false,
+      hasParent: false,
+      parent: null,
+      depthLimitReachedByType: [],
+      rolledUpCountsByType: [],
+      children: {
+        nodes: [],
+        __typename: 'WorkItemConnection',
+      },
+      __typename: 'WorkItemWidgetHierarchy',
+    },
+    timeTracking: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_TIME_TRACKING],
+      timeEstimate: 0,
+      humanReadableAttributes: {
+        timeEstimate: '',
+      },
+      timelogs: {
+        nodes: [],
+        __typename: 'WorkItemTimelogConnection',
+      },
+      totalTimeSpent: 0,
+      __typename: 'WorkItemWidgetTimeTracking',
+    },
+    linkedItems: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_LINKED_ITEMS],
+      blockingCount: 0,
+      blockedByCount: 0,
+      linkedItems: {
+        nodes: [],
+      },
+      __typename: 'WorkItemWidgetLinkedItems',
+    },
+    crmContacts: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_CRM_CONTACTS],
+      contactsAvailable: false,
+      contacts: {
+        nodes: draftWorkItemCache[WIDGET_TYPE_CRM_CONTACTS]?.contacts?.nodes || [],
+        __typename: 'CustomerRelationsContactConnection',
+      },
+      __typename: 'WorkItemWidgetCrmContacts',
+    },
+    awardEmoji: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_AWARD_EMOJI],
+      upvotes: 0,
+      downvotes: 0,
+      newCustomEmojiPath: '',
+      awardEmoji: {
+        nodes: [],
+        pageInfo: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+          __typename: 'PageInfo',
+        },
+        __typename: 'AwardEmojiConnection',
+      },
+      __typename: 'WorkItemWidgetAwardEmoji',
+    },
+    notes: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_NOTES],
+      discussionLocked: false,
+      __typename: 'WorkItemWidgetNotes',
+    },
+    linkedResources: {
+      ...widgetDefinitionsHash[WIDGET_TYPE_LINKED_RESOURCES],
+      linkedResources: {
+        nodes: [],
+        __typename: 'WorkItemLinkedResourceConnection',
+      },
+      __typename: 'WorkItemWidgetLinkedResources',
+    },
+    development: {
+      __typename: 'WorkItemWidgetDevelopment',
+      closingMergeRequests: {
+        count: 0,
+      },
+    },
+  };
+
+  const cachedParent = draftWorkItemCache[WIDGET_TYPE_HIERARCHY]?.parent || null;
+  const typeSpecificParent = workItemTypeSpecificFeatures[WIDGET_TYPE_HIERARCHY]?.parent || null;
+
+  if (cachedParent) {
+    const allowedParentTypes =
+      widgetDefinitions.find((widget) => widget.type === WIDGET_TYPE_HIERARCHY)?.allowedParentTypes
+        ?.nodes || [];
+
+    features.hierarchy.parent = allowedParentTypes.some(
+      (type) => type.id === cachedParent.workItemType.id,
+    )
+      ? cachedParent
+      : typeSpecificParent;
+  } else if (workItemTypeSpecificFeatures[WIDGET_TYPE_HIERARCHY]) {
+    features.hierarchy.parent = typeSpecificParent;
+  }
+
+  if (widgetDefinitionsHash[WIDGET_TYPE_CUSTOM_FIELDS]) {
+    const availableCustomFieldValues =
+      widgetDefinitionsHash[WIDGET_TYPE_CUSTOM_FIELDS].customFieldValues;
+    const cachedCustomFieldValues =
+      draftWorkItemCache[WIDGET_TYPE_CUSTOM_FIELDS]?.customFieldValues;
+    const typeSpecificCustomFieldValues =
+      workItemTypeSpecificFeatures[WIDGET_TYPE_CUSTOM_FIELDS]?.customFieldValues || [];
+
+    let customFieldValues = workItemTypeSpecificFeatures[WIDGET_TYPE_CUSTOM_FIELDS]
+      ? typeSpecificCustomFieldValues
+      : widgetDefinitionsHash[WIDGET_TYPE_CUSTOM_FIELDS]?.customFieldValues ?? [];
+
+    if (cachedCustomFieldValues && availableCustomFieldValues) {
+      customFieldValues = availableCustomFieldValues.map((availableField) => {
+        const cachedField = cachedCustomFieldValues.find(
+          (cached) => cached.customField.id === availableField.customField.id,
+        );
+        const typeSpecificField = typeSpecificCustomFieldValues.find(
+          (typeField) => typeField.customField.id === availableField.customField.id,
+        );
+
+        let fieldValue = {};
+        if (cachedField?.selectedOptions || typeSpecificField?.selectedOptions) {
+          fieldValue = {
+            selectedOptions: cachedField?.selectedOptions || typeSpecificField?.selectedOptions,
+          };
+        } else if (cachedField?.value || typeSpecificField?.value) {
+          fieldValue = { value: cachedField?.value || typeSpecificField?.value };
+        }
+
+        if (Object.keys(fieldValue).length) {
+          return { ...availableField, ...fieldValue };
+        }
+        return { ...availableField };
+      });
+    }
+
+    features.customFields = {
+      ...widgetDefinitionsHash[WIDGET_TYPE_CUSTOM_FIELDS],
+      customFieldValues,
+      __typename: 'WorkItemWidgetCustomFields',
+    };
+  }
+
+  return {
+    draftTitle,
+    features,
+  };
+};
+export const legacyGetNewWorkItemSharedCache = ({
   workItemAttributesWrapperOrder,
   widgetDefinitions,
   fullPath,
@@ -411,10 +685,6 @@ export const getNewWorkItemSharedCache = ({
       }
 
       if (widgetName === WIDGET_TYPE_WEIGHT) {
-        const weightWidgetData = widgetDefinitions.find(
-          (definition) => definition.type === WIDGET_TYPE_WEIGHT,
-        );
-
         widgets.push({
           type: 'WEIGHT',
           weight: sharedCacheWidgets[WIDGET_TYPE_WEIGHT]
@@ -422,10 +692,6 @@ export const getNewWorkItemSharedCache = ({
             : null,
           rolledUpWeight: null,
           rolledUpCompletedWeight: null,
-          widgetDefinition: {
-            editable: weightWidgetData?.editable,
-            rollUp: weightWidgetData?.rollUp,
-          },
           __typename: 'WorkItemWidgetWeight',
         });
       }
@@ -496,14 +762,16 @@ export const getNewWorkItemSharedCache = ({
       }
 
       if (widgetName === WIDGET_TYPE_STATUS) {
-        const { defaultOpenStatus } = widgetDefinitions.find(
+        const statusWidgetDefinition = widgetDefinitions.find(
           (widget) => widget.type === WIDGET_TYPE_STATUS,
         );
+        const { defaultOpenStatus, allowedStatuses } = statusWidgetDefinition;
+        const cachedStatus = sharedCacheWidgets[WIDGET_TYPE_STATUS]?.status;
+        const isCachedStatusAllowed =
+          cachedStatus && allowedStatuses?.some((s) => s.name === cachedStatus.name);
         widgets.push({
           type: 'STATUS',
-          status: sharedCacheWidgets[WIDGET_TYPE_STATUS]
-            ? sharedCacheWidgets[WIDGET_TYPE_STATUS]?.status || defaultOpenStatus
-            : defaultOpenStatus,
+          status: isCachedStatusAllowed ? cachedStatus : defaultOpenStatus,
           __typename: 'WorkItemWidgetStatus',
         });
       }
@@ -621,7 +889,6 @@ export const getNewWorkItemSharedCache = ({
 
   return {
     draftTitle,
-    draftDescription,
     widgets,
   };
 };
@@ -637,6 +904,7 @@ export const setNewWorkItemCache = ({
   workItemTitle = '',
   workItemDescription = '',
   confidential = false,
+  useWorkItemFeatures = false,
 }) => {
   const workItemAttributesWrapperOrder = [
     WIDGET_TYPE_STATUS,
@@ -661,7 +929,6 @@ export const setNewWorkItemCache = ({
     return;
   }
 
-  const workItemTitleCase = convertEachWordToTitleCase(workItemType.split('_').join(' '));
   const currentUserId = convertToGraphQLId(TYPENAME_USER, gon?.current_user_id);
   const baseURL = getBaseURL();
   const isValidWorkItemTitle = workItemTitle.trim().length > 0;
@@ -671,27 +938,47 @@ export const setNewWorkItemCache = ({
   const getStorageDraftString = getDraft(autosaveKey);
 
   const draftData = JSON.parse(getDraft(autosaveKey));
+
   const widgets = [];
+  let draftTitle = null;
+  let features = {};
 
-  const sharedCache = getNewWorkItemSharedCache({
-    workItemAttributesWrapperOrder,
-    widgetDefinitions,
-    fullPath,
-    context,
-    workItemType,
-    isValidWorkItemDescription,
-    workItemDescription,
-    relatedItemId,
-  });
-
-  const { draftTitle } = sharedCache;
-  widgets.push(...sharedCache.widgets);
+  if (useWorkItemFeatures) {
+    const cache = getNewWorkItemSharedCache({
+      workItemAttributesWrapperOrder,
+      widgetDefinitions,
+      fullPath,
+      context,
+      workItemType,
+      isValidWorkItemDescription,
+      workItemDescription,
+      relatedItemId,
+    });
+    draftTitle = cache.draftTitle;
+    features = { __typename: 'WorkItemFeatures', ...cache.features };
+  } else {
+    const cache = legacyGetNewWorkItemSharedCache({
+      workItemAttributesWrapperOrder,
+      widgetDefinitions,
+      fullPath,
+      context,
+      workItemType,
+      isValidWorkItemDescription,
+      workItemDescription,
+      relatedItemId,
+    });
+    draftTitle = cache.draftTitle;
+    features = {};
+    widgets.push(...cache.widgets);
+  }
 
   const newWorkItemPath = newWorkItemFullPath(fullPath, workItemType);
 
   // get the widgets stored in draft data
-  const draftDataWidgetTypes = map(draftData?.namespace?.workItem?.widgets, 'type') || [];
-  const freshWidgetTypes = map(widgets, 'type') || [];
+  const draftDataWidgetTypes = useWorkItemFeatures
+    ? Object.keys(draftData?.namespace?.workItem?.features || {})
+    : map(draftData?.namespace?.workItem?.widgets, 'type') || [];
+  const freshWidgetTypes = useWorkItemFeatures ? Object.keys(features) : map(widgets, 'type') || [];
 
   // this is to fix errors when we are introducing a new widget and the cache always updates from the old widgets
   // Like if we we introduce a new widget , the user might always see the cached data until hits cancel
@@ -700,8 +987,9 @@ export const setNewWorkItemCache = ({
     freshWidgetTypes.sort(),
   );
 
-  const isValidDraftData =
-    draftData?.namespace?.workItem && getStorageDraftString && draftWidgetsAreSameAsCacheDigits;
+  const isValidDraftData = Boolean(
+    draftData?.namespace?.workItem && getStorageDraftString && draftWidgetsAreSameAsCacheDigits,
+  );
 
   /** check in case of someone plays with the localstorage, we need to be sure */
   if (!isValidDraftData) {
@@ -713,6 +1001,7 @@ export const setNewWorkItemCache = ({
     variables: {
       fullPath: newWorkItemPath,
       iid: NEW_WORK_ITEM_IID,
+      useWorkItemFeatures,
     },
     data: {
       namespace: {
@@ -760,12 +1049,13 @@ export const setNewWorkItemCache = ({
           },
           workItemType: {
             id: workItemTypeId || 'mock-work-item-type-id',
-            name: workItemTitleCase,
+            name: workItemType,
             iconName: workItemTypeIconName,
             __typename: 'WorkItemType',
           },
           userPermissions: newWorkItemOptimisticUserPermissions,
           commentTemplatesPaths: [],
+          features,
           widgets,
           __typename: 'WorkItem',
         },

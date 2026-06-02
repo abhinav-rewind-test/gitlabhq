@@ -55,6 +55,31 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
 
           it { is_expected.to be_valid }
 
+          context 'for release with type and direct_asset_path in asset links' do
+            let(:config) do
+              {
+                options: {
+                  release: {
+                    tag_name: 'v1.0',
+                    description: 'Release v1.0',
+                    assets: {
+                      links: [
+                        {
+                          name: 'asset1',
+                          url: 'https://example.com/assets/1',
+                          type: 'package',
+                          direct_asset_path: '/binaries/asset1'
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            end
+
+            it { is_expected.to be_valid }
+          end
+
           context 'for trigger:include::component' do
             let(:config) do
               {
@@ -164,17 +189,19 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
         end
       end
 
+      context 'when config is nil' do
+        let(:config) { nil }
+
+        it 'is invalid' do
+          expect(job_definition).not_to be_valid
+          expect(job_definition.errors[:config]).to include('value at root is not an object')
+        end
+      end
+
       context 'with invalid config structure' do
         let(:config) { 'invalid' }
 
         it 'is invalid' do
-          expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-            class: described_class.name,
-            message: 'Invalid config schema detected',
-            job_definition_checksum: job_definition.checksum,
-            project_id: job_definition.project_id,
-            schema_errors: ['value at root is not an object']
-          )
           expect(job_definition).not_to be_valid
           expect(job_definition.errors[:config]).to include('value at root is not an object')
         end
@@ -183,13 +210,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { unknown_property: 'random value' } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: ['object property at `/unknown_property` is a disallowed additional property']
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'object property at `/unknown_property` is a disallowed additional property')
@@ -204,22 +224,34 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
                 'value at `/options/artifacts/reports` is not an object')
             end
           end
+
+          context 'when release asset link has unknown property' do
+            let(:config) do
+              {
+                options: {
+                  release: {
+                    assets: {
+                      links: [
+                        { name: 'asset1', url: 'https://example.com/assets/1', unknown_prop: 'value' }
+                      ]
+                    }
+                  }
+                }
+              }
+            end
+
+            it 'is invalid' do
+              expect(job_definition).not_to be_valid
+              expect(job_definition.errors[:config]).to include(
+                'object property at `/options/release/assets/links/0/unknown_prop` is a disallowed additional property')
+            end
+          end
         end
 
         context 'with invalid id_tokens' do
           let(:config) { { id_tokens: { TEST_JWT_TOKEN: { id_token: { aud: nil } } } } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: [
-                'object property at `/id_tokens/TEST_JWT_TOKEN/id_token` is a disallowed additional property',
-                'object at `/id_tokens/TEST_JWT_TOKEN` is missing required properties: aud'
-              ]
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'object property at `/id_tokens/TEST_JWT_TOKEN/id_token` is a disallowed additional property',
@@ -231,13 +263,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { interruptible: {} } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: ['value at `/interruptible` is not a boolean']
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'value at `/interruptible` is not a boolean')
@@ -248,15 +273,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { run_steps: {} } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: [
-                'value at `/run_steps` is not an array'
-              ]
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'value at `/run_steps` is not an array')
@@ -267,15 +283,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { secrets: { DATABASE_PASSWORD: { vault: {} } } } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: [
-                'object at `/secrets/DATABASE_PASSWORD/vault` is missing required properties: path, field, engine'
-              ]
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'object at `/secrets/DATABASE_PASSWORD/vault` is missing required properties: path, field, engine')
@@ -286,15 +293,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { tag_list: 'one-tag' } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: [
-                'value at `/tag_list` is not an array'
-              ]
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'value at `/tag_list` is not an array')
@@ -305,15 +303,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           let(:config) { { yaml_variables: 'invalid' } }
 
           it 'is invalid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: [
-                'value at `/yaml_variables` is not one of the types: ["array", "null"]'
-              ]
-            )
             expect(job_definition).not_to be_valid
             expect(job_definition.errors[:config]).to include(
               'value at `/yaml_variables` is not one of the types: ["array", "null"]')
@@ -323,168 +312,9 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
             let(:config) { { yaml_variables: [{ key: "RAILS_ENV", unknown_property: true }] } }
 
             it 'is invalid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'object property at `/yaml_variables/0/unknown_property` is a disallowed additional property'
-                ]
-              )
               expect(job_definition).not_to be_valid
               expect(job_definition.errors[:config]).to include(
                 'object property at `/yaml_variables/0/unknown_property` is a disallowed additional property')
-            end
-          end
-        end
-
-        context 'when env is production' do
-          before do
-            allow(Rails.env).to receive(:production?).and_return(true)
-          end
-
-          it 'logs the validation errors but behaves like valid' do
-            expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-              class: described_class.name,
-              message: 'Invalid config schema detected',
-              job_definition_checksum: job_definition.checksum,
-              project_id: job_definition.project_id,
-              schema_errors: ['value at root is not an object']
-            )
-            expect(job_definition).to be_valid
-          end
-
-          context 'with invalid config properties' do
-            let(:config) { { unknown_property: 'random value' } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: ['object property at `/unknown_property` is a disallowed additional property']
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid id_tokens' do
-            let(:config) { { id_tokens: { TEST_JWT_TOKEN: { id_token: { aud: nil } } } } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'object property at `/id_tokens/TEST_JWT_TOKEN/id_token` is a disallowed additional property',
-                  'object at `/id_tokens/TEST_JWT_TOKEN` is missing required properties: aud'
-                ]
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid interruptible' do
-            let(:config) { { interruptible: {} } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: ['value at `/interruptible` is not a boolean']
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid run_steps' do
-            let(:config) { { run_steps: {} } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'value at `/run_steps` is not an array'
-                ]
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid secrets' do
-            let(:config) { { secrets: { DATABASE_PASSWORD: { vault: {} } } } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'object at `/secrets/DATABASE_PASSWORD/vault` is missing required properties: path, field, engine'
-                ]
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid tag_list' do
-            let(:config) { { tag_list: 'one-tag' } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'value at `/tag_list` is not an array'
-                ]
-              )
-              expect(job_definition).to be_valid
-            end
-          end
-
-          context 'with invalid yaml_variables' do
-            let(:config) { { yaml_variables: 'invalid' } }
-
-            it 'logs the validation errors but behaves like valid' do
-              expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                class: described_class.name,
-                message: 'Invalid config schema detected',
-                job_definition_checksum: job_definition.checksum,
-                project_id: job_definition.project_id,
-                schema_errors: [
-                  'value at `/yaml_variables` is not one of the types: ["array", "null"]'
-                ]
-              )
-              expect(job_definition).to be_valid
-            end
-
-            context 'for invalid item' do
-              let(:config) { { yaml_variables: [{ key: "RAILS_ENV", unknown_property: true }] } }
-
-              it 'logs the validation errors but behaves like valid' do
-                expect(Gitlab::AppJsonLogger).to receive(:warn).with(
-                  class: described_class.name,
-                  message: 'Invalid config schema detected',
-                  job_definition_checksum: job_definition.checksum,
-                  project_id: job_definition.project_id,
-                  schema_errors: [
-                    'object property at `/yaml_variables/0/unknown_property` is a disallowed additional property'
-                  ]
-                )
-                expect(job_definition).to be_valid
-              end
             end
           end
         end
@@ -523,96 +353,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
 
       expect { job_definition.update_columns(config: new_config_value) }
         .to raise_error(ActiveRecord::ReadOnlyRecord)
-    end
-  end
-
-  describe '.use_new_checksum_approach?' do
-    subject { described_class.use_new_checksum_approach?(project.id, partition_id) }
-
-    before do
-      stub_feature_flags(ci_job_definitions_force_new_checksum: false)
-    end
-
-    context 'with partition_id below threshold' do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD - 1 }
-
-      it { is_expected.to be false }
-    end
-
-    context 'with partition_id at threshold' do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD }
-
-      it { is_expected.to be true }
-    end
-
-    context 'with partition_id above threshold' do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD + 1 }
-
-      it { is_expected.to be true }
-    end
-
-    context 'when partition_id is missing but a current ci_partitions record exists' do
-      let(:partition_id) { nil }
-
-      before do
-        create(:ci_partition, :current)
-      end
-
-      it { is_expected.to be false }
-    end
-
-    context 'when partition_id is missing and no ci_partitions records exist' do
-      let(:partition_id) { nil }
-
-      it { is_expected.to be false }
-    end
-
-    context 'when feature flag is disabled' do
-      before do
-        stub_feature_flags(ci_job_definitions_new_checksum: false)
-      end
-
-      context 'with partition_id below threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD - 1 }
-
-        it { is_expected.to be false }
-      end
-
-      context 'with partition_id at threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD }
-
-        it { is_expected.to be false }
-      end
-
-      context 'with partition_id above threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD + 1 }
-
-        it { is_expected.to be false }
-      end
-    end
-
-    context 'when override feature flag is enabled' do
-      before do
-        stub_feature_flags(ci_job_definitions_force_new_checksum: true)
-      end
-
-      context 'with partition_id below threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD - 1 }
-
-        it { is_expected.to be true }
-      end
-
-      context 'with partition_id at threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD }
-
-        it { is_expected.to be true }
-      end
-
-      context 'with partition_id above threshold' do
-        let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD + 1 }
-
-        it { is_expected.to be true }
-      end
     end
   end
 
@@ -659,144 +399,33 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
       expect(fabricate.created_at).to eq(Time.current)
     end
 
-    context 'with interruptible not specified' do
+    context 'when interruptible is not specified' do
       let(:config) { { options: { script: ['echo test'] } } }
 
       it 'uses column default for interruptible' do
         expect(fabricate.interruptible).to eq(described_class.column_defaults['interruptible'])
       end
-    end
 
-    context "when the partition_id is greater than or equal to #{described_class::NEW_CHECKSUM_PARTITION_THRESHOLD}" do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD }
-
-      before do
-        stub_feature_flags(ci_job_definitions_force_new_checksum: false)
+      it 'does not include normalized data columns in persisted config' do
+        expect(fabricate.config).not_to have_key(:interruptible)
       end
 
-      context 'when interruptible is not specified' do
-        let(:config) { { options: { script: ['echo test'] } } }
-        let(:old_fabricate) do
-          described_class.fabricate(config: config, project_id: project_id, partition_id: partition_id - 1)
-        end
-
-        it 'does not include normalized data columns in persisted config' do
-          expect(fabricate.config).not_to have_key(:interruptible)
-        end
-
-        it 'sets normalized data column attribute' do
-          expect(fabricate.interruptible).to eq(described_class.column_defaults['interruptible'])
-        end
-
-        it 'generates different checksum than old approach' do
-          expect(old_fabricate.checksum).not_to eq(fabricate.checksum)
-        end
-      end
-
-      context 'when interruptible is explicitly set' do
-        let(:config) { { options: { script: ['echo test'] }, interruptible: true } }
-
-        it 'does not include normalized data columns in persisted config' do
-          expect(fabricate.config).not_to have_key(:interruptible)
-        end
-
-        it 'sets normalized data column attribute' do
-          expect(fabricate.interruptible).to be true
-        end
+      it 'applies defaults before generating checksum' do
+        config_with_defaults = config.merge(interruptible: described_class.column_defaults['interruptible'])
+        expected_checksum = described_class.generate_checksum(config_with_defaults)
+        expect(fabricate.checksum).to eq(expected_checksum)
       end
     end
 
-    context "when the partition_id is less than #{described_class::NEW_CHECKSUM_PARTITION_THRESHOLD}" do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD - 1 }
+    context 'when interruptible is explicitly set' do
+      let(:config) { { options: { script: ['echo test'] }, interruptible: true } }
 
-      before do
-        stub_feature_flags(ci_job_definitions_force_new_checksum: false)
+      it 'does not include normalized data columns in persisted config' do
+        expect(fabricate.config).not_to have_key(:interruptible)
       end
 
-      context 'when interruptible is not specified' do
-        let(:config) { { options: { script: ['echo test'] } } }
-
-        it 'does not include normalized data columns in persisted config' do
-          expect(fabricate.config).not_to have_key(:interruptible)
-        end
-
-        it 'sets normalized data column attribute with default value' do
-          expect(fabricate.interruptible).to eq(described_class.column_defaults['interruptible'])
-        end
-      end
-
-      context 'when interruptible is explicitly set' do
-        let(:config) { { options: { script: ['echo test'] }, interruptible: true } }
-
-        it 'includes normalized data columns in persisted config when explicitly passed' do
-          expect(fabricate.config[:interruptible]).to be true
-        end
-
-        it 'sets normalized data column attribute' do
-          expect(fabricate.interruptible).to be true
-        end
-      end
-
-      context 'when the force flag is enabled' do
-        before do
-          stub_feature_flags(ci_job_definitions_force_new_checksum: true)
-        end
-
-        context 'when interruptible is not specified' do
-          let(:config) { { options: { script: ['echo test'] } } }
-
-          it 'does not include normalized data columns in persisted config' do
-            expect(fabricate.config).not_to have_key(:interruptible)
-          end
-
-          it 'sets normalized data column attribute' do
-            expect(fabricate.interruptible).to eq(described_class.column_defaults['interruptible'])
-          end
-        end
-
-        context 'when interruptible is explicitly set' do
-          let(:config) { { options: { script: ['echo test'] }, interruptible: true } }
-
-          it 'does not include normalized data columns in persisted config' do
-            expect(fabricate.config).not_to have_key(:interruptible)
-          end
-
-          it 'sets normalized data column attribute' do
-            expect(fabricate.interruptible).to be true
-          end
-        end
-      end
-    end
-
-    context 'when the feature flags are disabled' do
-      let(:partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD }
-      let(:old_partition_id) { described_class::NEW_CHECKSUM_PARTITION_THRESHOLD - 1 }
-
-      before do
-        stub_feature_flags(
-          ci_job_definitions_new_checksum: false,
-          ci_job_definitions_force_new_checksum: false
-        )
-      end
-
-      context 'when interruptible is not specified' do
-        let(:config) { { options: { script: ['echo test'] } } }
-        let(:old_fabricate) do
-          described_class.fabricate(config: config, project_id: project_id, partition_id: old_partition_id)
-        end
-
-        it 'uses old checksum approach even with partition at threshold' do
-          expect(fabricate.config).not_to have_key(:interruptible)
-          expect(fabricate.interruptible).to eq(described_class.column_defaults['interruptible'])
-        end
-
-        it 'does not include normalized data columns in persisted config when not explicitly passed' do
-          expect(fabricate.config).not_to have_key(:interruptible)
-        end
-
-        it 'generates same checksum as old approach' do
-          expect(fabricate.checksum).to eq(old_fabricate.checksum)
-        end
+      it 'sets normalized data column attribute' do
+        expect(fabricate.interruptible).to be true
       end
     end
 
@@ -844,17 +473,6 @@ RSpec.describe Ci::JobDefinition, feature_category: :continuous_integration do
           described_class::CONFIG_ATTRIBUTES - described_class::NORMALIZED_DATA_COLUMNS
         )
         expect(fabricate.interruptible).to be true
-      end
-
-      context 'when FF `ci_job_definitions_new_checksum` is disabled' do
-        before do
-          stub_feature_flags(ci_job_definitions_new_checksum: false)
-        end
-
-        it 'includes all specified CONFIG_ATTRIBUTES' do
-          expect(fabricate.config.keys).to match_array(described_class::CONFIG_ATTRIBUTES)
-          expect(fabricate.interruptible).to be true
-        end
       end
     end
   end

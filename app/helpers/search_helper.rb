@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module SearchHelper
+  include Gitlab::Utils::StrongMemoize
+  include WorkItemsHelper # Provides work_item_path for recent_work_items_autocomplete
+
   # params which should persist when a new tab is selected
   SEARCH_GENERIC_PARAMS = [
     :search,
@@ -15,7 +18,7 @@ module SearchHelper
   ].freeze
 
   def search_autocomplete_opts(term, filter: nil, scope: nil)
-    return unless current_user
+    return [] unless current_user
 
     results = case filter&.to_sym
               when :search
@@ -37,7 +40,7 @@ module SearchHelper
   end
 
   def resource_results(term, scope: nil)
-    return [] if term.length < Gitlab::Search::Params::MIN_TERM_LENGTH
+    return [] if term.length < Search::Params::MIN_TERM_LENGTH
     return scope_specific_results(term, scope) if scope.present?
 
     [
@@ -54,8 +57,12 @@ module SearchHelper
       projects_autocomplete(term)
     when :users
       users_autocomplete(term)
-    when :issues
-      recent_issues_autocomplete(term)
+    when :issues, :work_items
+      if work_items_autocomplete_enabled?
+        recent_work_items_autocomplete(term)
+      else
+        recent_issues_autocomplete(term)
+      end
     else
       []
     end
@@ -69,7 +76,13 @@ module SearchHelper
   end
 
   def recent_items_autocomplete(term)
-    recent_merge_requests_autocomplete(term) + recent_issues_autocomplete(term)
+    issues_or_work_items = if work_items_autocomplete_enabled?
+                             recent_work_items_autocomplete(term)
+                           else
+                             recent_issues_autocomplete(term)
+                           end
+
+    recent_merge_requests_autocomplete(term) + issues_or_work_items + recent_wiki_pages_autocomplete(term)
   end
 
   def search_entries_info(collection, scope, term)
@@ -178,7 +191,7 @@ module SearchHelper
   end
 
   def search_service
-    @search_service ||= ::SearchService.new(current_user, params)
+    @search_service ||= ::SearchService.new(current_user, params.merge(organization_id: Current.organization.id))
   end
 
   def search_sort_options
@@ -297,7 +310,52 @@ module SearchHelper
     parse_navigation(sorted_navigation).to_json
   end
 
+  def work_item_types_for_filter
+    container = @project || @group
+
+    if container
+      types = ::WorkItems::TypesFinder
+        .new(container: container)
+        .execute(only_available: false)
+        .map do |type|
+          {
+            name: type.base_type.to_s,
+            label: type.name,
+            icon_name: type.icon_name
+          }
+        end
+      types = types.sort_by { |type| type[:name] }
+
+      # Filter types based on container and feature flags
+      filter_work_item_types(types, container)
+    else
+      # Return empty list for global search - work item type filter is not applicable
+      []
+    end
+  end
+  strong_memoize_attr :work_item_types_for_filter
+
   private
+
+  def filter_work_item_types(types, container)
+    types.reject do |type|
+      # Epic requires the licensed feature; for projects, also requires project_work_item_epics feature flag
+      type[:name] == 'epic' && !epics_enabled_for?(container)
+    end
+  end
+
+  def epics_enabled_for?(container)
+    if container.is_a?(Project)
+      container.try(:project_epics_enabled?)
+    else
+      container.licensed_feature_available?(:epics)
+    end
+  end
+
+  def work_items_autocomplete_enabled?
+    ::Feature.enabled?(:work_items_autocomplete, current_user)
+  end
+  strong_memoize_attr :work_items_autocomplete_enabled?
 
   def combined_generic_results
     project_autocomplete + default_autocomplete + help_autocomplete + default_autocomplete_admin
@@ -428,11 +486,15 @@ module SearchHelper
 
   # Autocomplete results for the current user's projects
   def projects_autocomplete(term, limit = 5)
-    projects = current_user.authorized_projects.order_id_desc.search(
-      term,
-      include_namespace: true,
-      use_minimum_char_limit: false
-    ).sorted_by_stars_desc.self_and_ancestors_non_archived.limit(limit)
+    projects = if Feature.enabled?(:search_projects_autocomplete_use_search_service, current_user)
+                 search_using_search_service(current_user, 'projects', term, limit)
+               else
+                 current_user.authorized_projects.order_id_desc.search(
+                   term,
+                   include_namespace: true,
+                   use_minimum_char_limit: false
+                 ).sorted_by_stars_desc.self_and_ancestors_non_archived.limit(limit)
+               end
 
     projects.map do |p|
       {
@@ -493,6 +555,37 @@ module SearchHelper
         avatar_url: i.project.avatar_url || '',
         project_id: i.project_id,
         project_name: i.project.name
+      }
+    end
+  end
+
+  def recent_work_items_autocomplete(term)
+    return [] unless current_user
+
+    recent_work_items = ::Gitlab::Search::RecentWorkItems.new(user: current_user)
+    recent_work_items.search(term).map do |wi|
+      # For group-level work items, use namespace (group) avatar; for project-level, use project avatar
+      avatar_url = wi.project&.avatar_url || wi.namespace&.avatar_url || ''
+
+      {
+        category: "Recent work items",
+        id: wi.id,
+        label: search_result_sanitize(wi.title),
+        url: work_item_path(wi),
+        avatar_url: avatar_url,
+        project_id: wi.project&.id,
+        project_name: wi.project&.name
+      }
+    end
+  end
+
+  def recent_wiki_pages_autocomplete(term)
+    ::Gitlab::Search::RecentWikiPages.new(user: current_user).search(term).map do |wiki_page_meta|
+      {
+        category: "Recent wiki pages",
+        id: wiki_page_meta.id,
+        label: search_result_sanitize(wiki_page_meta.title),
+        url: Gitlab::UrlBuilder.build(wiki_page_meta)
       }
     end
   end

@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: ClickHouse
 ---
@@ -10,9 +10,15 @@ title: ClickHouse
 
 - Tier: Free, Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-- Status: Beta on GitLab Self-Managed and GitLab Dedicated
+- Status: Beta on GitLab Dedicated
 
 {{< /details >}}
+
+{{< history >}}
+
+- [Generally available](https://gitlab.com/groups/gitlab-org/-/work_items/20337) for GitLab Self-Managed in GitLab 18.11.
+
+{{< /history >}}
 
 [ClickHouse](https://clickhouse.com) is an open-source column-oriented database management system. It can efficiently filter, aggregate, and query across large data sets.
 
@@ -41,6 +47,7 @@ The supported ClickHouse version differs depending on your GitLab version:
 - GitLab 18.1 and later supports ClickHouse 23.x, 24.x, and 25.x.
 - GitLab 18.8 and later supports ClickHouse 23.x, 24.x, 25.x, and the Replicated database engine.
   - Older clusters will require an additional permission (`dictGet`), see the [snippet](#database-dictionary-read-support).
+- GitLab 19.0 and later supports ClickHouse 25.x and 26.x. Support for ClickHouse 23.x and 24.x has been removed.
 
 ClickHouse Cloud is always compatible with the latest stable GitLab release.
 
@@ -82,7 +89,7 @@ To set up ClickHouse Cloud:
 1. Select **Create Service**.
 1. Once provisioned, note your connection details from the service dashboard:
    - Host
-   - Port (usually `9440` for secure connections)
+   - Port (`8443` for HTTPS connections used by GitLab, or `9440` for native TCP with TLS used by `clickhouse-client`)
    - Username
    - Password
 
@@ -172,7 +179,6 @@ Before configuring the database, verify ClickHouse is installed and accessible:
    ```
 
    If ClickHouse is running, you see the version number (for example, `24.3.1.12`).
-
 1. Verify you can connect with credentials:
 
    ```shell
@@ -242,7 +248,7 @@ To provide GitLab with ClickHouse credentials:
    ```
 
    Replace the URL with:
-   - For ClickHouse Cloud: `https://your-service.clickhouse.cloud:9440`
+   - For ClickHouse Cloud: `https://your-service.clickhouse.cloud:8443`
    - ClickHouse for GitLab Self-Managed: `https://your-clickhouse-host:8443`
    - For ClickHouse for GitLab Self-Managed HA with load balancer: `https://your-load-balancer:8080` (or your load balancer URL)
 
@@ -284,7 +290,7 @@ To provide GitLab with ClickHouse credentials:
    ```
 
    Replace the URL with:
-   - For ClickHouse Cloud: `https://your-service.clickhouse.cloud:9440`
+   - For ClickHouse Cloud: `https://your-service.clickhouse.cloud:8443`
    - For ClickHouse for GitLab Self-Managed single node: `https://your-clickhouse-host:8443`
    - For ClickHouse for GitLab Self-Managed HA with load balancer: `https://your-load-balancer:8080` (or your load balancer URL)
 
@@ -323,6 +329,9 @@ If the connection fails, verify:
 - For HA cluster deployments: Load balancer is properly configured and routing requests.
 
 ### Run ClickHouse migrations
+
+> [!note]
+> This step is required. If you skip it, Analytics dashboards do not display data and show a "Failed to fetch data" error.
 
 {{< tabs >}}
 
@@ -393,10 +402,10 @@ To disable:
 
 ClickHouse Cloud automatically handles version upgrades and security patches. No manual intervention is required.
 
-For information about upgrade scheduling and maintenance windows, see the [ClickHouse Cloud documentation](https://clickhouse.com/docs/cloud/manage/updates).
+For information about upgrade scheduling and maintenance windows, see [ClickHouse Cloud upgrades](https://clickhouse.com/docs/manage/updates).
 
 > [!note]
-> ClickHouse Cloud notifies you in advance of upcoming upgrades. Review the [ClickHouse Cloud changelog](https://clickhouse.com/docs/cloud/changes) to stay informed about new features and changes.
+> ClickHouse Cloud notifies you in advance of upcoming upgrades. Review the [ClickHouse Cloud changelog](https://clickhouse.com/docs/whats-new/cloud) to stay informed about new features and changes.
 
 ### ClickHouse for GitLab Self-Managed (BYOC)
 
@@ -409,7 +418,7 @@ Prerequisites:
 
 Before upgrading:
 
-1. Review the [ClickHouse release notes](https://clickhouse.com/docs/category/release-notes) for breaking changes.
+1. Review the [ClickHouse release notes](https://clickhouse.com/docs/category/changelog) for breaking changes.
 1. Check [compatibility](#supported-clickhouse-versions) with your GitLab version.
 1. Test the upgrade in a non-production environment.
 1. Plan for potential downtime, or use a rolling upgrade strategy for HA clusters.
@@ -633,7 +642,6 @@ To ensure the security of your data and ensure audit ability, use the following 
 - TLS Encryption: Configure ClickHouse servers to [use TLS encryption](#network-security) to validate connections.
 
   When configuring the connection URL in GitLab, you should use the `https://` protocol (for example, `https://clickhouse.example.com:8443`) to specify this.
-
 - IP Allow lists: Restrict access to the ClickHouse port (default `8443` or `9440`) to only the GitLab application nodes and other authorized networks.
 
 ### Audit logging
@@ -706,7 +714,8 @@ Alternative recommendation for ClickHouse for GitLab Self-Managed deployment:
 - Azure: Standard_D8ps_v6 (8 vCPU, 32 GB)
 - Storage: 100 GB with medium performance tier
 
-Note: HA deployments not cost-effective at this scale.
+> [!note]
+> HA deployments are not cost-effective at this scale.
 
 ### 5K Users
 
@@ -743,13 +752,11 @@ Recommendations for ClickHouse for GitLab Self-Managed deployment:
   - AWS: m8g.8xlarge (32 vCPU, 128 GB)
   - GCP: c4a-standard-32 or n4-standard-32 (32 vCPU, 128 GB)
   - Azure: Standard_D32ps_v6 (32 vCPU, 128 GB)
-
 - HA Deployment:
 
   - AWS: 3 × m8g.4xlarge (16 vCPU, 64 GB each)
   - GCP: 3 × c4a-standard-16 or 3 × n4-standard-16 (16 vCPU, 64 GB each)
   - Azure: 3 x Standard_D16ps_v6 (16 vCPU, 64 GB each)
-
 - Storage: 400 GB per node with high performance tier.
 
 ### 50K Users
@@ -763,13 +770,11 @@ Recommendations for ClickHouse for GitLab Self-Managed deployment:
   - AWS: m8g.8xlarge (32 vCPU, 128 GB)
   - GCP: c4a-standard-32 or n4-standard-32 (32 vCPU, 128 GB)
   - Azure: Standard_D32ps_v6 (32 vCPU, 128 GB)
-
 - HA Deployment (Preferred):
 
   - AWS: 3 × m8g.4xlarge (16 vCPU, 64 GB each)
   - GCP: 3 × c4a-standard-16 or 3 × n4-standard-16 (16 vCPU, 64 GB each)
   - Azure: 3 x Standard_D16ps_v6 (16 vCPU, 64 GB each)
-
 - Storage: 1000 GB per node with high performance tier.
 
 #### HA considerations for ClickHouse for GitLab Self-Managed deployment

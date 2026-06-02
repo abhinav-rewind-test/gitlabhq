@@ -1,8 +1,13 @@
 <script>
-import { GlButton, GlButtonGroup, GlDisclosureDropdown, GlTooltipDirective } from '@gitlab/ui';
-import { mapActions, mapState } from 'pinia';
-import { throttle } from 'lodash';
-import { __ } from '~/locale';
+import {
+  GlButton,
+  GlButtonGroup,
+  GlDisclosureDropdown,
+  GlIcon,
+  GlTooltipDirective,
+} from '@gitlab/ui';
+import { mapState } from 'pinia';
+import { __, n__ } from '~/locale';
 import {
   keysFor,
   MR_NEXT_UNRESOLVED_DISCUSSION,
@@ -10,11 +15,15 @@ import {
 } from '~/behaviors/shortcuts/keybindings';
 import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
 import { sanitize } from '~/lib/dompurify';
-import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
 import { useNotes } from '~/notes/store/legacy_notes';
 import discussionNavigation from '../mixins/discussion_navigation';
 
 export default {
+  name: 'DiscussionCounter',
+  i18n: {
+    allThreadsResolved: __('All threads resolved!'),
+    threadOptions: __('Thread options'),
+  },
   directives: {
     GlTooltip: GlTooltipDirective,
   },
@@ -22,8 +31,12 @@ export default {
     GlDisclosureDropdown,
     GlButton,
     GlButtonGroup,
+    GlIcon,
   },
   mixins: [discussionNavigation],
+  inject: {
+    store: { type: Object },
+  },
   props: {
     blocksMerge: {
       type: Boolean,
@@ -33,12 +46,11 @@ export default {
       type: Boolean,
       required: true,
     },
-  },
-  data() {
-    return {
-      jumpNext: throttle(this.jumpToNextDiscussion, 500),
-      jumpPrevious: throttle(this.jumpToPreviousDiscussion, 500),
-    };
+    compact: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   computed: {
     ...mapState(useNotes, [
@@ -46,12 +58,11 @@ export default {
       'resolvableDiscussionsCount',
       'unresolvedDiscussionsCount',
     ]),
-    ...mapState(useMrNotes, ['allVisibleDiscussionsExpanded']),
     allResolved() {
       return this.unresolvedDiscussionsCount === 0;
     },
     toggleThreadsLabel() {
-      return !this.allVisibleDiscussionsExpanded
+      return !this.store.allVisibleDiscussionsExpanded
         ? __('Show all comments')
         : __('Hide all comments');
     },
@@ -81,6 +92,15 @@ export default {
         ? description
         : sanitize(`${description} <kbd class="flat gl-ml-1" aria-hidden=true>${key}</kbd>`);
     },
+    compactTooltip() {
+      if (this.allResolved) {
+        return this.$options.i18n.allThreadsResolved;
+      }
+      return n__('%d open thread', '%d open threads', this.unresolvedDiscussionsCount);
+    },
+    compactCount() {
+      return this.allResolved ? this.resolvableDiscussionsCount : this.unresolvedDiscussionsCount;
+    },
     resolveAllDiscussionsIssuePath() {
       return this.getNoteableData.create_issue_to_resolve_discussions_path;
     },
@@ -88,7 +108,7 @@ export default {
       const options = [
         {
           text: this.toggleThreadsLabel,
-          action: this.toggleAllVisibleDiscussions,
+          action: () => this.store.toggleAllVisibleDiscussions(),
           extraAttrs: {
             'data-testid': 'toggle-all-discussions-btn',
           },
@@ -107,9 +127,6 @@ export default {
 
       return options;
     },
-  },
-  methods: {
-    ...mapActions(useMrNotes, ['toggleAllVisibleDiscussions']),
   },
 };
 </script>
@@ -130,7 +147,16 @@ export default {
       data-testid="discussions-counter-text"
     >
       <template v-if="allResolved">
-        {{ __('All threads resolved!') }}
+        <span
+          v-if="compact"
+          v-gl-tooltip="compactTooltip"
+          class="gl-flex gl-items-center"
+          data-testid="discussions-counter-compact"
+        >
+          <gl-icon name="status_success" :size="16" />
+          <span class="gl-sr-only">{{ $options.i18n.allThreadsResolved }}</span>
+        </span>
+        <template v-else>{{ $options.i18n.allThreadsResolved }}</template>
         <gl-disclosure-dropdown
           v-gl-tooltip
           icon="ellipsis_v"
@@ -138,8 +164,8 @@ export default {
           category="tertiary"
           placement="bottom-end"
           no-caret
-          :title="__('Thread options')"
-          :toggle-text="__('Thread options')"
+          :title="$options.i18n.threadOptions"
+          :toggle-text="$options.i18n.threadOptions"
           text-sr-only
           toggle-class="btn-icon !gl-rounded-l-none"
           class="gl-ml-3 gl-h-full !gl-pt-0"
@@ -147,7 +173,19 @@ export default {
         />
       </template>
       <template v-else>
-        {{ n__('%d open thread', '%d open threads', unresolvedDiscussionsCount) }}
+        <span
+          v-if="compact"
+          v-gl-tooltip="compactTooltip"
+          class="gl-flex gl-items-center gl-gap-2"
+          data-testid="discussions-counter-compact"
+        >
+          <gl-icon name="comments" :size="16" />
+          <span aria-hidden="true">{{ compactCount }}</span>
+          <span class="gl-sr-only">{{ compactTooltip }}</span>
+        </span>
+        <template v-else>
+          {{ n__('%d open thread', '%d open threads', unresolvedDiscussionsCount) }}
+        </template>
         <gl-button-group class="gl-ml-3">
           <gl-button
             v-gl-tooltip.html="previousUnresolvedDiscussionTooltip"
@@ -159,7 +197,7 @@ export default {
             data-track-property="click_previous_unresolved_thread_top"
             icon="chevron-lg-up"
             category="tertiary"
-            @click="jumpPrevious"
+            @click="jumpToPreviousDiscussion"
           />
           <gl-button
             v-gl-tooltip.html="nextUnresolvedDiscussionTooltip"
@@ -171,7 +209,7 @@ export default {
             data-track-property="click_next_unresolved_thread_top"
             icon="chevron-lg-down"
             category="tertiary"
-            @click="jumpNext"
+            @click="jumpToNextDiscussion"
           />
           <gl-disclosure-dropdown
             v-gl-tooltip
@@ -180,8 +218,8 @@ export default {
             category="tertiary"
             placement="bottom-end"
             no-caret
-            :title="__('Thread options')"
-            :toggle-text="__('Thread options')"
+            :title="$options.i18n.threadOptions"
+            :toggle-text="$options.i18n.threadOptions"
             text-sr-only
             toggle-class="btn-icon"
             :items="threadOptions"

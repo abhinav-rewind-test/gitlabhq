@@ -12,6 +12,7 @@ module API
     allow_mcp_access_create
 
     helpers Helpers::IssuesHelpers
+    helpers Helpers::MilestonesHelpers
     helpers Helpers::Authz::PostfilteringHelpers
     helpers SpammableActions::CaptchaCheck::RestApiActionsSupport
 
@@ -94,7 +95,7 @@ module API
           desc: 'Return issues sorted in `asc` or `desc` order.'
         optional :due_date, type: String, values: %w[0 any today tomorrow overdue week month next_month_and_previous_two_weeks] << '',
           desc: 'Return issues that have no due date (`0`), or whose due date is this week, this month, between two weeks ago and next month, or which are overdue. Accepts: `overdue`, `week`, `month`, `next_month_and_previous_two_weeks`, `0`'
-        optional :issue_type, type: String, values: ::WorkItems::TypesFilter.allowed_types_for_issues, desc: "The type of the issue. Accepts: #{::WorkItems::TypesFilter.allowed_types_for_issues.join(', ')}"
+        optional :issue_type, type: String, values: ::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues, desc: "The type of the issue. Accepts: #{::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues.join(', ')}"
         use :issues_stats_params
         use :pagination
       end
@@ -104,13 +105,17 @@ module API
         optional :assignee_ids, type: Array[Integer], coerce_with: ::API::Validations::Types::CommaSeparatedToIntegerArray.coerce, desc: 'The array of user IDs to assign issue'
         optional :assignee_id,  type: Integer, desc: '[Deprecated] The ID of a user to assign issue'
         optional :milestone_id, type: Integer, desc: 'The ID of a milestone to assign issue'
+        optional :milestone, type: String, limit: 255,
+          desc: 'The title of a project or ancestor-group milestone to assign the issue to. ' \
+            'Mutually exclusive with `milestone_id`.'
+        mutually_exclusive :milestone_id, :milestone
         optional :labels, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce, desc: 'Comma-separated list of label names'
         optional :add_labels, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce, desc: 'Comma-separated list of label names'
         optional :remove_labels, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce, desc: 'Comma-separated list of label names'
         optional :due_date, type: String, desc: 'Date string in the format YEAR-MONTH-DAY'
         optional :confidential, type: Boolean, desc: 'Boolean parameter if the issue should be confidential', allow_blank: false
         optional :discussion_locked, type: Boolean, desc: " Boolean parameter indicating if the issue's discussion is locked"
-        optional :issue_type, type: String, values: ::WorkItems::TypesFilter.allowed_types_for_issues, desc: "The type of the issue. Accepts: #{::WorkItems::TypesFilter.allowed_types_for_issues.join(', ')}"
+        optional :issue_type, type: String, values: ::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues, desc: "The type of the issue. Accepts: #{::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues.join(', ')}"
 
         use :optional_issue_params_ee
       end
@@ -288,7 +293,7 @@ module API
       params do
         requires :issue_iid, type: Integer, desc: 'The internal ID of a project issue'
       end
-      route_setting :mcp, tool_name: :get_issue, params: [:id, :issue_iid]
+      route_setting :mcp, tool_name: :get_issue, params: [:id, :issue_iid], resource_name: "issue"
       route_setting :authentication, job_token_allowed: true
       route_setting :authorization, permissions: :read_issue, boundary_type: :project, job_token_policies: :read_work_items, allow_public_access_for_enabled_project_features: :issues
       get ":id/issues/:issue_iid", as: :api_v4_project_issue do
@@ -313,7 +318,8 @@ module API
 
         use :issue_params
       end
-      route_setting :mcp, tool_name: :create_issue, params: Helpers::IssuesHelpers.create_issue_mcp_params
+      route_setting :mcp, tool_name: :create_issue, params: Helpers::IssuesHelpers.create_issue_mcp_params,
+        annotations: { readOnlyHint: false, destructiveHint: false }, resource_name: "project"
       route_setting :authorization, permissions: :create_issue, boundary_type: :project
       post ':id/issues' do
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/21140')
@@ -321,6 +327,7 @@ module API
         authorize! :create_issue, user_project
 
         issue_params = declared_params(include_missing: false)
+        resolve_milestone_title!(user_project, issue_params)
         validator = ::Gitlab::Auth::ScopeValidator.new(current_user, Gitlab::Auth::RequestAuthenticator.new(request))
         issue_params = convert_parameters_from_legacy_format(issue_params).merge(scope_validator: validator)
         begin
@@ -372,6 +379,7 @@ module API
         authorize! :update_issue, issue
 
         update_params = declared_params(include_missing: false)
+        resolve_milestone_title!(user_project, update_params)
 
         validator = ::Gitlab::Auth::ScopeValidator.new(current_user, Gitlab::Auth::RequestAuthenticator.new(request))
         update_params = convert_parameters_from_legacy_format(update_params).merge(scope_validator: validator)
@@ -434,8 +442,7 @@ module API
       post ':id/issues/:issue_iid/move' do
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/20776', new_threshold: 260)
 
-        issue = user_project.issues.find_by(iid: params[:issue_iid])
-        not_found!('Issue') unless issue
+        issue = find_project_issue(params[:issue_iid])
 
         new_project = Project.find_by(id: params[:to_project_id])
         not_found!('Project') unless new_project
@@ -468,8 +475,7 @@ module API
       post ':id/issues/:issue_iid/clone' do
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/340252')
 
-        issue = user_project.issues.find_by(iid: params[:issue_iid])
-        not_found!('Issue') unless issue
+        issue = find_project_issue(params[:issue_iid])
 
         target_project = Project.find_by(id: params[:to_project_id])
         not_found!('Project') unless target_project
@@ -562,7 +568,7 @@ module API
       route_setting :authorization, permissions: :read_issue_participant, boundary_type: :project
       get ':id/issues/:issue_iid/participants' do
         issue = find_project_issue(params[:issue_iid])
-        participants = ::Kaminari.paginate_array(issue.visible_participants(current_user))
+        participants = ::Kaminari.paginate_array(issue.participants(current_user))
 
         present paginate(participants), with: Entities::UserBasic, current_user: current_user, project: user_project
       end

@@ -11,19 +11,20 @@
       "type": "string",
       "description": "Description of the permission"
     },
-    "boundaries": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "enum": [
-          "instance",
-          "group",
-          "project",
-          "user"
-        ]
-      },
-      "minItems": 1,
-      "description": "List of resource types that the permission can be applied to"
+    "conditionally_enables": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      ],
+      "description": "One broader permission (string) or several (array). Roles holding ALL listed permissions implicitly hold this permission as well."
     }
   },
   "required": [

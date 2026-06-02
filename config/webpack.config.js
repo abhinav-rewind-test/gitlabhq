@@ -1,20 +1,23 @@
 // eslint-disable-next-line import/order
 const crypto = require('./helpers/patched_crypto');
 
-const { VUE_VERSION: EXPLICIT_VUE_VERSION } = process.env;
-if (![undefined, '2', '3'].includes(EXPLICIT_VUE_VERSION)) {
+const { VUE_VERSION = '2', VUE_COMPILER_VERSION = '2' } = process.env;
+
+if (!['2', '3'].includes(VUE_VERSION)) {
+  throw new Error(`Invalid VUE_VERSION value: ${VUE_VERSION}. Only '2' or '3' are supported`);
+}
+if (!['2', '3'].includes(VUE_COMPILER_VERSION)) {
   throw new Error(
-    `Invalid VUE_VERSION value: ${EXPLICIT_VUE_VERSION}. Only '2' and '3' are supported`,
+    `Invalid VUE_COMPILER_VERSION value: ${VUE_COMPILER_VERSION}. Only '2' or '3' are supported`,
   );
 }
-const USE_VUE3 = EXPLICIT_VUE_VERSION === '3';
 
-if (USE_VUE3) {
-  console.log('[V] Using Vue.js 3');
-} else {
-  console.log('[V] Using Vue.js 2');
-}
-const VUE_LOADER_MODULE = USE_VUE3 ? 'vue-loader-vue3' : 'vue-loader';
+const USE_VUE3 = VUE_VERSION === '3';
+const USE_VUE3_COMPILER = USE_VUE3 && VUE_COMPILER_VERSION === '3';
+
+console.log(`[V] Using Vue.js ${VUE_VERSION} (compiler ${VUE_COMPILER_VERSION})`);
+
+const VUE_LOADER_MODULE = USE_VUE3_COMPILER ? 'vue-loader-vue3' : 'vue-loader';
 
 const fs = require('fs');
 const path = require('path');
@@ -28,14 +31,14 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 const { VueLoaderPlugin } = require(VUE_LOADER_MODULE);
 // eslint-disable-next-line import/no-dynamic-require
 const VUE_LOADER_VERSION = require(`${VUE_LOADER_MODULE}/package.json`).version;
-const VUE_VERSION = require('vue/package.json').version;
+const EXACT_VUE_VERSION = require('vue/package.json').version;
 
 const webpack = require('webpack');
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const { StatsWriterPlugin } = require('webpack-stats-plugin');
 const WEBPACK_VERSION = require('webpack/package.json').version;
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
-const { isCustomElement } = require('./vue3migration/compiler');
+const { isCustomElement } = require('./vue3migration/vue3_template_compiler');
 
 const {
   IS_EE,
@@ -54,6 +57,8 @@ const createIncrementalWebpackCompiler = require('./helpers/incremental_webpack_
 const vendorDllHash = require('./helpers/vendor_dll_hash');
 
 const GraphqlKnownOperationsPlugin = require('./plugins/graphql_known_operations_plugin');
+const WebpackVue3InfectionPlugin = require('./plugins/webpack_vue3_infection_plugin');
+const { CONTEXT_ALIASES } = require('./helpers/context_aliases_shared');
 
 const SUPPORTED_BROWSERS = fs.readFileSync(path.join(ROOT_PATH, '.browserslistrc'), 'utf-8');
 const SUPPORTED_BROWSERS_HASH = crypto
@@ -92,7 +97,9 @@ if (WEBPACK_REPORT) {
   NO_HASHED_CHUNKS = true;
 }
 
-console.debug(`BABEL_ENV inside Webpack is: ${process.env.BABEL_ENV}`);
+if (process.env.DEBUG_BABEL_ENV === 'true') {
+  console.debug(`BABEL_ENV inside Webpack is: ${process.env.BABEL_ENV}`);
+}
 
 const devtool = IS_PRODUCTION ? 'source-map' : 'cheap-module-eval-source-map';
 
@@ -111,7 +118,35 @@ const alias = {
   images: path.join(ROOT_PATH, 'app/assets/images'),
   vendor: path.join(ROOT_PATH, 'vendor/assets/javascripts'),
   jquery$: 'jquery/dist/jquery.slim.js',
+  lodash$: 'lodash-es',
+
+  // `raphael/raphael.no-deps` declares `eve` as an external dependency
+  // (the package was renamed to `eve-raphael` years ago, but Raphael's
+  // UMD wrapper still does `require("eve")`). Alias the bare name to
+  // the actual installed package so both webpack and Vite resolve it.
+  eve$: 'eve-raphael',
   shared_queries: path.join(ROOT_PATH, 'app/graphql/queries'),
+
+  // Mermaid v11's transitive deps use package.json "exports" without "main"
+  // fallbacks. Webpack 4 doesn't support the exports field, so we alias them
+  // to their actual entry files.
+  '@mermaid-js/parser': path.join(
+    ROOT_PATH,
+    'node_modules/@mermaid-js/parser/dist/mermaid-parser.core.mjs',
+  ),
+  '@chevrotain/cst-dts-gen': path.join(
+    ROOT_PATH,
+    'node_modules/@chevrotain/cst-dts-gen/lib/src/api.js',
+  ),
+  '@chevrotain/gast': path.join(ROOT_PATH, 'node_modules/@chevrotain/gast/lib/src/api.js'),
+  '@chevrotain/regexp-to-ast': path.join(
+    ROOT_PATH,
+    'node_modules/@chevrotain/regexp-to-ast/lib/src/api.js',
+  ),
+  '@chevrotain/utils': path.join(ROOT_PATH, 'node_modules/@chevrotain/utils/lib/src/api.js'),
+  chevrotain: path.join(ROOT_PATH, 'node_modules/chevrotain/lib/src/api.js'),
+  'chevrotain-allstar': path.join(ROOT_PATH, 'node_modules/chevrotain-allstar/lib/index.js'),
+  langium: path.join(ROOT_PATH, 'node_modules/langium/lib/index.js'),
 
   // the following resolves files which are different between CE and EE
   ee_else_ce: path.join(ROOT_PATH, 'app/assets/javascripts'),
@@ -213,9 +248,9 @@ const defaultJsOptions = {
     // Ensure that changing supported browsers will refresh the cache
     // in order to not pull in outdated files that import core-js
     SUPPORTED_BROWSERS_HASH,
-    // An EXPLICIT_VUE_VERSION changes how we alias certain packages
+    // A VUE_VERSION changes how we alias certain packages
     // use a different cache to prevent issues when switching between versions
-    EXPLICIT_VUE_VERSION,
+    VUE_VERSION,
   ].join('|'),
   cacheCompression: false,
 };
@@ -227,9 +262,9 @@ const vueLoaderOptions = {
   cacheIdentifier: [
     process.env.NODE_ENV || 'development',
     webpack.version,
-    VUE_VERSION,
+    EXACT_VUE_VERSION,
     VUE_LOADER_VERSION,
-    EXPLICIT_VUE_VERSION,
+    VUE_VERSION,
   ].join('|'),
   compilerOptions: {
     whitespace: 'preserve',
@@ -260,39 +295,27 @@ const shouldExcludeFromCompiling = (modulePath) => {
 };
 
 if (USE_VUE3) {
-  Object.assign(alias, {
-    // ensure we always use the same type of module for Vue
-    '@vue/compat': '@vue/compat/dist/vue.runtime.esm-bundler.js',
-    vue: path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue.js'),
-    vuedraggable: path.join(
-      ROOT_PATH,
-      'node_modules/@gitlab/vuedraggable-vue3/src/vuedraggable.js',
-    ),
-    vuex: path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vuex.js'),
-    'vue-apollo': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue_apollo.js'),
-    'vue-router': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue_router.js'),
-    'portal-vue': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/portal_vue.js'),
-    // 'pinia' uses 'vue-demi' to locate the current active version of Vue.
-    // use an alias to ensure vue-demi finds the right version
-    'vue-demi': path.join(ROOT_PATH, 'node_modules/vue-demi/lib/v3/index.mjs'),
-    'vendor/vue-virtual-scroller': path.join(
-      ROOT_PATH,
-      'vendor/assets/javascripts/vue-virtual-scroller-vue3/src/index.js',
-    ),
-  });
+  Object.assign(alias, CONTEXT_ALIASES);
 
-  vueLoaderOptions.compiler = path.join(ROOT_PATH, 'config/vue3migration/compiler.js');
-  vueLoaderOptions.compilerOptions.compatConfig = {
-    MODE: 2,
+  if (USE_VUE3_COMPILER) {
+    vueLoaderOptions.compiler = path.join(
+      ROOT_PATH,
+      'config/vue3migration/vue3_template_compiler.js',
+    );
+    vueLoaderOptions.compilerOptions.compatConfig = {
+      MODE: 2,
 
-    COMPILER_V_BIND_OBJECT_ORDER: 'suppress-warning',
-    COMPILER_V_BIND_SYNC: 'suppress-warning',
-    COMPILER_V_IF_V_FOR_PRECEDENCE: 'suppress-warning',
-    COMPILER_V_ON_NATIVE: 'suppress-warning',
-  };
-  // Has no real effect here, since we're using thread-loader which serializes config passing to threads
-  // Implemented in custom compiler itself instead, kept here for future upgrade and consistency with vite
-  vueLoaderOptions.compilerOptions.isCustomElement = isCustomElement;
+      COMPILER_V_BIND_OBJECT_ORDER: 'suppress-warning',
+      COMPILER_V_BIND_SYNC: 'suppress-warning',
+      COMPILER_V_IF_V_FOR_PRECEDENCE: 'suppress-warning',
+      COMPILER_V_ON_NATIVE: 'suppress-warning',
+    };
+    // Has no real effect here, since we're using thread-loader which serializes config passing to threads
+    // Implemented in custom compiler itself instead, kept here for future upgrade and consistency with vite
+    vueLoaderOptions.compilerOptions.isCustomElement = isCustomElement;
+  } else {
+    vueLoaderOptions.compiler = path.join(ROOT_PATH, 'config/vue3migration/vue2_compiler.js');
+  }
 }
 
 const entriesState = {
@@ -327,12 +350,11 @@ module.exports = {
       coverage_persistence: './entrypoints/coverage_persistence.js',
       performance_bar: './entrypoints/performance_bar.js',
       jira_connect_app: './jira_connect/subscriptions/index.js',
-      sandboxed_mermaid: './lib/mermaid.js',
+      sandboxed_mermaid_v11: './lib/mermaid_v11.js',
       redirect_listbox: './entrypoints/behaviors/redirect_listbox.js',
       sandboxed_swagger: './lib/swagger.js',
       super_sidebar: './entrypoints/super_sidebar.js',
       tracker: './entrypoints/tracker.js',
-      analytics: './entrypoints/analytics.js',
       graphql_explorer: './entrypoints/graphql_explorer.js',
       ...incrementalCompiler.filterEntryPoints(generateEntries({ defaultEntries, entriesState })),
     };
@@ -414,7 +436,10 @@ module.exports = {
         ],
       },
       {
-        test: /mermaid\/.*\.js?$/,
+        // mermaid v11 and its transitive deps (@mermaid-js/parser, @iconify/utils,
+        // langium, etc.) use modern syntax (optional chaining, static blocks) that
+        // webpack 4 can't parse. Transpile them along with both mermaid versions.
+        test: /(mermaid(-v11)?|@mermaid-js|@iconify\/utils|langium|vscode-\w+|chevrotain(-allstar)?|@chevrotain)\/.*\.m?js$/,
         include: /node_modules/,
         loader: 'babel-loader',
       },
@@ -449,6 +474,24 @@ module.exports = {
       },
       {
         test: /@swagger-api\/apidom-.*\.[mc]?js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+        options: {
+          plugins: ['@babel/plugin-transform-class-properties'],
+          ...defaultJsOptions,
+        },
+      },
+      {
+        test: /swagger-client\/.*\.m?js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+        options: {
+          plugins: ['@babel/plugin-transform-class-properties'],
+          ...defaultJsOptions,
+        },
+      },
+      {
+        test: /@swaggerexpert\/json-pointer\/.*\.[mc]?js$/,
         include: /node_modules/,
         loader: 'babel-loader',
         options: {
@@ -629,6 +672,7 @@ module.exports = {
   },
 
   plugins: [
+    !USE_VUE3 && new WebpackVue3InfectionPlugin(),
     // A custom function is needed because chunkIds: "named" alone only
     // affects chunks that already have names (entry points, chunks with
     // magic comments such as:
@@ -782,7 +826,11 @@ module.exports = {
      Webpack 4 doesn't have support for it, while vite does.
      See also: https://github.com/webpack/webpack/issues/9509
      */
-    ...['@swagger-api/apidom-reference'].map((packageName) => {
+    ...[
+      '@swagger-api/apidom-reference',
+      '@swagger-api/apidom-json-pointer',
+      '@swaggerexpert/json-pointer',
+    ].map((packageName) => {
       const packageJSON = fs.readFileSync(
         path.join(ROOT_PATH, 'node_modules', packageName, 'package.json'),
         'utf-8',
@@ -798,6 +846,14 @@ module.exports = {
               packageName,
               exports[relative]?.browser?.import || exports[relative]?.import,
             );
+            console.log(`[exports-replacer]: ${request} => ${newRequest}`);
+            // eslint-disable-next-line no-param-reassign
+            resource.request = newRequest;
+          } else if (
+            packageName === '@swaggerexpert/json-pointer' &&
+            relative === './evaluate/realms/apidom'
+          ) {
+            const newRequest = path.join(packageName, 'es/evaluate/realms/apidom/index.mjs');
             console.log(`[exports-replacer]: ${request} => ${newRequest}`);
             // eslint-disable-next-line no-param-reassign
             resource.request = newRequest;

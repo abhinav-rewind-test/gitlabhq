@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Documentation Guidelines
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 title: Tutorial page type
 ---
 
@@ -29,9 +29,10 @@ For tutorial Markdown files, you can either:
 - Save the file in a directory with the product documentation.
 - Create a subfolder under `doc/tutorials` and name the file `_index.md`.
 
-In the left nav, add the tutorial near the relevant feature documentation.
+In the left nav, add the tutorial near the relevant feature documentation,
+or nested under the relevant [tutorial landing page](../../../tutorials/_index.md).
 
-Add a link to the tutorial on one of the [tutorial pages](../../../tutorials/_index.md).
+Add a link to the tutorial on one of the landing pages.
 
 ## Tutorial format
 
@@ -148,10 +149,10 @@ you can:
 ## Metadata
 
 On pages that are tutorials, add the most appropriate `stage:` and `group:` metadata at the top of the file.
-If the majority of the content does not align with a single group, specify `none` for the stage
+If the majority of the content does not align with a single group, specify `Tutorials` for the stage
 and `Tutorials` for the group:
 
 ```plaintext
-stage: none
+stage: Tutorials
 group: Tutorials
 ```

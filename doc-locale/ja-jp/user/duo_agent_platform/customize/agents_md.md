@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: AGENTS.mdカスタマイズファイル
 ---
 
@@ -15,41 +15,48 @@ title: AGENTS.mdカスタマイズファイル
 {{< history >}}
 
 - GitLab 18.7でGitLab Duo Chatにおける`AGENTS.md`のサポートが[導入](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/merge_requests/2597)されました。
+  - GitLab for VS Code 6.60.0で[導入されました](https://gitlab.com/gitlab-org/gitlab-vscode-extension/-/releases/v6.60.0)。
+  - JetBrains IDE用GitLab Duoプラグイン3.26.0で[導入されました](https://gitlab.com/gitlab-org/editor-extensions/gitlab-jetbrains-plugin/-/releases/v3.26.0)。
+  - GitLab Duo CLI 8.47.0で[導入されました](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/releases/v8.47.0)。
 - GitLab 18.8でエージェント型フローにおける`AGENTS.md`のサポートが[導入](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/issues/1509)されました。
 - GitLab 18.8で[一般提供](https://gitlab.com/gitlab-org/gitlab/-/work_items/585273)になりました。
+- GitLab UIのサポートはGitLab 18.11で[導入されました](https://gitlab.com/gitlab-org/gitlab/-/work_items/593279)。
 
 {{< /history >}}
 
 GitLab Duoは、AIコーディングアシスタントにコンテキストや指示を提供するための新たな標準である[`AGENTS.md`仕様](https://agents.md/)をサポートしています。
 
-`AGENTS.md`ファイルを使用して、リポジトリ構造、コーディング規約、スタイルガイドライン、ビルドおよびテストの手順、プロジェクトのコンテキストを文書化します。`AGENTS.md`ファイルを指定すると、これらの詳細は、この仕様をサポートするGitLab Duoやその他のAIツールで使用できるようになります。
+`AGENTS.md`ファイルを使用して、リポジトリ構造、コーディング規約、スタイルガイドライン、ビルドおよびテストの手順、プロジェクトのコンテキストをドキュメント化します。`AGENTS.md`ファイルを指定すると、これらの詳細はGitLab Duo Agent Platform、およびその仕様をサポートする他のすべてのAIツールで利用できます。
 
 GitLab Duoで使用する`AGENTS.md`ファイルは、次を対象に指定します:
 
-- IDEのGitLab Duo Chat。
+- ローカル環境でのGitLab Duo Chat。
 - 基本フローおよびカスタムフロー。
 
 ## GitLab Duoで`AGENTS.md`ファイルを使用する方法 {#how-gitlab-duo-uses-agentsmd-files}
 
-`AGENTS.md`ファイルは、複数のレベルで作成できます:
+GitLab Duoの使用方法に応じて、`AGENTS.md`ファイルを複数のレベルで作成できます:
 
-- ユーザーレベル: すべてのプロジェクトとワークスペースに適用されます。
-- ワークスペースレベル: 特定のプロジェクトまたはワークスペースにのみ適用されます。
-- サブディレクトリレベル: モノレポ内の特定のプロジェクトのディレクトリ、または特定のコンポーネントを含むプロジェクト内のディレクトリにのみ適用します。
+| レベル                                                           | GitLab UIでのAgentic Chat | エディター拡張機能 | GitLab Duo CLI |
+|-----------------------------------------------------------------|--------------------------|------------------|--------------|
+| ユーザーレベル: すべてのプロジェクトとワークスペースに適用        | {{< no >}}  |  {{< yes >}}    | {{< yes >}} |
+| ワークスペースレベル: 特定のプロジェクトまたはワークスペースにのみ適用  | {{< yes >}} | {{< yes >}}         | {{< yes >}} |
+| サブディレクトリレベル: モノレポ内、または個別のコンポーネントを持つプロジェクト内の特定のプロジェクトにのみ適用 | {{< no >}} | {{< yes >}} | {{< yes >}} |
 
 GitLab Duo Chatは、ユーザーレベルおよびワークスペースレベルの`AGENTS.md`ファイルに含まれる指示を、すべての会話に適用します。タスクの実行にあたって、追加の`AGENTS.md`ファイルを含むディレクトリ内のファイルを操作する必要がある場合、そのファイルに記載された指示も適用します。
 
 ## GitLab Duoで`AGENTS.md`を使用する {#use-agentsmd-with-gitlab-duo}
 
-> [!note] `AGENTS.md`ファイルを追加または更新した後に作成された新しい会話およびフローのみが、新しい指示に従います。それ以前に存在していた会話は対象外です。
+> [!note]
+> `AGENTS.md`ファイルを追加または更新した後に作成された新しい会話およびフローのみが、新しい指示に従います。それ以前に存在していた会話は対象外です。
 
 ### 前提条件 {#prerequisites}
 
-- IDEのGitLab Duo Chatの場合、サポートされている拡張機能をインストールします:
-
-  - VS Codeの場合は、6.60以降の[VS Code用GitLab Workflow拡張機能をインストールして設定](../../../editor_extensions/visual_studio_code/setup.md)します。
-  - JetBrains IDEの場合は、3.26.0以降の[JetBrains用GitLabプラグインをインストールして設定](../../../editor_extensions/jetbrains_ide/setup.md)します。
-
+- [Agent Platformの前提条件](../_index.md#prerequisites)を満たしてください。
+- ローカル環境でGitLab Duo Chatを使用する場合、次のいずれかをインストールして設定します:
+  - [GitLab for VS Code](../../../editor_extensions/visual_studio_code/setup.md) 6.60以降。
+  - [GitLab Duoプラグインfor JetBrains IDE](../../../editor_extensions/jetbrains_ide/setup.md) 3.26.0以降。
+  - [GitLab Duo CLI](../../gitlab_duo_cli/_index.md#set-up-the-gitlab-duo-cli) 8.47.0以降。
 - カスタムルールの場合は、executorから渡される`user_rule`コンテキストにアクセスできるよう、フローの設定ファイルを更新します:
 
   ```yaml
@@ -69,10 +76,9 @@ GitLab Duo Chatは、ユーザーレベルおよびワークスペースレベ�
 
 ユーザーレベルの`AGENTS.md`ファイルは、すべてのプロジェクトとワークスペースに適用されます。
 
-1. ユーザー設定ディレクトリに`AGENTS.md`ファイルを作成します:
-   - Linux/macOSでは、ホームディレクトリに`~/.gitlab/duo/AGENTS.md`ファイルを作成するか、Windowsでは`%APPDATA%\GitLab\duo\AGENTS.md`ファイルを作成します。
-   - `GLAB_CONFIG_DIR`環境変数を設定している場合は、次の場所にファイルを作成します: `$GLAB_CONFIG_DIR/AGENTS.md`
-   - `XDG_CONFIG_HOME`環境変数を使用している場合は、次の場所にファイルを作成します: `$XDG_CONFIG_HOME/gitlab/duo/AGENTS.md`
+1. ホームディレクトリに`AGENTS.md`ファイルを作成します:
+   - LinuxまたはmacOSでは、`~/.gitlab/duo/AGENTS.md`にファイルを作成します。
+   - Windowsでは、`%APPDATA%\GitLab\duo\AGENTS.md`にファイルを作成します。
 1. ファイルに指示を追加します。例: 
 
    {{< tabs >}}
@@ -136,6 +142,11 @@ GitLab Duo Chatは、ユーザーレベルおよびワークスペースレベ�
 1. ファイルを保存します。
 1. 指示を適用するには、新しい会話またはフローを開始します。`AGENTS.md`ファイルを変更するたびに、これを行う必要があります。
 
+特定の環境変数を設定している場合、`AGENTS.md`ファイルを別の場所に作成します:
+
+- `GLAB_CONFIG_DIR`環境変数を設定している場合、`$GLAB_CONFIG_DIR/AGENTS.md`にファイルを作成します。
+- `XDG_CONFIG_HOME`環境変数を設定している場合、`$XDG_CONFIG_HOME/gitlab/duo/AGENTS.md`にファイルを作成します。
+
 ### ワークスペースレベルの`AGENTS.md`ファイルを作成する {#create-workspace-level-agentsmd-files}
 
 ワークスペースレベルの`AGENTS.md`ファイルは、特定のプロジェクトまたはワークスペースにのみ適用されます。
@@ -170,7 +181,7 @@ GitLab Duo Chatが、サブディレクトリにある追加の`AGENTS.md`ファ
     AGENTS.md            # Backend-specific instructions
 ```
 
-この例では: 
+この例では、以下のとおりとなっています: 
 
 - ルートの`AGENTS.md`は、常に会話に含まれます。
 - GitLab Duoが`/frontend`内のファイルを編集する際、最初に`/frontend/AGENTS.md`を読み取ります。
@@ -178,7 +189,7 @@ GitLab Duo Chatが、サブディレクトリにある追加の`AGENTS.md`ファ
 
 このアプローチにより、GitLab Duoはプロジェクトの各部分に適した規則に従うようになります。
 
-サブディレクトリで`AGENTS.md`を使用するには:
+サブディレクトリで`AGENTS.md`を使用するには、以下の手順に従います:
 
 1. プロジェクトのサブディレクトリに`AGENTS.md`ファイルを作成します。
 1. そのディレクトリに固有の指示を追加します。たとえば、バックエンドサービスの場合は次のようになります:

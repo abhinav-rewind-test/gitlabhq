@@ -66,14 +66,21 @@ class ProjectTeam
   # NOTE: `immediately_sync_authorizations` can be expensive to run in the foreground. This should only be used in rare
   # cases where asynchronous authorization does not work (e.g. user is created and used immediately in the same
   # request).
-  def add_member(user, access_level, current_user: nil, expires_at: nil, immediately_sync_authorizations: false)
+  def add_member(
+    user, access_level, current_user: nil, expires_at: nil, immediately_sync_authorizations: false,
+    # skip_authorization bypasses all member-creation policy checks.
+    # Use only for system-driven flows (e.g. service-account provisioning)
+    # Never pass values derived from user input.
+    skip_authorization: false
+  )
     Members::Projects::CreatorService.add_member( # rubocop:disable CodeReuse/ServiceClass
       project,
       user,
       access_level,
       current_user: current_user,
       expires_at: expires_at,
-      immediately_sync_authorizations: immediately_sync_authorizations
+      immediately_sync_authorizations: immediately_sync_authorizations,
+      skip_authorization: skip_authorization
     )
   end
 
@@ -234,19 +241,22 @@ class ProjectTeam
   # Return the highest access level for a user
   #
   # A special case is handled here when the user is a GitLab admin
-  # which implies it has "OWNER" access everywhere, but should not
-  # officially appear as a member of a project unless specifically added to it
+  # or organization owner which implies it has "OWNER" access everywhere,
+  # but should not officially appear as a member of a project unless
+  # specifically added to it
   #
   # @param user [User]
   # @param only_concrete_membership [Bool] whether require admin concrete membership status
   def max_member_access_for_user(user, only_concrete_membership: false)
     return ProjectMember::NO_ACCESS unless user
-    return ProjectMember::OWNER if project.owner == user
 
-    unless only_concrete_membership
-      return ProjectMember::OWNER if user.can_admin_all_resources?
-      return ProjectMember::OWNER if user.can_admin_organization?(project.organization)
-    end
+    # This check does not require any additional queries
+    return ProjectMember::OWNER if !only_concrete_membership && user.can_admin_all_resources?
+
+    # This check is next since it is more efficient than the organization ownership check
+    return ProjectMember::OWNER if personal_namespace_owner?(user)
+
+    return ProjectMember::OWNER if !only_concrete_membership && user.can_admin_organization?(project.organization)
 
     max_member_access(user.id)
   end
@@ -272,6 +282,20 @@ class ProjectTeam
   end
 
   private
+
+  # Check if the user owns the project via a personal namespace.
+  # Compares namespace.owner_id directly instead of using project.owner,
+  # which triggers additional queries (loading the group association and
+  # namespace owner). Skips the check entirely for group-owned projects
+  # when the group association is already loaded, since the project is not
+  # in a personal namespace
+  def personal_namespace_owner?(user)
+    # Short circuit here to avoid any nil = nil checks due to non-persisted records
+    return false unless user.id
+    return false if project.association(:group).loaded? && group
+
+    project.namespace.owner_id == user.id
+  end
 
   def fetch_members(level = nil)
     members = project.authorized_users

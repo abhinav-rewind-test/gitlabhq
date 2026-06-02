@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group Markdown uploads API
 ---
 
@@ -15,7 +15,51 @@ title: Group Markdown uploads API
 Use this API to manage [Markdown uploads](../security/user_file_uploads.md) that can be referenced
 in Markdown text in epics or wiki pages.
 
-## List uploads
+## Upload a file to a group
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/230537) in GitLab 19.0.
+
+{{< /history >}}
+
+Uploads a file to the specified group. Returns a Markdown-formatted link to the file.
+
+You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role to use this endpoint.
+
+```plaintext
+POST /groups/:id/uploads
+```
+
+Supported attributes:
+
+| Attribute | Type              | Required | Description |
+|-----------|-------------------|----------|-------------|
+| `id`      | integer or string | Yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group. |
+| `file`    | file              | Yes      | The file to upload. |
+
+Example request:
+
+```shell
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --form "file=@/path/to/image.png" \
+  --url "https://gitlab.example.com/api/v4/groups/5/uploads"
+```
+
+Example response:
+
+```json
+{
+  "id": 3,
+  "alt": "image",
+  "url": "/uploads/648d97c6eef5fc5df8d1004565b3ee5a/image.png",
+  "full_path": "/-/group/5/uploads/648d97c6eef5fc5df8d1004565b3ee5a/image.png",
+  "markdown": "![image](/uploads/648d97c6eef5fc5df8d1004565b3ee5a/image.png)"
+}
+```
+
+## List all uploads for a group
 
 {{< history >}}
 
@@ -23,7 +67,7 @@ in Markdown text in epics or wiki pages.
 
 {{< /history >}}
 
-Get all uploads of the group sorted by `created_at` in descending order.
+Lists all uploads for a specified group sorted by `created_at` in descending order.
 
 You must have the Maintainer or Owner role to use this endpoint.
 
@@ -75,6 +119,7 @@ Example response:
 
 {{< /history >}}
 
+Downloads an uploaded file with the specified ID.
 You must have the Maintainer or Owner role to use this endpoint.
 
 ```plaintext
@@ -105,6 +150,7 @@ If successful, returns [`200`](rest/troubleshooting.md#status-codes) and the upl
 
 {{< /history >}}
 
+Downloads an uploaded file with the specified secret and filename.
 You must have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role to use this endpoint.
 
 ```plaintext
@@ -136,6 +182,7 @@ If successful, returns [`200`](rest/troubleshooting.md#status-codes) and the upl
 
 {{< /history >}}
 
+Deletes an uploaded file with the specified ID.
 You must have the Maintainer or Owner role to use this endpoint.
 
 ```plaintext
@@ -167,6 +214,7 @@ If successful, returns [`204`](rest/troubleshooting.md#status-codes) status code
 
 {{< /history >}}
 
+Deletes an uploaded file with the specified secret and filename.
 You must have the Maintainer or Owner role to use this endpoint.
 
 ```plaintext

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Integrations::DroneCi, :use_clean_rails_memory_store_caching, feature_category: :integrations do
+RSpec.describe Integrations::DroneCi, :use_clean_rails_memory_store_caching, feature_category: :continuous_integration do
   include ReactiveCachingHelpers
 
   subject(:integration) { described_class.new }
@@ -135,7 +135,7 @@ RSpec.describe Integrations::DroneCi, :use_clean_rails_memory_store_caching, fea
       integration.instance = true
       integration.organization = create(:organization)
 
-      expect { integration.save! }.not_to change(ServiceHook, :count)
+      expect { integration.save! }.not_to change { ServiceHook.count }
     end
   end
 

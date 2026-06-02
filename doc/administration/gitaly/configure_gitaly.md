@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Configure Gitaly
 ---
 
@@ -153,9 +153,19 @@ To avoid downtime while rotating the Gitaly token, you can temporarily disable a
 
 #### Configure authentication
 
+{{< history >}}
+
+- Support for `token_file` [introduced](https://gitlab.com/gitlab-org/gitaly/-/issues/7083) in GitLab 18.11.
+
+{{< /history >}}
+
 Gitaly and GitLab use two shared secrets for authentication:
 
-- _Gitaly token_: used to authenticate gRPC requests to Gitaly.
+- _Gitaly token_: used to authenticate gRPC requests to Gitaly. You can specify the Gitaly token directly
+  in GitLab configuration or in a token file. Using a token file is more secure and better suited to containerized
+  environments because it avoids rendering secrets into the configuration at startup time. The token file must:
+  - Contain only the token string. Whitespace is trimmed automatically.
+  - Have file permissions `0600` or `0400`.
 - _GitLab Shell token_: used for authentication callbacks from GitLab Shell to the GitLab internal API.
 
 {{< tabs >}}
@@ -164,15 +174,31 @@ Gitaly and GitLab use two shared secrets for authentication:
 
 1. To configure the _Gitaly token_, edit `/etc/gitlab/gitlab.rb`:
 
-   ```ruby
-   gitaly['configuration'] = {
-      # ...
-      auth: {
+   - When using a token file:
+
+     ```ruby
+     gitaly['configuration'] = {
         # ...
-        token: 'abc123secret',
-      },
-   }
-   ```
+        auth: {
+          # ...
+          token_file: '/etc/gitlab/gitaly_token',
+        },
+     }
+     ```
+
+   - When specifying the token directly:
+
+     ```ruby
+     gitaly['configuration'] = {
+        # ...
+        auth: {
+          # ...
+          token: 'abc123secret',
+        },
+     }
+     ```
+
+   `token` and `token_file` are mutually exclusive.
 
 1. Configure the _GitLab Shell token_ in one of two ways:
 
@@ -234,10 +260,21 @@ Gitaly and GitLab use two shared secrets for authentication:
 1. Save the file and [restart GitLab](../restart_gitlab.md#self-compiled-installations).
 1. On the Gitaly servers, edit `/home/git/gitaly/config.toml`:
 
-   ```toml
-   [auth]
-   token = 'abc123secret'
-   ```
+   - When using a token file:
+
+     ```toml
+     [auth]
+     token_file = '/etc/gitaly/token'
+     ```
+
+   - When specifying the token directly:
+
+     ```toml
+     [auth]
+     token = 'abc123secret'
+     ```
+
+   `token` and `token_file` are mutually exclusive.
 
 1. Save the file and [restart GitLab](../restart_gitlab.md#self-compiled-installations).
 
@@ -250,8 +287,8 @@ Gitaly and GitLab use two shared secrets for authentication:
 <!--
 Updates to example must be made at:
 
-- https://gitlab.com/gitlab-org/charts/gitlab/blob/master/doc/advanced/external-gitaly/external-omnibus-gitaly.md#configure-omnibus-gitlab
-- https://gitlab.com/gitlab-org/gitlab/blob/master/doc/administration/gitaly/index.md#gitaly-server-configuration
+- <https://gitlab.com/gitlab-org/charts/gitlab/blob/master/doc/advanced/external-gitaly/external-omnibus-gitaly.md#configure-linux-package-installation>
+- <https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/administration/gitaly/praefect/configure.md#praefect>
 - All reference architecture pages
 -->
 
@@ -324,7 +361,7 @@ connections):
 
 1. Append the following to `/etc/gitlab/gitlab.rb` for each respective Gitaly server:
 
-   <!-- Updates to following example must also be made at https://gitlab.com/gitlab-org/charts/gitlab/blob/master/doc/advanced/external-gitaly/external-omnibus-gitaly.md#configure-omnibus-gitlab -->
+   <!-- Updates to following example must also be made at <https://gitlab.com/gitlab-org/charts/gitlab/blob/master/doc/advanced/external-gitaly/external-omnibus-gitaly.md#configure-linux-package-installation> -->
 
    On `gitaly1.internal`:
 
@@ -796,6 +833,9 @@ To update to a new Gitaly authentication token, on each Gitaly client and Gitaly
       },
    }
    ```
+
+   If you are using `token_file`, update the contents of the referenced file with the new token.
+   No configuration change is needed. The token file is read on startup.
 
 1. Restart Gitaly:
 
@@ -1577,7 +1617,7 @@ go_cloud_url = "s3://<bucket>?region=us-west-1"
 
 #### Configure S3-compatible servers
 
-S3-compatible servers such as MinIO are configured similarly to S3 with the addition of the `endpoint` parameter.
+S3-compatible servers are configured similarly to S3 with the addition of the `endpoint` parameter.
 
 The following parameters are supported:
 
@@ -1601,12 +1641,12 @@ Edit `/etc/gitlab/gitlab.rb` and configure the `go_cloud_url`:
 
 ```ruby
 gitaly['env'] = {
-    'AWS_ACCESS_KEY_ID' => 'minio_access_key_id',
-    'AWS_SECRET_ACCESS_KEY' => 'minio_secret_access_key'
+    'AWS_ACCESS_KEY_ID' => '<your_access_key_id>',
+    'AWS_SECRET_ACCESS_KEY' => '<your_secret_access_key>'
 }
 gitaly['configuration'] = {
     backup: {
-        go_cloud_url: 's3://<bucket>?region=minio&endpoint=my.minio.local:8080&disableSSL=true&s3ForcePathStyle=true'
+        go_cloud_url: 's3://<bucket>?region=us-east-1&endpoint=s3.example.com:9000&disableSSL=true&s3ForcePathStyle=true'
     }
 }
 ```
@@ -1619,7 +1659,7 @@ Edit `/home/git/gitaly/config.toml` and configure `go_cloud_url`:
 
 ```toml
 [backup]
-go_cloud_url = "s3://<bucket>?region=minio&endpoint=my.minio.local:8080&disableSSL=true&s3ForcePathStyle=true"
+go_cloud_url = "s3://<bucket>?region=us-east-1&endpoint=s3.example.com:9000&disableSSL=true&s3ForcePathStyle=true"
 ```
 
 {{< /tab >}}

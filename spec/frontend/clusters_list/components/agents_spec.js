@@ -152,7 +152,7 @@ describe('Agents', () => {
     it('should emit agents count to the parent component', async () => {
       await createWrapper();
 
-      expect(wrapper.emitted().onAgentsLoad).toEqual([[expectedAgentsList.length]]);
+      expect(wrapper.emitted('on-agents-load')).toEqual([[expectedAgentsList.length]]);
     });
 
     it('should render a slot for alerts if provided', async () => {
@@ -375,6 +375,38 @@ describe('Agents', () => {
     });
   });
 
+  describe('when the agent list is empty but there are available configurations', () => {
+    beforeEach(() => {
+      return createWrapper({
+        agentQueryResponse: jest.fn().mockResolvedValue(emptyAgentsResponse),
+        treeListQueryResponse: jest.fn().mockResolvedValue(treeListResponseData),
+      });
+    });
+
+    it('should not render empty state', () => {
+      expect(findEmptyState().exists()).toBe(false);
+    });
+
+    it('should render the Available configurations tab', () => {
+      expect(findAgentTabs().exists()).toBe(true);
+      expect(getAllTabTitles()).toContain('Available configurations');
+    });
+  });
+
+  describe('when there are no available configurations', () => {
+    beforeEach(() => {
+      return createWrapper();
+    });
+
+    it('should not render empty state', () => {
+      expect(findEmptyState().exists()).toBe(false);
+    });
+
+    it('should not render the Available configurations tab', () => {
+      expect(getAllTabTitles()).not.toContain('Available configurations');
+    });
+  });
+
   describe('when agents query has errored', () => {
     it('displays an alert message', async () => {
       await createWrapper({
@@ -384,13 +416,13 @@ describe('Agents', () => {
       expect(findAlert().text()).toBe('An error occurred while loading your agents');
     });
 
-    it('emits `kasDisabled` event if the error is related to KAS being disabled', async () => {
+    it('emits `kas-disabled` event if the error is related to KAS being disabled', async () => {
       const error = new Error(KAS_DISABLED_ERROR);
       await createWrapper({
         agentQueryResponse: jest.fn().mockRejectedValue(error),
       });
 
-      expect(wrapper.emitted().kasDisabled).toEqual([[true]]);
+      expect(wrapper.emitted('kas-disabled')).toEqual([[true]]);
     });
   });
 

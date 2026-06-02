@@ -7,21 +7,22 @@ import PageHeading from '~/vue_shared/components/page_heading.vue';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
 import { fetchPolicies } from '~/lib/graphql';
-import getUserPersonalAccessTokens from '../graphql/get_user_personal_access_tokens.query.graphql';
+import { updateHistory, setUrlParams } from '~/lib/utils/url_utility';
 import {
-  DEFAULT_FILTER,
-  FILTER_OPTIONS,
-  SORT_OPTIONS,
-  DEFAULT_SORT,
-  PAGE_SIZE,
-  ACTIONS,
-} from '../constants';
-import { convertFiltersToVariables } from '../utils';
+  initializeFilterFromQueryParams,
+  initializeSortFromQueryParams,
+  convertFiltersToQueryParams,
+  convertSortToQueryParams,
+  convertFiltersToVariables,
+} from '../utils';
+import getUserPersonalAccessTokens from '../graphql/get_user_personal_access_tokens.query.graphql';
+import { FILTER_OPTIONS, SORT_OPTIONS, PAGE_SIZE, ACTIONS } from '../constants';
 import CreatePersonalAccessTokenDropdown from './create_personal_access_token_dropdown.vue';
 import PersonalAccessTokensTable from './personal_access_tokens_table.vue';
 import PersonalAccessTokenDrawer from './personal_access_token_drawer.vue';
 import PersonalAccessTokenStatistics from './personal_access_token_statistics.vue';
 import PersonalAccessTokenActions from './personal_access_token_actions.vue';
+import PersonalAccessTokenDuplicateModal from './personal_access_token_duplicate_modal.vue';
 import RotatedPersonalAccessToken from './rotated_personal_access_token.vue';
 
 export default {
@@ -37,22 +38,27 @@ export default {
     PersonalAccessTokenDrawer,
     PersonalAccessTokenStatistics,
     PersonalAccessTokenActions,
+    PersonalAccessTokenDuplicateModal,
     RotatedPersonalAccessToken,
   },
   data() {
+    const filter = initializeFilterFromQueryParams();
+    const sort = initializeSortFromQueryParams();
+
     return {
       tokens: {
         list: [],
         pageInfo: {},
       },
-      filter: structuredClone(DEFAULT_FILTER),
-      filterObject: convertFiltersToVariables(DEFAULT_FILTER),
-      sort: structuredClone(DEFAULT_SORT),
+      filter,
+      filterObject: convertFiltersToVariables(filter),
+      sort,
       selectedToken: null,
       selectedActionableToken: {
         token: null,
         action: null,
       },
+      selectedDuplicateToken: null,
       rotatedToken: null,
       pagination: {
         first: PAGE_SIZE,
@@ -102,7 +108,45 @@ export default {
       return this.tokens?.pageInfo?.hasNextPage || this.tokens?.pageInfo?.hasPreviousPage;
     },
   },
+  watch: {
+    filterObject: {
+      handler() {
+        this.resetPagination();
+        this.updateQueryParams();
+      },
+      deep: true,
+    },
+    sort: {
+      handler() {
+        this.resetPagination();
+        this.updateQueryParams();
+      },
+      deep: true,
+    },
+  },
+  mounted() {
+    this.updateQueryParams();
+  },
   methods: {
+    resetPagination() {
+      this.pagination = { first: PAGE_SIZE, after: null, last: null, before: null };
+    },
+    updateQueryParams() {
+      const params = {
+        ...convertFiltersToQueryParams(this.filterObject),
+        ...convertSortToQueryParams(this.sort),
+      };
+
+      updateHistory({
+        url: setUrlParams(params, {
+          url: window.location.href,
+          clearParams: true,
+          decodeParams: true,
+        }),
+        title: document.title,
+        replace: true,
+      });
+    },
     handleFilter() {
       this.filterObject = convertFiltersToVariables(this.filter);
     },
@@ -148,6 +192,12 @@ export default {
       this.rotatedToken = token;
 
       this.clearSelectedToken();
+    },
+    duplicateToken(token) {
+      this.selectedDuplicateToken = token;
+    },
+    clearDuplicateToken() {
+      this.selectedDuplicateToken = null;
     },
     handleStatisticsFilter(filter) {
       this.filter = filter;
@@ -215,6 +265,7 @@ export default {
         @select="selectToken"
         @rotate="selectActionableToken($event, $options.ACTIONS.ROTATE)"
         @revoke="selectActionableToken($event, $options.ACTIONS.REVOKE)"
+        @duplicate="duplicateToken"
       />
 
       <template #pagination>
@@ -232,6 +283,7 @@ export default {
       @close="clearSelectedToken"
       @rotate="selectActionableToken($event, $options.ACTIONS.ROTATE)"
       @revoke="selectActionableToken($event, $options.ACTIONS.REVOKE)"
+      @duplicate="duplicateToken"
     />
 
     <personal-access-token-actions
@@ -240,6 +292,11 @@ export default {
       @close="clearActionableToken"
       @rotated="handleTokenRotated"
       @revoked="clearSelectedToken"
+    />
+
+    <personal-access-token-duplicate-modal
+      :token="selectedDuplicateToken"
+      @cancel="clearDuplicateToken"
     />
   </div>
 </template>

@@ -12,7 +12,7 @@ This content is intended for GitLab team members as well as members of the wider
 
 Unless otherwise noted, all of this content applies to both GitLab.com and GitLab Self-Managed instances.
 
-This page attempts to index the ways in which GitLab can integrate with AWS. It does so whether the integration is the result of configuring general functionality, was built in to AWS or GitLab or is provided as a solution.
+GitLab integrates with AWS through general configuration, built-in functionality in either platform, and dedicated solutions.
 
 | Text Tag                 | Configuration / Built / Solution                             | Support/Maintenance                                          |
 | ------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -32,7 +32,7 @@ These integrations have to do with using GitLab to build application workloads a
 
 #### AWS CodeStar Connection Integrations
 
-[8/14/2023 AWS Release Announcement for GitLab.com SaaS](https://aws.amazon.com/about-aws/whats-new/2023/08/aws-codepipeline-supports-gitlab/)
+[8/14/2023 AWS Release Announcement for GitLab.com](https://aws.amazon.com/about-aws/whats-new/2023/08/aws-codepipeline-supports-gitlab/)
 
 [12/28/2023 AWS Release Announcement for Self-Managed / Dedicated](https://aws.amazon.com/about-aws/whats-new/2023/12/codepipeline-gitlab-self-managed/)
 
@@ -41,7 +41,7 @@ These integrations have to do with using GitLab to build application workloads a
 [Supported Providers](https://docs.aws.amazon.com/dtconsole/latest/userguide/supported-versions-connections.html).
 [Supported AWS Services](https://docs.aws.amazon.com/dtconsole/latest/userguide/integrations-connections.html) -
 each one may have to make updates to support GitLab, so here is the subset that
-support GitLab. This works with GitLab.com SaaS, GitLab Self-Managed and GitLab Dedicated.
+support GitLab. This works with GitLab.com, GitLab Self-Managed and GitLab Dedicated.
 AWS CodeStar connections are not available in all AWS regions - the exclusion list is
 [documented here](https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-CodestarConnectionSource.html).
 ([12/28/2023](https://aws.amazon.com/about-aws/whats-new/2023/12/codepipeline-gitlab-self-managed/)) `[AWS Built]`
@@ -153,7 +153,7 @@ Top-level groups on GitLab.com are also known as "Namespaces" and naming one aft
 
 ## GitLab infrastructure workloads deployed on AWS
 
-While GitLab can be deployed on a single box for up to 500 users, when it is horizontally scaled for very large user counts like 50,000 it expands into being a complex, many tiered platform that benefits from deployment to AWS. GitLab is supports and is regularly tested being backed by AWS services. GitLab is deployable to Ec2 for traditional scaling and to AWS EKS in a Cloud Native Hybrid implementation. It is called Hybrid because specific service layers cannot be placed in a container cluster due to the workload shapes that are common to Git (and common to how Git processes behave handles that workload variety).
+While GitLab can be deployed on a single box for up to 500 users, when it is horizontally scaled for very large user counts like 50,000 it expands into being a complex, many-tiered platform that benefits from deployment to AWS. GitLab is supported and is regularly tested when backed by AWS services. GitLab is deployable to EC2 for traditional scaling and to AWS EKS in a Cloud Native Hybrid implementation. It is called Hybrid because specific service layers cannot be placed in a container cluster due to the workload shapes that are common to Git (and common to how Git processes handle that workload variety).
 
 ### GitLab Instance Compute & Operations Integration
 
@@ -162,13 +162,10 @@ While GitLab can be deployed on a single box for up to 500 users, when it is hor
   - GitLab Single EC2 Instance. `[GitLab Built]`
     - [Using 5 Seat AWS marketplace subscription](gitlab_single_box_on_aws.md#marketplace-subscription)
     - [Using Prepared AMIs](gitlab_single_box_on_aws.md#official-gitlab-releases-as-amis) - Bring Your Own License for Enterprise Edition.
-
   - GitLab Cloud Native Hybrid Scaled on AWS EKS and Paas. `[GitLab Built]`
     - [Using GitLab Environment Toolkit (GET)](https://gitlab.com/gitlab-org/gitlab-environment-toolkit) - `[GitLab Solution]`
-
   - GitLab Instance Scaled on AWS EC2 and PaaS. `[GitLab Built]`
     - [Using GitLab Environment Toolkit (GET)](https://gitlab.com/gitlab-org/gitlab-environment-toolkit) - `[GitLab Solution]`
-
 - [Amazon Managed Grafana](https://docs.aws.amazon.com/grafana/latest/userguide/gitlab-AMG-datasource.html) for GitLab Self-Managed Prometheus metrics. `[AWS Built]`
 
 ### GitLab Runner on AWS Compute

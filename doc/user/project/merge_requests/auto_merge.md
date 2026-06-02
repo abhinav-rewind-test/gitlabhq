@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Set auto-merge on a merge request when you have reviewed its content, so it can merge without intervention when all merge checks pass.
 title: Auto-merge
 ---
@@ -48,13 +48,17 @@ Merge checks include a passing CI/CD pipeline, and much more:
 - All external status checks have passed.
 - The merge request must be open.
 - No denied policies exist.
+- All pipelines for the latest commit must succeed before the merge request is merged when
+  [scan execution policies](../../application_security/policies/scan_execution_policies.md) or
+  [pipeline execution policies](../../application_security/policies/pipeline_execution_policies.md) are configured.
 - If your project
   [requires merge requests to reference a Jira issue](../../../integration/jira/issues.md#require-associated-jira-issue-for-merge-requests-to-be-merged),
   the merge request title or description contains a Jira issue link.
+- If a [title validation pattern](title_validation.md) is configured, the merge request title must match the pattern.
 - If the merge request has a **Merge after** date set, the current time must be after the configured date.
 
 For a full list of checks and their API equivalents, see
-[Merge status](../../../api/merge_requests.md#merge-status).
+[merge status](../../../api/merge_requests.md#merge-status).
 
 ![Auto-merge is ready](img/auto_merge_ready_v16_0.png)
 
@@ -65,7 +69,7 @@ when the merge request merges.
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 - If your project configuration requires it, all threads in the
   merge request must be resolved.
 - The merge request must have received all required approvals.
@@ -75,7 +79,7 @@ To do this when pushing from the command line, use the `merge_request.merge_when
 
 To do this from the GitLab user interface:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**.
 1. Select the merge request to edit.
 1. Scroll to the merge request reports section.
@@ -99,12 +103,12 @@ You can cancel auto-merge on a merge request.
 Prerequisites:
 
 - You must either be the author of the merge request, or a project member with
-  at least the Developer role.
+  the Developer, Maintainer, or Owner role.
 - The merge request's pipeline must still be in progress.
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**.
 1. Select your desired merge request.
 1. Scroll to the merge request reports section.
@@ -141,12 +145,12 @@ CI providers with it.
 Prerequisites:
 
 - Ensure your project's CI/CD configuration runs a pipeline for every merge request.
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To enable this setting:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Scroll to **Merge checks**, and select **Pipelines must succeed**.
    This setting also prevents merge requests from merging if there is no pipeline,
    which can [conflict with some rules](#merge-request-cant-merge-despite-no-failed-pipeline).
@@ -165,12 +169,12 @@ merge requests from merging.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To change this behavior:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Under **Merge checks**:
    - Select **Pipelines must succeed**.
    - Select **Skipped pipelines are considered successful**.
@@ -190,11 +194,11 @@ however, depending on the satisfaction of other merge checks or the length of yo
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- You must have the Developer, Maintainer, or Owner role for the project.
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**.
 1. Select the merge request to edit.
 1. Select **Edit**.

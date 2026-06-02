@@ -1,9 +1,9 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-title: Install the GitLab agent server for Kubernetes (KAS)
-description: Manage the GitLab agent for Kubernetes.
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: Install GitLab Relay (KAS)
+description: Manage GitLab Relay (KAS).
 ---
 
 {{< details >}}
@@ -13,29 +13,33 @@ description: Manage the GitLab agent for Kubernetes.
 
 {{< /details >}}
 
-The agent server is a component installed together with GitLab. It is required to
-manage the [GitLab agent for Kubernetes](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent).
+GitLab Relay (KAS) is a component installed with GitLab. It serves as a central
+communication relay for bidirectional gRPC communication between GitLab and external
+systems, including:
 
-The KAS acronym refers to the former name, `Kubernetes agent server`.
+- Runners: Required to use the [Job Router](../../ci/runners/job_router/_index.md) and [Runner Controllers](../../ci/runners/job_router/runner_controllers.md).
+- Kubernetes clusters: Required to use the [Agent for Kubernetes](../../user/clusters/agent/_index.md).
 
-The agent server for Kubernetes is installed and available on GitLab.com at `wss://kas.gitlab.com`.
-If you use GitLab Self-Managed, by default the agent server is installed and available.
+KAS was formerly known as the Kubernetes Agent Server. The name was changed to reflect its evolved role beyond Kubernetes.
+
+GitLab Relay (KAS) is installed and available on GitLab.com at `wss://kas.gitlab.com`.
+If you use GitLab Self-Managed, by default GitLab Relay (KAS) is installed and available.
 
 ## Installation options
 
-As a GitLab administrator, you can control the agent server installation:
+As a GitLab administrator, you can control the GitLab Relay (KAS) installation:
 
 - For [Linux package installations](#for-linux-package-installations).
 - For [GitLab Helm chart installations](#for-gitlab-helm-chart).
 
 ### For Linux package installations
 
-The agent server for Linux package installations can be enabled on a single node, or on multiple nodes at once.
-By default, the agent server is enabled and available at `ws://gitlab.example.com/-/kubernetes-agent/`.
+GitLab Relay (KAS) for Linux package installations can be enabled on a single node, or on multiple nodes at once.
+By default, GitLab Relay (KAS) is enabled and available at `ws://gitlab.example.com/-/kubernetes-agent/`.
 
 #### Disable on a single node
 
-To disable the agent server on a single node:
+To disable GitLab Relay (KAS) on a single node:
 
 1. Edit `/etc/gitlab/gitlab.rb`:
 
@@ -216,7 +220,57 @@ gitlab_kas['env'] = {
 }
 ```
 
-##### Agent server node settings
+##### Use a load balancer or reverse proxy with multiple KAS instances
+
+> [!warning]
+> When you place a load balancer or reverse proxy in front of KAS, configure separate endpoints for external and internal traffic
+> to prevent exposing the internal API.
+
+KAS serves traffic on different ports:
+
+- Port 8150 (`listen_address`): Agent connections (WebSocket/gRPC)
+- Port 8153 (`internal_api_listen_address`): GitLab Rails API (gRPC)
+
+  > [!warning]
+  > Do not expose port 8153 publicly. Though the port gets authenticated, it should only be accessible to GitLab Rails instances.
+
+To secure KAS when you use a load balancer or reverse proxy, configure two separate endpoints:
+
+- External endpoint: Port 8150 (for agents)
+- Internal endpoint: Port 8153 (for GitLab Rails only, restricted by network or firewall)
+
+This separation ensures that the internal API remains isolated from public access.
+
+For example, configure an internal endpoint with network restrictions in NGINX:
+
+```nginx
+# Internal endpoint (network-restricted)
+server {
+  listen 8443 ssl http2;
+  server_name kas-internal.example.com;
+
+  # Optional: allow 10.0.1.0/24; deny all;
+
+  location /gitlab.agent. {
+    grpc_pass grpc://kas-backend:8153;
+  }
+}
+```
+
+Configure GitLab to use the separate endpoints (`/etc/gitlab/gitlab.rb`):
+
+```ruby
+gitlab_rails['gitlab_kas_external_url'] = 'wss://kas-external.example.com'
+gitlab_rails['gitlab_kas_internal_url'] = 'grpcs://kas-internal.example.com:8443'
+gitlab_rails['gitlab_kas_external_k8s_proxy_url'] = 'https://kas-external.example.com/k8s-proxy/'
+```
+
+Key configuration points:
+
+- Use separate domains, ports, or IP restrictions for internal traffic.
+- For cloud load balancers, configure separate target groups for ports 8150 and 8153.
+
+##### GitLab Relay (KAS) node settings
 
 | Setting                                             | Description |
 |-----------------------------------------------------|-------------|
@@ -243,6 +297,67 @@ gitlab_kas['env'] = {
 1. For example, `wss://kas.gitlab.example.com/`.
 1. For example, `wss://gitlab.example.com/-/kubernetes-agent/`.
 
+#### Configure a standalone KAS node
+
+Configure Omnibus to run KAS separately from other components.
+
+On each Rails node:
+
+```ruby
+## KAS Config
+gitlab_kas['enable'] = false
+
+gitlab_rails['gitlab_kas_enabled'] = true
+gitlab_rails['gitlab_kas_external_url'] = 'wss://kas.example.com/-/kubernetes-agent/'
+gitlab_rails['gitlab_kas_internal_url'] = 'grpc://<KAS_NODE_IP_OR_DOMAIN>:8153' # If you want to configure multiple KAS nodes that are behind an internal LB, then use 'grpc://<LB_IP_OR_DOMAIN>:<port>'
+gitlab_rails['gitlab_kas_external_k8s_proxy_url'] = 'https://kas.example.com/-/kubernetes-agent/k8s-proxy/'
+```
+
+On each KAS node:
+
+```ruby
+### External URL
+external_url 'https://kas.example.com'
+
+### Avoid running unnecessary services ###
+gitaly['enable'] = false
+gitlab_workhorse['enable'] = false
+nginx['enable'] = true
+postgresql['enable'] = false
+prometheus['enable'] = false
+puma['enable'] = false
+redis['enable'] = false
+sidekiq['enable'] = false
+
+### Prevent database connections during 'gitlab-ctl reconfigure' ###
+gitlab_rails['rake_cache_clear'] = false
+gitlab_rails['auto_migrate'] = false
+
+gitlab_kas['redis_password'] = '<redis_password>'
+
+# Uncomment below if using Redis high availability with Sentinel
+# gitlab_kas['redis_sentinels'] = [
+#  {host: '<REDIS_IP>', port: 26379},
+#  {host: '<REDIS_IP>', port: 26379},
+#  {host: '<REDIS_IP>', port: 26379},
+# ]
+# gitlab_kas['redis_sentinels_master_name'] = 'gitlab-redis'
+# gitlab_kas['redis_sentinels_password'] = '<redis_sentinels_password>'
+
+### GitLab Relay (KAS) ###
+gitlab_kas['enable'] = true
+gitlab_kas_external_url 'wss://kas.example.com/-/kubernetes-agent/'
+gitlab_kas['api_secret_key'] = '<32_bytes_long_base64_encoded_value>'
+gitlab_kas['private_api_secret_key'] = '<32_bytes_long_base64_encoded_value>'
+gitlab_kas['private_api_listen_address'] = '<KAS_NODE_PRIVATE_IP>:8155'
+
+gitlab_kas['listen_address'] = '<KAS_NODE_PRIVATE_IP>:8150'
+gitlab_kas['observability_listen_address'] = '<KAS_NODE_PRIVATE_IP>:8151'
+gitlab_kas['internal_api_listen_address'] = '<KAS_NODE_PRIVATE_IP>:8153'
+gitlab_kas['kubernetes_api_listen_address'] = '<KAS_NODE_PRIVATE_IP>:8154'
+
+```
+
 ### For GitLab Helm Chart
 
 See [how to use the GitLab-KAS chart](https://docs.gitlab.com/charts/charts/gitlab/kas/).
@@ -257,7 +372,7 @@ See [how to use the GitLab-KAS chart](https://docs.gitlab.com/charts/charts/gitl
 
 {{< /history >}}
 
-KAS proxies Kubernetes API requests to the GitLab agent for Kubernetes with either:
+GitLab Relay (KAS) proxies Kubernetes API requests to the GitLab agent for Kubernetes with either:
 
 - A [CI/CD job](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/blob/master/doc/kubernetes_ci_access.md).
 - [GitLab user credentials](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/blob/master/doc/kubernetes_user_access.md).
@@ -293,7 +408,7 @@ Prerequisites:
 To enable receptive agents:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **GitLab Agent for Kubernetes**.
 1. Turn on the **Enable receptive mode** toggle.
 
@@ -301,7 +416,7 @@ To enable receptive agents:
 
 {{< history >}}
 
-- [Introduced](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/issues/642) in GitLab 18.3 [with a flag](../../administration/feature_flags/_index.md) named `kas_k8s_api_proxy_response_header_allowlist`. Disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/issues/642) in GitLab 18.3 [with a flag](../feature_flags/_index.md) named `kas_k8s_api_proxy_response_header_allowlist`. Disabled by default.
 - [Generally available](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/issues/642) in GitLab 18.7. Feature flag `kas_k8s_api_proxy_response_header_allowlist` removed.
 
 {{< /history >}}
@@ -330,7 +445,7 @@ Support for the addition of more response headers is tracked in
 
 ## Troubleshooting
 
-If you have issues while using the agent server for Kubernetes, view the
+If you have issues while using GitLab Relay (KAS), view the
 service logs by running the following command:
 
 ```shell
@@ -364,7 +479,7 @@ If you are running GitLab Self-Managed and:
 - The instance doesn't have HTTPS configured on the GitLab instance itself.
 - The instance's hostname resolves locally to its internal IP address.
 
-When the agent server tries to connect to the GitLab API, the following error might occur:
+When GitLab Relay (KAS) tries to connect to the GitLab API, the following error might occur:
 
 ```json
 {"level":"error","time":"2021-08-16T14:56:47.289Z","msg":"GetAgentInfo()","correlation_id":"01FD7QE35RXXXX8R47WZFBAXTN","grpc_service":"gitlab.agent.reverse_tunnel.rpc.ReverseTunnel","grpc_method":"Connect","error":"Get \"https://gitlab.example.com/api/v4/internal/kubernetes/agent_info\": dial tcp 172.17.0.4:443: connect: connection refused"}
@@ -405,7 +520,7 @@ To apply the changes:
 sudo gitlab-ctl reconfigure
 ```
 
-1. Restart agent server:
+1. Restart GitLab Relay (KAS):
 
 ```shell
 gitlab-ctl restart gitlab-kas

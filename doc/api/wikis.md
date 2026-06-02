@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project wikis API
 ---
 
@@ -52,7 +52,8 @@ Example response:
     "slug" : "development",
     "title" : "development",
     "encoding": "UTF-8"
-  },{
+  },
+  {
     "content" : "*  [Deploy](deploy)\n*  [Development](development)",
     "format" : "markdown",
     "slug" : "home",

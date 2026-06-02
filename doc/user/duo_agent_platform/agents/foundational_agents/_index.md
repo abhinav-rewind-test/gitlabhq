@@ -1,13 +1,13 @@
 ---
 stage: AI-powered
 group: Workflow Catalog
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Foundational agents
 ---
 
 {{< details >}}
 
-- Tier: Premium, Ultimate
+- Tier: [Free](../../../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
 {{< /details >}}
@@ -16,6 +16,7 @@ title: Foundational agents
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/576618) as a beta in GitLab 18.6.
 - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/585273) in GitLab 18.8.
+- Available on the Free tier on GitLab.com with GitLab Credits in GitLab 18.10.
 
 {{< /history >}}
 
@@ -36,7 +37,8 @@ Foundational agents are built and maintained by GitLab and display a GitLab-main
 
 ## Available foundational agents
 
-The following foundational agents are available:
+The following foundational agents are available in the GitLab UI, VS Code, and JetBrains IDEs.
+Tier availability varies by agent. For details, see each agent's page.
 
 - [Planner](planner.md), for product management and
   planning workflows.
@@ -44,6 +46,10 @@ The following foundational agents are available:
   security analysis and vulnerability management.
 - [Data Analyst](data_analyst.md), for analysis
   and visualization of platform data.
+- [CI Expert](ci_expert_agent.md), for creating,
+  debugging, and optimizing GitLab CI/CD pipelines.
+- [Permissions Assistant](permissions_assistant.md), for selecting permissions
+  when creating a fine-grained personal access token.
 
 ## Duplicate an agent
 
@@ -55,7 +61,7 @@ Prerequisites:
 
 To duplicate an agent:
 
-1. On the top bar, select **Search or go to** > **Explore**.
+1. In the top bar, select **Search or go to** > **Explore**.
 1. Select **AI Catalog**, then select the **Agents** tab.
 1. Select the agent you want to duplicate.
 1. In the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}) > **Duplicate**.
@@ -85,8 +91,8 @@ Prerequisites:
 
 - You must have the Owner role for the group.
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **GitLab Duo**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **GitLab Duo**.
 1. Select **Change configuration**.
 1. Under **Foundational agents**, for **Default availability**, select one of the following:
    - **On**
@@ -99,7 +105,7 @@ Prerequisites:
 
 These settings apply to:
 
-- Users who have the top-level group as the [default GitLab Duo namespace](../../../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace).
+- Users who have the top-level group as the [default GitLab Duo namespace](../../../profile/preferences.md#set-a-default-gitlab-duo-namespace).
 - Users without a default namespace, and who visit a namespace that belongs to the top-level group.
 
 If you turn off foundational agents for a top-level group, users with that group as their default GitLab Duo namespace can't access foundational agents in any namespace.
@@ -113,7 +119,7 @@ Prerequisites:
 - You must be an administrator.
 
 1. In the upper-right corner, select **Admin**.
-1. On the left sidebar, select **GitLab Duo**.
+1. In the left sidebar, select **GitLab Duo**.
 1. Select **Change configuration**.
 1. Under **Foundational agents**, for **Default availability**, select one of the following:
    - **On**

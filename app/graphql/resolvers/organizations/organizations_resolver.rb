@@ -3,14 +3,17 @@
 module Resolvers
   module Organizations
     class OrganizationsResolver < BaseResolver
-      include Gitlab::Graphql::Authorize::AuthorizeResource
-
       type Types::Organizations::OrganizationType.connection_type, null: true
-      authorize :read_organization
 
       argument :search, GraphQL::Types::String,
         required: false,
         description: 'Search query, which can be for the organization name or a path.'
+
+      argument :exclude_default, GraphQL::Types::Boolean,
+        required: false,
+        default_value: false,
+        description: 'Excludes the Default organization from results.',
+        experiment: { milestone: '19.1' }
 
       def resolve(**args)
         ::Organizations::OrganizationsFinder

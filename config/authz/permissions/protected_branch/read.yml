@@ -1,6 +1,5 @@
 ---
 name: read_protected_branch
-description: Grants the ability to read protected branches
-boundaries:
-  - project
-  - group
+description: |-
+  Grants the ability to view protected branch configuration details,
+  including access levels for pushing, merging, and unprotecting.

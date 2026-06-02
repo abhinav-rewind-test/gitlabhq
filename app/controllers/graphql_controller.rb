@@ -51,6 +51,25 @@ class GraphqlController < ApplicationController
   # Max size of the query text in characters
   MAX_QUERY_SIZE = 10_000
 
+  # Operations temporarily allowed to exceed MAX_QUERY_SIZE during the
+  # work-item widgets => features migration. Remove entries as the migration
+  # completes. Tracked in https://gitlab.com/gitlab-org/gitlab/-/issues/587970
+  EXTENDED_QUERY_SIZE_ALLOWLIST = %w[
+    workItemById
+    namespaceWorkItem
+    workItemUpdate
+    createWorkItem
+    workItemConvert
+    addLinkedItems
+    workItemUpdated
+    getWorkItemsFull
+    getWorkItemsFullEE
+    getWorkItemsSlim
+    getWorkItemsSlimEE
+  ].to_set.freeze
+
+  EXTENDED_MAX_QUERY_SIZE = 12_000
+
   # The query string of a standard IntrospectionQuery, used to compare incoming requests for caching
   CACHED_INTROSPECTION_QUERY_STRING = CachedIntrospectionQuery.query_string
   INTROSPECTION_QUERY_OPERATION_NAME = 'IntrospectionQuery'
@@ -77,6 +96,7 @@ class GraphqlController < ApplicationController
   # defer it to :authorize_access_api!, we need to override the bypass session
   # callback execution order here
   around_action :sessionless_bypass_admin_mode!, if: :sessionless_user?
+  around_action :track_user_experience_sli_by_operation_name
 
   # The default feature category is overridden to read from request
   feature_category :not_owned # rubocop:todo Gitlab/AvoidFeatureCategoryNotOwned
@@ -94,10 +114,10 @@ class GraphqlController < ApplicationController
     result = if multiplex?
                execute_multiplex
              else
-               introspection_query? ? execute_introspection_query : execute_query
+               introspection_query? ? execute_introspection_query : execute_single_query(query)
              end
 
-    render json: result
+    render json: result unless performed?
   end
 
   def handle_internal_error(exception)
@@ -155,7 +175,20 @@ class GraphqlController < ApplicationController
   end
 
   def permitted_params
-    @permitted_params ||= multiplex? ? permitted_multiplex_params : permitted_standalone_query_params
+    @permitted_params ||= begin
+      p = multiplex? ? permitted_multiplex_params : permitted_standalone_query_params
+
+      # SECURITY: Normalize query strings at the params layer so that every consumer
+      # of permitted_params[:query], including subclass overrides, always sees the
+      # post-escape_single_quoted_newlines string.
+      if multiplex?
+        p[:_json].each { |q| q[:query] = GraphQL::Language.escape_single_quoted_newlines(q[:query].to_s) }
+      else
+        p[:query] = GraphQL::Language.escape_single_quoted_newlines(p.fetch(:query, '').to_s)
+      end
+
+      p
+    end
   end
 
   def permitted_standalone_query_params
@@ -176,13 +209,18 @@ class GraphqlController < ApplicationController
   end
 
   def limit_query_size
-    total_size = if multiplex?
-                   multiplex_param.sum { _1[:query].size }
-                 else
-                   query.size
-                 end
+    if multiplex?
+      total_size = multiplex_param.sum { |query_info| query_info[:query].size }
+      raise ::Gitlab::Graphql::Errors::ArgumentError, "Query too large" if total_size > MAX_QUERY_SIZE
+    else
+      max = if permitted_params[:operationName].to_s.in?(EXTENDED_QUERY_SIZE_ALLOWLIST)
+              EXTENDED_MAX_QUERY_SIZE
+            else
+              MAX_QUERY_SIZE
+            end
 
-    raise ::Gitlab::Graphql::Errors::ArgumentError, "Query too large" if total_size > MAX_QUERY_SIZE
+      raise ::Gitlab::Graphql::Errors::ArgumentError, "Query too large" if query.size > max
+    end
   end
 
   def any_mutating_query?
@@ -194,7 +232,17 @@ class GraphqlController < ApplicationController
   end
 
   def mutation?(query_string, operation_name = permitted_params[:operationName])
-    ::GraphQL::Query.new(GitlabSchema, query_string, operation_name: operation_name).mutation?
+    parsed = GraphQL.parse(query_string)
+    operations = parsed.definitions.select { |d| d.is_a?(GraphQL::Language::Nodes::OperationDefinition) }
+
+    if operation_name.present?
+      target = operations.find { |op| op.name == operation_name }
+      return target.operation_type == "mutation" if target
+    end
+
+    operations.any? { |op| op.operation_type == "mutation" }
+  rescue GraphQL::ParseError
+    true
   end
 
   # Tests may mark some GraphQL queries as exempt from SQL query limits
@@ -250,22 +298,31 @@ class GraphqlController < ApplicationController
       .track_api_request_when_trackable(user_agent: request.user_agent, user: current_user)
   end
 
+  def track_user_experience_sli_by_operation_name
+    ::Gitlab::Graphql::UxSliByOperationName
+      .new(permitted_params[:operationName]).track { yield }
+  end
+
   def execute_multiplex
     GitlabSchema.multiplex(multiplex_queries, context: context)
   end
 
-  def execute_query
+  # SECURITY: This is the single execution hook for non-multiplex queries.
+  # The normalized_query argument is the same string validated by #disallow_mutations_for_get
+  # (via #query which applies #escape_single_quoted_newlines). Subclasses that
+  # override this method MUST use this argument for execution.
+  def execute_single_query(normalized_query)
     variables = build_variables(permitted_params[:variables])
     operation_name = permitted_params[:operationName]
-    GitlabSchema.execute(query, variables: variables, context: context, operation_name: operation_name)
+    GitlabSchema.execute(normalized_query, variables: variables, context: context, operation_name: operation_name)
   end
 
   def query
-    @query ||= GraphQL::Language.escape_single_quoted_newlines(permitted_params.fetch(:query, '').to_s)
+    @query ||= permitted_params.fetch(:query, '').to_s
   end
 
   def multiplex_param
-    permitted_multiplex_params[:_json]
+    @multiplex_param ||= permitted_params[:_json] || []
   end
 
   def multiplex_queries
@@ -300,6 +357,10 @@ class GraphqlController < ApplicationController
 
   # We support Apollo-style query batching where an array of queries will be in the `_json:` key.
   # https://graphql-ruby.org/queries/multiplex.html#apollo-query-batching
+  #
+  # Uses raw #params intentionally: this is a routing check, not a data access.
+  # #permitted_params itself calls #multiplex? to decide which permit set to use,
+  # so reading #permitted_params here would create infinite recursion.
   def multiplex?
     params[:_json].is_a?(Array)
   end
@@ -345,7 +406,7 @@ class GraphqlController < ApplicationController
   def execute_introspection_query
     context[:introspection] = true
 
-    return execute_query if Gitlab.dev_or_test_env?
+    return execute_single_query(query) if Gitlab.dev_or_test_env?
 
     load_static_schema
   end
@@ -363,7 +424,7 @@ class GraphqlController < ApplicationController
         Gitlab::Json.parse(File.read(schema_path))
         # rubocop:enable Gitlab/JsonSafeParse
       else
-        execute_query
+        execute_single_query(query)
       end
     end
   end

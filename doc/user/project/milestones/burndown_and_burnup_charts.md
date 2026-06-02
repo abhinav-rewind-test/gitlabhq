@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Visualize milestone progress with burndown and burnup charts to track remaining and completed issues over time.
 title: Burndown and burnup charts
 ---
@@ -26,7 +26,7 @@ Both burndown and burnup charts:
 
 - Show the total number of issues for each day of the current milestone.
 - Have a [toggle](#switch-between-number-of-issues-and-issue-weight) between the total number of
-  issues or the total [weight](../issues/issue_weight.md) of issues for each day of the milestone.
+  issues or the total [weight](../../work_items/weight.md) of issues for each day of the milestone.
 
 Differences between burndown and burnup charts are:
 
@@ -76,14 +76,14 @@ For an overview, check the video demonstration on [Mapping work versus time with
 
 To view a project's burndown chart:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Milestones**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Milestones**.
 1. Select a milestone from the list.
 
 To view a group's burndown chart:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Milestones**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Milestones**.
 1. Select a milestone from the list.
 
 ### How burndown charts work
@@ -131,14 +131,14 @@ Burnup charts show the assigned and completed work for a milestone.
 
 To view a project's burnup chart:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Milestones**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Milestones**.
 1. Select a milestone from the list.
 
 To view a group's burnup chart:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Milestones**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Milestones**.
 1. Select a milestone from the list.
 
 ### How burnup charts work

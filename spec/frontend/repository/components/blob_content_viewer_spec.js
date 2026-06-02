@@ -3,6 +3,8 @@ import { mount, shallowMount } from '@vue/test-utils';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
 import Vue, { nextTick } from 'vue';
+import { PiniaVuePlugin } from 'pinia';
+import { createTestingPinia } from '@pinia/testing';
 import MockAdapter from 'axios-mock-adapter';
 import VueApollo from 'vue-apollo';
 import VueRouter from 'vue-router';
@@ -12,7 +14,6 @@ import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
 import BlobContent from '~/blob/components/blob_content.vue';
 import BlobHeader from 'ee_else_ce/blob/components/blob_header.vue';
-import BlameHeader from '~/blob/components/blame_header.vue';
 import BlobContentViewer from '~/repository/components/blob_content_viewer.vue';
 import { loadViewer } from '~/repository/components/blob_viewers';
 import DownloadViewer from '~/repository/components/blob_viewers/download_viewer.vue';
@@ -34,6 +35,7 @@ import { HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_STATUS_OK } from '~/lib/utils/h
 import LineHighlighter from '~/blob/line_highlighter';
 import { LEGACY_FILE_TYPES } from '~/repository/constants';
 import { SIMPLE_BLOB_VIEWER, RICH_BLOB_VIEWER, BLAME_VIEWER } from '~/blob/components/constants';
+import { useFileTreeBrowserVisibility } from '~/repository/stores/file_tree_browser_visibility';
 import eventHub from '~/notes/event_hub';
 import {
   simpleViewerMock,
@@ -58,6 +60,7 @@ let blobInfoMockResolver;
 let projectInfoMockResolver;
 let router;
 let mockRouterPush;
+let pinia;
 
 Vue.use(Vuex);
 
@@ -75,6 +78,8 @@ const legacyViewerUrl = '/some_file.js?format=json&viewer=simple';
 const createComponent = async (mockData = {}, mountFn = shallowMount) => {
   Vue.use(VueApollo);
   Vue.use(VueRouter);
+  Vue.use(PiniaVuePlugin);
+  pinia = createTestingPinia({ stubActions: false });
 
   router = new VueRouter({
     routes: [
@@ -139,6 +144,7 @@ const createComponent = async (mockData = {}, mountFn = shallowMount) => {
     mountFn(BlobContentViewer, {
       store: createMockStore(),
       apolloProvider: fakeApollo,
+      pinia,
       propsData: propsMock,
       mixins: [getRefMixin, highlightMixin, glFeatureFlagMixin(), InternalEvents.mixin()],
       provide: {
@@ -161,7 +167,6 @@ const execImmediately = (callback) => {
 describe('Blob content viewer component', () => {
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
   const findBlobHeader = () => wrapper.findComponent(BlobHeader);
-  const findBlameHeader = () => wrapper.findComponent(BlameHeader);
   const findBlobContent = () => wrapper.findComponent(BlobContent);
   const findCodeIntelligence = () => wrapper.findComponent(CodeIntelligence);
   const findSourceViewer = () => wrapper.findComponent(SourceViewer);
@@ -211,12 +216,37 @@ describe('Blob content viewer component', () => {
 
         await triggerBlame();
 
-        expect(mockRouterPush).toHaveBeenCalledWith({ path: '/', query: { blame: '1' } });
+        expect(mockRouterPush).toHaveBeenCalledWith({ path: '/', query: { blame: '1' }, hash: '' });
         expect(findSourceViewer().props('showBlame')).toBe(true);
+
+        await router.replace({ path: '/', query: { blame: '1' } }); // Simulate the route update
+        await triggerBlame();
+
+        expect(mockRouterPush).toHaveBeenCalledWith({ path: '/', query: {}, hash: '' });
+        expect(findSourceViewer().props('showBlame')).toBe(false);
+      });
+
+      it('preserves the line number hash when toggling blame', async () => {
+        loadViewer.mockReturnValueOnce(SourceViewer);
+        await createComponent({ blob: simpleViewerMock });
+        window.location.hash = '#L42';
 
         await triggerBlame();
 
-        expect(findSourceViewer().props('showBlame')).toBe(false);
+        expect(mockRouterPush).toHaveBeenCalledWith({
+          path: '/',
+          query: { blame: '1' },
+          hash: '#L42',
+        });
+
+        await router.replace({ path: '/', query: { blame: '1' }, hash: '#L42' });
+        await triggerBlame();
+
+        expect(mockRouterPush).toHaveBeenCalledWith({
+          path: '/',
+          query: {},
+          hash: '#L42',
+        });
       });
 
       it('hides the blame when route changes', async () => {
@@ -224,7 +254,7 @@ describe('Blob content viewer component', () => {
         await createComponent({ blob: simpleViewerMock });
         await triggerBlame(); // First open blame
 
-        await router.replace({ path: '/mock_path', query: { blame: '0' } }); // Close it via param
+        await router.replace({ path: '/mock_path', query: {} }); // Close it by removing blame param
         expect(findSourceViewer().props('showBlame')).toBe(false);
 
         await router.replace({ path: '/mock_path', query: { blame: '1' } }); // Open it via param
@@ -254,7 +284,7 @@ describe('Blob content viewer component', () => {
       });
 
       describe('blame header', () => {
-        it('does not render a blame header for binary files', async () => {
+        it('does not pass showBlameInfo for binary files', async () => {
           await createComponent({
             blob: {
               ...simpleViewerMock,
@@ -264,20 +294,20 @@ describe('Blob content viewer component', () => {
           });
           await triggerBlame();
 
-          expect(findBlameHeader().exists()).toBe(false);
+          expect(findBlobHeader().props('showBlameInfo')).toBe(false);
         });
 
-        it('does not render a blame header when blame is closed', async () => {
+        it('does not pass showBlameInfo when blame is closed', async () => {
           await createComponent({ blob: simpleViewerMock });
 
-          expect(findBlameHeader().exists()).toBe(false);
+          expect(findBlobHeader().props('showBlameInfo')).toBe(false);
         });
 
-        it('renders a blame header when blame is open', async () => {
+        it('passes showBlameInfo when blame is open', async () => {
           await createComponent({ blob: simpleViewerMock });
           await triggerBlame();
 
-          expect(findBlameHeader().exists()).toBe(true);
+          expect(findBlobHeader().props('showBlameInfo')).toBe(true);
         });
 
         it('sets shouldPreloadBlame prop on the viewer when header emits preload event', async () => {
@@ -290,6 +320,46 @@ describe('Blob content viewer component', () => {
           await nextTick();
 
           expect(findSourceViewer().props('shouldPreloadBlame')).toBe(true); // preloads after receiving event
+        });
+      });
+
+      describe('FTB auto-collapse', () => {
+        it('collapses FTB when blame button is clicked', async () => {
+          loadViewer.mockReturnValueOnce(SourceViewer);
+          await createComponent({ blob: simpleViewerMock });
+
+          const store = useFileTreeBrowserVisibility();
+          store.fileTreeBrowserIsExpanded = true;
+          const spy = jest.spyOn(store, 'collapseForBlame');
+
+          findBlobHeader().vm.$emit('blame');
+          await nextTick();
+
+          expect(spy).toHaveBeenCalledTimes(1);
+        });
+
+        it('collapses FTB when route changes to ?blame=1', async () => {
+          loadViewer.mockReturnValueOnce(SourceViewer);
+          await createComponent({ blob: simpleViewerMock });
+
+          const store = useFileTreeBrowserVisibility();
+          store.fileTreeBrowserIsExpanded = true;
+          const spy = jest.spyOn(store, 'collapseForBlame');
+
+          await router.replace({ path: '/', query: { blame: '1' } });
+
+          expect(spy).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not collapse FTB when blame is turned off', async () => {
+          await createComponent({ blob: simpleViewerMock });
+
+          const store = useFileTreeBrowserVisibility();
+          const spy = jest.spyOn(store, 'collapseForBlame');
+
+          wrapper.vm.setShowBlame(false);
+
+          expect(spy).not.toHaveBeenCalled();
         });
       });
     });
@@ -634,7 +704,7 @@ describe('Blob content viewer component', () => {
   });
 
   describe('edit blob', () => {
-    beforeEach(() => createComponent({}, mount));
+    beforeEach(() => createComponent());
 
     it('simple edit redirects to the simple editor', () => {
       findBlobHeader().vm.$emit('edit', 'simple');
@@ -649,16 +719,16 @@ describe('Blob content viewer component', () => {
 
   describe('active viewer based on plain attribute', () => {
     it.each`
-      hasRichViewer | plain  | blame  | activeViewer          | activeViewerType
-      ${true}       | ${'0'} | ${'0'} | ${RICH_BLOB_VIEWER}   | ${RICH_BLOB_VIEWER}
-      ${true}       | ${'1'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
-      ${false}      | ${'0'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
-      ${false}      | ${'1'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
-      ${true}       | ${'0'} | ${'1'} | ${SIMPLE_BLOB_VIEWER} | ${BLAME_VIEWER}
+      hasRichViewer | plain  | blame   | activeViewer          | activeViewerType
+      ${true}       | ${'0'} | ${null} | ${RICH_BLOB_VIEWER}   | ${RICH_BLOB_VIEWER}
+      ${true}       | ${'1'} | ${null} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${false}      | ${'0'} | ${null} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${false}      | ${'1'} | ${null} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${true}       | ${'0'} | ${'1'}  | ${SIMPLE_BLOB_VIEWER} | ${BLAME_VIEWER}
     `(
       'activeViewerType is `$activeViewerType` when hasRichViewer is $hasRichViewer, plain is set to $plain, and blame is set to $blame',
       async ({ hasRichViewer, plain, blame, activeViewer, activeViewerType }) => {
-        const urlParams = `?plain=${plain}&blame=${blame}`;
+        const urlParams = blame ? `?plain=${plain}&blame=${blame}` : `?plain=${plain}`;
         await createComponent(
           { blob: hasRichViewer ? richViewerMock : simpleViewerMock, urlParams },
           shallowMount,

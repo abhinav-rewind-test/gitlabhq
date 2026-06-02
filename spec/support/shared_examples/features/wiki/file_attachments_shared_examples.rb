@@ -14,7 +14,7 @@ RSpec.shared_examples 'wiki file attachments' do
     context 'before uploading' do
       it 'shows "Attach a file or image" button' do
         expect(page).to have_selector('[data-testid="button-attach-file"]')
-        expect(page).not_to have_selector('.uploading-progress-container', visible: true)
+        expect(page).to have_no_selector('.uploading-progress-container', visible: :visible)
       end
     end
 
@@ -26,15 +26,15 @@ RSpec.shared_examples 'wiki file attachments' do
           click_button 'Cancel'
         end
 
-        expect(page).not_to have_button('Cancel')
-        expect(page).not_to have_selector('.uploading-progress-container', visible: true)
+        expect(page).to have_no_button('Cancel')
+        expect(page).to have_no_selector('.uploading-progress-container', visible: :visible)
       end
 
       it 'shows "Attaching a file" message on uploading 1 file' do
         slow_requests do
           attach_with_dropzone
 
-          expect(page).to have_selector('.attaching-file-message', visible: true, text: 'Attaching a file -')
+          expect(page).to have_selector('.attaching-file-message', visible: :visible, text: 'Attaching a file -')
         end
       end
     end
@@ -45,7 +45,7 @@ RSpec.shared_examples 'wiki file attachments' do
         wait_for_requests
 
         expect(page).to have_selector('[data-testid="button-attach-file"]')
-        expect(page).not_to have_selector('.uploading-progress-container', visible: true)
+        expect(page).to have_no_selector('.uploading-progress-container', visible: :visible)
       end
 
       it 'the markdown link is added to the page' do

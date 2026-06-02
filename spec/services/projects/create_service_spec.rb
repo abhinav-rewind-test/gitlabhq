@@ -515,17 +515,17 @@ RSpec.describe Projects::CreateService, '#execute', feature_category: :groups_an
     end
   end
 
-  context 'wiki_enabled creates repository directory' do
-    context 'wiki_enabled true creates wiki repository directory' do
-      it do
+  context 'wiki_enabled' do
+    context 'true' do
+      it 'creates wiki repository directory' do
         project = create_project(user, opts)
 
         expect(wiki_repo(project).exists?).to be_truthy
       end
     end
 
-    context 'wiki_enabled false does not create wiki repository directory' do
-      it do
+    context 'false' do
+      it 'does not create wiki repository directory' do
         opts[:wiki_enabled] = false
         project = create_project(user, opts)
 
@@ -990,7 +990,7 @@ RSpec.describe Projects::CreateService, '#execute', feature_category: :groups_an
         end
 
         let!(:group_integration) do
-          create(:beyond_identity_integration, group: group, instance: false, active: false)
+          create(:beyond_identity_integration, project: nil, group: group, active: false)
         end
 
         it 'creates a service from the group-level integration' do
@@ -1235,7 +1235,7 @@ RSpec.describe Projects::CreateService, '#execute', feature_category: :groups_an
       project = create_project(user, opts)
 
       expect(
-        Ability.allowed?(other_user, :developer_access, project)
+        Ability.allowed?(other_user, :push_code, project)
       ).to be_truthy
     end
   end
@@ -1250,7 +1250,7 @@ RSpec.describe Projects::CreateService, '#execute', feature_category: :groups_an
     let_it_be(:user) { create :user }
 
     context 'when parent group is present' do
-      let_it_be(:group, reload: true) do
+      let_it_be_with_reload(:group) do
         create(:group) do |group|
           group.add_owner(user)
         end

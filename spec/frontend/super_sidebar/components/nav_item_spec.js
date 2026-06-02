@@ -20,7 +20,6 @@ describe('NavItem component', () => {
   const findPill = () => wrapper.findByTestId('pill-badge');
   const findPinButton = () => wrapper.findComponent(GlButton);
   const findNavItemLink = () => extendedWrapper(wrapper.findComponent(NavItemLink));
-  const findNavBadge = () => wrapper.findByTestId('nav-item-feature-announcement-badge');
 
   const createWrapper = ({
     item,
@@ -135,50 +134,40 @@ describe('NavItem component', () => {
       );
     });
 
+    describe('async count pill', () => {
+      beforeEach(() => {
+        createWrapper({
+          item: {
+            title: 'Foo',
+            pill_count_field: 'openIssuesCount',
+          },
+          props: {
+            asyncCount: {},
+          },
+        });
+      });
+
+      it('renders `-` while async count field is not available yet', () => {
+        expect(findPill().text()).toBe('-');
+      });
+
+      it('updates from loading placeholder to async count value', async () => {
+        await wrapper.setProps({
+          asyncCount: {
+            openIssuesCount: 12,
+          },
+        });
+
+        expect(findPill().text()).toBe('12');
+      });
+    });
+
     describe('if `pill_count_field` does not exist, use `pill_count` value`', () => {
       it('renders `pill_count_field` value based on item type', () => {
         createWrapper({ item: { title: 'Foo', pill_count: 10, pill_count_field: null } });
 
         expect(findPill().text()).toBe('10');
       });
-    });
-  });
-
-  describe('badges', () => {
-    it('renders a badge when item has badge property', () => {
-      createWrapper({
-        item: {
-          badge: {
-            label: 'New',
-            tooltip: 'This is new!',
-          },
-        },
-      });
-      expect(findNavBadge().exists()).toBe(true);
-      expect(findNavBadge().text()).toBe('New');
-    });
-
-    it('renders badge with tooltip', () => {
-      createWrapper({
-        item: {
-          badge: {
-            label: 'New',
-            tooltip: 'This is new!',
-          },
-        },
-        directives: {
-          GlTooltip: createMockDirective('gl-tooltip'),
-        },
-      });
-      const badge = findNavBadge();
-      const tooltip = getBinding(badge.element, 'gl-tooltip');
-
-      expect(tooltip.value).toBe('This is new!');
-    });
-
-    it('does not render badge when item has no badge property', () => {
-      createWrapper({ item: { title: 'Foo' } });
-      expect(findNavBadge().exists()).toBe(false);
     });
   });
 

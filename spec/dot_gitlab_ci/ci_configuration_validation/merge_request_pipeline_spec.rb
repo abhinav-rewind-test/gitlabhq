@@ -32,6 +32,16 @@ RSpec.describe 'CI configuration validation - branch pipelines', feature_categor
     it_behaves_like 'merge train pipeline'
   end
 
+  context "when MR from release-tools/update-gitlab-pages is changing GITLAB_PAGES_VERSION" do
+    let(:source_branch) { 'release-tools/update-gitlab-pages' }
+    let(:changed_files) { ['GITLAB_PAGES_VERSION'] }
+    let(:expected_job_name) { 'clone-gitlab-repo' }
+
+    it_behaves_like 'merge request pipeline'
+
+    it_behaves_like 'merge train pipeline'
+  end
+
   context "with frontend file changes in MR" do
     let(:changed_files) { ['package.json'] }
 
@@ -92,7 +102,7 @@ RSpec.describe 'CI configuration validation - branch pipelines', feature_categor
   context 'when MR targeting a stable branch is changing app/models/user.rb' do
     let(:target_branch)     { '16-10-stable-ee' }
     let(:changed_files)     { ['app/models/user.rb'] }
-    let(:expected_job_name) { 'rspec-all frontend_fixture 1/7' }
+    let(:expected_job_name) { 'rspec-all frontend_fixture 1/8' }
 
     before do
       sync_local_files_to_project(
@@ -113,7 +123,10 @@ RSpec.describe 'CI configuration validation - branch pipelines', feature_categor
   end
 
   context 'with fork project MRs' do
-    let_it_be(:fork_project_mr_source) { fork_project(gitlab_org_gitlab_project, user, repository: true) }
+    let_it_be(:fork_project_mr_source) do
+      fork_project(gitlab_org_gitlab_project, user, repository: true)
+    end
+
     let(:source_project)    { fork_project_mr_source }
     let(:target_project)    { gitlab_org_gitlab_project }
 
@@ -121,7 +134,7 @@ RSpec.describe 'CI configuration validation - branch pipelines', feature_categor
       let(:source_branch)     { master_branch }
       let(:target_branch)     { master_branch }
       let(:changed_files)     { ['package.json'] }
-      let(:expected_job_name) { 'rspec-all frontend_fixture 1/7' }
+      let(:expected_job_name) { 'rspec-all frontend_fixture 1/8' }
 
       context 'when running MR pipeline in the context of the fork project' do
         let(:ci_project_namespace) { fork_project_mr_source.namespace.full_path }
@@ -142,7 +155,7 @@ RSpec.describe 'CI configuration validation - branch pipelines', feature_categor
       let(:source_branch)     { "feature_branch_ci_#{SecureRandom.uuid}" }
       let(:target_branch)     { master_branch }
       let(:changed_files)     { ['package.json'] }
-      let(:expected_job_name) { 'rspec-all frontend_fixture 1/7' }
+      let(:expected_job_name) { 'rspec-all frontend_fixture 1/8' }
 
       it "runs cache update jobs" do
         expect(jobs).to include('cache:ruby-gems', 'cache:node-modules', 'cache:node-modules-production')

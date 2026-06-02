@@ -1,30 +1,25 @@
 ---
 stage: AI-powered
 group: Agent Foundations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: セッション
 ---
 
 {{< details >}}
 
 - プラン: Premium、Ultimate
-- アドオン: GitLab Duo Core、Pro、またはEnterprise
 - 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
-
-この機能は、[GitLabクレジット](../../../subscriptions/gitlab_credits.md)を使用します。
 
 {{< /details >}}
 
-エージェントと実行したフローのステータスと実行データがセッションに表示されます。
+セッションは、実行したエージェントおよびフローのステータスと実行データを表示します。
 
-セッションは、IDEまたはUIにおいて、GitLab Duo Chat（エージェント）および基本フローによって作成されます。例:
+セッションはGitLab Duo Agentic Chatと、IDEまたはUI内の基本フローによって作成されます。例:
 
-- ランナーで実行されるフロー（[Fix your CI/CD Pipeline Flow](../flows/fix_pipeline.md)など）。これらのセッションは、UIの**自動化** > **セッション**に表示されます。
-- IDEで実行されるフロー（[Software development Flow](../flows/software_development.md)など）。これらのセッションは、IDEの**フロー**タブの**セッション**に表示されます。
-- GitLab Duo Chatによって作成されたセッション。これらのセッションは、右側のサイドバーの**GitLab Duo Chat履歴**を選択すると表示されます。
-- トリガーによって実行されるフロー。これらのセッションは、UIの**自動化** > **セッション**に表示されます。
-
-GitLab Duo Chat（クラシック）はエージェント型ではないため、セッションを作成しません。
+- Runnerで実行されるフロー（[CI/CDパイプライン修正フロー](../flows/foundational_flows/fix_pipeline.md)など）。これらのセッションは、UIの**自動化** > **セッション**で確認できます。
+- IDEで実行されるフロー（[ソフトウェア開発フロー](../flows/foundational_flows/software_development.md)など）。これらのセッションは、IDEの**フロー**タブの**セッション**で確認できます。
+- GitLab Duo Chatによって作成されるセッション。これらのセッションは、右側のサイドバーの**GitLab Duo Chat履歴**を選択すると確認できます。
+- トリガーによって実行されるフロー。これらのセッションは、UIの**自動化** > **セッション**で確認できます。
 
 ## プロジェクトのセッションを表示する {#view-sessions-for-your-project}
 
@@ -38,21 +33,23 @@ GitLab Duo Chat（クラシック）はエージェント型ではないため�
 1. **自動化** > **セッション**を選択します。
 1. セッションを選択すると、詳細が表示されます。
 
-## トリガーしたセッションを表示する {#view-sessions-youve-triggered}
+## 自分がトリガーしたセッションを表示する {#view-sessions-youve-triggered}
 
-トリガーしたセッションを表示するには:
+自分がトリガーしたセッションを表示するには:
 
-1. 右側のサイドバーで、**GitLab Duoのセッション**を選択します。
+1. 右サイドバーで、**GitLab Duoのセッション**を選択します。
 1. セッションを選択すると、詳細が表示されます。
-1. オプション。すべてのログを表示するか、簡潔なサブセットのみを表示するように詳細をフィルタリングします。
+1. オプション。詳細をフィルタリングして、すべてのログ、または要点のみを表示します。
 
-## GitLab Duo Chat（エージェント）のセッション {#gitlab-duo-chat-agentic-sessions}
+## GitLab Duo Agentic Chatセッション {#gitlab-duo-agentic-chat-sessions}
 
-チャットはインタラクティブであるため、UIでより明確に分ける必要があります。Chatの履歴は、Chat専用に存在するセッションのフィルタリングされたビューと考えることができます。
+チャットはインタラクティブであるため、UI上でより明確に区別する必要があります。Chatの履歴は、セッションをChat専用に切り分けたものと考えることができます。
 
-## 実行中のセッションをキャンセル {#cancel-a-running-session}
+GitLab DuoコマンドラインインターフェースでChatセッションをブラウズし、スイッチするには、[セッションのスイッチ](../../gitlab_duo_cli/_index.md#switch-sessions)を参照してください。
 
-実行中または入力待ちのセッションをキャンセルできます。セッションをキャンセルするには:
+## 実行中のセッションをキャンセルする {#cancel-a-running-session}
+
+実行中または入力待ちのセッションはキャンセルできます。セッションをキャンセルするには:
 
 1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
 1. **自動化** > **セッション**を選択します。
@@ -60,13 +57,13 @@ GitLab Duo Chat（クラシック）はエージェント型ではないため�
 1. **セッションをキャンセル**を選択します。
 1. 確認ダイアログで、**セッションをキャンセル**を選択して確定します。
 
-キャンセル後:
+キャンセル後は、次のようになります:
 
 - セッションのステータスが**停止中**に変わります。
 - セッションを再開または再起動することはできません。
 
 ## セッションの保持 {#session-retention}
 
-セッションは、最後のアクティビティーから30日後に自動的に削除されます。保持期間はセッションを操作するたびにリセットされます。たとえば、セッションを20日ごとに操作している場合、自動的に削除されることはありません。
+セッションは、最後のアクティビティから30日後に自動的に削除されます。保持期間はセッションを操作するたびにリセットされます。たとえば、セッションを20日ごとに操作している場合、自動的に削除されることはありません。
 
 IDEでは、30日の保持期間が終了する前に、セッションを手動で削除することもできます。

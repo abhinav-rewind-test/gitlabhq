@@ -17,7 +17,6 @@ RSpec.describe Import::BitbucketServerController, feature_category: :importers d
   end
 
   before do
-    stub_feature_flags(new_project_creation_form: false)
     sign_in(user)
     stub_application_setting(import_sources: ['bitbucket_server'])
   end
@@ -79,18 +78,6 @@ RSpec.describe Import::BitbucketServerController, feature_category: :importers d
 
         expect(response).to have_gitlab_http_status(:not_found)
       end
-    end
-
-    it 'returns an error when an invalid project key is used' do
-      post :create, params: { repo_id: 'some&project/repo' }
-
-      expect(response).to have_gitlab_http_status(:unprocessable_entity)
-    end
-
-    it 'returns an error when an invalid repository slug is used' do
-      post :create, params: { repo_id: 'some-project/try*this' }
-
-      expect(response).to have_gitlab_http_status(:unprocessable_entity)
     end
 
     it 'returns an error when the project cannot be found' do
@@ -207,6 +194,36 @@ RSpec.describe Import::BitbucketServerController, feature_category: :importers d
         expect(client).to receive(:repos).with(filter: filter, limit: 25, page_offset: 0).and_return([@repo])
 
         get :status, params: { filter: filter }, as: :json
+      end
+    end
+  end
+
+  describe 'GET status.json', :clean_gitlab_redis_rate_limiting do
+    before do
+      allow(controller).to receive(:client).and_return(client)
+      assign_session_tokens
+    end
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :bitbucket_server_import do
+      let_it_be(:second_user) { create(:user) }
+
+      let(:current_user) { user }
+
+      before do
+        allow(BitbucketServer::Client).to receive(:new).and_return(client)
+        allow(client).to receive(:repos).and_return([])
+      end
+
+      def request
+        get :status, format: :json
+      end
+
+      def request_with_second_scope
+        sign_in(second_user)
+        session[:bitbucket_server_url] = 'http://localhost:7990'
+        session[:bitbucket_server_username] = 'bitbucket'
+        session[:bitbucket_server_personal_access_token] = 'some-token'
+        get :status, format: :json
       end
     end
   end

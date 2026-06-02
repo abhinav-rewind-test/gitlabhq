@@ -1,8 +1,9 @@
 ---
 stage: Tenant Scale
 group: Geo
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Silent Mode
+description: Silence outbound communication from GitLab.
 ---
 
 {{< details >}}
@@ -58,7 +59,7 @@ There are multiple ways to turn on Silent Mode:
 - **Web UI**
 
   1. In the upper-right corner, select **Admin**.
-  1. On the left sidebar, select **Settings** > **General**.
+  1. In the left sidebar, select **Settings** > **General**.
   1. Expand **Silent Mode**, and turn on the **Enable Silent Mode** toggle.
   1. Changes are saved immediately.
 
@@ -87,7 +88,7 @@ There are multiple ways to disable Silent Mode:
 - **Web UI**
 
   1. In the upper-right corner, select **Admin**.
-  1. On the left sidebar, select **Settings** > **General**.
+  1. In the left sidebar, select **Settings** > **General**.
   1. Expand **Silent Mode**, and turn off the **Enable Silent Mode** toggle.
   1. Changes are saved immediately.
 
@@ -124,7 +125,7 @@ Outbound communications from the following features are silenced by Silent Mode.
 | [Executable integrations](../../user/project/integrations/_index.md)       | The integrations are not executed.                                                                                                                                                                                                                      |
 | [Service Desk](../../user/project/service_desk/_index.md)                  | Incoming emails still raise issues, but the users who sent the emails to Service Desk are not notified of issue creation or comments on their issues.                                                                                                   |
 | Outbound emails                                                           | At the moment when an email should be sent by GitLab, it is instead dropped. It is not queued anywhere.                                                                                                                                                 |
-| Outbound HTTP requests                                                    | Many HTTP requests are blocked where features are not blocked or skipped explicitly. These may produce errors with the class `SilentModeBlockedError`. If a particular error is problematic for testing during Silent Mode, consult [GitLab Support](https://about.gitlab.com/support/). In general, the caller should exit when Silent Mode is enabled, rather than attempt to make the HTTP request. Any exceptions must align with the [intended uses for Silent Mode](#when-to-use-silent-mode). |
+| Outbound HTTP requests                                                    | Many HTTP requests are blocked where features are not blocked or skipped explicitly. These may produce errors with the class `SilentModeBlockedError`. If a particular error is problematic for testing during Silent Mode, consult [GitLab Support](https://support.gitlab.com/). In general, the caller should exit when Silent Mode is enabled, rather than attempt to make the HTTP request. Any exceptions must align with the [intended uses for Silent Mode](#when-to-use-silent-mode). |
 
 ### Outbound communications that are not silenced
 
@@ -135,7 +136,7 @@ Outbound communications from the following features are not silenced by Silent M
 | [Dependency proxy](../packages/dependency_proxy.md)                                                         | Pulling images that are not cached will fetch from the source as usual. Consider pull rate limits.                                                                                                                                              |
 | [File hooks](../file_hooks.md)                                                                              |                                                                                                                                                                                                                                                 |
 | [Server hooks](../server_hooks.md)                                                                          |                                                                                                                                                                                                                                                 |
-| [Advanced search](../../integration/advanced_search/elasticsearch.md)                                       | If two GitLab instances are using the same Advanced Search instance, then they can both modify Search data. This is a split-brain scenario which can occur for example after promoting a secondary Geo site while the primary Geo site is live. |
+| [Advanced search](../../integration/advanced_search/elasticsearch.md)                                       | If two GitLab instances are using the same advanced search instance, then they can both modify Search data. This is a split-brain scenario which can occur for example after promoting a secondary Geo site while the primary Geo site is live. |
 | [ClickHouse calls](../../integration/clickhouse.md)                                                         | ClickHouse requests are not silenced because they are considered internal to a site.                                                                                                                                                            |
 | Snowplow                                                                                                    | A proposal exists in [issue 409661](https://gitlab.com/gitlab-org/gitlab/-/issues/409661) to silence these requests.                                                                                                                                          |
 | [Deprecated Kubernetes Connections](../../user/clusters/agent/_index.md)                                    | There is [a proposal to silence these requests](https://gitlab.com/gitlab-org/gitlab/-/issues/396470).                                                                                                                                          |

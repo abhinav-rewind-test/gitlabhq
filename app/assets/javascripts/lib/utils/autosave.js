@@ -1,4 +1,4 @@
-import { isString } from 'lodash';
+import { isString } from 'lodash-es';
 import { capitalizeFirstCharacter } from '~/lib/utils/text_utility';
 
 const normalizeKey = (autosaveKey) => {
@@ -16,6 +16,7 @@ const normalizeKey = (autosaveKey) => {
   return `autosave/${normalizedKey}`;
 };
 
+// eslint-disable-next-line @gitlab/no-hardcoded-urls -- autosave key identifier, not a URL
 const lockVersionKey = (autosaveKey) => `${normalizeKey(autosaveKey)}/lockVersion`;
 
 export const clearDraft = (autosaveKey) => {

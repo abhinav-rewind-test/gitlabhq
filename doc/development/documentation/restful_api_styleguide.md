@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 description: Writing styles, markup, formatting, and other standards for the GitLab RESTful APIs.
 title: Documenting REST API resources
 ---
@@ -50,7 +50,7 @@ For example:
 ---
 stage: Example Stage
 group: Example Group
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: REST API to create, update, and delete issues.
 title: Example page title
 ---
@@ -306,8 +306,7 @@ For information about writing attribute descriptions, see the [GraphQL API descr
 
 - Use `https://gitlab.example.com/api/v4/` as an endpoint.
 - Wherever needed use this personal access token: `<your_access_token>`.
-- Always put the request first. `GET` is the default so you don't have to
-  include it.
+- Always put the request method first. Specify `--request <METHOD>` for all HTTP methods, including `GET`.
 - Use long option names (`--header` instead of `-H`) for legibility. (Tested in
   [`scripts/lint-doc.sh`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/scripts/lint-doc.sh).)
 - Declare URLs with the `--url` parameter, and wrap the URL in double quotes (`"`).
@@ -316,12 +315,13 @@ For information about writing attribute descriptions, see the [GraphQL API descr
 - For legibility, use the ` \ ` character and indentation to break long single-line
   commands apart into multiple lines.
 
-| Methods                                         | Description                                            |
-|-------------------------------------------------|--------------------------------------------------------|
+| Methods                                         | Description |
+| ----------------------------------------------- | ----------- |
 | `--header "PRIVATE-TOKEN: <your_access_token>"` | Use this method as is, whenever authentication needed. |
-| `--request POST`                                | Use this method when creating new objects.             |
-| `--request PUT`                                 | Use this method when updating existing objects.        |
-| `--request DELETE`                              | Use this method when removing existing objects.        |
+| `--request GET`                                 | Use this method when retrieving existing objects. |
+| `--request POST`                                | Use this method when creating new objects. |
+| `--request PUT`                                 | Use this method when updating existing objects. |
+| `--request DELETE`                              | Use this method when removing existing objects. |
 
 ## cURL Examples
 
@@ -338,7 +338,8 @@ you can use in the API documentation.
 Get the details of a group:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" \
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/groups/gitlab-org"
 ```
 

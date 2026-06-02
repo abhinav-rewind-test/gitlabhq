@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: 2要素認証
 description: アカウント保護を強化するために、多要素認証を有効にします。
@@ -16,9 +16,9 @@ description: アカウント保護を強化するために、多要素認証を�
 
 2要素認証（2FA）を使用すると、GitLabアカウントのセキュリティがさらに強化されます。あなたのアカウントに他のユーザーがアクセスするには、ユーザー名とパスワードに加えて、2番目の認証要素へのアクセスが必要になります。
 
-GitLabは、次の2要素認証方式をサポートしています:
+GitLabは、次の2FA方式をサポートしています:
 
-- ワンタイムパスワード（[OTP](https://datatracker.ietf.org/doc/html/rfc6238)）認証システム。サインイン時に、GitLabからOTP認証システムで生成されたコードの入力を求められます。
+- ワンタイムパスワード（[OTP](https://datatracker.ietf.org/doc/html/rfc6238)）認証アプリ。サインイン時に、GitLabからOTP認証アプリで生成されたコードの入力を求められます。
 - WebAuthnデバイス。サインイン時に、GitLabからWebAuthnデバイスの所有権の証明を求められます。これは通常、YubiKey、スマートフォン、ラップトップのような物理デバイスです。
 - メールOTP。サインイン時に、GitLabからメールアドレスに送信されたコードの入力を求められます。
 
@@ -26,22 +26,24 @@ GitLabは、次の2要素認証方式をサポートしています:
 
 ## 2要素認証を有効にする {#enable-two-factor-authentication}
 
-2要素認証を有効にするには、メールアドレスを確認し、OTP認証システム、WebAuthnデバイス、またはメールOTPを登録します。
+2FAを有効にするには、メールアドレスを確認し、OTP認証アプリ、WebAuthnデバイス、またはメールOTPを登録します。
 
-### OTP認証システムの登録 {#register-an-otp-authenticator}
+### OTP認証アプリの登録 {#register-an-otp-authenticator}
 
-> [!warning] OTP認証システムへのアクセスを失うと、アカウントからロックアウトされる可能性があります。
+> [!warning] 
 > 
+> OTP認証アプリへのアクセスを失うと、アカウントからロックアウトされる可能性があります。
+>
 > このリスクを最小限に抑えるには、次の手順を実行します:
-> 
+>
 > - 認証システムアプリでクラウドバックアップを有効にします。
 > - リカバリーパスワード、シークレットキー、またはリカバリー認証情報を安全な場所に保存します。
-> - 特定のOTP認証システムのドキュメントを確認します。
+> - 特定のOTP認証アプリのドキュメントを確認します。
 
-OTP認証システムを登録するには、次の手順を実行します:
+OTP認証アプリを登録するには、次の手順を実行します:
 
 1. GitLabを設定します。
-   1. 右上隅でアバターを選択します。
+   1. 右上隅で、アバターを選択します。
    1. **プロファイルを編集**を選択します。
    1. 左側のサイドバーで、**アカウント**を選択します。
    1. **2要素認証を有効にする**を選択します。
@@ -62,12 +64,12 @@ OTP認証システムを登録するには、次の手順を実行します:
       - 提供された詳細を入力して、エントリを手動で追加します。
 1. 登録を完了します:
    1. 現在のパスワードを入力します。
-   1. 認証システムから生成された6桁のPINを入力します。
+   1. 認証アプリから生成された6桁のPINを入力します。
    1. **2要素認証アプリで登録**を選択します。
 
 正しいピンを入力すると、[リカバリーコード](#recovery-codes)のリストが表示されます。それらをダウンロードして、安全な場所に保管してください。
 
-OTP認証システムがクラウドバックアップをサポートしている場合は、今すぐ機能を設定することを検討してください。詳細については、特定の認証システムのドキュメントを参照してください。
+OTP認証アプリがクラウドバックアップをサポートしている場合は、今すぐ機能を設定することを検討してください。詳細については、特定の認証アプリのドキュメントを参照してください。
 
 ### WebAuthnデバイスの登録 {#register-a-webauthn-device}
 
@@ -94,7 +96,7 @@ WebAuthnは以下で[サポートされています](https://caniuse.com/#search
 WebAuthn互換デバイスを登録するには、次の手順を実行します:
 
 1. 物理デバイスを使用している場合は、コンピューターに接続します。
-1. 右上隅でアバターを選択します。
+1. 右上隅で、アバターを選択します。
 1. **プロファイルを編集**を選択します。
 1. 左側のサイドバーで、**アカウント**を選択します。
 1. **2要素認証を有効にする**を選択します。
@@ -111,37 +113,41 @@ WebAuthn互換デバイスで2FAをセットアップすると、そのデバイ
 
 今回初めて2FAを設定する場合は、アクセスを失った場合にアカウントへのアクセスを回復できるように、[リカバリーコード](#recovery-codes)をダウンロードする必要があります。
 
-> [!warning]ブラウザデータをクリアすると、アカウントへのアクセスを失う可能性があります。
+> [!warning]
+> ブラウザデータをクリアすると、アカウントへのアクセスを失う可能性があります。
 
 ### メールOTPの有効化 {#enable-email-otp}
 
 {{< history >}}
 
-- GitLab 18.7で、`email_based_mfa`という名前の[機能フラグ](../../../administration/feature_flags/_index.md)で導入されました。デフォルトでは無効になっています。
+- GitLab 18.7で`email_based_mfa`[機能フラグ](../../../administration/feature_flags/_index.md)とともに導入されました。デフォルトでは無効になっています。
 - GitLab 18.7のGitLab.comで有効になり、2026年を通してすべてのユーザーに段階的にロールアウトされます。
 
 {{< /history >}}
 
-> [!flag] この機能の利用可否は、機能フラグによって制御されます。詳細については、履歴を参照してください。
+> [!flag]
+> 
+> この機能の利用は機能フラグによって制御されます。詳細については、履歴を参照してください。
 
 メールOTPを使用すると、6桁の認証コードをメールアドレスに送信して、本人確認を行うことができます。
 
-> [!note]次の場合、メールOTPを使用できないことがあります:
-> 
+> [!note]
+> 次の場合、メールOTPを使用できないことがあります:
+>
 > - グループポリシーで、他の2要素認証方式の使用が要求されている。
-> - アカウントが外部IDプロバイダを使用している。
+> - アカウントが外部IDプロバイダーを使用している。
 > - アカウントが将来の特定の日付に自動的にイネーブルメントされるようにスケジュールされている。
 
 アカウントでメールOTPを有効にするには、次の手順を実行します:
 
-1. 右上隅でアバターを選択します。
+1. 右上隅で、アバターを選択します。
 1. **プロファイルを編集**を選択します。
 1. 左側のサイドバーで、**アカウント**を選択します。
 1. **2要素認証の管理**を選択します。
 1. **メールによるワンタイムパスコードを有効にする**を選択します。
 1. 現在のパスワードを入力し、**メールによるワンタイムパスコード設定の更新**を選択します。
 
-### Cisco Duo認証システムの追加 {#add-a-cisco-duo-authenticator}
+### Cisco Duo認証アプリの追加 {#add-a-cisco-duo-authenticator}
 
 {{< details >}}
 
@@ -174,7 +180,7 @@ DUO®は、米国およびその他の特定の国におけるCisco Systems, Inc
    sudo editor /etc/gitlab/gitlab.rb
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```shell
    cd /home/git/gitlab
@@ -192,7 +198,7 @@ DUO®は、米国およびその他の特定の国におけるCisco Systems, Inc
     gitlab_rails['duo_auth_hostname'] = '<duo_api_hostname>'
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```yaml
    duo_auth:
@@ -203,9 +209,9 @@ DUO®は、米国およびその他の特定の国におけるCisco Systems, Inc
    ```
 
 1. 設定ファイルを保存します。
-1. Linuxパッケージインストールの場合、[GitLabを再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)します。自己コンパイルインストールの場合、[GitLabを再起動](../../../administration/restart_gitlab.md#self-compiled-installations)します。
+1. Linuxパッケージインストールの場合、[GitLabを再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)します。セルフコンパイルインストールの場合、[GitLabを再起動](../../../administration/restart_gitlab.md#self-compiled-installations)します。
 
-### FortiAuthenticator認証システムの追加 {#add-a-fortiauthenticator-authenticator}
+### FortiAuthenticator認証アプリの追加 {#add-a-fortiauthenticator-authenticator}
 
 {{< details >}}
 
@@ -213,14 +219,16 @@ DUO®は、米国およびその他の特定の国におけるCisco Systems, Inc
 
 {{< /details >}}
 
-> [!flag] GitLab Self-Managedでは、デフォルトでこの機能は利用できません。管理者が`forti_authenticator`という名前の[機能フラグを有効にする](../../../administration/feature_flags/_index.md)と、ユーザーごとにこの機能を使用できるようになります。GitLab.comとGitLab Dedicatedでは、この機能は使用できません。
+> [!flag] 
+> 
+> GitLabセルフマネージドでは、デフォルトではこの機能は利用できません。管理者が`forti_authenticator`という名前の[機能フラグを有効にする](../../../administration/feature_flags/_index.md)と、ユーザーごとにこの機能を使用できるようになります。GitLab.comとGitLab Dedicatedでは、この機能は使用できません。
 
 GitLabでFortiAuthenticatorをOTPプロバイダーとして使用できます。ユーザーは次の条件を満たしている必要があります。
 
 - FortiAuthenticatorとGitLabの両方に、同じユーザー名で存在すること。
 - FortiAuthenticatorでFortiTokenが設定されていること。
 
-FortiAuthenticatorのユーザー名とアクセストークンが必要です。以下に示す`access_token`は、FortiAuthenticatorアクセスキーです。トークンを取得するには、[Fortinetドキュメントライブラリ](https://docs.fortinet.com/document/fortiauthenticator/6.2.0/rest-api-solution-guide/158294/the-fortiauthenticator-api)にあるREST APIソリューションガイドを参照してください。FortiAuthenticatorバージョン6.2.0でテスト済み。
+FortiAuthenticatorのユーザー名とアクセストークンが必要です。以下に示す`access_token`は、FortiAuthenticatorアクセスキーです。トークンを取得するには、[Fortinetドキュメントライブラリ](https://docs.fortinet.com/document/fortiauthenticator/6.2.0/rest-api-solution-guide/158294/the-fortiauthenticator-api)にあるREST APIソリューションガイドを参照してください。FortiAuthenticatorバージョン6.2.0でテスト済みです。
 
 GitLabでFortiAuthenticatorを設定します。GitLabサーバーで:
 
@@ -232,7 +240,7 @@ GitLabでFortiAuthenticatorを設定します。GitLabサーバーで:
    sudo editor /etc/gitlab/gitlab.rb
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```shell
    cd /home/git/gitlab
@@ -251,7 +259,7 @@ GitLabでFortiAuthenticatorを設定します。GitLabサーバーで:
    gitlab_rails['forti_authenticator_access_token'] = 's3cr3t'
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```yaml
    forti_authenticator:
@@ -263,7 +271,7 @@ GitLabでFortiAuthenticatorを設定します。GitLabサーバーで:
    ```
 
 1. 設定ファイルを保存します。
-1. [再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)（Linuxパッケージインストール）または[再起動](../../../administration/restart_gitlab.md#self-compiled-installations)（自己コンパイルインストール）を行います。
+1. [再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)（Linuxパッケージインストール）または[再起動](../../../administration/restart_gitlab.md#self-compiled-installations)（セルフコンパイルインストール）を行います。
 
 ### FortiToken Cloud認証システムの追加 {#add-a-fortitoken-cloud-authenticator}
 
@@ -273,7 +281,9 @@ GitLabでFortiAuthenticatorを設定します。GitLabサーバーで:
 
 {{< /details >}}
 
-> [!flag] GitLab Self-Managedでは、デフォルトでこの機能は利用できません。管理者が`forti_token_cloud`という名前の[機能フラグを有効にする](../../../administration/feature_flags/_index.md)と、ユーザーごとにこの機能を使用できるようになります。GitLab.comとGitLab Dedicatedでは、この機能は使用できません。この機能は本番環境での使用には対応していません。
+> [!flag] 
+> 
+> GitLabセルフマネージドでは、デフォルトではこの機能は利用できません。管理者が`forti_token_cloud`という名前の[機能フラグを有効にする](../../../administration/feature_flags/_index.md)と、ユーザーごとにこの機能を使用できるようになります。GitLab.comとGitLab Dedicatedでは、この機能は使用できません。この機能は本番環境での使用には対応していません。
 
 GitLabでFortiToken CloudをOTPプロバイダーとして使用できます。ユーザーは次の条件を満たしている必要があります。
 
@@ -292,7 +302,7 @@ GitLabでFortiToken Cloudを設定します。GitLabサーバーで:
    sudo editor /etc/gitlab/gitlab.rb
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```shell
    cd /home/git/gitlab
@@ -309,7 +319,7 @@ GitLabでFortiToken Cloudを設定します。GitLabサーバーで:
    gitlab_rails['forti_token_cloud_client_secret'] = '<your_fortinet_cloud_client_secret>'
    ```
 
-   自己コンパイルインストールの場合:
+   セルフコンパイルインストールの場合:
 
    ```yaml
    forti_token_cloud:
@@ -319,7 +329,7 @@ GitLabでFortiToken Cloudを設定します。GitLabサーバーで:
    ```
 
 1. 設定ファイルを保存します。
-1. [再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)（Linuxパッケージインストール）または[再起動](../../../administration/restart_gitlab.md#self-compiled-installations)（自己コンパイルインストール）を行います。
+1. [再設定](../../../administration/restart_gitlab.md#reconfigure-a-linux-package-installation)（Linuxパッケージインストール）または[再起動](../../../administration/restart_gitlab.md#self-compiled-installations)（セルフコンパイルインストール）を行います。
 
 ## リカバリーコード {#recovery-codes}
 
@@ -332,15 +342,15 @@ OTP認証アプリで2FAを有効にするとすぐに、生成された一連�
 > - 各リカバリーコードは、アカウントへのサインインに1回のみ使用できます。
 > - リカバリーコードは、WebAuthnデバイスでは生成されません。
 
-リカバリーコードの再生成または復元については、[リカバリーオプションと2要素認証のリセット](two_factor_authentication_troubleshooting.md#recovery-options-and-2fa-reset)を参照してください。
+リカバリーコードの再生成または復元については、[リカバリーオプションと2FAリセット](two_factor_authentication_troubleshooting.md#recovery-options-and-2fa-reset)を参照してください。
 
-## 2要素認証でのサインイン {#sign-in-with-two-factor-authentication}
+## 2要素認証でサインインする {#sign-in-with-two-factor-authentication}
 
-2要素認証が有効になっている場合は、ユーザー名とパスワードを入力してから、2番目の認証方式を使用して本人確認を行います。サインインプロセスは、登録した2要素認証方式によって若干異なります。
+2FAが有効になっている場合は、ユーザー名とパスワードを入力してから、2番目の認証方式を使用して本人確認を行います。サインインプロセスは、登録した2FA方式によって若干異なります。
 
-### OTP認証システムでのサインイン {#sign-in-with-an-otp-authenticator}
+### OTP認証アプリでのサインイン {#sign-in-with-an-otp-authenticator}
 
-プロンプトが表示されたら、OTP認証システムまたはリカバリーコードからPINを入力してサインインします。
+プロンプトが表示されたら、OTP認証アプリまたはリカバリーコードからPINを入力してサインインします。
 
 ### WebAuthnデバイスでのサインイン {#sign-in-with-a-webauthn-device}
 
@@ -355,12 +365,12 @@ OTP認証アプリで2FAを有効にするとすぐに、生成された一連�
 アクセスコードを使用できない場合は、次の操作を実行できます:
 
 - 新しいコードをリクエストします。サインインページで、**コードを再送信**を選択します。
-- 別の確認済みのメールアドレスにコードを送信します。サインインページで、**Send a code to another address associated with this account**を選択します。
+- 別の確認済みのメールアドレスにコードを送信します。サインインページで、**このアカウントに関連付けられた別のアドレスにコードを送信します**を選択します。
 - [メールOTPトラブルシューティング](two_factor_authentication_troubleshooting.md#email-otp-troubleshooting)を参照してください。
 
 ### パーソナルアクセストークンでのサインイン {#sign-in-with-a-personal-access-token}
 
-2要素認証が有効になっている場合、パスワードを使用してHTTPS経由でGitまたは[GitLab API](../../../api/rest/_index.md)で認証することはできません。代わりに[パーソナルアクセストークン](../personal_access_tokens.md)を使用する必要があります。
+2FAが有効になっている場合、HTTPS経由のGitまたは[GitLab API](../../../api/rest/_index.md)でパスワードを使用して認証することはできません。代わりに[パーソナルアクセストークン](../personal_access_tokens.md)を使用する必要があります。
 
 ## 2要素認証を無効にする {#disable-two-factor-authentication}
 
@@ -372,7 +382,7 @@ OTP認証アプリで2FAを有効にするとすぐに、生成された一連�
 
 OTP認証アプリとWebAuthnデバイスは、個別にも同時にも無効にできます。同時に無効にするには:
 
-1. 右上隅でアバターを選択します。
+1. 右上隅で、アバターを選択します。
 1. **プロファイルを編集**を選択します。
 1. 左側のサイドバーで、**アカウント**を選択します。
 1. **2要素認証の管理**を選択します。
@@ -422,4 +432,4 @@ git-credential-oauthはオープンソースプロジェクトで、コミュニ
   - ユーザーはサインアウトし、`first.host.xyz`を使用してサインインを試みます。WebAuthn認証は成功します。
   - ユーザーはサインアウトし、`second.host.xyz`を使用してサインインを試みます。WebAuthnキーは`first.host.xyz`にのみ登録されているため、WebAuthn認証は失敗します。
 
-- システムまたはグループレベルで2FAを強制するには、[2要素認証の強制](../../../security/two_factor_authentication.md)を参照してください。
+- システムまたはグループレベルで2FAを強制するには、[2要素認証を適用する](../../../security/two_factor_authentication.md)を参照してください。

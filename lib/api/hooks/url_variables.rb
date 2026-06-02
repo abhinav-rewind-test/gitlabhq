@@ -11,7 +11,10 @@ module API
         requires :key, type: String, desc: 'The key of the variable'
       end
       namespace ':hook_id/url_variables' do
-        desc 'Set a url variable'
+        desc 'Update a URL variable' do
+          detail 'Updates a URL variable for a specified webhook.'
+          tags ['hooks']
+        end
         params do
           requires :value, type: String, desc: 'The value of the variable'
         end
@@ -28,7 +31,10 @@ module API
           status :no_content
         end
 
-        desc 'Un-Set a url variable'
+        desc 'Delete a URL variable' do
+          detail 'Deletes a URL variable from a specified webhook.'
+          tags ['hooks']
+        end
         route_setting :authorization, permissions: :delete_webhook_url_variable,
           boundary_type: configuration[:boundary_type]
         delete ":key" do

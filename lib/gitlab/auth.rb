@@ -17,6 +17,7 @@ module Gitlab
     CREATE_RUNNER_SCOPE = :create_runner
     MANAGE_RUNNER_SCOPE = :manage_runner
     MCP_SCOPE = :mcp
+    MCP_ORBIT_SCOPE = :mcp_orbit
     GRANULAR_SCOPE = :granular
     API_SCOPES = [
       API_SCOPE, READ_API_SCOPE,
@@ -25,6 +26,7 @@ module Gitlab
       K8S_PROXY_SCOPE,
       SELF_ROTATE_SCOPE,
       MCP_SCOPE,
+      MCP_ORBIT_SCOPE,
       GRANULAR_SCOPE
     ].freeze
 
@@ -133,7 +135,7 @@ module Gitlab
           oauth_access_token_check(password) ||
           personal_access_token_check(password, project) ||
           deploy_token_check(login, password, project) ||
-          user_with_password_for_git(login, password, request: request) ||
+          user_with_password_for_git(login, password) ||
           Gitlab::Auth::Result::EMPTY
 
         rate_limit!(rate_limiter, success: result.success?, login: login, request: request)
@@ -154,7 +156,7 @@ module Gitlab
       # different mechanisms, as in `.find_for_git_client`. This may lead to
       # unwanted access locks when the value provided for `password` was actually
       # a PAT, deploy token, etc.
-      def find_with_user_password(login, password, increment_failed_attempts: false, request: nil)
+      def find_with_user_password(login, password, increment_failed_attempts: false)
         # Avoid resource intensive checks if login credentials are not provided
         return unless login.present? && password.present?
 
@@ -167,25 +169,15 @@ module Gitlab
 
           break if user && !user.can_log_in_with_non_expired_password?
 
-          authenticators = password_authenticators_for_user(user)
-
-          # return found user that was authenticated first for given login credentials
-          authenticated_user, authenticator = authenticators.find do |authenticator|
-            authenticated_user = authenticator.login(login, password)
-            break authenticated_user, authenticator if authenticated_user
+          # Avoid redundant bcrypt when Rack::Attack and the controller both
+          # authenticate the same request (e.g. throttle_authenticated_git_http).
+          cache_key = "find_with_user_password:#{login}:#{Digest::SHA256.hexdigest(password)}"
+          authenticated_user = Gitlab::SafeRequestStore.fetch(cache_key) do
+            find_user_from_authenticators(user, login, password)
           end
 
+          # Side effects must run on every call, not just cache misses
           user_auth_attempt!(user, success: !!authenticated_user) if increment_failed_attempts
-
-          # Increase our visibility of authentication methods
-          if !!authenticated_user
-            # To mitigate the risk of large log volume we will log
-            # only when request is present, and use a Feature Flag with
-            # the request actor.
-            if request.present? && Feature.enabled?(:log_find_with_user_password, Feature.current_request)
-              log_authentication('Gitlab::Auth find_with_user_password succeeded', authenticated_user, authenticator, request: request)
-            end
-          end
 
           authenticated_user
         end
@@ -252,11 +244,11 @@ module Gitlab
         Gitlab::Auth::Result.new(nil, project, :ci, build_authentication_abilities)
       end
 
-      def user_with_password_for_git(login, password, request: nil)
+      def user_with_password_for_git(login, password)
         # Prevent LDAP and database authentication attempts when password is a token
         return if password.present? && Authn::AgnosticTokenIdentifier.token?(password)
 
-        user = find_with_user_password(login, password, request: request)
+        user = find_with_user_password(login, password)
         return unless user
 
         if user.ldap_user? &&
@@ -307,6 +299,8 @@ module Gitlab
 
         return unless valid_scoped_token?(token, all_available_scopes)
 
+        return if token.user.blocked?
+
         if project && (token.user.project_bot? || token.user.service_account?)
           return unless can_read_project?(token.user, project)
         end
@@ -348,7 +342,8 @@ module Gitlab
           create_runner: %i[create_instance_runners create_runners],
           manage_runner: %i[assign_runner update_runner delete_runner],
           ai_workflows: %i[push_code download_code],
-          mcp: %i[execute_mcp_tool] # This ability doesn't exist yet
+          mcp: %i[execute_mcp_tool], # This ability doesn't exist yet
+          mcp_orbit: %i[execute_mcp_tool]
         }
 
         scopes.flat_map do |scope|
@@ -533,7 +528,7 @@ module Gitlab
       end
 
       def unavailable_ai_features_scopes
-        AI_WORKFLOW_SCOPES + [MCP_SCOPE]
+        AI_WORKFLOW_SCOPES + [MCP_SCOPE, MCP_ORBIT_SCOPE]
       end
 
       def unavailable_observability_scopes_for_resource(resource)
@@ -579,6 +574,16 @@ module Gitlab
         authenticators.compact
       end
 
+      def find_user_from_authenticators(user, login, password)
+        authenticators = password_authenticators_for_user(user)
+
+        # return found user that was authenticated first for given login credentials
+        authenticators.find do |auth|
+          found_user = auth.login(login, password)
+          break found_user if found_user
+        end
+      end
+
       def user_auth_attempt!(user, success:)
         return unless user && Gitlab::Database.read_write?
         return user.unlock_access! if success
@@ -588,22 +593,6 @@ module Gitlab
 
       def valid_composite_identity?(user)
         user.composite_identity_enforced? && user.service_account?
-      end
-
-      def log_authentication(message, user, authenticator, request: nil)
-        # `authenticator` can be an instance or a class
-        authenticator_class_name = authenticator.is_a?(Class) ? authenticator.to_s : authenticator.class.to_s
-
-        Gitlab::AuthLogger.info(
-          message: message,
-          user_id: user.id,
-          username: user.username,
-          authenticator: authenticator_class_name,
-          remote_ip: request&.remote_ip,
-          request_method: request&.request_method,
-          path: request&.filtered_path,
-          ua: request&.user_agent
-        )
       end
     end
   end

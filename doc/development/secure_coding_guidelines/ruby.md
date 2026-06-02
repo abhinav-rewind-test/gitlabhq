@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Secure coding development guidelines
 ---
 
@@ -151,7 +151,7 @@ For other regular expressions, here are a few guidelines:
 ### Description
 
 A Server-side Request Forgery (SSRF) is an attack in which an attacker
-is able coerce a application into making an outbound request to an unintended
+is able to coerce an application into making an outbound request to an unintended
 resource. This resource is usually internal. In GitLab, the connection most
 commonly uses HTTP, but an SSRF can be performed with any protocol, such as
 Redis or SSH.

@@ -450,107 +450,227 @@ RSpec.describe Repository, feature_category: :source_code_management do
   describe '#commits' do
     let_it_be(:project) { create(:project, :repository) }
 
+    let(:ref) { nil }
+    let(:kwargs) { { limit: 60 } }
+
+    subject(:commits) { repository.commits(ref, **kwargs) }
+
     context 'when neither the all flag nor a ref are specified' do
       it 'returns every commit from default branch' do
-        expect(repository.commits(nil, limit: 60).size).to eq(37)
+        expect(commits.size).to eq(37)
+      end
+
+      context 'when all flag is set' do
+        let(:kwargs) { { limit: 60, all: true } }
+
+        it 'returns every commit from the repository' do
+          expect(commits.size).to eq(60)
+        end
       end
     end
 
     context 'when ref is passed' do
+      let(:ref) { 'master' }
+
       it 'returns every commit from the specified ref' do
-        expect(repository.commits('master', limit: 60).size).to eq(37)
+        expect(commits.size).to eq(37)
       end
 
-      context 'when all' do
+      context 'when all flag is set' do
+        let(:kwargs) { { limit: 60, all: true } }
+
         it 'returns every commit from the repository' do
-          expect(repository.commits('master', limit: 60, all: true).size).to eq(60)
+          expect(commits.size).to eq(60)
         end
       end
 
-      context 'with path' do
+      context 'when path is passed' do
+        let(:kwargs) { { limit: 1, path: path } }
+
         context 'when remove_file_commit_history_following feature flag is disabled' do
           before do
             stub_feature_flags(remove_file_commit_history_following: false)
           end
 
-          it 'sets follow when it is a single path' do
-            expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: true)).and_call_original.twice
+          context 'and path is a string' do
+            let(:path) { 'README.md' }
 
-            repository.commits('master', limit: 1, path: 'README.md')
-            repository.commits('master', limit: 1, path: ['README.md'])
+            it 'sets follow to true' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: true)).and_call_original
+
+              commits
+            end
+          end
+
+          context 'and path is a single path in array' do
+            let(:path) { ['README.md'] }
+
+            it 'sets follow to true' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: true)).and_call_original
+
+              commits
+            end
           end
         end
 
-        it 'does not set follow when it is a single path' do
-          expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original.twice
+        context 'and path is a string' do
+          let(:path) { 'README.md' }
 
-          repository.commits('master', limit: 1, path: 'README.md')
-          repository.commits('master', limit: 1, path: ['README.md'])
+          it 'does not set follow' do
+            expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+            commits
+          end
         end
 
-        it 'does not set follow when it is multiple paths' do
-          expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+        context 'and path is a single path in array' do
+          let(:path) { ['README.md'] }
 
-          repository.commits('master', limit: 1, path: ['README.md', 'CHANGELOG'])
+          it 'does not set follow' do
+            expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+            commits
+          end
+        end
+
+        context 'and path is multiple paths' do
+          let(:path) { ['README.md', 'CHANGELOG'] }
+
+          it 'does not set follow' do
+            expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+            commits
+          end
+        end
+
+        context 'when follow option is explicitly provided' do
+          let(:path) { 'README.md' }
+
+          context 'when follow is true' do
+            let(:kwargs) { { limit: 1, path: path, follow: true } }
+
+            it 'respects follow: true regardless of feature flag state' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: true)).and_call_original
+
+              commits
+            end
+          end
+
+          context 'when follow is false' do
+            let(:kwargs) { { limit: 1, path: path, follow: false } }
+
+            it 'respects follow: false regardless of feature flag state' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+              commits
+            end
+          end
+
+          context 'without path' do
+            let(:kwargs) { { limit: 1, follow: true } }
+
+            it 'ignores follow option and sets follow to false' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+              commits
+            end
+          end
+
+          context 'with multiple paths' do
+            let(:path) { ['README.md', 'CHANGELOG'] }
+            let(:kwargs) { { limit: 1, path: path, follow: true } }
+
+            it 'ignores follow option and sets follow to false' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+              commits
+            end
+          end
+        end
+
+        context 'when follow option is not provided' do
+          let(:path) { 'README.md' }
+
+          it 'does not set follow' do
+            expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
+
+            commits
+          end
+
+          context 'when feature flag is disabled' do
+            before do
+              stub_feature_flags(remove_file_commit_history_following: false)
+            end
+
+            it 'sets follow to true for single path (default behavior)' do
+              expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: true)).and_call_original
+
+              commits
+            end
+          end
         end
       end
 
       context 'without path' do
+        let(:kwargs) { { limit: 1 } }
+
         it 'does not set follow' do
           expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(follow: false)).and_call_original
 
-          repository.commits('master', limit: 1)
+          commits
         end
       end
 
       context 'when include_referenced_by is passed' do
-        context 'when commit has references' do
-          let(:ref) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
-          let(:include_referenced_by) { ['refs/tags'] }
+        let(:ref) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+        let(:include_referenced_by) { ['refs/tags'] }
+        let(:kwargs) { { limit: 1, include_referenced_by: include_referenced_by } }
 
-          subject { repository.commits(ref, limit: 1, include_referenced_by: include_referenced_by).first }
+        it 'returns commits with referenced_by that match the patterns' do
+          expect(commits.first.referenced_by).to match_array(['refs/tags/v1.1.0'])
+        end
 
-          it 'returns commits with referenced_by excluding that match the patterns' do
-            expect(subject.referenced_by).to match_array(['refs/tags/v1.1.0'])
+        context 'and matching multiple references' do
+          let(:include_referenced_by) { ['refs/tags', 'refs/heads'] }
+
+          it 'returns commits with referenced_by that match all patterns' do
+            expect(commits.first.referenced_by).to match_array(['refs/tags/v1.1.0', 'refs/heads/improve/awesome', 'refs/heads/merge-test'])
           end
+        end
+      end
 
-          context 'when matching multiple references' do
-            let(:include_referenced_by) { ['refs/tags', 'refs/heads'] }
+      context "when 'order' flag is set" do
+        let(:kwargs) { { limit: 1, order: 'topo' } }
 
-            it 'returns commits with referenced_by that match the patterns' do
-              expect(subject.referenced_by).to match_array(['refs/tags/v1.1.0', 'refs/heads/improve/awesome', 'refs/heads/merge-test'])
-            end
-          end
+        it 'passes order option to perform the query' do
+          expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(order: 'topo')).and_call_original
+
+          commits
         end
       end
     end
 
     context "when 'author' is set" do
-      it "returns commits from that author" do
-        commit = repository.commits(nil, limit: 1).first
-        known_author = "#{commit.author_name} <#{commit.author_email}>"
+      let(:commit) { repository.commit }
 
-        expect(repository.commits(nil, author: known_author, limit: 1)).not_to be_empty
+      let(:kwargs) { { author: author, limit: 1 } }
+
+      context 'and author is known' do
+        let(:author) do
+          "#{commit.author_name} <#{commit.author_email}>"
+        end
+
+        it 'returns commits from that author' do
+          expect(commits).not_to be_empty
+        end
       end
 
-      it "doesn't returns commits from an unknown author" do
-        unknown_author = "The Man With No Name <zapp@brannigan.com>"
+      context 'and author is unknown' do
+        let(:author) { "The Man With No Name <zapp@brannigan.com>" }
 
-        expect(repository.commits(nil, author: unknown_author, limit: 1)).to be_empty
-      end
-    end
-
-    context "when 'all' flag is set" do
-      it 'returns every commit from the repository' do
-        expect(repository.commits(nil, all: true, limit: 60).size).to eq(60)
-      end
-    end
-
-    context "when 'order' flag is set" do
-      it 'passes order option to perform the query' do
-        expect(Gitlab::Git::Commit).to receive(:where).with(a_hash_including(order: 'topo')).and_call_original
-
-        repository.commits('master', limit: 1, order: 'topo')
+        it 'returns no commits' do
+          expect(commits).to be_empty
+        end
       end
     end
   end
@@ -596,7 +716,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
       expect(subject).to all(be_a(Commit))
     end
 
-    context 'when some commits are not found ' do
+    context 'when some commits are not found' do
       let(:oids) do
         ['deadbeef'] + TestEnv::BRANCH_SHA.each_value.first(10)
       end
@@ -721,6 +841,12 @@ RSpec.describe Repository, feature_category: :source_code_management do
       expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0])
     end
 
+    it 'returns commits filtered by path' do
+      commit_ids = repository.list_commits(ref: 'master', path: 'files/ruby/popen.rb').map(&:id)
+
+      expect(commit_ids).to eq(%w[570e7b2abdd848b95f2f578043fc23bd6f6fd24d 874797c3a73b60d2187ed6e2fcabd289ff75171e 913c66a37b4a45b9769037c55c2d238bd0942d2e])
+    end
+
     it 'returns the correct page' do
       commit_ids = repository.list_commits(
         ref: 'master', pagination_params: { limit: 1, page_token: 'b83d6e391c22777fca1ed3012fce84f633d7fed0' }
@@ -775,10 +901,67 @@ RSpec.describe Repository, feature_category: :source_code_management do
       end
     end
 
+    context 'with filename with pathspec characters' do
+      let(:project) { create(:project, :empty_repo) }
+      let(:filename) { ':wq' }
+      let(:newrev) { project.repository.commit('master').sha }
+
+      before do
+        create_file_in_repo(project, 'master', 'master', filename, 'Test file')
+      end
+
+      subject(:list_commits) { repository.list_commits(ref: 'master', path: filename, literal_pathspec: true).map(&:id) }
+
+      it 'returns commits' do
+        expect(list_commits).to eq([newrev])
+      end
+    end
+
     describe 'when storage is broken', :broken_storage do
       it 'raises a storage error' do
         expect_to_raise_storage_error { broken_repository.list_commits(ref: 'master') }
       end
+    end
+  end
+
+  describe '#expand_author_with_user_emails' do
+    let_it_be(:gitlab_user) { create(:user, name: 'Test User', email: 'test@example.com') }
+
+    before_all do
+      create(:email, :confirmed, user: gitlab_user, email: 'secondary@example.com')
+    end
+
+    it 'returns original author when author is blank' do
+      expect(repository.send(:expand_author_with_user_emails, nil)).to be_nil
+      expect(repository.send(:expand_author_with_user_emails, '')).to eq('')
+    end
+
+    it 'returns original author when no matching users found' do
+      expect(repository.send(:expand_author_with_user_emails, 'Nonexistent User')).to eq('Nonexistent User')
+    end
+
+    it 'returns original author when user has no verified emails' do
+      create(:user, :unconfirmed, name: 'Unverified User')
+      allow_any_instance_of(User).to receive(:verified_emails).and_return([])
+
+      expect(repository.send(:expand_author_with_user_emails, 'Unverified User')).to eq('Unverified User')
+    end
+
+    it 'returns original author when search term is not an exact match' do
+      # User exists but search term does not match exactly (no fuzzy fallback)
+      # Note: by_name and by_username use case-insensitive matching, so 'test user' will match 'Test User'
+      expect(repository.send(:expand_author_with_user_emails, 'Test')).to eq('Test')
+      expect(repository.send(:expand_author_with_user_emails, 'User')).to eq('User')
+      expect(repository.send(:expand_author_with_user_emails, 'Partial Name')).to eq('Partial Name')
+    end
+
+    it 'expands author to include escaped user emails when user is found' do
+      result = repository.send(:expand_author_with_user_emails, 'Test User')
+
+      expect(result).to include('test@example\.com')
+      expect(result).to include('secondary@example\.com')
+      expect(result).to include('Test\ User')
+      expect(result).to include('\|')
     end
   end
 
@@ -1106,7 +1289,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
       expect do
         repository.create_dir(user, 'newdir1',
           message: 'Create newdir', branch_name: 'master')
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       newdir = repository.tree('master', 'newdir1')
       expect(newdir.path).to eq('newdir1')
@@ -1120,7 +1303,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           repository.create_dir(user, 'newdir2',
             message: 'Create newdir', branch_name: 'patch',
             start_branch_name: 'master', start_project: forked_project)
-        end.to change { repository.count_commits(ref: 'master') }.by(0)
+        end.to change { repository.count_commits(revisions: 'master') }.by(0)
 
         expect(repository.branch_exists?('patch')).to be_truthy
         expect(forked_project.repository.branch_exists?('patch')).to be_falsy
@@ -1137,7 +1320,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
             message: 'Add newdir',
             branch_name: 'master',
             author_email: author_email, author_name: author_name)
-        end.to change { repository.count_commits(ref: 'master') }.by(1)
+        end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
         last_commit = repository.commit
 
@@ -1155,7 +1338,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           message: 'Create changelog',
           branch_name: 'master'
         )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       blob = repository.blob_at('master', 'NEWCHANGELOG')
 
@@ -1169,7 +1352,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           message: 'Create new_file with new_dir',
           branch_name: 'master'
         )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       expect(repository.tree('master', 'new_dir').path).to eq('new_dir')
       expect(repository.blob_at('master', 'new_dir/new_file.txt').data).to eq('File!')
@@ -1197,7 +1380,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
             author_email: author_email,
             author_name: author_name
           )
-        end.to change { repository.count_commits(ref: 'master') }.by(1)
+        end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
         last_commit = repository.commit
 
@@ -1215,7 +1398,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           message: 'Update changelog',
           branch_name: 'master'
         )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       blob = repository.blob_at('master', 'CHANGELOG')
 
@@ -1230,7 +1413,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           previous_path: 'LICENSE',
           message: 'Changes filename'
         )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       files = repository.ls_files('master')
 
@@ -1249,7 +1432,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
             author_email: author_email,
             author_name: author_name
           )
-        end.to change { repository.count_commits(ref: 'master') }.by(1)
+        end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
         last_commit = repository.commit
 
@@ -1268,7 +1451,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
           user, 'README',
           message: 'Remove README', branch_name: 'master'
         )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
+      end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
       expect(repository.blob_at('master', 'README')).to be_nil
     end
@@ -1281,7 +1464,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
             message: 'Remove README', branch_name: 'master',
             author_email: author_email, author_name: author_name
           )
-        end.to change { repository.count_commits(ref: 'master') }.by(1)
+        end.to change { repository.count_commits(revisions: 'master') }.by(1)
 
         last_commit = repository.commit
 
@@ -3975,11 +4158,11 @@ RSpec.describe Repository, feature_category: :source_code_management do
     let(:author_c) { build(:author, email: 'douwe@gitlab.com', name: 'Douwe Maan') }
     let(:stubbed_commits) do
       [build(:commit, author: author_a),
-       build(:commit, author: author_a),
-       build(:commit, author: author_b),
-       build(:commit, author: author_c),
-       build(:commit, author: author_c),
-       build(:commit, author: author_c)]
+        build(:commit, author: author_a),
+        build(:commit, author: author_b),
+        build(:commit, author: author_c),
+        build(:commit, author: author_c),
+        build(:commit, author: author_c)]
     end
 
     let(:order_by) { nil }
@@ -4082,12 +4265,12 @@ RSpec.describe Repository, feature_category: :source_code_management do
       let(:author_d) { build(:author, email: 'johndoe@gitlab.com', name: 'John Doe') }
       let(:stubbed_commits) do
         [build(:commit, author: author_a),
-         build(:commit, author: author_a),
-         build(:commit, author: author_b),
-         build(:commit, author: author_c),
-         build(:commit, author: author_c),
-         build(:commit, author: author_c),
-         build(:commit, author: author_d)]
+          build(:commit, author: author_a),
+          build(:commit, author: author_b),
+          build(:commit, author: author_c),
+          build(:commit, author: author_c),
+          build(:commit, author: author_c),
+          build(:commit, author: author_d)]
       end
 
       it 'returns the contributors for ref' do
@@ -4436,14 +4619,14 @@ RSpec.describe Repository, feature_category: :source_code_management do
       let(:repository) { mutable_project.repository }
       let(:raw_repository) { repository.raw }
       let(:commit_id) { raw_repository.commit.id }
-      let(:prohibited_name) { '37fd3601be4c25497a39fa2e6a206e09e759d597' }
+      let(:prohibited_sha_name) { '37fd3601be4c25497a39fa2e6a206e09e759d597' }
       let(:prohibited_hex_64_name) { '5f50b1461c836081ed677f05e08d10dc7dc68631fa5767bc3e3946349b348275' }
       let(:allowed_basic_name) { 'some-tag-name' }
       let(:allowed_non_hex_40_name) { '37fd3601be4c25497a39fa2e6a206e09e759d59s' }
 
       before do
-        raw_repository.add_tag(prohibited_name, user: user, target: commit_id)
-        raw_repository.add_branch(prohibited_name, user: user, target: commit_id)
+        raw_repository.add_tag(prohibited_sha_name, user: user, target: commit_id)
+        raw_repository.add_branch(prohibited_sha_name, user: user, target: commit_id)
 
         raw_repository.add_tag(allowed_basic_name, user: user, target: commit_id)
         raw_repository.add_branch(allowed_basic_name, user: user, target: commit_id)
@@ -4455,35 +4638,62 @@ RSpec.describe Repository, feature_category: :source_code_management do
         raw_repository.add_branch(allowed_non_hex_40_name, user: user, target: commit_id)
       end
 
-      it 'only deletes prohibited refs' do
-        # Check everything exists before calling `remove_prohibited_refs`.
-        expect(repository.find_branch(allowed_basic_name)).not_to be_nil
-        expect(repository.find_tag(allowed_basic_name)).not_to be_nil
-
+      it 'deletes SHA-like prohibited refs' do
+        expect(repository.find_branch(prohibited_sha_name)).not_to be_nil
+        expect(repository.find_tag(prohibited_sha_name)).not_to be_nil
         expect(repository.find_branch(prohibited_hex_64_name)).not_to be_nil
         expect(repository.find_tag(prohibited_hex_64_name)).not_to be_nil
 
+        repository.remove_prohibited_refs
+
+        expect(repository.find_branch(prohibited_sha_name)).to be_nil
+        expect(repository.find_tag(prohibited_sha_name)).to be_nil
+        expect(repository.find_branch(prohibited_hex_64_name)).to be_nil
+        expect(repository.find_tag(prohibited_hex_64_name)).to be_nil
+      end
+
+      it 'does not delete allowed refs' do
+        repository.remove_prohibited_refs
+
+        expect(repository.find_branch(allowed_basic_name)).not_to be_nil
+        expect(repository.find_tag(allowed_basic_name)).not_to be_nil
         expect(repository.find_branch(allowed_non_hex_40_name)).not_to be_nil
         expect(repository.find_tag(allowed_non_hex_40_name)).not_to be_nil
+      end
+    end
 
-        expect(repository.find_branch(prohibited_name)).not_to be_nil
-        expect(repository.find_tag(prohibited_name)).not_to be_nil
+    context "when repository contains branches with nested ref prefixes" do
+      let(:mutable_project) { create(:project, :repository) }
+      let(:repository) { mutable_project.repository }
+      let(:raw_repository) { repository.raw }
+      let(:commit_id) { raw_repository.commit.id }
+
+      it 'deletes branches whose names start with refs/heads/' do
+        raw_repository.write_ref('refs/heads/refs/heads/main', commit_id)
+
+        expect(raw_repository.ref_exists?('refs/heads/refs/heads/main')).to be true
 
         repository.remove_prohibited_refs
 
-        # Check allowed refs were not deleted.
-        expect(repository.find_branch(allowed_basic_name)).not_to be_nil
-        expect(repository.find_tag(allowed_basic_name)).not_to be_nil
+        expect(raw_repository.ref_exists?('refs/heads/refs/heads/main')).to be false
+      end
 
-        expect(repository.find_branch(allowed_non_hex_40_name)).not_to be_nil
-        expect(repository.find_tag(allowed_non_hex_40_name)).not_to be_nil
+      it 'deletes branches whose names start with refs/remotes/' do
+        raw_repository.write_ref('refs/heads/refs/remotes/origin/main', commit_id)
 
-        # Check prohibited refs were deleted.
-        expect(repository.find_branch(prohibited_name)).to be_nil
-        expect(repository.find_tag(prohibited_name)).to be_nil
+        expect(raw_repository.ref_exists?('refs/heads/refs/remotes/origin/main')).to be true
 
-        expect(repository.find_branch(prohibited_hex_64_name)).to be_nil
-        expect(repository.find_tag(prohibited_hex_64_name)).to be_nil
+        repository.remove_prohibited_refs
+
+        expect(raw_repository.ref_exists?('refs/heads/refs/remotes/origin/main')).to be false
+      end
+
+      it 'does not delete normal branches' do
+        raw_repository.write_ref('refs/heads/refs/heads/main', commit_id)
+
+        repository.remove_prohibited_refs
+
+        expect(repository.find_branch('master')).not_to be_nil
       end
     end
 
@@ -4632,7 +4842,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
   end
 
   describe '#object_pool' do
-    let_it_be(:primary_project) { create(:project, :empty_repo) }
+    let_it_be(:primary_project, freeze: false) { create(:project, :empty_repo) }
     let_it_be(:forked_project) { create(:project, :fork_repository, forked_from_project: primary_project) }
 
     let(:repository) { primary_project.repository }
@@ -4880,17 +5090,17 @@ RSpec.describe Repository, feature_category: :source_code_management do
     let(:expected_params) do
       [
         user,
-       'master', # branch_name
-       'commit message', # commit_message
-       [], # actions
-       'author email', # author_email
-       'author name', # author_name
-       nil, # start_branch_name
-       nil, # start_repository
-       true, # force
-       nil, # start_sha
-       expected_sign, # sign
-       target_sha # target_sha
+        'master', # branch_name
+        'commit message', # commit_message
+        [], # actions
+        'author email', # author_email
+        'author name', # author_name
+        nil, # start_branch_name
+        nil, # start_repository
+        true, # force
+        nil, # start_sha
+        expected_sign, # sign
+        target_sha # target_sha
       ]
     end
 
@@ -5014,6 +5224,88 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
+  describe '#incremental_ref_cache_update' do
+    let(:repository) { project.repository }
+    let(:redis_set_cache) { instance_double(Gitlab::Repositories::RebuildableSetCache) }
+
+    before do
+      allow(repository).to receive(:redis_set_cache).and_return(redis_set_cache)
+    end
+
+    context 'when ref is a branch' do
+      let(:branch_ref) { 'refs/heads/feature-branch' }
+
+      it 'adds branch name to cache and clears memoization' do
+        expect(redis_set_cache).to receive(:handle_ref_change).with('branch_names', branch_ref, false)
+        expect(repository).to receive(:clear_memoization).with('branch_names')
+
+        repository.incremental_ref_cache_update(branch_ref, false)
+      end
+
+      it 'removes branch name from cache and clears memoization' do
+        expect(redis_set_cache).to receive(:handle_ref_change).with('branch_names', branch_ref, true)
+        expect(repository).to receive(:clear_memoization).with('branch_names')
+
+        repository.incremental_ref_cache_update(branch_ref, true)
+      end
+
+      context 'when ref_cache_with_rebuild_queue FF is disabled' do
+        before do
+          stub_feature_flags(ref_cache_with_rebuild_queue: false)
+        end
+
+        it 'does nothing' do
+          expect(redis_set_cache).not_to receive(:handle_ref_change)
+          expect(repository).not_to receive(:clear_memoization)
+
+          repository.incremental_ref_cache_update(branch_ref, true)
+        end
+      end
+    end
+
+    context 'when ref is a tag' do
+      let(:tag_ref) { 'refs/tags/v1.0.0' }
+
+      it 'adds tag name to cache and clears memoization' do
+        expect(redis_set_cache).to receive(:handle_ref_change).with('tag_names', tag_ref, false)
+        expect(repository).to receive(:clear_memoization).with('tag_names')
+
+        repository.incremental_ref_cache_update(tag_ref, false)
+      end
+
+      it 'removes tag name from cache and clears memoization' do
+        expect(redis_set_cache).to receive(:handle_ref_change).with('tag_names', tag_ref, true)
+        expect(repository).to receive(:clear_memoization).with('tag_names')
+
+        repository.incremental_ref_cache_update(tag_ref, true)
+      end
+    end
+
+    context 'when ref is neither branch nor tag' do
+      let(:other_ref) { 'refs/notes/commits' }
+
+      it 'does nothing' do
+        expect(redis_set_cache).not_to receive(:handle_ref_change)
+        expect(repository).not_to receive(:clear_memoization)
+
+        repository.incremental_ref_cache_update(other_ref, true)
+      end
+    end
+
+    context 'with edge cases' do
+      [nil, '', 'invalid-ref-format'].each do |value|
+        context "when value is #{value.inspect}" do
+          it 'handles ref gracefully' do
+            expect(redis_set_cache).not_to receive(:handle_ref_change)
+            expect(repository).not_to receive(:clear_memoization)
+
+            repository.incremental_ref_cache_update(value, true)
+          end
+        end
+      end
+    end
+  end
+
   describe '#squash' do
     let(:merge_request) { build(:merge_request, source_project: project) }
 
@@ -5051,6 +5343,61 @@ RSpec.describe Repository, feature_category: :source_code_management do
           subject
         end
       end
+    end
+  end
+
+  describe '#squash_commits' do
+    let(:start_sha) { repository.commit.parent_ids.first }
+    let(:end_sha) { repository.commit.sha }
+    let(:message) { 'Squashed commit message' }
+
+    subject(:squash_commits) { repository.squash_commits(user, start_sha: start_sha, end_sha: end_sha, message: message) }
+
+    it 'delegates to raw repository with correct parameters' do
+      expect(repository.raw).to receive(:squash).with(
+        user,
+        start_sha: start_sha,
+        end_sha: end_sha,
+        author: user,
+        message: message,
+        sign: true
+      ).and_return('squashed_sha')
+
+      expect(squash_commits).to eq('squashed_sha')
+    end
+  end
+
+  describe '#initial_commit' do
+    subject(:initial_commit) { repository.initial_commit(ref) }
+
+    let(:ref) { nil }
+
+    it 'returns the first commit with no parents' do
+      expect(initial_commit).to be_a(::Commit)
+      expect(initial_commit.parent_ids).to be_empty
+    end
+
+    context 'when ref is specified' do
+      let(:ref) { 'master' }
+
+      it 'returns the initial commit for that ref' do
+        expect(initial_commit).to be_a(::Commit)
+        expect(initial_commit.parent_ids).to be_empty
+      end
+    end
+
+    context 'when repository is empty' do
+      let(:project) { create(:project, :empty_repo) }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when raw_repository returns nil' do
+      before do
+        allow(repository.raw_repository).to receive(:initial_commit).and_return(nil)
+      end
+
+      it { is_expected.to be_nil }
     end
   end
 end

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'projects/edit' do
+RSpec.describe 'projects/edit', feature_category: :groups_and_projects do
   include Devise::Test::ControllerHelpers
   include ProjectForksHelper
 
@@ -20,7 +20,7 @@ RSpec.describe 'projects/edit' do
     )
   end
 
-  context 'project export disabled' do
+  context 'when project export is disabled' do
     it 'does not display the project export option' do
       stub_application_setting(project_export_enabled?: false)
 
@@ -30,14 +30,14 @@ RSpec.describe 'projects/edit' do
     end
   end
 
-  context 'forking' do
+  describe 'forking' do
     before do
       assign(:project, project)
 
       allow(view).to receive(:current_user).and_return(user)
     end
 
-    context 'project is not a fork' do
+    context 'when project is not a fork' do
       it 'hides the remove fork relationship settings' do
         render
 
@@ -45,7 +45,7 @@ RSpec.describe 'projects/edit' do
       end
     end
 
-    context 'project is a fork' do
+    context 'when project is a fork' do
       let(:source_project) { create(:project) }
       let(:project) { fork_project(source_project) }
 
@@ -143,7 +143,7 @@ RSpec.describe 'projects/edit' do
 
         expect(rendered).to render_template('shared/groups_projects/settings/_restore')
         expect(rendered).to have_content('Restore project')
-        expect(rendered).to have_link('Restore')
+        expect(rendered).to have_button('Restore')
       end
     end
 
@@ -153,7 +153,7 @@ RSpec.describe 'projects/edit' do
 
         expect(rendered).to render_template('shared/groups_projects/settings/_restore')
         expect(rendered).not_to have_content('Restore project')
-        expect(rendered).not_to have_link('Restore')
+        expect(rendered).not_to have_button('Restore')
       end
     end
   end

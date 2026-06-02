@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Your project's merge method determines whether to squash commits before merging, and if merge commits are created when work merges.
 title: Merge methods
 ---
@@ -35,8 +35,8 @@ gitGraph
 
 ## Configure a project's merge method
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Select your desired **Merge method** from these options:
    - Merge commit
    - Merge commit with semi-linear history
@@ -83,7 +83,7 @@ and selecting `Merge commit` as the **Merge method** in the GitLab UI:
   ```mermaid
   %%{init: { 'gitGraph': {'showBranches': true, 'showCommitLabel':true,'mainBranchName': 'main', 'fontFamily': 'GitLab Sans'}} }%%
   gitGraph
-     accTitle: Diagram of of a squash merge
+     accTitle: Diagram of a squash merge
      accDescr: A Git graph showing repository and branch structure after a squash commit is added to the main branch.
      commit id:"A"
      branch feature
@@ -118,6 +118,10 @@ The squash merge graph is also equivalent to these commands:
   git merge --no-ff $SOURCE_SHA
   ```
 
+If you continue working on a long-running source branch after a squash merge, subsequent
+merge requests may show previously merged commits and a warning that the source branch is behind the target branch.
+For more information, see [long-running branch behavior](../squash_and_merge.md#long-running-branch-behavior).
+
 ## Merge commit with semi-linear history
 
 A merge commit is created for every merge, but the branch is only merged if
@@ -128,20 +132,20 @@ commit graph generated using this merge method:
 ```mermaid
 %%{init: { "fontFamily": "GitLab Sans" }}%%
 gitGraph
-  accTitle: Diagram of a merge commit
-  accDescr: Shows the flow of commits when a branch merges with a merge commit.
+  accTitle: Diagram of a merge commit with semi-linear history
+  accDescr: Shows the flow of commits when a branch merges with a merge commit and semi-linear history.
   commit id: "Init"
   branch mr-branch-1
-  commit
-  commit
+  commit id: "B"
+  commit id: "C"
   checkout main
   merge mr-branch-1
   branch mr-branch-2
-  commit
-  commit
+  commit id: "D"
+  commit id: "E"
   checkout main
   merge mr-branch-2
-  commit
+  commit id: "F"
   branch squash-mr
   commit id: "Squashed commits"
   checkout main
@@ -264,6 +268,51 @@ conditions are true:
 
 Rebasing may be required before squashing, even though squashing can itself be
 considered equivalent to rebasing.
+
+### Automatic rebase before merge
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/183928) in GitLab 18.0 [with a feature flag](../../../../administration/feature_flags/_index.md) named `rebase_on_merge_automatic`. Disabled by default.
+- [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/work_items/524048) in GitLab 18.11.
+- [Generally available](https://gitlab.com/groups/gitlab-org/-/work_items/16803) in GitLab 19.0. Feature flag `rebase_on_merge_automatic` removed.
+
+{{< /history >}}
+
+When you use the **Merge commit with semi-linear history** or **Fast-forward merge** method,
+you can turn on automatic rebase before merge.
+When this setting is on, GitLab automatically rebases the source branch onto the target branch at
+merge time when the source branch is behind the target branch.
+You do not need to manually rebase or wait for a rebase to complete before merging.
+
+Server-side rebase removes GPG signatures from commits. If your project requires signed commits, consider whether automatic rebase is appropriate.
+
+Automatic rebase:
+
+- Creates a server-side rebase of the source branch without modifying the original source branch.
+- Fast-forwards the target branch to include the rebased commits.
+- Does not re-run CI/CD pipelines on the rebased result.
+- Requires that the rebase can complete without merge conflicts.
+
+> [!note]
+> Because the CI/CD pipeline does not run again after the automatic rebase,
+> the merged result might differ from the last pipeline run. To validate the
+> rebased result before merging, use [merge trains](../../../../ci/pipelines/merge_trains.md).
+
+#### Turn on automatic rebase before merge
+
+Prerequisites:
+
+- The Maintainer or Owner role for the project.
+- The project [merge method](#configure-a-projects-merge-method) must be set to
+  **Merge commit with semi-linear history** or **Fast-forward merge**.
+
+To turn on automatic rebase:
+
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
+1. In the **Merge method** section, select **Enable automatic rebase prior to merge**.
+1. Select **Save changes**.
 
 ### Rebase without CI/CD pipeline
 

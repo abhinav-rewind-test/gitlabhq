@@ -6,7 +6,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   include ProjectForksHelper
 
   let_it_be(:group)   { create(:group) }
-  let_it_be(:project) { create(:project, :repository, group: group) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, group: group) }
   let_it_be(:author)  { create(:user) }
 
   let(:noteable)      { create(:issue, project: project) }
@@ -35,7 +35,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
       end
 
       it 'sets the note text' do
-        expect(system_note.note).to eq "marked this issue as related to #{issue1.to_reference(project)}"
+        expect(system_note.note).to eq "marked as related to #{issue1.to_reference(project)}"
       end
     end
 
@@ -48,16 +48,16 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'sets the note text' do
         expect(system_note.note).to eq(
-          "marked this issue as related to #{issue1.to_reference(project)} and #{issue2.to_reference(project)}"
+          "marked as related to #{issue1.to_reference(project)} and #{issue2.to_reference(project)}"
         )
       end
     end
 
     context 'with work items' do
-      let_it_be(:noteable) { create(:work_item, :task, project: project) }
+      let_it_be(:noteable, freeze: false) { create(:work_item, :task, project: project) }
 
-      it 'sets the note text with the correct work item type' do
-        expect(subject.note).to eq "marked this task as related to #{noteable_ref.to_reference(project)}"
+      it 'sets the note text without referencing the work item type' do
+        expect(subject.note).to eq "marked as related to #{noteable_ref.to_reference(project)}"
       end
     end
   end
@@ -164,7 +164,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   describe '#change_issuable_reviewers' do
     subject { service.change_issuable_reviewers([reviewer]) }
 
-    let_it_be(:noteable) { create(:merge_request, :simple, source_project: project) }
+    let_it_be(:noteable, freeze: false) { create(:merge_request, :simple, source_project: project) }
     let_it_be(:reviewer) { create(:user) }
     let_it_be(:reviewer1) { create(:user) }
     let_it_be(:reviewer2) { create(:user) }
@@ -224,7 +224,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
     subject(:request_review) { service.request_review(reviewer, unapproved) }
 
     let_it_be(:reviewer) { create(:user) }
-    let_it_be(:noteable) { create(:merge_request, :simple, source_project: project, reviewers: [reviewer]) }
+    let_it_be(:noteable, freeze: false) { create(:merge_request, :simple, source_project: project, reviewers: [reviewer]) }
     let(:unapproved) { false }
 
     it_behaves_like 'a system note' do
@@ -247,7 +247,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   describe '#change_issuable_contacts' do
     subject { service.change_issuable_contacts(1, 1) }
 
-    let_it_be(:noteable) { create(:issue, project: project) }
+    let_it_be(:noteable, freeze: false) { create(:issue, project: project) }
 
     it_behaves_like 'a system note' do
       let(:action) { 'contact' }
@@ -373,7 +373,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
       end
 
       it 'sets the note text' do
-        expect(subject.note).to eq 'made the issue confidential'
+        expect(subject.note).to eq 'made the item confidential'
       end
     end
 
@@ -383,7 +383,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
       end
 
       it 'sets the note text' do
-        expect(subject.note).to eq 'made the issue visible to everyone'
+        expect(subject.note).to eq 'made the item visible to everyone'
       end
     end
   end
@@ -657,7 +657,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
   describe '#change_task_status' do
     let(:noteable) { create(:issue, project: project) }
-    let(:task)     { double(:task, complete?: true, text: 'task', source: ' task') }
+    let(:task)     { double(:task, complete?: true, text: 'task', source: ' task', task_table_item?: false) }
 
     subject { service.change_task_status(task) }
 
@@ -692,6 +692,39 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'does not leak Markdown into the system note' do
         expect(subject.note).to eq("marked the checklist item **task with\\*\\* Markdown** as completed")
+      end
+    end
+
+    context 'with task table items' do
+      let(:markdown_before) do
+        <<~MARKDOWN
+          My task table:
+
+          |     | Action       | When    |
+          | --- | ------------ | ------- |
+          | [ ] | Do something | Soon    |
+          | [x] | Do nothing   | **Now** |
+        MARKDOWN
+      end
+
+      let(:markdown_after) do
+        <<~MARKDOWN
+            My task table, with an extra newline to
+            shift sourcepos:
+
+            |     | Action       | When     |
+            | --- | ------------ | -------- |
+            | [ ] | Do something | Whenever |
+            | [ ] | Do nothing   | **Now**  |
+        MARKDOWN
+      end
+
+      let(:task) do
+        Taskable.get_updated_tasks(old_content: markdown_before, new_content: markdown_after).first
+      end
+
+      it "posts the 'marked the checklist item as complete' system note" do
+        expect(subject.note).to eq("marked the task table item **Do nothing | Now** as incomplete")
       end
     end
   end
@@ -1011,25 +1044,25 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
     context 'with issue' do
       let_it_be_with_reload(:noteable) { create(:issue, project: project) }
 
-      subject { service.change_issue_type('incident') }
+      subject { service.change_issue_type }
 
       it_behaves_like 'a system note' do
         let(:action) { 'issue_type' }
       end
 
-      it { expect(subject.note).to eq "changed type from incident to issue" }
+      it { expect(subject.note).to eq "changed type to **Issue**" }
     end
 
     context 'with work item' do
       let_it_be_with_reload(:noteable) { create(:work_item, project: project) }
 
-      subject { service.change_issue_type('task') }
+      subject { service.change_issue_type }
 
       it_behaves_like 'a system note' do
         let(:action) { 'issue_type' }
       end
 
-      it { expect(subject.note).to eq "changed type from task to issue" }
+      it { expect(subject.note).to eq "changed type to **Issue**" }
     end
   end
 
@@ -1051,8 +1084,8 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'sets the correct note text' do
         expect { subject }.to change { Note.system.count }.by(2)
-        expect(work_item.notes.last.note).to eq("added ##{task.iid} as child task")
-        expect(task.notes.last.note).to eq("added ##{work_item.iid} as parent issue")
+        expect(work_item.notes.last.note).to eq("added ##{task.iid} as child item")
+        expect(task.notes.last.note).to eq("added ##{work_item.iid} as parent item")
       end
 
       context 'when the parent belongs to a different namespace' do
@@ -1060,8 +1093,8 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
         it 'uses full references on the system notes' do
           expect { subject }.to change { Note.system.count }.by(2)
-          expect(work_item.notes.last.note).to eq("added #{task.namespace.full_path}##{task.iid} as child task")
-          expect(task.notes.last.note).to eq("added #{work_item.namespace.full_path}##{work_item.iid} as parent issue")
+          expect(work_item.notes.last.note).to eq("added #{task.namespace.full_path}##{task.iid} as child item")
+          expect(task.notes.last.note).to eq("added #{work_item.namespace.full_path}##{work_item.iid} as parent item")
         end
       end
     end
@@ -1076,8 +1109,8 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'sets the correct note text' do
         expect { subject }.to change { Note.system.count }.by(2)
-        expect(work_item.notes.last.note).to eq("removed child task ##{task.iid}")
-        expect(task.notes.last.note).to eq("removed parent issue ##{work_item.iid}")
+        expect(work_item.notes.last.note).to eq("removed child item ##{task.iid}")
+        expect(task.notes.last.note).to eq("removed parent item ##{work_item.iid}")
       end
 
       context 'when the parent belongs to a different namespace' do
@@ -1085,9 +1118,38 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
         it 'uses full references on the system notes' do
           expect { subject }.to change { Note.system.count }.by(2)
-          expect(work_item.notes.last.note).to eq("removed child task #{task.namespace.full_path}##{task.iid}")
-          expect(task.notes.last.note).to eq("removed parent issue #{work_item.namespace.full_path}##{work_item.iid}")
+          expect(work_item.notes.last.note).to eq("removed child item #{task.namespace.full_path}##{task.iid}")
+          expect(task.notes.last.note).to eq("removed parent item #{work_item.namespace.full_path}##{work_item.iid}")
         end
+      end
+    end
+  end
+
+  describe "#move_child_to_new_parent" do
+    let(:child) { create(:work_item, project: project) }
+    let(:new_parent) { create(:work_item, project: project) }
+
+    subject { service.move_child_to_new_parent(child, new_parent) }
+
+    it_behaves_like 'a system note' do
+      let(:action) { 'moved' }
+    end
+
+    it 'sets the moved text' do
+      child_type = child.issue_type.humanize(capitalize: false)
+      expect(subject.note).to eq "moved child #{child_type} ##{child.iid} to ##{new_parent.iid}"
+    end
+
+    context 'when child and parent are in different namespaces' do
+      let_it_be(:other_group) { create(:group) }
+      let_it_be(:other_project) { create(:project, group: other_group) }
+      let(:new_parent) { create(:work_item, project: other_project) }
+
+      it 'sets the moved text using full reference' do
+        child_type = child.issue_type.humanize(capitalize: false)
+        expect(subject.note).to eq(
+          "moved child #{child_type} #{child.to_reference(full: true)} to #{new_parent.to_reference(full: true)}"
+        )
       end
     end
   end

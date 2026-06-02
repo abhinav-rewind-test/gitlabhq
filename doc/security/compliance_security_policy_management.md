@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Policies
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to apply security policies and compliance frameworks across multiple groups and projects from a single, centralized location.
 title: Instance-wide compliance and security policy management
 ---
@@ -47,7 +47,7 @@ You can designate a compliance and security policy group using either the GitLab
 #### Using the GitLab UI
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Security and Compliance**.
+1. In the left sidebar, select **Settings** > **Security and Compliance**.
 1. In the **Designate CSP Group** section, select an existing top-level group from the dropdown list.
 1. Select **Save changes**.
 

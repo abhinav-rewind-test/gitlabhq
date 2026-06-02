@@ -12,6 +12,12 @@
     "individual_note": {
       "type": "boolean"
     },
+    "resolvable": {
+      "type": "boolean"
+    },
+    "resolved": {
+      "type": "boolean"
+    },
     "notes": {
       "type": "array",
       "items": {
@@ -128,6 +134,9 @@
           "note_html": {
             "type": "string"
           },
+          "body_first_line_html": {
+            "type": "string"
+          },
           "current_user": {
             "type": "object"
           },
@@ -203,6 +212,12 @@
             ]
           },
           "external_author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duo_session_url": {
             "type": [
               "string",
               "null"

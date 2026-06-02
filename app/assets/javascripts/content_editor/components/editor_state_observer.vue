@@ -1,5 +1,5 @@
 <script>
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
 import { ALERT_EVENT, KEYDOWN_EVENT } from '../constants';
 
@@ -16,6 +16,7 @@ export const eventHubEvents = [ALERT_EVENT, KEYDOWN_EVENT];
 const getComponentEventName = (tiptapEventName) => tiptapToComponentMap[tiptapEventName];
 
 export default normalizeRender({
+  name: 'EditorStateObserver',
   inject: ['tiptapEditor', 'eventHub'],
   props: {
     debounce: {

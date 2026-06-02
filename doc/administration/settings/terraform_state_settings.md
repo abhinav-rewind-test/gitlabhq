@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Terraform state settings
 description: Configure Terraform state encryption and storage limits.
 ---
@@ -33,12 +33,11 @@ without any encryption applied.
 Prerequisites:
 
 - You must have administrator access.
-- The `skip_encrypting_terraform_state_file` feature flag must be enabled.
 
 To configure Terraform state encryption:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Preferences**.
+1. In the left sidebar, select **Settings** > **Preferences**.
 1. Expand **Terraform state**.
 1. Select or clear the **Turn on Terraform state encryption** checkbox.
 1. Select **Save changes**.
@@ -65,7 +64,7 @@ Prerequisites:
 To add a storage limit:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Preferences**.
+1. In the left sidebar, select **Settings** > **Preferences**.
 1. Expand **Terraform state**.
 1. In the **Terraform state size limit (bytes)** field, enter a size limit in bytes. Set to `0` to allow files of unlimited size.
 1. Select **Save changes**.

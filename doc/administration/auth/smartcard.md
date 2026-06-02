@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Smart card authentication
 description: Authenticate using hardware devices for certificate-based login.
 ---
@@ -419,4 +419,4 @@ For self-compiled installations:
 
 ## Passwords for users created via smart card authentication
 
-The [Generated passwords for users created through integrated authentication](../../security/passwords_for_integrated_authentication_methods.md) guide provides an overview of how GitLab generates and sets passwords for users created via smart card authentication.
+The [Generated passwords for users created through integrated authentication](../../user/profile/user_passwords.md) guide provides an overview of how GitLab generates and sets passwords for users created via smart card authentication.

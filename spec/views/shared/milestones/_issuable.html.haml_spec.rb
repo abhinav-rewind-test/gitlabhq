@@ -3,23 +3,18 @@
 require 'spec_helper'
 
 RSpec.describe 'shared/milestones/_issuable.html.haml' do
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project, freeze: false) { create(:project) }
   let_it_be(:user) { create(:user) }
   let_it_be(:milestone) { create(:milestone, project: project) }
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-
     assign(:project, project)
     assign(:milestone, milestone)
   end
 
   subject(:rendered) { render 'shared/milestones/issuable', issuable: issuable, show_project_name: true }
 
-  context 'issue' do
+  context 'for issue' do
     let(:issuable) { create(:issue, project: project, assignees: [user]) }
 
     it 'links to the page for the issue' do
@@ -31,7 +26,7 @@ RSpec.describe 'shared/milestones/_issuable.html.haml' do
     end
   end
 
-  context 'merge request' do
+  context 'for merge request' do
     let(:issuable) { create(:merge_request, source_project: project, target_project: project, assignees: [user]) }
 
     it 'links to merge requests page for user' do

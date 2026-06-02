@@ -22,7 +22,7 @@ fragment PipelineDetails on Pipeline {
     sha
     shortId
     title
-    webUrl
+    webPath
     author {
       id
       avatarUrl
@@ -53,6 +53,7 @@ fragment PipelineDetails on Pipeline {
       name
       detailedStatus {
         ...CiIcon
+        name
         tooltip
       }
     }
@@ -72,4 +73,9 @@ fragment PipelineDetails on Pipeline {
   hasManualActions
   hasScheduledActions
   failedJobsCount
+  pipelineSchedule {
+    id
+    description
+    editPath
+  }
 }

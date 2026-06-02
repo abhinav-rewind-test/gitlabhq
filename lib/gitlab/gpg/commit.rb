@@ -4,10 +4,10 @@ module Gitlab
   module Gpg
     class Commit < Gitlab::Repositories::BaseSignedCommit
       def update_signature!(cached_signature)
-        update_signature_with_keychain!(cached_signature, gpg_signature.gpg_key)
+        update_cached_signature!(cached_signature, gpg_signature.gpg_key)
       end
 
-      def update_signature_with_keychain!(cached_signature, gpg_key)
+      def update_cached_signature!(cached_signature, gpg_key)
         cached_signature.update!(attributes(gpg_key))
         @signature = cached_signature
       end
@@ -32,18 +32,18 @@ module Gitlab
       end
 
       def attributes(gpg_key)
-        sig = gpg_signature(gpg_key:)
-        gpg_key = sig.gpg_key
         {
           commit_sha: @commit.sha,
-          project: project,
-          gpg_key: gpg_key,
-          gpg_key_primary_keyid: gpg_key&.keyid || sig.fingerprint,
-          verification_status: sig.verification_status,
-          gpg_key_user_name: sig.user_infos[:name],
-          gpg_key_user_email: sig.user_infos[:email]
+          project: project
         }.tap do |attrs|
-          attrs[:committer_email] = committer_email if check_for_mailmapped_commit_emails?
+          attrs[:committer_email] = committer_email
+          sig = gpg_signature(gpg_key:)
+          gpg_key = sig.gpg_key
+          attrs[:gpg_key] = gpg_key
+          attrs[:gpg_key_primary_keyid] = gpg_key&.keyid || sig.fingerprint
+          attrs[:verification_status] = sig.verification_status
+          attrs[:gpg_key_user_name] = sig.user_infos[:name]
+          attrs[:gpg_key_user_email] = sig.user_infos[:email]
         end
       end
 

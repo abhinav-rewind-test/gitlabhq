@@ -1,11 +1,14 @@
 <script>
 import { GlAvatar, GlCollapsibleListbox, GlTooltipDirective } from '@gitlab/ui';
-import { debounce } from 'lodash';
-// eslint-disable-next-line no-restricted-imports
-import { mapActions, mapState } from 'vuex';
+import { debounce } from 'lodash-es';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { createAlert } from '~/alert';
+import axios from '~/lib/utils/axios_utils';
+import { autocompleteUsersPath } from '~/lib/utils/path_helpers/autocomplete';
 import { queryToObject, visitUrl } from '~/lib/utils/url_utility';
 import { n__, __ } from '~/locale';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
+import { ACTIVE_AND_BLOCKED_USER_STATES } from '~/users_select/constants';
 
 const tooltipMessage = __('Searching by both author and message is currently not supported.');
 
@@ -18,6 +21,7 @@ export default {
   directives: {
     GlTooltip: GlTooltipDirective,
   },
+  inject: ['commitsPath', 'projectId'],
   props: {
     projectCommitsEl: {
       type: HTMLDivElement,
@@ -30,10 +34,10 @@ export default {
       currentAuthor: '',
       searchTerm: '',
       searching: false,
+      commitsAuthors: [],
     };
   },
   computed: {
-    ...mapState(['commitsPath', 'commitsAuthors']),
     dropdownText() {
       return this.currentAuthor || __('Author');
     },
@@ -88,7 +92,23 @@ export default {
     );
   },
   methods: {
-    ...mapActions(['fetchAuthors']),
+    async fetchAuthors(author = null) {
+      try {
+        const { data } = await axios.get(autocompleteUsersPath({ format: 'json' }), {
+          params: {
+            project_id: this.projectId,
+            states: ACTIVE_AND_BLOCKED_USER_STATES,
+            search: author,
+          },
+        });
+        this.commitsAuthors = data;
+      } catch (error) {
+        Sentry.captureException(error);
+        createAlert({
+          message: __('An error occurred fetching the project authors.'),
+        });
+      }
+    },
     selectAuthor(user) {
       // Follow up issue "Remove usage of $.fadeIn from the codebase"
       // > https://gitlab.com/gitlab-org/gitlab/-/issues/214395
@@ -98,15 +118,25 @@ export default {
       // > https://gitlab.com/gitlab-org/gitlab/-/issues/214010
       const commitListElement = this.projectCommitsEl.querySelector('#commits-list');
 
-      // To mimick effect of "filter by commit message"
+      // To mimic effect of "filter by commit message"
       commitListElement.style.opacity = 0.5;
       commitListElement.style.transition = 'opacity 200ms';
 
+      const currentParams = queryToObject(window.location.search);
+      const urlParams = new URLSearchParams();
+
+      if (currentParams.committed_after)
+        urlParams.set('committed_after', currentParams.committed_after);
+      if (currentParams.committed_before)
+        urlParams.set('committed_before', currentParams.committed_before);
+
       if (!user) {
-        return visitUrl(this.commitsPath);
+        const qs = urlParams.toString();
+        return visitUrl(qs ? `${this.commitsPath}?${qs}` : this.commitsPath);
       }
 
-      return visitUrl(`${this.commitsPath}?author=${user}`);
+      urlParams.set('author', user);
+      return visitUrl(`${this.commitsPath}?${urlParams.toString()}`);
     },
     searchAuthors: debounce(async function debouncedSearch() {
       this.searching = true;

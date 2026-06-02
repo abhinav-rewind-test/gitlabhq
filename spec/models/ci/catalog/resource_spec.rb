@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
   let_it_be(:current_user) { create(:user) }
 
-  let_it_be(:project_a) { create(:project, name: 'A', star_count: 20) }
+  let_it_be(:project_a, freeze: false) { create(:project, name: 'A', star_count: 20) }
   let_it_be(:project_b) { create(:project, name: 'B', star_count: 10) }
   let_it_be(:project_c) { create(:project, name: 'C', description: 'B', star_count: 30) }
 
@@ -195,6 +195,45 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
     it 'returns no resources when searching for non-existent topics' do
       expect(described_class.with_topics(%w[nonexistent]))
         .to be_empty
+    end
+  end
+
+  describe '.in_namespaces' do
+    let_it_be(:group_a) { create(:group) }
+    let_it_be(:group_b) { create(:group) }
+    let_it_be(:group_c) { create(:group) }
+
+    let_it_be(:project_in_a) { create(:project, namespace: group_a) }
+    let_it_be(:project_in_b) { create(:project, namespace: group_b) }
+    let_it_be(:project_in_c) { create(:project, namespace: group_c) }
+
+    let_it_be(:resource_in_a) { create(:ci_catalog_resource, project: project_in_a) }
+    let_it_be(:resource_in_b) { create(:ci_catalog_resource, project: project_in_b) }
+    let_it_be(:resource_in_c) { create(:ci_catalog_resource, project: project_in_c) }
+
+    it 'returns only catalog resources whose project namespace matches one of the given ids' do
+      expect(described_class.in_namespaces([group_a.id]))
+        .to contain_exactly(resource_in_a)
+    end
+
+    it 'returns the union of catalog resources for multiple namespaces' do
+      expect(described_class.in_namespaces([group_a.id, group_c.id]))
+        .to contain_exactly(resource_in_a, resource_in_c)
+    end
+
+    it 'returns no resources for a namespace with no catalog resources' do
+      empty_group = create(:group)
+
+      expect(described_class.in_namespaces([empty_group.id])).to be_empty
+    end
+
+    it 'does not include catalog resources whose project belongs to a descendant of the given namespace' do
+      child_group = create(:group, parent: group_a)
+      child_project = create(:project, namespace: child_group)
+      create(:ci_catalog_resource, project: child_project)
+
+      expect(described_class.in_namespaces([group_a.id]))
+        .to contain_exactly(resource_in_a)
     end
   end
 
@@ -478,7 +517,7 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
   end
 
   describe 'updating latest_released_at using model callbacks' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
 
     let_it_be_with_refind(:january_release) do

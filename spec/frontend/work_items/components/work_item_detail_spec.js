@@ -5,7 +5,7 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import toast from '~/vue_shared/plugins/global_toast';
-import createMockApollo from 'helpers/mock_apollo_helper';
+import { createControlledMockApollo } from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { useRealDate } from 'helpers/fake_date';
@@ -24,7 +24,7 @@ import WorkItemNotes from '~/work_items/components/work_item_notes.vue';
 import WorkItemStickyHeader from '~/work_items/components/work_item_sticky_header.vue';
 import WorkItemTitle from '~/work_items/components/work_item_title.vue';
 import WorkItemAbuseModal from '~/work_items/components/work_item_abuse_modal.vue';
-import WorkItemDrawer from '~/work_items/components/work_item_drawer.vue';
+import WorkItemDetailPanel from '~/work_items/components/work_item_detail_panel.vue';
 import TodosToggle from '~/work_items/components/shared/todos_toggle.vue';
 import DesignWidget from '~/work_items/components/design_management/design_management_widget.vue';
 import DesignUploadButton from '~/work_items/components//design_management/upload_button.vue';
@@ -62,6 +62,7 @@ jest.mock('~/vue_shared/plugins/global_toast');
 describe('WorkItemDetail component', () => {
   let wrapper;
   let glIntersectionObserver;
+  let mockApollo;
 
   Vue.use(VueApollo);
 
@@ -78,40 +79,38 @@ describe('WorkItemDetail component', () => {
     canUpdate: true,
     canDelete: true,
   });
-  const workItemByIdQueryHandler = jest.fn().mockResolvedValue(workItemQueryResponse);
-  const successHandler = jest.fn().mockResolvedValue(workItemByIidQueryResponse);
+  const workItemByIdQueryHandler = jest.fn().mockReturnValue(workItemQueryResponse);
+  const successHandler = jest.fn().mockReturnValue(workItemByIidQueryResponse);
   const successHandlerWithNoPermissions = jest
     .fn()
-    .mockResolvedValue(workItemQueryResponseWithNoPermissions);
+    .mockReturnValue(workItemQueryResponseWithNoPermissions);
   const { id } = workItemByIidQueryResponse.data.namespace.workItem;
   const workItemUpdatedSubscriptionHandler = jest
     .fn()
-    .mockResolvedValue({ data: { workItemUpdated: null } });
+    .mockReturnValue({ data: { workItemUpdated: null } });
 
   const allowedChildrenTypesSuccessHandler = jest
     .fn()
-    .mockResolvedValue(allowedChildrenTypesResponse);
+    .mockReturnValue(allowedChildrenTypesResponse);
   const workspacePermissionsAllowedHandler = jest
     .fn()
-    .mockResolvedValue(mockProjectPermissionsQueryResponse());
+    .mockReturnValue(mockProjectPermissionsQueryResponse());
   const workspacePermissionsNotAllowedHandler = jest
     .fn()
-    .mockResolvedValue(
+    .mockReturnValue(
       mockProjectPermissionsQueryResponse({ createDesign: false, moveDesign: false }),
     );
   const uploadSuccessDesignMutationHandler = jest
     .fn()
-    .mockResolvedValue(mockUploadDesignMutationResponse);
+    .mockReturnValue(mockUploadDesignMutationResponse);
   const uploadSkippedDesignMutationHandler = jest
     .fn()
-    .mockResolvedValue(mockUploadSkippedDesignMutationResponse);
+    .mockReturnValue(mockUploadSkippedDesignMutationResponse);
   const uploadErrorDesignMutationHandler = jest
     .fn()
-    .mockResolvedValue(mockUploadErrorDesignMutationResponse);
+    .mockReturnValue(mockUploadErrorDesignMutationResponse);
 
-  const workItemLinkedItemsSuccessHandler = jest
-    .fn()
-    .mockResolvedValue(workItemLinkedItemsResponse);
+  const workItemLinkedItemsSuccessHandler = () => workItemLinkedItemsResponse;
 
   const findAlert = () => wrapper.findComponent(GlAlert);
   const findEmptyState = () => wrapper.findComponent(GlEmptyState);
@@ -138,7 +137,7 @@ describe('WorkItemDetail component', () => {
   const findWorkItemDesigns = () => wrapper.findComponent(DesignWidget);
   const findDesignUploadButton = () => wrapper.findComponent(DesignUploadButton);
   const findDetailWrapper = () => wrapper.findByTestId('detail-wrapper');
-  const findDrawer = () => wrapper.findComponent(WorkItemDrawer);
+  const findDetailPanel = () => wrapper.findComponent(WorkItemDetailPanel);
   const findCreateMergeRequestSplitButton = () =>
     wrapper.findComponent(WorkItemCreateBranchMergeRequestSplitButton);
   const findDesignDropzone = () => wrapper.findComponent(DesignDropzone);
@@ -163,21 +162,24 @@ describe('WorkItemDetail component', () => {
     allowedChildrenTypesHandler = allowedChildrenTypesSuccessHandler,
     showSidebar = true,
     lastRealtimeUpdatedAt = new Date('2023-01-01T12:00:00.000Z'),
+    scopedSlots = {},
   } = {}) => {
+    mockApollo = createControlledMockApollo([
+      [workItemByIidQuery, handler],
+      [workItemByIdQuery, workItemByIdHandler],
+      [updateWorkItemMutation, mutationHandler],
+      [workItemUpdatedSubscription, workItemUpdatedSubscriptionHandler],
+      [getAllowedWorkItemChildTypes, allowedChildrenTypesHandler],
+      [workspacePermissionsQuery, workspacePermissionsHandler],
+      [uploadDesignMutation, uploadDesignMutationHandler],
+      [workItemLinkedItemsQuery, workItemLinkedItemsSuccessHandler],
+    ]);
+
     wrapper = shallowMountExtended(WorkItemDetail, {
-      apolloProvider: createMockApollo([
-        [workItemByIidQuery, handler],
-        [workItemByIdQuery, workItemByIdHandler],
-        [updateWorkItemMutation, mutationHandler],
-        [workItemUpdatedSubscription, workItemUpdatedSubscriptionHandler],
-        [getAllowedWorkItemChildTypes, allowedChildrenTypesHandler],
-        [workspacePermissionsQuery, workspacePermissionsHandler],
-        [uploadDesignMutation, uploadDesignMutationHandler],
-        [workItemLinkedItemsQuery, workItemLinkedItemsSuccessHandler],
-      ]),
+      apolloProvider: mockApollo.apolloProvider,
       isLoggedIn: isLoggedIn(),
       propsData: {
-        isDrawer: false,
+        isDetailPanel: false,
         isModal: false,
         workItemFullPath: 'group/project',
         workItemId: '',
@@ -205,6 +207,7 @@ describe('WorkItemDetail component', () => {
         WorkItemHealthStatus: true,
         WorkItemErrorTracking,
       },
+      scopedSlots,
       mocks: {
         $router: router,
       },
@@ -220,12 +223,12 @@ describe('WorkItemDetail component', () => {
   });
 
   it.each`
-    isDrawer | expected
-    ${true}  | ${true}
-    ${false} | ${false}
-  `('passes isDrawer prop to child component props', async ({ isDrawer, expected }) => {
-    createComponent({ props: { isDrawer } });
-    await waitForPromises();
+    isDetailPanel | expected
+    ${true}       | ${true}
+    ${false}      | ${false}
+  `('passes isDrawer prop to child component props', async ({ isDetailPanel, expected }) => {
+    createComponent({ props: { isDetailPanel } });
+    await mockApollo.resolveAll();
 
     expect(findWorkItemDescription().props('hideFullscreenMarkdownButton')).toBe(expected);
     expect(findNotesWidget().props('hideFullscreenMarkdownButton')).toBe(expected);
@@ -235,7 +238,7 @@ describe('WorkItemDetail component', () => {
   describe('when there is no `workItemIid` prop', () => {
     beforeEach(async () => {
       createComponent({ props: { workItemIid: null } });
-      await waitForPromises();
+      await nextTick();
     });
 
     it('skips the work item query', () => {
@@ -265,7 +268,7 @@ describe('WorkItemDetail component', () => {
   describe('when loaded', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('does not render skeleton', () => {
@@ -282,7 +285,10 @@ describe('WorkItemDetail component', () => {
     });
 
     it('calls the work item updated subscription', () => {
-      expect(workItemUpdatedSubscriptionHandler).toHaveBeenCalledWith({ id });
+      expect(workItemUpdatedSubscriptionHandler).toHaveBeenCalledWith({
+        id,
+        useWorkItemFeatures: false,
+      });
     });
 
     it('fetches allowed children types for current work item', () => {
@@ -300,16 +306,17 @@ describe('WorkItemDetail component', () => {
     });
 
     it('handles Apollo error when fetching allowedChildTypes', async () => {
-      const allowedChildrenTypesErrorHandler = jest
-        .fn()
-        .mockRejectedValue(new Error('Apollo error'));
+      const allowedChildrenTypesErrorHandler = jest.fn();
 
       createComponent({
         props: { workItemId: 'gid://gitlab/WorkItem/123' },
         allowedChildrenTypesHandler: allowedChildrenTypesErrorHandler,
       });
 
-      await waitForPromises();
+      await mockApollo.resolveQuery(workItemByIdQuery);
+      await mockApollo.rejectQuery(getAllowedWorkItemChildTypes);
+      await mockApollo.resolveQuery(workspacePermissionsQuery);
+      await mockApollo.resolveQuery(workItemLinkedItemsQuery);
 
       expect(wrapper.vm.allowedChildTypes).toEqual([]);
     });
@@ -334,7 +341,7 @@ describe('WorkItemDetail component', () => {
     describe('when isModal prop is false', () => {
       it('does not render', async () => {
         createComponent({ props: { isModal: false } });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findCloseButton().exists()).toBe(false);
       });
@@ -343,7 +350,7 @@ describe('WorkItemDetail component', () => {
     describe('when isModal prop is true', () => {
       it('renders', async () => {
         createComponent({ props: { isModal: true } });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findCloseButton().props('icon')).toBe('close');
         expect(findCloseButton().attributes('aria-label')).toBe('Close');
@@ -351,7 +358,7 @@ describe('WorkItemDetail component', () => {
 
       it('emits `close` event when clicked', async () => {
         createComponent({ props: { isModal: true } });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         findCloseButton().vm.$emit('click');
 
@@ -363,7 +370,7 @@ describe('WorkItemDetail component', () => {
   describe('confidentiality', () => {
     const errorMessage = 'Mutation failed';
     const confidentialWorkItem = workItemByIidResponseFactory({ confidential: true });
-    const mutationHandler = jest.fn().mockResolvedValue({
+    const mutationHandler = jest.fn().mockReturnValue({
       data: {
         workItemUpdate: {
           workItem: confidentialWorkItem.data.namespace.workItem,
@@ -374,7 +381,7 @@ describe('WorkItemDetail component', () => {
 
     it('sends updateInProgress props to child component', async () => {
       createComponent({ mutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findWorkItemActions().vm.$emit('toggleWorkItemConfidentiality', true);
       await nextTick();
@@ -384,10 +391,10 @@ describe('WorkItemDetail component', () => {
 
     it('emits workItemUpdated when mutation is successful', async () => {
       createComponent({ mutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findWorkItemActions().vm.$emit('toggleWorkItemConfidentiality', true);
-      await waitForPromises();
+      await mockApollo.resolveMutation(updateWorkItemMutation);
 
       await nextTick();
       expect(toast).toHaveBeenCalledWith('Confidentiality turned on.');
@@ -398,15 +405,16 @@ describe('WorkItemDetail component', () => {
           id: 'gid://gitlab/WorkItem/1',
           confidential: true,
         },
+        useWorkItemFeatures: false,
       });
     });
 
     it('shows an alert when mutation fails', async () => {
-      createComponent({ mutationHandler: jest.fn().mockRejectedValue(new Error(errorMessage)) });
-      await waitForPromises();
+      createComponent({ mutationHandler: jest.fn() });
+      await mockApollo.resolveAll();
 
       findWorkItemActions().vm.$emit('toggleWorkItemConfidentiality', true);
-      await waitForPromises();
+      await mockApollo.rejectMutation(updateWorkItemMutation, new Error(errorMessage));
 
       expect(wrapper.emitted('workItemUpdated')).toBeUndefined();
       expect(findAlert().text()).toBe(errorMessage);
@@ -422,14 +430,14 @@ describe('WorkItemDetail component', () => {
 
     it('shows description widget if description loads', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDescription().exists()).toBe(true);
     });
 
     it('calls clearDraft when description is successfully updated', async () => {
       const clearDraftSpy = jest.fn();
-      const mutationHandler = jest.fn().mockResolvedValue({
+      const mutationHandler = jest.fn().mockReturnValue({
         data: {
           workItemUpdate: {
             workItem: workItemByIidQueryResponse.data.namespace.workItem,
@@ -438,22 +446,22 @@ describe('WorkItemDetail component', () => {
         },
       });
       createComponent({ mutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findWorkItemDescription().vm.$emit('updateWorkItem', { clearDraft: clearDraftSpy });
-      await waitForPromises();
+      await mockApollo.resolveMutation(updateWorkItemMutation);
 
       expect(clearDraftSpy).toHaveBeenCalled();
     });
 
     it('does not call clearDraft when description is unsuccessfully updated', async () => {
       const clearDraftSpy = jest.fn();
-      const mutationHandler = jest.fn().mockRejectedValue(new Error('oh no!'));
+      const mutationHandler = jest.fn();
       createComponent({ mutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findWorkItemDescription().vm.$emit('updateWorkItem', { clearDraft: clearDraftSpy });
-      await waitForPromises();
+      await mockApollo.rejectMutation(updateWorkItemMutation);
 
       expect(clearDraftSpy).not.toHaveBeenCalled();
     });
@@ -467,17 +475,17 @@ describe('WorkItemDetail component', () => {
     });
 
     it('does not show ancestors widget if there is no parent', async () => {
-      createComponent({ handler: jest.fn().mockResolvedValue(workItemQueryResponseWithoutParent) });
+      createComponent({ handler: () => workItemQueryResponseWithoutParent });
 
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findAncestors().exists()).toBe(false);
     });
 
     it('shows title in the header when there is no parent', async () => {
-      createComponent({ handler: jest.fn().mockResolvedValue(workItemQueryResponseWithoutParent) });
+      createComponent({ handler: () => workItemQueryResponseWithoutParent });
 
-      await waitForPromises();
+      await mockApollo.resolveAll();
       expect(findWorkItemType().classes()).toEqual(['@sm/panel:!gl-block', 'gl-w-full']);
     });
 
@@ -486,11 +494,11 @@ describe('WorkItemDetail component', () => {
         const epicWorkItem = workItemByIidResponseFactory({
           workItemType: epicType,
         });
-        const epicHandler = jest.fn().mockResolvedValue(epicWorkItem);
+        const epicHandler = () => epicWorkItem;
 
         createComponent({ provide: { hasSubepicsFeature: false }, handler: epicHandler });
 
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findAncestors().exists()).toBe(false);
         expect(findWorkItemType().classes()).toEqual(['@sm/panel:!gl-block', 'gl-w-full']);
@@ -502,11 +510,11 @@ describe('WorkItemDetail component', () => {
         const epicWorkItem = workItemByIidResponseFactory({
           workItemType: epicType,
         });
-        const epicHandler = jest.fn().mockResolvedValue(epicWorkItem);
+        const epicHandler = () => epicWorkItem;
 
         createComponent({ provide: { hasLinkedItemsEpicsFeature: false }, handler: epicHandler });
 
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findWorkItemRelationships().exists()).toBe(false);
       });
@@ -515,9 +523,9 @@ describe('WorkItemDetail component', () => {
     describe('with parent', () => {
       beforeEach(async () => {
         const parentResponse = workItemByIidResponseFactory(mockParent);
-        createComponent({ handler: jest.fn().mockResolvedValue(parentResponse) });
+        createComponent({ handler: () => parentResponse });
 
-        await waitForPromises();
+        await mockApollo.resolveAll();
       });
 
       it('shows ancestors widget if there is a parent', () => {
@@ -532,9 +540,9 @@ describe('WorkItemDetail component', () => {
     describe('with inaccessible parent', () => {
       beforeEach(async () => {
         const parentResponse = workItemByIidResponseFactory({ parent: null, hasParent: true });
-        createComponent({ handler: jest.fn().mockResolvedValue(parentResponse) });
+        createComponent({ handler: () => parentResponse });
 
-        await waitForPromises();
+        await mockApollo.resolveAll();
       });
 
       it('shows ancestors widget if there is a inaccessible parent', () => {
@@ -550,9 +558,12 @@ describe('WorkItemDetail component', () => {
   describe('when the work item query is unsuccessful', () => {
     describe('full view', () => {
       beforeEach(async () => {
-        const errorHandler = jest.fn().mockRejectedValue('Oops');
+        const errorHandler = jest.fn();
         createComponent({ handler: errorHandler });
-        await waitForPromises();
+        await mockApollo.rejectQuery(workItemByIidQuery);
+        await mockApollo.resolveQuery(getAllowedWorkItemChildTypes);
+        await mockApollo.resolveQuery(workspacePermissionsQuery);
+        await mockApollo.resolveQuery(workItemLinkedItemsQuery);
       });
 
       it('does not show the work item detail wrapper', () => {
@@ -577,10 +588,13 @@ describe('WorkItemDetail component', () => {
       it('shows the modal close button', async () => {
         createComponent({
           props: { isModal: true },
-          handler: jest.fn().mockRejectedValue('Oops, problemo'),
+          handler: jest.fn(),
         });
 
-        await waitForPromises();
+        await mockApollo.rejectQuery(workItemByIidQuery);
+        await mockApollo.resolveQuery(getAllowedWorkItemChildTypes);
+        await mockApollo.resolveQuery(workspacePermissionsQuery);
+        await mockApollo.resolveQuery(workItemLinkedItemsQuery);
 
         expect(findCloseButton().exists()).toBe(true);
         expect(findEmptyState().exists()).toBe(true);
@@ -591,14 +605,42 @@ describe('WorkItemDetail component', () => {
 
   it('renders the resources widget', async () => {
     createComponent();
-    await waitForPromises();
+    await mockApollo.resolveAll();
+
+    expect(findLinkedResourcesWidget().exists()).toBe(true);
+  });
+
+  it('renders the resources widget from features', async () => {
+    const response = workItemByIidResponseFactory({
+      linkedResourcesWidgetPresent: false,
+      features: {
+        linkedResources: {
+          linkedResources: {
+            nodes: [
+              {
+                url: 'http://zoom.example.com/j/1234567890',
+                __typename: 'WorkItemLinkedResource',
+              },
+            ],
+            __typename: 'WorkItemLinkedResourceConnection',
+          },
+          __typename: 'WorkItemWidgetLinkedResources',
+        },
+      },
+    });
+
+    createComponent({
+      handler: jest.fn().mockReturnValue(response),
+      provide: { glFeatures: { workItemFeaturesField: true } },
+    });
+    await mockApollo.resolveAll();
 
     expect(findLinkedResourcesWidget().exists()).toBe(true);
   });
 
   it('shows an error message when WorkItemTitle emits an `error` event', async () => {
     createComponent();
-    await waitForPromises();
+    await mockApollo.resolveAll();
     const updateError = 'Failed to update';
 
     findWorkItemTitle().vm.$emit('error', updateError);
@@ -609,32 +651,41 @@ describe('WorkItemDetail component', () => {
 
   it('calls the work item query', async () => {
     createComponent();
-    await waitForPromises();
+    await mockApollo.resolveAll();
 
-    expect(successHandler).toHaveBeenCalledWith({ fullPath: 'group/project', iid: '1' });
+    expect(successHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ fullPath: 'group/project', iid: '1' }),
+    );
   });
 
   it('calls the work item query by workItemId', async () => {
     const workItemId = workItemQueryResponse.data.workItem.id;
     createComponent({ props: { workItemId } });
-    await waitForPromises();
+    await mockApollo.resolveQuery(workItemByIdQuery);
+    await mockApollo.resolveQuery(getAllowedWorkItemChildTypes);
+    await mockApollo.resolveQuery(workspacePermissionsQuery);
+    await mockApollo.resolveQuery(workItemLinkedItemsQuery);
 
-    expect(workItemByIdQueryHandler).toHaveBeenCalledWith({ id: workItemId });
+    expect(workItemByIdQueryHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ id: workItemId }),
+    );
     expect(successHandler).not.toHaveBeenCalled();
   });
 
   it('skips calling the work item query when there is no workItemIid and no workItemId', async () => {
     createComponent({ props: { workItemIid: null, workItemId: null } });
-    await waitForPromises();
+    await nextTick();
 
     expect(successHandler).not.toHaveBeenCalled();
   });
 
   it('calls the work item query when isModal=true', async () => {
     createComponent({ props: { isModal: true } });
-    await waitForPromises();
+    await mockApollo.resolveAll();
 
-    expect(successHandler).toHaveBeenCalledWith({ fullPath: 'group/project', iid: '1' });
+    expect(successHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ fullPath: 'group/project', iid: '1' }),
+    );
   });
 
   describe('hierarchy widget', () => {
@@ -642,10 +693,10 @@ describe('WorkItemDetail component', () => {
       const workItemWithoutHierarchy = workItemByIidResponseFactory({
         hierarchyWidgetPresent: false,
       });
-      const handler = jest.fn().mockResolvedValue(workItemWithoutHierarchy);
+      const handler = () => workItemWithoutHierarchy;
       createComponent({ handler });
 
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findHierarchyTree().exists()).toBe(false);
     });
@@ -655,19 +706,18 @@ describe('WorkItemDetail component', () => {
         workItemType: objectiveType,
         confidential: true,
       });
-      const objectiveHandler = jest.fn().mockResolvedValue(objectiveWorkItem);
-      const objectiveNoChildrenHandler = jest.fn().mockResolvedValue(
+      const objectiveHandler = () => objectiveWorkItem;
+      const objectiveNoChildrenHandler = () =>
         workItemByIidResponseFactory({
           workItemType: objectiveType,
           confidential: true,
           hasChildren: false,
-        }),
-      );
+        });
 
       const epicWorkItem = workItemByIidResponseFactory({
         workItemType: epicType,
       });
-      const epicHandler = jest.fn().mockResolvedValue(epicWorkItem);
+      const epicHandler = () => epicWorkItem;
 
       it.each`
         type           | handler
@@ -675,7 +725,7 @@ describe('WorkItemDetail component', () => {
         ${'Epic'}      | ${epicHandler}
       `('renders children tree when work item type is $type', async ({ handler }) => {
         createComponent({ handler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findHierarchyTree().exists()).toBe(true);
       });
@@ -688,7 +738,7 @@ describe('WorkItemDetail component', () => {
         'sets the prop `hasChildren` to $result for WorkItemActions when there are $context',
         async ({ handler, result }) => {
           createComponent({ handler });
-          await waitForPromises();
+          await mockApollo.resolveAll();
 
           expect(findWorkItemActions().props('hasChildren')).toBe(result);
         },
@@ -696,7 +746,7 @@ describe('WorkItemDetail component', () => {
 
       it('opens the drawer with the child when `show-modal` is emitted', async () => {
         createComponent({ handler: objectiveHandler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         const event = {
           preventDefault: jest.fn(),
@@ -707,14 +757,14 @@ describe('WorkItemDetail component', () => {
           event,
           modalWorkItem,
         });
-        await waitForPromises();
+        await nextTick();
 
-        expect(findDrawer().props('activeItem')).toEqual(modalWorkItem);
+        expect(findDetailPanel().props('activeItem')).toEqual(modalWorkItem);
       });
 
       it('closes the drawer when `close-drawer` is emitted from the selected work item', async () => {
         createComponent({ handler: objectiveHandler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         const event = {
           preventDefault: jest.fn(),
@@ -725,20 +775,20 @@ describe('WorkItemDetail component', () => {
           event,
           modalWorkItem,
         });
-        await waitForPromises();
+        await nextTick();
 
         findHierarchyTree().vm.$emit('show-modal', {
           event,
           modalWorkItem,
         });
-        await waitForPromises();
+        await nextTick();
 
-        expect(findDrawer().props('activeItem')).toEqual(null);
+        expect(findDetailPanel().props('activeItem')).toEqual(null);
       });
 
       it('closes the drawer when `show-modal` is emitted with `null`', async () => {
         createComponent({ handler: objectiveHandler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
         const event = {
           preventDefault: jest.fn(),
         };
@@ -747,17 +797,17 @@ describe('WorkItemDetail component', () => {
           event,
           modalWorkItem,
         });
-        await waitForPromises();
+        await nextTick();
 
-        expect(findDrawer().props('activeItem')).toEqual(modalWorkItem);
+        expect(findDetailPanel().props('activeItem')).toEqual(modalWorkItem);
 
         findHierarchyTree().vm.$emit('show-modal', {
           event,
           modalWorkItem: null,
         });
-        await waitForPromises();
+        await nextTick();
 
-        expect(findDrawer().props('activeItem')).toEqual(null);
+        expect(findDetailPanel().props('activeItem')).toEqual(null);
       });
 
       describe('work item is rendered in a modal and has children', () => {
@@ -767,7 +817,7 @@ describe('WorkItemDetail component', () => {
             handler: objectiveHandler,
           });
 
-          await waitForPromises();
+          await mockApollo.resolveAll();
         });
 
         it('emits `update-modal` when `show-modal` is emitted', async () => {
@@ -779,7 +829,7 @@ describe('WorkItemDetail component', () => {
             event,
             modalWorkItem: { id: 'childWorkItemId' },
           });
-          await waitForPromises();
+          await nextTick();
 
           expect(wrapper.emitted('update-modal')).toBeDefined();
         });
@@ -792,24 +842,24 @@ describe('WorkItemDetail component', () => {
       const mockEmptyLinkedItems = workItemByIidResponseFactory({
         linkedItems: [],
       });
-      const handler = jest.fn().mockResolvedValue(mockEmptyLinkedItems);
+      const handler = () => mockEmptyLinkedItems;
 
       createComponent({ handler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemRelationships().exists()).toBe(false);
     });
 
-    it('re-fetches workItem query when `WorkItemActions` emits `workItemCreated` event', async () => {
+    it('re-fetches workItem query when `WorkItemActions` emits `work-item-created` event', async () => {
       createComponent();
 
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(successHandler).toHaveBeenCalledTimes(1);
 
-      findWorkItemActions().vm.$emit('workItemCreated');
+      findWorkItemActions().vm.$emit('work-item-created');
 
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(successHandler).toHaveBeenCalledTimes(2);
     });
@@ -818,11 +868,11 @@ describe('WorkItemDetail component', () => {
       const mockWorkItemLinkedItem = workItemByIidResponseFactory({
         linkedItems: mockBlockingLinkedItem,
       });
-      const handler = jest.fn().mockResolvedValue(mockWorkItemLinkedItem);
+      const handler = () => mockWorkItemLinkedItem;
 
       it('renders relationship widget when work item has linked items', async () => {
         createComponent({ handler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findWorkItemRelationships().exists()).toBe(true);
       });
@@ -831,7 +881,7 @@ describe('WorkItemDetail component', () => {
         createComponent({
           handler,
         });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         const event = {
           preventDefault: jest.fn(),
@@ -842,9 +892,9 @@ describe('WorkItemDetail component', () => {
           event,
           modalWorkItem,
         });
-        await waitForPromises();
+        await nextTick();
 
-        expect(findDrawer().props('activeItem')).toEqual(modalWorkItem);
+        expect(findDetailPanel().props('activeItem')).toEqual(modalWorkItem);
       });
 
       describe('linked work item is rendered in a modal and has linked items', () => {
@@ -854,7 +904,7 @@ describe('WorkItemDetail component', () => {
             handler,
           });
 
-          await waitForPromises();
+          await mockApollo.resolveAll();
         });
 
         it('emits `update-modal` when `show-modal` is emitted', async () => {
@@ -866,7 +916,7 @@ describe('WorkItemDetail component', () => {
             event,
             modalWorkItem: { id: 'childWorkItemId' },
           });
-          await waitForPromises();
+          await nextTick();
 
           expect(wrapper.emitted('update-modal')).toBeDefined();
         });
@@ -877,7 +927,7 @@ describe('WorkItemDetail component', () => {
   describe('notes widget', () => {
     it('renders notes by default', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       const { confidential } = workItemByIidQueryResponse.data.namespace.workItem;
 
@@ -910,10 +960,10 @@ describe('WorkItemDetail component', () => {
           commentTemplatesPaths: mockCommentTemplatePaths,
         });
 
-        const commentTemplateHandler = jest.fn().mockResolvedValue(commentTemplateQueryResponse);
+        const commentTemplateHandler = () => commentTemplateQueryResponse;
 
         createComponent({ handler: commentTemplateHandler });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         expect(findNotesWidget().props('newCommentTemplatePaths')).toEqual(
           mockCommentTemplatePaths,
@@ -924,7 +974,7 @@ describe('WorkItemDetail component', () => {
 
   it('renders created/updated', async () => {
     createComponent();
-    await waitForPromises();
+    await mockApollo.resolveAll();
 
     expect(findCreatedUpdated().exists()).toBe(true);
   });
@@ -933,7 +983,7 @@ describe('WorkItemDetail component', () => {
     beforeEach(async () => {
       setWindowLocation('?work_item_id=2');
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('should not be visible by default', () => {
@@ -956,7 +1006,7 @@ describe('WorkItemDetail component', () => {
   describe('work item change type', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('should call work item query on type change', async () => {
@@ -971,7 +1021,7 @@ describe('WorkItemDetail component', () => {
     beforeEach(async () => {
       isLoggedIn.mockReturnValue(false);
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('does not renders if not logged in', () => {
@@ -986,7 +1036,7 @@ describe('WorkItemDetail component', () => {
     describe('when designs are not added and no versions exist', () => {
       it('renders the design dropzone when valid file is dragged and the Add design button is in viewport', async () => {
         createComponent();
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         glIntersectionObserver = wrapper.findComponent(GlIntersectionObserver);
         const dragEvent = mockDragEvent({
@@ -1007,7 +1057,7 @@ describe('WorkItemDetail component', () => {
 
       it('does not render the design dropzone if add design button is not in viewport', async () => {
         createComponent();
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         glIntersectionObserver = wrapper.findComponent(GlIntersectionObserver);
         const dragEvent = mockDragEvent({
@@ -1028,7 +1078,7 @@ describe('WorkItemDetail component', () => {
 
       it('does not render the design dropzone when invalid file is dragged', async () => {
         createComponent();
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         const dragEvent = mockDragEvent({
           types: ['Files'],
@@ -1044,29 +1094,29 @@ describe('WorkItemDetail component', () => {
 
     it('does not render if application has no router', async () => {
       createComponent({ router: false });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDesigns().exists()).toBe(false);
     });
 
     it('renders if work item has design widget', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDesigns().exists()).toBe(true);
       expect(findDesignUploadButton().exists()).toBe(true);
     });
 
     it('renders if within a drawer', async () => {
-      createComponent({ props: { isDrawer: true } });
-      await waitForPromises();
+      createComponent({ props: { isDetailPanel: true } });
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDesigns().exists()).toBe(true);
     });
 
     it('does not render upload design button if user does not have permission to upload', async () => {
       createComponent({ workspacePermissionsHandler: workspacePermissionsNotAllowedHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findDesignUploadButton().exists()).toBe(false);
     });
@@ -1076,31 +1126,33 @@ describe('WorkItemDetail component', () => {
         provide: { isGroup: true },
         workspacePermissionsHandler: workspacePermissionsAllowedHandler,
       });
-      await waitForPromises();
+      await mockApollo.resolveQuery(workItemByIidQuery);
+      await mockApollo.resolveQuery(getAllowedWorkItemChildTypes);
+      await mockApollo.resolveQuery(workItemLinkedItemsQuery);
 
       expect(workspacePermissionsAllowedHandler).not.toHaveBeenCalled();
     });
 
     it('uploads a design', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDesigns().exists()).toBe(true);
 
       findDesignUploadButton().vm.$emit('upload', fileList);
       await nextTick();
-      await waitForPromises();
+      await mockApollo.resolveMutation(uploadDesignMutation);
 
       expect(uploadSuccessDesignMutationHandler).toHaveBeenCalled();
     });
 
     it('when upload is skipped', async () => {
       createComponent({ uploadDesignMutationHandler: uploadSkippedDesignMutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findDesignUploadButton().vm.$emit('upload', fileList);
       await nextTick();
-      await waitForPromises();
+      await mockApollo.resolveMutation(uploadDesignMutation);
 
       expect(uploadSkippedDesignMutationHandler).toHaveBeenCalled();
       expect(findWorkItemDesigns().props('uploadError')).toContain('Upload skipped.');
@@ -1108,11 +1160,11 @@ describe('WorkItemDetail component', () => {
 
     it('when upload fails - dismisses error', async () => {
       createComponent({ uploadDesignMutationHandler: uploadErrorDesignMutationHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findDesignUploadButton().vm.$emit('upload', fileList);
       await nextTick();
-      await waitForPromises();
+      await mockApollo.resolveMutation(uploadDesignMutation);
 
       expect(uploadErrorDesignMutationHandler).toHaveBeenCalled();
       expect(findWorkItemDesigns().props('uploadError')).toBe(
@@ -1128,7 +1180,7 @@ describe('WorkItemDetail component', () => {
   describe('canPasteDesign', () => {
     it('sets `canPasteDesign` to true on work item notes focus event', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDesigns().props('canPasteDesign')).toBe(true);
 
@@ -1140,7 +1192,7 @@ describe('WorkItemDetail component', () => {
 
     it('sets `canPasteDesign` to false on work item notes blur event', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       findNotesWidget().vm.$emit('focus');
       await nextTick();
@@ -1154,41 +1206,57 @@ describe('WorkItemDetail component', () => {
     });
   });
 
+  describe('widgets slot', () => {
+    it('provides workItem data through the widgets scoped slot', async () => {
+      let slotProps;
+      createComponent({
+        scopedSlots: {
+          widgets(props) {
+            slotProps = props;
+            return this.$createElement('div');
+          },
+        },
+      });
+      await mockApollo.resolveAll();
+
+      expect(slotProps).toBeDefined();
+      expect(slotProps.workItem.id).toBe('gid://gitlab/WorkItem/1');
+    });
+  });
+
   describe('work item dev widget create split button', () => {
     it('should not show the button by default', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findCreateMergeRequestSplitButton().exists()).toBe(false);
     });
 
     it('should show the button when the widget is applicable', async () => {
       createComponent({
-        handler: jest.fn().mockResolvedValue(
+        handler: () =>
           workItemByIidResponseFactory({
             canUpdate: true,
             canDelete: true,
             developmentWidgetPresent: true,
           }),
-        ),
       });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findCreateMergeRequestSplitButton().exists()).toBe(true);
     });
 
     it('should not show the button when the work item is closed', async () => {
       createComponent({
-        handler: jest.fn().mockResolvedValue(
+        handler: () =>
           workItemByIidResponseFactory({
             canUpdate: true,
             canDelete: true,
             developmentWidgetPresent: true,
             state: STATE_CLOSED,
           }),
-        ),
       });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findCreateMergeRequestSplitButton().exists()).toBe(false);
     });
@@ -1197,7 +1265,7 @@ describe('WorkItemDetail component', () => {
   describe('work item attributes wrapper', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('renders the work item attributes wrapper', () => {
@@ -1217,7 +1285,7 @@ describe('WorkItemDetail component', () => {
   describe('work item two column view', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('has the `work-item-overview` class', () => {
@@ -1236,7 +1304,7 @@ describe('WorkItemDetail component', () => {
   describe('work item sticky header', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     it('enables the edit mode when event `toggleEditMode` is emitted', async () => {
@@ -1251,8 +1319,8 @@ describe('WorkItemDetail component', () => {
     });
 
     it('sticky header is visible in drawer view', async () => {
-      createComponent({ props: { isDrawer: true } });
-      await waitForPromises();
+      createComponent({ props: { isDetailPanel: true } });
+      await mockApollo.resolveAll();
 
       expect(findStickyHeader().exists()).toBe(true);
     });
@@ -1262,7 +1330,7 @@ describe('WorkItemDetail component', () => {
     describe('with permissions to update', () => {
       beforeEach(async () => {
         createComponent();
-        await waitForPromises();
+        await mockApollo.resolveAll();
       });
 
       it('shows the edit button', () => {
@@ -1298,7 +1366,7 @@ describe('WorkItemDetail component', () => {
     describe('without permissions', () => {
       it('does not show edit button when user does not have the permissions for it', async () => {
         createComponent({ handler: successHandlerWithNoPermissions });
-        await waitForPromises();
+        await mockApollo.resolveAll();
         expect(findEditButton().exists()).toBe(false);
       });
     });
@@ -1307,7 +1375,9 @@ describe('WorkItemDetail component', () => {
   describe('calculates correct isGroup prop for attributes wrapper', () => {
     it('equal to isGroup injection when provided', async () => {
       createComponent({ provide: { isGroup: true } });
-      await waitForPromises();
+      await mockApollo.resolveQuery(workItemByIidQuery);
+      await mockApollo.resolveQuery(getAllowedWorkItemChildTypes);
+      await mockApollo.resolveQuery(workItemLinkedItemsQuery);
 
       expect(findWorkItemAttributesWrapper().props('isGroup')).toBe(true);
     });
@@ -1318,14 +1388,14 @@ describe('WorkItemDetail component', () => {
 
     it('passes the `parentWorkItemId` value down to the `WorkItemActions` component', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemActions().props('parentId')).toBe(parentId);
     });
 
     it('passes the `parentWorkItemId` value down to the `WorkItemNotes` component', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findNotesWidget().props('parentId')).toBe(parentId);
     });
@@ -1336,7 +1406,7 @@ describe('WorkItemDetail component', () => {
       setWindowLocation('?resolves_discussion=1');
 
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDetailInfo().text()).toBe('Resolved 1 discussion.');
     });
@@ -1345,7 +1415,7 @@ describe('WorkItemDetail component', () => {
       setWindowLocation('?resolves_discussion=all');
 
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDetailInfo().text()).toBe('Resolved all discussions.');
     });
@@ -1354,19 +1424,19 @@ describe('WorkItemDetail component', () => {
   describe('shows sidebar based on view options', () => {
     it('when sidebar is shown based on view options', async () => {
       createComponent({ showSidebar: true });
-      await waitForPromises();
+      await mockApollo.resolveAll();
       expect(findShowSidebarButton().exists()).toBe(false);
       expect(findRightSidebar().classes()).not.toContain('@md/panel:gl-hidden');
     });
     it('when sidebar is hidden based on view options', async () => {
       createComponent({ showSidebar: false });
-      await waitForPromises();
+      await mockApollo.resolveAll();
       expect(findShowSidebarButton().exists()).toBe(true);
       expect(findRightSidebar().classes()).toContain('@md/panel:gl-hidden');
     });
     it('when show sidebar button is used', async () => {
       createComponent({ showSidebar: false });
-      await waitForPromises();
+      await mockApollo.resolveAll();
       findShowSidebarButton().vm.$emit('click');
       expect(findRightSidebar().isVisible()).toBe(true);
     });
@@ -1377,7 +1447,7 @@ describe('WorkItemDetail component', () => {
 
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
     });
 
     describe('sidebar visibility tracking', () => {
@@ -1411,7 +1481,7 @@ describe('WorkItemDetail component', () => {
         const { trackEventSpy } = bindInternalEventDocument(wrapper.element);
 
         createComponent({ showSidebar: false });
-        await waitForPromises();
+        await mockApollo.resolveAll();
 
         findShowSidebarButton().vm.$emit('click');
         await nextTick();
@@ -1460,19 +1530,19 @@ describe('WorkItemDetail component', () => {
 
     it('refetches work item when `actioncable:reconnected` event is emitted', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(successHandler).toHaveBeenCalledTimes(1);
 
       document.dispatchEvent(new CustomEvent('actioncable:reconnected'));
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(successHandler).toHaveBeenCalledTimes(2);
     });
 
     it('does not refetch work item if less than 5 minutes have passed since last fetch', async () => {
       createComponent({ lastRealtimeUpdatedAt: new Date() });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(successHandler).toHaveBeenCalledTimes(1);
 
@@ -1486,13 +1556,14 @@ describe('WorkItemDetail component', () => {
   describe('when refetching work item fails', () => {
     beforeEach(async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
-      successHandler.mockRejectedValueOnce(new Error('Refetch failed'));
+      // refetch triggers a new query through the mock link, creating a pending operation
+      // we then reject it to simulate a network error
       // unfortunately, calling refetch this way here is the only way to prevent Jest spec from failing
       // if we try refetching via user action, we cannot handle refetch Apollo error properly
-      await wrapper.vm.$apollo.queries.workItem.refetch().catch(() => {});
-      await waitForPromises();
+      wrapper.vm.$apollo.queries.workItem.refetch().catch(() => {});
+      await mockApollo.rejectQuery(workItemByIidQuery, new Error('Refetch failed'));
     });
 
     it('renders refetch alert', () => {
@@ -1515,34 +1586,35 @@ describe('WorkItemDetail component', () => {
     });
 
     it('hides refetch alert on successful refetch', async () => {
-      successHandler.mockResolvedValueOnce(workItemByIidQueryResponse);
+      successHandler.mockReturnValueOnce(workItemByIidQueryResponse);
       findRefetchAlert().findComponent(GlButton).vm.$emit('click');
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findRefetchAlert().exists()).toBe(false);
     });
   });
 
   it('applied correct classes to refetch error banner in the drawer', async () => {
-    createComponent({ props: { isDrawer: true } });
-    await waitForPromises();
+    createComponent({ props: { isDetailPanel: true } });
+    await mockApollo.resolveAll();
 
-    successHandler.mockRejectedValueOnce(new Error('Refetch failed'));
+    // refetch triggers a new query through the mock link, creating a pending operation
+    // we then reject it to simulate a network error
     // unfortunately, calling refetch this way here is the only way to prevent Jest spec from failing
     // if we try refetching via user action, we cannot handle refetch Apollo error properly
-    await wrapper.vm.$apollo.queries.workItem.refetch().catch(() => {});
-    await waitForPromises();
+    wrapper.vm.$apollo.queries.workItem.refetch().catch(() => {});
+    await mockApollo.rejectQuery(workItemByIidQuery, new Error('Refetch failed'));
 
     expect(findRefetchAlert().classes()).toEqual(['gl-sticky', 'gl-top-0']);
   });
 
   describe.each([true, false])('when archived is %s', (archived) => {
     const mockResponse = workItemByIidResponseFactory({ archived });
-    const mockHandler = jest.fn().mockResolvedValue(mockResponse);
+    const mockHandler = () => mockResponse;
 
     it('passes correct props', async () => {
       createComponent({ handler: mockHandler });
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findStickyHeader().props('archived')).toBe(archived);
     });
@@ -1553,7 +1625,7 @@ describe('WorkItemDetail component', () => {
       setWindowLocation('?edit=true');
 
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDescription().props('editMode')).toBe(true);
     });
@@ -1562,14 +1634,14 @@ describe('WorkItemDetail component', () => {
       setWindowLocation('?edit=false');
 
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDescription().props('editMode')).toBe(false);
     });
 
     it('does not enable edit mode when edit query parameter is not present', async () => {
       createComponent();
-      await waitForPromises();
+      await mockApollo.resolveAll();
 
       expect(findWorkItemDescription().props('editMode')).toBe(false);
     });

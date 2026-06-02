@@ -5,6 +5,7 @@ import { persistCache } from 'apollo3-cache-persist';
 import ActionCableLink from '~/actioncable_link';
 import { apolloCaptchaLink } from '~/captcha/apollo_captcha_link';
 import possibleTypes from '~/graphql_shared/possible_types.json';
+import { GRAPHQL_GET_QUERY_PARAM_KEYS } from '~/graphql_shared/constants';
 import { StartupJSLink } from '~/lib/utils/apollo_startup_js_link';
 import csrf from '~/lib/utils/csrf';
 import { objectToQuery, queryToObject } from '~/lib/utils/url_utility';
@@ -92,6 +93,15 @@ export const typePolicies = {
   ApprovalPolicy: {
     keyFields: ['name'],
   },
+  SecurityPolicyType: {
+    keyFields: ({ type, policyConfigurationId, name }) => {
+      if (!policyConfigurationId || !type || !name) {
+        return false;
+      }
+
+      return `SecurityPolicyType:${policyConfigurationId}:${type}:${name}`;
+    },
+  },
   ComplianceFrameworkConnection: {
     merge: true,
   },
@@ -110,6 +120,9 @@ export const typePolicies = {
   AiMetrics: {
     merge: true,
   },
+  Analytics: {
+    merge: true,
+  },
 };
 
 export const stripWhitespaceFromQuery = (url, path) => {
@@ -120,7 +133,9 @@ export const stripWhitespaceFromQuery = (url, path) => {
   }
 
   const decoded = decodeURIComponent(params);
-  const paramsObj = queryToObject(decoded);
+  const paramsObj = queryToObject(decoded, {
+    preservePlusForKeys: GRAPHQL_GET_QUERY_PARAM_KEYS,
+  });
 
   if (!paramsObj.query) {
     return url;
@@ -168,10 +183,12 @@ function createApolloClient(resolvers = {}, config = {}) {
     typeDefs,
     httpHeaders = {},
     fetchCredentials = 'same-origin',
+    // eslint-disable-next-line @gitlab/no-hardcoded-urls -- default GraphQL API path template, not a navigational URL
     path = '/api/graphql',
   } = config;
 
   let ac = null;
+  // eslint-disable-next-line @gitlab/no-hardcoded-urls -- URL construction for GraphQL client endpoint
   let uri = `${gon.relative_url_root || ''}${path}`;
 
   if (baseUrl) {

@@ -1,21 +1,41 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Service accounts API
 description: GitLab service accounts API manages service accounts at instance or group level, with robust token and account management controls.
 ---
 
 {{< details >}}
 
-- Tier: Premium, Ultimate
+- Tier: Free, Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
 {{< /details >}}
 
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225913) on Free tier in GitLab 18.10
+  [with a flag](../administration/feature_flags/_index.md) named `service_accounts_available_on_free_or_unlicensed`.
+  Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/227910) on Free tier in GitLab 18.11.
+  Feature flag `service_accounts_available_on_free_or_unlicensed` removed.
+
+{{< /history >}}
+
 Use this API to interact with [service accounts](../user/profile/service_accounts.md).
 
+The number of service accounts you can create depends on your subscription and offering:
+
+- On GitLab Premium and Ultimate, you can create an unlimited number of service accounts for all offerings.
+- On GitLab Free, limits vary by offering:
+  - For GitLab.com, you can create up to 100 service accounts for each top-level group.
+    This includes service accounts created in subgroups or projects.
+  - For GitLab Self-Managed, you can create up to 100 service accounts per instance.
+    This includes all service accounts regardless of how they are provisioned (instance, group, or project level).
+
 You can also interact with service accounts through the [users API](users.md).
+To manage SSH keys for service accounts, use the [user SSH and GPG keys API](user_keys.md).
 
 ## Instance service accounts
 
@@ -60,7 +80,9 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --request GET --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/service_accounts"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/service_accounts"
 ```
 
 Example response:
@@ -108,7 +130,9 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/service_accounts"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/service_accounts"
 ```
 
 Example response:
@@ -151,7 +175,10 @@ Parameters:
 Example request:
 
 ```shell
-curl --request PATCH --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/service_accounts/57" --data "name=Updated Service Account&email=updated_email@example.com"
+curl --request PATCH \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/service_accounts/57" \
+  --data "name=Updated Service Account&email=updated_email@example.com"
 ```
 
 Example response:
@@ -168,15 +195,22 @@ Example response:
 
 ## Group service accounts
 
-Group service accounts are owned by a specific top-level group and can inherit membership to
-subgroups and projects like a human user.
+{{< history >}}
+
+- Subgroup service accounts [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/585513) in GitLab 18.10 [with a feature flag](../administration/feature_flags/_index.md) named `allow_subgroups_to_create_service_accounts`. Disabled by default.
+- Subgroup service accounts [generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225485/) in GitLab 18.11. Feature flag `allow_subgroups_to_create_service_accounts` removed.
+
+{{< /history >}}
+
+Group service accounts are owned by a specific group and can be invited to the group where they were
+created or to any descendant subgroups or projects. They cannot be invited to ancestor groups.
 
 Prerequisites:
 
 - On GitLab.com, you must have the Owner role for the group.
-- On GitLab Self-Managed or GitLab Dedicated you must either:
+- On GitLab Self-Managed or GitLab Dedicated, you must either:
   - Be an administrator for the instance.
-  - Have the Owner role in a top-level group and be [allowed to create service accounts](../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts).
+  - Have the Owner role in a group and be [allowed to create service accounts](../administration/settings/account_and_limit_settings.md#allow-top-level-group-owners-to-create-service-accounts).
 
 ### List all group service accounts
 
@@ -186,7 +220,7 @@ Prerequisites:
 
 {{< /history >}}
 
-Lists all service accounts in a specified top-level group.
+Lists all service accounts in a specified group.
 
 Use the `page` and `per_page` [pagination parameters](rest/_index.md#offset-based-pagination) to filter the results.
 
@@ -205,7 +239,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request GET --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/345/service_accounts"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/345/service_accounts"
 ```
 
 Example response:
@@ -240,10 +276,7 @@ Example response:
 
 {{< /history >}}
 
-Creates a service account in a specified top-level group.
-
-> [!note]
-> This endpoint only works on top-level groups.
+Creates a service account in a specified group.
 
 ```plaintext
 POST /groups/:id/service_accounts
@@ -253,7 +286,7 @@ Supported attributes:
 
 | Attribute  | Type           | Required | Description |
 | ---------- | -------------- | -------- | ----------- |
-| `id`       | integer or string | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a top-level group. |
+| `id`       | integer or string | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a group. |
 | `name`     | string         | no       | User account name. If not specified, uses `Service account user`. |
 | `username` | string         | no       | User account username. If not specified, generates a name prepended with `service_account_group_`. |
 | `email`    | string         | no       | Email of the user account. If not specified, generates an email prepended with `service_account_group_`. Custom email addresses require confirmation, unless the group has a matching [verified domain](../user/enterprise_user/_index.md#manage-group-domains) or email confirmation settings are [turned off](../administration/settings/sign_up_restrictions.md#confirm-user-email). |
@@ -261,7 +294,10 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/345/service_accounts" --data "email=custom_email@example.com"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/345/service_accounts" \
+  --data "email=custom_email@example.com"
 ```
 
 Example response:
@@ -281,13 +317,15 @@ Example response:
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/182607/) in GitLab 17.10.
 - Add custom email address [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/196309) in GitLab 18.2.
+- [Added](https://gitlab.com/gitlab-org/gitlab/-/work_items/581050) username limits for service accounts with composite identities in GitLab 18.9.
 
 {{< /history >}}
 
-Updates a service account in a specified top-level group.
+Updates a service account in a specified group.
 
 > [!note]
-> This endpoint only works on top-level groups.
+>
+> - You cannot update the username of a service account associated with a [composite identity](../user/duo_agent_platform/composite_identity.md).
 
 ```plaintext
 PATCH /groups/:id/service_accounts/:user_id
@@ -306,7 +344,10 @@ Parameters:
 Example request:
 
 ```shell
-curl --request PATCH --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/345/service_accounts/57" --data "name=Updated Service Account&email=updated_email@example.com"
+curl --request PATCH \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/345/service_accounts/57" \
+  --data "name=Updated Service Account&email=updated_email@example.com"
 ```
 
 Example response:
@@ -329,10 +370,7 @@ Example response:
 
 {{< /history >}}
 
-Deletes a service account from a specified top-level group.
-
-> [!note]
-> This endpoint only works on top-level groups.
+Deletes a service account from a specified group.
 
 ```plaintext
 DELETE /groups/:id/service_accounts/:user_id
@@ -349,7 +387,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/345/service_accounts/181"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/345/service_accounts/181"
 ```
 
 ### List all personal access tokens for a group service account
@@ -360,7 +400,7 @@ curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://git
 
 {{< /history >}}
 
-Lists all personal access tokens for a service account in a top-level group.
+Lists all personal access tokens for a service account in a specified group.
 
 ```plaintext
 GET /groups/:id/service_accounts/:user_id/personal_access_tokens
@@ -370,7 +410,7 @@ Supported attributes:
 
 | Attribute          | Type                | Required | Description |
 | ------------------ | ------------------- | -------- | ----------- |
-| `id`               | integer or string      | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a top-level group. |
+| `id`               | integer or string      | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a group. |
 | `user_id`          | integer             | yes      | ID of service account. |
 | `created_after`    | datetime (ISO 8601) | no       | If defined, returns tokens created after the specified time. |
 | `created_before`   | datetime (ISO 8601) | no       | If defined, returns tokens created before the specified time. |
@@ -425,7 +465,7 @@ Example of unsuccessful responses:
 
 {{< /history >}}
 
-Creates a personal access token for an existing service account in a specified top-level group.
+Creates a personal access token for an existing service account in a specified group.
 
 ```plaintext
 POST /groups/:id/service_accounts/:user_id/personal_access_tokens
@@ -435,7 +475,7 @@ Parameters:
 
 | Attribute     | Type           | Required | Description |
 | ------------- | -------------- | -------- | ----------- |
-| `id`          | integer or string | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a top-level group. |
+| `id`          | integer or string | yes      | ID or [URL-encoded path](rest/_index.md#namespaced-paths) of a group. |
 | `user_id`     | integer        | yes      | ID of service account. |
 | `name`        | string         | yes      | Name of personal access token. |
 | `description` | string         | no       | Description of personal access token. |
@@ -445,7 +485,11 @@ Parameters:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens" --data "scopes[]=api,read_user,read_repository" --data "name=service_accounts_token"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens" \
+  --data "scopes[]=api,read_user,read_repository" \
+  --data "name=service_accounts_token"
 ```
 
 Example response:
@@ -473,10 +517,7 @@ Example response:
 
 {{< /history >}}
 
-Revokes a personal access token for an existing service account in a specified top-level group.
-
-> [!note]
-> This endpoint only works on top-level groups.
+Revokes a specified personal access token for an existing service account in a group.
 
 ```plaintext
 DELETE /groups/:id/service_accounts/:user_id/personal_access_tokens/:token_id
@@ -493,7 +534,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens/6"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens/6"
 ```
 
 If successful, returns `204: No Content`.
@@ -513,10 +556,7 @@ Other possible responses:
 
 {{< /history >}}
 
-Rotates a personal access token for an existing service account in a specified top-level group. This creates a new token valid for one week and revokes any existing tokens.
-
-> [!note]
-> This endpoint only works on top-level groups.
+Rotates a specified personal access token for an existing service account in a specified group. This revokes the existing token and creates a new token with the same name, description, and scopes.
 
 ```plaintext
 POST /groups/:id/service_accounts/:user_id/personal_access_tokens/:token_id/rotate
@@ -534,7 +574,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens/6/rotate"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/35/service_accounts/71/personal_access_tokens/6/rotate"
 ```
 
 Example response:
@@ -559,6 +601,7 @@ Example response:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/585509) in GitLab 18.9 [with a flag](../administration/feature_flags/_index.md) named `allow_projects_to_create_service_accounts`. Disabled by default.
+- Project service accounts [generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/225485/) in GitLab 18.11. Feature flag `allow_projects_to_create_service_accounts` removed.
 
 {{< /history >}}
 
@@ -566,10 +609,10 @@ Project service accounts are owned by a specific project and are available only 
 
 Prerequisites:
 
-- On GitLab.com, you must have the Owner or Maintainer role for the project.
-- On GitLab Self-Managed or GitLab Dedicated you must either:
+- On GitLab.com, you must have the Maintainer or Owner role for the project.
+- On GitLab Self-Managed or GitLab Dedicated, you must either:
   - Be an administrator for the instance.
-  - Have the Owner or Maintainer role in a project.
+  - Have the Maintainer or Owner role in a project.
 
 ### List all project service accounts
 
@@ -592,7 +635,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request GET --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/345/service_accounts"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/345/service_accounts"
 ```
 
 Example response:
@@ -636,7 +681,10 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/345/service_accounts" --data "email=custom_email@example.com"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/345/service_accounts" \
+  --data "email=custom_email@example.com"
 ```
 
 Example response:
@@ -671,7 +719,10 @@ Parameters:
 Example request:
 
 ```shell
-curl --request PATCH --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/345/service_accounts/57" --data "name=Updated Service Account&email=updated_email@example.com"
+curl --request PATCH \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/345/service_accounts/57" \
+  --data "name=Updated Service Account&email=updated_email@example.com"
 ```
 
 Example response:
@@ -705,7 +756,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/345/service_accounts/181"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/345/service_accounts/181"
 ```
 
 ### List all personal access tokens for a project service account
@@ -789,7 +842,11 @@ Parameters:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens" --data "scopes[]=api,read_user,read_repository" --data "name=service_accounts_token"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens" \
+  --data "scopes[]=api,read_user,read_repository" \
+  --data "name=service_accounts_token"
 ```
 
 Example response:
@@ -828,7 +885,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens/6"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens/6"
 ```
 
 If successful, returns `204: No Content`.
@@ -860,7 +919,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens/6/rotate"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/35/service_accounts/71/personal_access_tokens/6/rotate"
 ```
 
 Example response:

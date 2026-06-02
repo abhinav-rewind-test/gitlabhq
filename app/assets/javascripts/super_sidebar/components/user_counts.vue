@@ -30,14 +30,14 @@ export default {
     },
   },
   i18n: {
-    issues: __('Assigned issues'),
     mergeRequests: __('Merge requests'),
     todoList: __('To-do items'),
+    workItems: __('Assigned work items'),
   },
-  data() {
-    return {
-      userCounts,
-    };
+  computed: {
+    userCounts() {
+      return userCounts;
+    },
   },
   created() {
     Object.assign(userCounts, this.sidebarData.user_counts);
@@ -60,13 +60,13 @@ export default {
 <template>
   <div class="gl-flex gl-items-center gl-justify-between gl-gap-0">
     <counter
-      v-gl-tooltip.bottom="$options.i18n.issues"
+      v-gl-tooltip.bottom="$options.i18n.workItems"
       class="dashboard-shortcuts-issues gl-basis-1/3"
-      icon="work-item-issue"
+      icon="work-items"
       :class="counterClass"
       :count="userCounts.assigned_issues"
       :href="sidebarData.issues_dashboard_path"
-      :label="$options.i18n.issues"
+      :label="$options.i18n.workItems"
       data-testid="issues-shortcut-button"
       data-track-action="click_link"
       data-track-label="issues_link"

@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Static Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting SAST
 ---
 
@@ -14,12 +14,12 @@ title: Troubleshooting SAST
 
 The following troubleshooting scenarios have been collected from customer support cases. If you
 experience a problem not addressed here, or the information here does not fix your problem, see the
-[GitLab Support](https://about.gitlab.com/support/) page for ways to get help.
+[GitLab Support](https://support.gitlab.com/) page for ways to get help.
 
 ## Debug-level logging
 
 Debug-level logging can help when troubleshooting. For details, see
-[debug-level logging](../troubleshooting_application_security.md#debug-level-logging).
+[debug-level logging](../troubleshooting_application_security.md#turn-on-debug-level-logging).
 
 ## Changes in the CI/CD template
 
@@ -47,7 +47,7 @@ possible.
 GitLab SAST [analyzers](analyzers.md) are released as container images. If you're seeing a new error
 that doesn't appear to be related to the GitLab-managed SAST CI/CD template or changes in your own
 project, you can try
-[pinning the affected analyzer to a specific older version](_index.md#pinning-to-minor-image-version).
+[pinning the affected analyzer to a specific older version](_index.md#pin-analyzer-image-version).
 You should only use this solution temporarily. Return to the standard template as soon as
 possible.
 
@@ -177,7 +177,7 @@ To try to resolve this issue you can:
 
 ### Exception analyzing
 
-If your job log contains a message of the form "Exception analyzing ... using detector ..." followed by a Java stack trace, this is **not** a failure of the SAST pipeline. SpotBugs has determined that the exception is [recoverable](https://github.com/spotbugs/spotbugs/blob/5ebd4439f6f8f2c11246b79f58c44324718d39d8/spotbugs/src/main/java/edu/umd/cs/findbugs/FindBugs2.java#L1200), logged it, and resumed analysis.
+If your job log contains a message of the form "Exception analyzing ... using detector ..." followed by a Java stack trace, this is not a failure of the SAST pipeline. SpotBugs has determined that the exception is [recoverable](https://github.com/spotbugs/spotbugs/blob/5ebd4439f6f8f2c11246b79f58c44324718d39d8/spotbugs/src/main/java/edu/umd/cs/findbugs/FindBugs2.java#L1200), logged it, and resumed analysis.
 
 The first "..." part of the message is the class being analyzed - if it's not part of your project, you can likely ignore the message and the stack trace that follows.
 

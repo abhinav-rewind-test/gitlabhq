@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe Gitlab::Git::Branch do
+RSpec.describe Gitlab::Git::Branch, feature_category: :source_code_management do
   let(:project) { create(:project, :repository) }
   let(:repository) { project.repository.raw }
 
@@ -38,6 +38,34 @@ RSpec.describe Gitlab::Git::Branch do
         expect(subject).to eq(branch)
 
         expect(repository).not_to have_received(:find_branch).with(branch)
+      end
+    end
+  end
+
+  describe '.from_ref' do
+    let(:commit) { repository.commit('master') }
+    let(:ref) { Gitlab::Git::Ref.new(repository, 'refs/heads/master', commit.sha, nil) }
+
+    context 'without commit' do
+      subject { described_class.from_ref(repository, ref) }
+
+      it 'creates a branch with correct name, target and repository' do
+        expect(subject).to be_a(described_class)
+        expect(subject.name).to eq('master')
+        expect(subject.target).to eq(commit.sha)
+        expect(subject.dereferenced_target).to be_nil
+      end
+    end
+
+    context 'with commit' do
+      subject { described_class.from_ref(repository, ref, commit: commit) }
+
+      it 'creates a branch with hydrated dereferenced_target' do
+        expect(subject).to be_a(described_class)
+        expect(subject.name).to eq('master')
+        expect(subject.target).to eq(commit.sha)
+        expect(subject.dereferenced_target).to eq(commit)
+        expect(subject.dereferenced_target.sha).to eq(commit.sha)
       end
     end
   end
@@ -107,6 +135,32 @@ RSpec.describe Gitlab::Git::Branch do
         it { expect(active_branch.state).to eq(:active) }
         it { expect(future_branch.state).to eq(:active) }
       end
+    end
+  end
+
+  describe '#project' do
+    let(:branch) { repository.find_branch('master') }
+
+    context 'when the container is a Project' do
+      it 'returns the project' do
+        expect(branch.project).to eq(project)
+      end
+    end
+
+    context 'when the container is not a Project' do
+      before do
+        allow(branch.dereferenced_target.repository).to receive(:container).and_return(build(:group))
+      end
+
+      it { expect(branch.project).to be_nil }
+    end
+
+    context 'when dereferenced_target is nil' do
+      before do
+        allow(branch).to receive(:dereferenced_target).and_return(nil)
+      end
+
+      it { expect(branch.project).to be_nil }
     end
   end
 

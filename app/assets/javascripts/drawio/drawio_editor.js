@@ -1,4 +1,4 @@
-import { isNil } from 'lodash';
+import { isNil } from 'lodash-es';
 import { createAlert, VARIANT_SUCCESS } from '~/alert';
 import { darkModeEnabled } from '~/lib/utils/color_utils';
 import { base64DecodeUnicode } from '~/lib/utils/text_utility';
@@ -18,9 +18,10 @@ function updateDrawioEditorState(drawIOEditorState, data) {
 }
 
 function postMessageToDrawioEditor(drawIOEditorState, message) {
-  const { origin } = new URL(drawIOEditorState.drawioUrl);
-
-  drawIOEditorState.iframe.contentWindow.postMessage(JSON.stringify(message), origin);
+  drawIOEditorState.iframe.contentWindow.postMessage(
+    JSON.stringify(message),
+    drawIOEditorState.drawioOrigin,
+  );
 }
 
 function disposeDrawioEditor(drawIOEditorState) {
@@ -184,6 +185,10 @@ function onDrawIOEditorMessage(drawIOEditorState, editorFacade, evt) {
     return;
   }
 
+  if (evt.origin !== drawIOEditorState.drawioOrigin) {
+    return;
+  }
+
   const msg = JSON.parse(evt.data);
 
   if (msg.event === 'configure') {
@@ -267,6 +272,7 @@ const createDrawioEditorState = ({ filename = null, drawioUrl }) => ({
   dark: darkModeEnabled(),
   disposeEventListener: null,
   drawioUrl,
+  drawioOrigin: new URL(drawioUrl).origin,
 });
 
 export function launchDrawioEditor({ editorFacade, filename, drawioUrl = gon.diagramsnet_url }) {

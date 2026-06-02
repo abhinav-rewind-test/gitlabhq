@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 title: Workflows
 ---
 
@@ -17,7 +17,6 @@ The process for creating and maintaining GitLab product documentation depends on
 
 - A new feature or feature enhancement: Delivered for a specific milestone and associated with specific code changes.
   This documentation has the highest priority.
-
 - [Changes outside a specific milestone](#documentation-feedback-and-improvements): Usually not associated with a specific code change, is of lower priority, and
   is open to all GitLab contributors.
 
@@ -74,7 +73,6 @@ otherwise agreed with the product manager and technical writer:
 
   If the new or changed documentation requires extensive collaboration or
   conversation, a separate, linked issue can be used for the planning process.
-
 - Use the [Documentation guidelines](_index.md),
   and other resources linked from there, including:
   - [Documentation folder structure](site_architecture/folder_structure.md).
@@ -89,6 +87,16 @@ otherwise agreed with the product manager and technical writer:
 - If you are working on documentation in a separate merge request, ensure the
   documentation is merged as close as possible to the code merge.
 - If the feature has a feature flag, [follow the policy for documenting feature-flagged issues](feature_flags.md).
+
+#### AI-generated documentation
+
+All AI-generated documentation must be reviewed by a Technical Writer. Before you submit
+your documentation for review, run a [Vale](testing/vale.md) test on the documentation file
+to identify and fix style issues.
+
+Generative AI tools are not a replacement for subject matter expertise. Authors are responsible
+for ensuring the technical accuracy of any content they create. For more information
+about output quality, see [Communicating when using generative AI tools](https://handbook.gitlab.com/handbook/communication/#communicating-when-using-generative-ai-tools).
 
 #### Review
 
@@ -110,7 +118,7 @@ ensure quality. Documentation forms part of the GitLab [definition of done](../c
 
 Documentation is sometimes merged with a feature without a technical writer review.
 If not assigned for a technical writer review prior to merging, the developer or maintainer must schedule a review immediately after the merge. For this,
-create an issue with the [Doc Review description template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Doc%20Review)
+create an issue with the [Doc Review description template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?description_template=Doc%20Review)
 and add a link to the merged merge request that introduced the documentation change.
 
 Circumstances where a post-merge technical writer review might occur are:
@@ -495,6 +503,7 @@ To further classify the type of effort, include one or more of the following lab
 
 - [`Category:Docs Site`](https://gitlab.com/groups/gitlab-org/-/labels?subscribed=&sort=relevance&search=Category%3ADocs+Site): Documentation website infrastructure or code. This is not needed for issues related to the documentation itself. Issues with this label are included on the [Docs Workflow issue board](https://gitlab.com/groups/gitlab-org/-/boards/4340643?label_name[]=Category%3ADocs%20Site).
 - [`development guidelines`](https://gitlab.com/gitlab-org/gitlab/-/labels?utf8=%E2%9C%93&subscribed=&search=development+guidelines): Files in the `/developer` directory.
+- [`docs-feedback`](https://gitlab.com/groups/gitlab-org/-/labels?utf8=%E2%9C%93&subscribed=&sort=relevance&search=docs-feedback): Feedback from the docs feedback widget, survey verbatims, or customer-created issues.
 - [`docs-missing`](https://gitlab.com/groups/gitlab-org/-/labels?subscribed=&sort=relevance&search=docs-missing): Documentation for a feature is missing. Documentation is required with the delivery of a feature for a specific milestone as part of the GitLab [definition of done](../contributing/merge_request_workflow.md#definition-of-done). Add this label to the original feature MR or issue where documentation is missing. Keep the label for historical tracking and use `tw::finished` to indicate when documentation is completed. Does not apply to [experiment features](../../policy/development_stages_support.md#experiment).
 - [`documentation`](https://gitlab.com/groups/gitlab-org/-/labels?utf8=%E2%9C%93&subscribed=&sort=relevance&search=documentation): Files in the `/doc` directory.
 - [`global nav`](https://gitlab.com/gitlab-org/technical-writing/docs-gitlab-com/-/labels?subscribed=&sort=relevance&search=global+nav): Left nav of the docs site. Used in the `docs-gitlab-com` project.
@@ -577,7 +586,7 @@ When a new GitLab version is released, the Technical Writing team releases
 
 To make a documentation change that is not associated with a specific code change, the Technical Writing team encourages contributors to create an MR.
 
-If you start with an issue rather than an MR, use the [documentation template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Documentation).
+If you start with an issue rather than an MR, use the [documentation template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?description_template=Documentation).
 For the labels you should apply, see [labels](#labels).
 
 Also include:
@@ -633,7 +642,9 @@ We often create documentation issues for a Hackathon. These issues are typically
 
 1. Run Vale against the full docset. Go to the GitLab repo and run:
 
-   `find doc -name '*.md' | sort | xargs vale --minAlertLevel suggestion --output line > ../results.txt`
+   ```shell
+   find doc -name '*.md' | sort | xargs vale --minAlertLevel suggestion --output line > ../results.txt
+   ```
 
 1. Create issues. You have a few options:
 

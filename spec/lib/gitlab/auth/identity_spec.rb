@@ -124,6 +124,21 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
         expect(identity.scoped_user).to eq(scoped_user)
       end
     end
+
+    context 'when actor does not have composite identity enforced' do
+      it 'returns a non-composite identity without linking' do
+        expect(identity).not_to be_composite
+        expect(identity).not_to be_linked
+      end
+    end
+
+    context 'when user is not a ::User object' do
+      subject(:identity) { described_class.link_from_scoped_user('not_a_user', scoped_user) }
+
+      it 'returns nil' do
+        expect(identity).to be_nil
+      end
+    end
   end
 
   describe '.find_primary_user_by_scoped_user_id' do
@@ -166,6 +181,19 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
 
       it 'returns nil' do
         expect(found_primary_user).to be_nil
+      end
+    end
+
+    context 'when link_data is stored in legacy (non-Hash) format' do
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+        store_key = format(described_class::COMPOSITE_IDENTITY_KEY_FORMAT, primary_user.id)
+        Gitlab::SafeRequestStore.store[described_class::COMPOSITE_IDENTITY_USERS_KEY] = Set.new([primary_user])
+        Gitlab::SafeRequestStore.store[store_key] = scoped_user
+      end
+
+      it 'returns the primary user' do
+        expect(found_primary_user).to eq(primary_user)
       end
     end
   end
@@ -239,6 +267,17 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
         end
       end
     end
+
+    context 'when service_account is not a ::User object' do
+      it 'returns nil' do
+        result = described_class.link_from_web_request(
+          service_account: 'not_a_user',
+          scoped_user: scoped_user
+        )
+
+        expect(result).to be_nil
+      end
+    end
   end
 
   describe '#valid?' do
@@ -258,22 +297,51 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
   end
 
   describe '.sidekiq_restore!' do
-    context 'when job has primary and scoped identity stored' do
+    context 'when job has primary, scoped identity, and context stored' do
+      context 'with permission_check context' do
+        let(:job) { { 'jid' => 123, 'sqci' => [primary_user.id, scoped_user.id, 'permission_check'] } }
+
+        it 'links primary user with scoped user using the stored context' do
+          identity = described_class.sidekiq_restore!(job)
+
+          expect(identity).to be_linked
+          expect(identity.primary_user).to eq(primary_user)
+          expect(identity.scoped_user).to eq(scoped_user)
+          expect(identity.link_context).to eq(:permission_check)
+        end
+      end
+
+      context 'with authentication context' do
+        let(:job) { { 'jid' => 123, 'sqci' => [primary_user.id, scoped_user.id, 'authentication'] } }
+
+        it 'links primary user with scoped user using the stored context' do
+          identity = described_class.sidekiq_restore!(job)
+
+          expect(identity).to be_linked
+          expect(identity.primary_user).to eq(primary_user)
+          expect(identity.scoped_user).to eq(scoped_user)
+          expect(identity.link_context).to eq(:authentication)
+        end
+      end
+    end
+
+    context 'when job has primary and scoped identity stored without context (legacy)' do
       let(:job) { { 'jid' => 123, 'sqci' => [primary_user.id, scoped_user.id] } }
 
-      it 'finds and links primary user with scoped user' do
+      it 'links primary user with scoped user defaulting to authentication context' do
         identity = described_class.sidekiq_restore!(job)
 
         expect(identity).to be_linked
         expect(identity.primary_user).to eq(primary_user)
         expect(identity.scoped_user).to eq(scoped_user)
+        expect(identity.link_context).to eq(:authentication)
       end
     end
 
     context 'when linked identity in job is an unexpected value' do
       let(:job) { { 'jid' => 123, 'sqci' => [primary_user.id] } }
 
-      it 'finds and links primary user with scoped user' do
+      it 'raises an error' do
         expect { described_class.sidekiq_restore!(job) }
           .to raise_error(described_class::IdentityError)
       end
@@ -286,19 +354,19 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
     subject(:identity) { described_class.new(primary_user) }
 
     before do
-      identity.link!(scoped_user)
+      identity.link!(scoped_user, context: :authentication)
     end
 
-    it 'sets a job attribute' do
+    it 'stores primary user id, scoped user id, and link context in the job' do
       described_class.new(primary_user).sidekiq_link!(job)
 
       expect(job[described_class::COMPOSITE_IDENTITY_SIDEKIQ_ARG])
-        .to match_array([primary_user.id, scoped_user.id])
+        .to eq([primary_user.id, scoped_user.id, :authentication])
     end
   end
 
-  describe '.invert_composite_identity' do
-    subject(:result) { described_class.invert_composite_identity(current_user) }
+  describe '.resolve_composite_identity_actor' do
+    subject(:result) { described_class.resolve_composite_identity_actor(current_user) }
 
     context 'when current_user is nil' do
       let(:current_user) { nil }
@@ -333,11 +401,24 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
 
       before do
         primary_user.update!(composite_identity_enforced: true)
-        described_class.link_from_scoped_user_id(primary_user, scoped_user.id)
+        described_class.link_from_scoped_user_id(primary_user, scoped_user.id, context: :authentication)
       end
 
       it 'returns the primary user' do
         expect(result).to eq(primary_user)
+      end
+    end
+
+    context 'when current_user is a scoped user linked with permission_check context' do
+      let(:current_user) { scoped_user }
+
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+        described_class.link_from_scoped_user(primary_user, scoped_user, context: :permission_check)
+      end
+
+      it 'returns the current user (human), not the service account' do
+        expect(result).to eq(current_user)
       end
     end
 
@@ -363,6 +444,56 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
 
       it 'returns the original user when no composite identities are stored' do
         expect(result).to eq(current_user)
+      end
+    end
+
+    context 'when a primary user is found but currently_linked returns nil' do
+      let(:current_user) { scoped_user }
+
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+        described_class.link_from_scoped_user_id(primary_user, scoped_user.id, context: :authentication)
+        allow(described_class).to receive(:currently_linked).and_return(nil)
+      end
+
+      it 'returns the current user' do
+        expect(result).to eq(current_user)
+      end
+    end
+  end
+
+  describe '#link_context' do
+    let(:identity) { described_class.new(primary_user) }
+
+    context 'when identity is not linked' do
+      it 'returns nil' do
+        expect(identity.link_context).to be_nil
+      end
+    end
+
+    context 'when link_data is stored in legacy (non-Hash) format' do
+      before do
+        store_key = format(described_class::COMPOSITE_IDENTITY_KEY_FORMAT, primary_user.id)
+        Gitlab::SafeRequestStore.store[store_key] = scoped_user
+      end
+
+      it 'returns :authentication as the default legacy context' do
+        expect(identity.link_context).to eq(:authentication)
+      end
+    end
+  end
+
+  describe '#scoped_user' do
+    let(:identity) { described_class.new(primary_user) }
+
+    context 'when link_data is stored in legacy (non-Hash) format' do
+      before do
+        store_key = format(described_class::COMPOSITE_IDENTITY_KEY_FORMAT, primary_user.id)
+        Gitlab::SafeRequestStore.store[store_key] = scoped_user
+      end
+
+      it 'returns the scoped user directly' do
+        expect(identity.scoped_user).to eq(scoped_user)
       end
     end
   end
@@ -400,6 +531,48 @@ RSpec.describe Gitlab::Auth::Identity, :request_store, feature_category: :system
         it 'is idempotent' do
           expect { identity.link!(scoped_user) }.not_to raise_error
         end
+      end
+    end
+
+    context 'when a second service account is linked with permission_check context' do
+      let(:another_primary_user) { create(:user, :service_account) }
+      let(:another_scoped_user) { create(:user) }
+
+      before do
+        identity.link!(scoped_user, context: :permission_check)
+      end
+
+      it 'raises TooManyIdentitiesLinkedError' do
+        expect { described_class.new(another_primary_user).link!(another_scoped_user, context: :authentication) }
+          .to raise_error(described_class::TooManyIdentitiesLinkedError)
+      end
+    end
+
+    context 'when a second service account is linked with authentication context' do
+      let(:another_primary_user) { create(:user, :service_account) }
+      let(:another_scoped_user) { create(:user) }
+
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+        identity.link!(scoped_user, context: :authentication)
+      end
+
+      it 'raises TooManyIdentitiesLinkedError' do
+        expect { described_class.new(another_primary_user).link!(another_scoped_user, context: :authentication) }
+          .to raise_error(described_class::TooManyIdentitiesLinkedError)
+      end
+    end
+
+    context 'when already linked with authentication context and re-linked with permission_check' do
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+        identity.link!(scoped_user, context: :authentication)
+      end
+
+      it 'preserves the authentication context so the service account remains the attributed actor' do
+        identity.link!(scoped_user, context: :permission_check)
+
+        expect(described_class.resolve_composite_identity_actor(scoped_user)).to eq(primary_user)
       end
     end
 

@@ -1,5 +1,6 @@
 <script>
-import { GlIcon, GlIntersperse, GlLink, GlSprintf, GlSkeletonLoader } from '@gitlab/ui';
+import { GlIntersperse, GlSkeletonLoader } from '@gitlab/ui';
+import { titleFieldFor } from './presenter_registry';
 import FieldPresenter from './field.vue';
 
 const DEFAULT_PAGE_SIZE = 5;
@@ -7,10 +8,7 @@ const DEFAULT_PAGE_SIZE = 5;
 export default {
   name: 'ListPresenter',
   components: {
-    GlIcon,
     GlIntersperse,
-    GlLink,
-    GlSprintf,
     GlSkeletonLoader,
     FieldPresenter,
   },
@@ -41,8 +39,19 @@ export default {
     items() {
       return this.data.nodes || [];
     },
-    fieldsExceptTitle() {
-      return this.fields?.filter((item) => item.key !== 'title');
+    titleFieldKey() {
+      // Assumes a homogeneous typename for the result set: a single GLQL query
+      // returns rows of one shape, so peeking at the first item is safe.
+      // eslint-disable-next-line no-underscore-dangle
+      return titleFieldFor(this.items[0]?.__typename);
+    },
+    hasTitle() {
+      return this.fields?.some((field) => field.key === this.titleFieldKey);
+    },
+    visibleFields() {
+      return this.hasTitle
+        ? this.fields.filter((field) => field.key !== this.titleFieldKey)
+        : this.fields;
     },
     pageSize() {
       return typeof this.loading === 'number' ? this.loading : DEFAULT_PAGE_SIZE;
@@ -55,22 +64,20 @@ export default {
     <li
       v-for="(item, itemIndex) in items"
       :key="item.id || itemIndex"
-      class="!gl-m-0 gl-list-inside !gl-px-5 !gl-py-3 gl-transition-background hover:gl-bg-strong dark:hover:gl-bg-neutral-700"
+      class="!gl-m-0 gl-list-inside !gl-px-5 !gl-py-3 gl-transition-background hover:gl-bg-subtle"
       :class="{
-        'gl-border-b !gl-border-b-section': itemIndex !== items.length - 1 || loading,
+        'gl-border-b': itemIndex !== items.length - 1 || loading,
       }"
       :data-testid="`list-item-${itemIndex}`"
     >
-      <div
-        class="gl-str-truncated gl-inline-block gl-max-w-[calc(100%-40px)] gl-pl-2 gl-pt-1 gl-align-top"
-      >
-        <h3 class="!gl-heading-5 !gl-mb-1 gl-truncate">
-          <field-presenter :item="item" field-key="title" />
+      <div class="gl-inline-block gl-max-w-[calc(100%-40px)] gl-pl-2 gl-pt-1 gl-align-top">
+        <h3 v-if="hasTitle" class="!gl-heading-5 !gl-mb-1 gl-truncate">
+          <field-presenter :item="item" :field-key="titleFieldKey" />
         </h3>
         <div>
           <gl-intersperse separator=" · ">
-            <span v-for="field in fieldsExceptTitle" :key="field.key">
-              <field-presenter :item="item" :field-key="field.key" />
+            <span v-for="field in visibleFields" :key="field.key">
+              <field-presenter :item="item" :field-key="field.key" variant="compact" />
             </span>
           </gl-intersperse>
         </div>
@@ -80,8 +87,8 @@ export default {
       <li
         v-for="i in pageSize"
         :key="i"
-        class="!gl-m-0 gl-list-inside !gl-px-5 !gl-py-3 gl-transition-background hover:gl-bg-strong dark:hover:gl-bg-neutral-700"
-        :class="{ 'gl-border-b !gl-border-b-section': i !== pageSize }"
+        class="!gl-m-0 gl-list-inside !gl-px-5 !gl-py-3 gl-transition-background hover:gl-bg-subtle"
+        :class="{ 'gl-border-b': i !== pageSize }"
       >
         <div class="gl-inline-block gl-align-top">
           <gl-skeleton-loader :width="400" :lines="1" :equal-width-lines="true" />

@@ -46,13 +46,6 @@
   }
 
   .file-blame-legend {
-    text-align: right;
-    padding: 8px $gl-padding;
-
-    @include gl-container-width-down(sm, panel) {
-      text-align: left;
-    }
-
     .left-label {
       padding-right: 5px;
     }
@@ -240,14 +233,9 @@ span.idiff {
     justify-content: space-between;
     @apply gl-bg-subtle;
     @apply gl-border-b;
-    padding: $gl-padding-8 $gl-padding;
     margin: 0;
     min-height: px-to-rem($file-header-height);
     border-radius: $gl-border-radius-lg-inner $gl-border-radius-lg-inner 0 0;
-
-    @include gl-container-width-up(md, panel) {
-      flex-wrap: nowrap;
-    }
   }
 
   .file-header-content {
@@ -256,14 +244,6 @@ span.idiff {
 
   a {
     @apply gl-text-default;
-  }
-}
-
-.blob-content-holder .file-actions {
-  @include gl-container-width-down(md, panel) {
-    .btn {
-      margin-bottom: $gl-padding-8;
-    }
   }
 }
 
@@ -336,6 +316,7 @@ span.idiff {
   }
 }
 
+// stylelint-disable-next-line gitlab/no-js-class
 #js-openapi-viewer {
   pre.version,
   code {
@@ -397,7 +378,7 @@ span.idiff {
   width: $gl-spacing-scale-5;
   height: $gl-spacing-scale-5;
   background-color: $gray-400;
-  mask-image: url('icons-stacked.svg#doc-versions');
+  mask-image: url('@gitlab/svgs/dist/icons-stacked.svg#doc-versions');
   mask-repeat: no-repeat;
   mask-size: cover;
   mask-position: center;
@@ -515,6 +496,10 @@ span.idiff {
     flex: none;
     @apply gl-bg-subtle;
     border-left: 3px solid;
+
+    @include gl-media-breakpoint-down(md) {
+      width: 200px;
+    }
 
     .commit-row-title {
       display: flex;

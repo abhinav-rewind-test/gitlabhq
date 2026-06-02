@@ -35,12 +35,12 @@ RSpec.describe WorkItems::Widgets::Hierarchy, feature_category: :team_planning d
       specify do
         create(:parent_link, work_item: task, work_item_parent: work_item_parent)
 
-        is_expected.to eq(true)
+        is_expected.to be(true)
       end
     end
 
     context 'when parent is not present' do
-      it { is_expected.to eq(false) }
+      it { is_expected.to be(false) }
     end
   end
 
@@ -137,6 +137,8 @@ RSpec.describe WorkItems::Widgets::Hierarchy, feature_category: :team_planning d
     subject { described_class.new(work_item).rolled_up_counts_by_type }
 
     before_all do
+      skip unless Gitlab.ee?
+
       create(:parent_link, work_item_parent: work_item, work_item: sub_epic)
       create(:parent_link, work_item_parent: sub_epic, work_item: sub_sub_epic)
       create(:parent_link, work_item_parent: sub_epic, work_item: sub_issue)
@@ -145,64 +147,62 @@ RSpec.describe WorkItems::Widgets::Hierarchy, feature_category: :team_planning d
       create(:parent_link, work_item_parent: sub_epic_2, work_item: sub_issue_2)
     end
 
-    it 'returns rolled up dates by work item type and state' do
-      is_expected.to contain_exactly(
-        {
-          work_item_type: WorkItems::Type.default_by_type(:epic),
-          counts_by_state: { all: 3, opened: 2, closed: 1 }
-        },
-        {
-          work_item_type: WorkItems::Type.default_by_type(:issue),
-          counts_by_state: { all: 2, opened: 1, closed: 1 }
-        },
-        {
-          work_item_type: WorkItems::Type.default_by_type(:task),
-          counts_by_state: { all: 1, opened: 1, closed: 0 }
-        },
-        {
-          work_item_type: WorkItems::Type.default_by_type(:ticket),
-          counts_by_state: { all: 0, opened: 0, closed: 0 }
-        }
-      )
+    context "when the FF for system defined types is enabled" do
+      it 'returns rolled up dates by work item type and state' do
+        is_expected.to contain_exactly(
+          {
+            work_item_type: build(:work_item_system_defined_type, :epic),
+            counts_by_state: { all: 3, opened: 2, closed: 1 }
+          },
+          {
+            work_item_type: build(:work_item_system_defined_type, :issue),
+            counts_by_state: { all: 2, opened: 1, closed: 1 }
+          },
+          {
+            work_item_type: build(:work_item_system_defined_type, :task),
+            counts_by_state: { all: 1, opened: 1, closed: 0 }
+          },
+          {
+            work_item_type: build(:work_item_system_defined_type, :ticket),
+            counts_by_state: { all: 0, opened: 0, closed: 0 }
+          }
+        )
+      end
     end
   end
 
   describe '#depth_limit_reached_by_type' do
-    let_it_be(:work_item) { create(:work_item, :epic) }
+    let_it_be(:work_item) { create(:work_item, :issue) }
     let_it_be(:hierarchy) { described_class.new(work_item) }
-    let_it_be(:descendant_type1) { create(:work_item_type, :epic) }
-    let_it_be(:descendant_type2) { create(:work_item_type, :issue) }
-
-    before do
-      allow(work_item.work_item_type).to receive(:descendant_types).and_return([descendant_type1, descendant_type2])
-    end
 
     it 'returns an array of hashes with work_item_type and depth_limit_reached' do
-      allow(work_item).to receive(:max_depth_reached?).with(descendant_type1).and_return(true)
-      allow(work_item).to receive(:max_depth_reached?).with(descendant_type2).and_return(false)
+      descendant_types = work_item.work_item_type.descendant_types(resource_parent: work_item.resource_parent)
 
       result = hierarchy.depth_limit_reached_by_type
 
-      expect(result).to contain_exactly(
-        { work_item_type: descendant_type1, depth_limit_reached: true },
-        { work_item_type: descendant_type2, depth_limit_reached: false }
-      )
+      expect(result.size).to eq(descendant_types.size)
+      result.each do |item|
+        expect(item).to have_key(:work_item_type)
+        expect(item).to have_key(:depth_limit_reached)
+        expect(item[:depth_limit_reached]).to be_in([true, false])
+      end
     end
 
     it 'calls max_depth_reached? for each descendant type' do
-      expect(work_item).to receive(:max_depth_reached?).with(descendant_type1).once
-      expect(work_item).to receive(:max_depth_reached?).with(descendant_type2).once
+      descendant_types = work_item.work_item_type.descendant_types(resource_parent: work_item.resource_parent)
+      descendant_types.each do |type|
+        expect(work_item).to receive(:max_depth_reached?).with(type).once.and_return(false)
+      end
 
       hierarchy.depth_limit_reached_by_type
     end
 
     context 'when there are no descendant types' do
-      before do
-        allow(work_item.work_item_type).to receive(:descendant_types).and_return([])
-      end
+      let_it_be(:work_item_without_children) { create(:work_item, :task) }
+      let_it_be(:hierarchy_without_children) { described_class.new(work_item_without_children) }
 
       it 'returns an empty array' do
-        result = hierarchy.depth_limit_reached_by_type
+        result = hierarchy_without_children.depth_limit_reached_by_type
 
         expect(result).to eq([])
       end

@@ -3,10 +3,10 @@
 require 'spec_helper'
 
 RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:guest) { create(:user) }
-  let_it_be(:project) { create(:project, developers: developer, guests: guest) }
-  let_it_be(:parent) { create(:work_item, project: project) }
+  let_it_be(:developer, freeze: false) { create(:user) }
+  let_it_be(:guest, freeze: false) { create(:user) }
+  let_it_be(:project, freeze: false) { create(:project, developers: developer, guests: guest) }
+  let_it_be(:parent, freeze: false) { create(:work_item, project: project) }
   let_it_be_with_reload(:work_item) { create(:work_item, project: project, assignees: [developer]) }
 
   let(:widget_params) { {} }
@@ -470,24 +470,23 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
       end
 
       context 'for the hierarchy widget' do
-        let(:opts) { { title: 'changed' } }
-        let_it_be(:child_work_item) { create(:work_item, :task, project: project) }
+        let(:opts) { { title: 'hierarchy updated title' } }
+        let_it_be(:child_work_item, freeze: false) { create(:work_item, :task, project: project) }
+        let_it_be_with_refind(:work_item) { create(:work_item, project: project, assignees: [developer]) }
 
         let(:widget_params) { { hierarchy_widget: { children: [child_work_item] } } }
 
-        context 'when quarantined shared example', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/485044' do
-          include_examples 'publish WorkItems::WorkItemUpdatedEvent event',
-            attributes: %w[
-              title
-              title_html
-              lock_version
-              updated_at
-              updated_by_id
-            ],
-            widgets: %w[
-              hierarchy_widget
-            ]
-        end
+        include_examples 'publish WorkItems::WorkItemUpdatedEvent event',
+          attributes: %w[
+            title
+            title_html
+            lock_version
+            updated_at
+            updated_by_id
+          ],
+          widgets: %w[
+            hierarchy_widget
+          ]
 
         it 'updates the children of the work item' do
           expect do
@@ -505,7 +504,7 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
         end
 
         context 'when child type is invalid' do
-          let_it_be(:child_work_item) { create(:work_item, project: project) }
+          let_it_be(:child_work_item, freeze: false) { create(:work_item, project: project) }
 
           it 'returns error status' do
             expect(subject[:status]).to be(:error)
@@ -534,7 +533,7 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
       end
 
       context 'for milestone widget' do
-        let_it_be(:milestone) { create(:milestone, project: project) }
+        let_it_be(:milestone, freeze: false) { create(:milestone, project: project) }
 
         let(:widget_params) { { milestone_widget: { milestone_id: milestone.id } } }
 
@@ -550,7 +549,7 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
 
         context 'when milestone is updated' do
           it "triggers 'issuableMilestoneUpdated'" do
-            expect(work_item.milestone).to eq(nil)
+            expect(work_item.milestone).to be_nil
             expect(GraphqlTriggers).to receive(:issuable_milestone_updated).with(work_item).and_call_original
 
             update_work_item
@@ -576,8 +575,8 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
       end
 
       context 'for current user todos widget' do
-        let_it_be(:user_todo) { create(:todo, target: work_item, user: developer, project: project, state: :pending) }
-        let_it_be(:other_todo) { create(:todo, target: work_item, user: create(:user), project: project, state: :pending) }
+        let_it_be(:user_todo, freeze: false) { create(:todo, target: work_item, user: developer, project: project, state: :pending) }
+        let_it_be(:other_todo, freeze: false) { create(:todo, target: work_item, user: create(:user), project: project, state: :pending) }
 
         include_examples 'publish WorkItems::WorkItemUpdatedEvent event',
           attributes: %w[
@@ -631,9 +630,11 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
       end
 
       context 'for assignees widget' do
-        let_it_be(:assignee) { create(:user, developer_of: project) }
-
         let(:widget_params) { { assignees_widget: { assignee_ids: [assignee.id] } } }
+        let_it_be(:assignee, freeze: false) { create(:user, developer_of: project) }
+        # Use a fresh work item to ensure updated_by_id is not already set to current_user
+        # from a prior test, which would prevent Rails from detecting the change.
+        let_it_be_with_refind(:work_item) { create(:work_item, project: project, assignees: [developer], updated_by: nil) }
 
         it 'updates assignees of the work item' do
           expect do
@@ -642,18 +643,16 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
           end.to change { work_item.assignees }.from([developer]).to([assignee]).and change { work_item.updated_at }
         end
 
-        context 'when quarantined shared example', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/485027' do
-          it_behaves_like 'publish WorkItems::WorkItemUpdatedEvent event',
-            attributes:
-            %w[
-              updated_at
-              updated_by_id
-            ],
-            widgets:
-            %w[
-              assignees_widget
-            ]
-        end
+        it_behaves_like 'publish WorkItems::WorkItemUpdatedEvent event',
+          attributes:
+          %w[
+            updated_at
+            updated_by_id
+          ],
+          widgets:
+          %w[
+            assignees_widget
+          ]
 
         context 'when work item validation fails' do
           let(:opts) { { title: '' } }
@@ -667,8 +666,8 @@ RSpec.describe WorkItems::UpdateService, feature_category: :team_planning do
     end
 
     describe 'label updates' do
-      let_it_be(:label1) { create(:label, project: project) }
-      let_it_be(:label2) { create(:label, project: project) }
+      let_it_be(:label1, freeze: false) { create(:label, project: project) }
+      let_it_be(:label2, freeze: false) { create(:label, project: project) }
 
       context 'when labels are changed' do
         let(:label) { create(:label, project: project) }

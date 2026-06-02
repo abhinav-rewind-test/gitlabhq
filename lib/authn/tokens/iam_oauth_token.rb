@@ -8,11 +8,10 @@ module Authn
       class << self
         # Primary public interface for creating validated tokens.
         def from_jwt(token_string)
-          return unless Gitlab.config.authn.iam_service.enabled
+          return unless Authn::IamAuthService.enabled?
           return unless iam_issued_jwt?(token_string)
 
-          result = ::Authn::IamService::JwtValidationService.new(token: token_string,
-            audience: Authn::IamService::JwtValidationService::GITLAB_RAILS_AUDIENCE).execute
+          result = ::Authn::IamService::JwtValidationService.new(token: token_string).execute
           return unless result.success?
 
           token = from_validated_jwt(result.payload)

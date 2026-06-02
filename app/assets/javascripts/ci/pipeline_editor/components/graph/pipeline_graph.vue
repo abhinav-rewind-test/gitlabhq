@@ -1,17 +1,15 @@
 <script>
 import { GlAlert } from '@gitlab/ui';
-import { __ } from '~/locale';
+import { __, n__, sprintf } from '~/locale';
 import { DRAW_FAILURE, DEFAULT } from '~/ci/pipeline_details/constants';
 import LinksLayer from '~/ci/common/private/job_links_layer.vue';
-import JobPill from './job_pill.vue';
-import StageName from './stage_name.vue';
+import JobRow from './job_row.vue';
 
 export default {
   components: {
     GlAlert,
-    JobPill,
+    JobRow,
     LinksLayer,
-    StageName,
   },
   CONTAINER_REF: 'PIPELINE_GRAPH_CONTAINER_REF',
   BASE_CONTAINER_ID: 'pipeline-graph-container',
@@ -26,6 +24,8 @@ export default {
   // is for when there is less text than the stage column width (which the width 100% does not fix)
   jobWrapperClasses:
     'gl-flex gl-flex-col gl-items-stretch gl-w-full gl-px-8 gl-min-w-full gl-max-w-15',
+  cardClasses:
+    'gl-shadow-inner-1-black-300 gl-mr-8 gl-min-w-[280px] gl-flex-col gl-items-center gl-self-stretch gl-rounded-lg gl-border-solid gl-border-default gl-bg-default gl-py-3',
   props: {
     pipelineData: {
       required: true,
@@ -111,6 +111,13 @@ export default {
     updateHighlightedJobs(jobs) {
       this.highlightedJobs = jobs;
     },
+    numberOfJobsSubheader(groups) {
+      const jobsLength = groups.length;
+
+      return sprintf(n__('%{jobsLength} job', '%{jobsLength} jobs', jobsLength), {
+        jobsLength,
+      });
+    },
   },
 };
 </script>
@@ -136,28 +143,35 @@ export default {
         :container-id="containerId"
         :container-measurements="measurements"
         :highlighted-job="highlightedJob"
-        @highlightedJobsChange="updateHighlightedJobs"
+        @highlighted-jobs-change="updateHighlightedJobs"
         @error="onError"
       >
-        <div
-          v-for="(stage, index) in pipelineStages"
-          :key="`${stage.name}-${index}`"
-          class="gl-flex-col"
-        >
-          <div class="gl-mb-5 gl-flex gl-w-full gl-items-center gl-px-9 gl-py-4">
-            <stage-name :stage-name="stage.name" />
-          </div>
-          <div :class="$options.jobWrapperClasses">
-            <job-pill
-              v-for="group in stage.groups"
-              :key="group.name"
-              :job-name="group.name"
-              :pipeline-id="$options.PIPELINE_ID"
-              :is-hovered="highlightedJob === group.name"
-              :is-faded-out="isFadedOut(group.name)"
-              @on-mouse-enter="setHoveredJob"
-              @on-mouse-leave="removeHoveredJob"
-            />
+        <div class="gl-relative gl-flex gl-p-8">
+          <div
+            v-for="(stage, index) in pipelineStages"
+            :key="`${stage.name}-${index}`"
+            :class="$options.cardClasses"
+          >
+            <!--Card header and separator-->
+            <div class="gl-flex gl-items-center gl-justify-center gl-px-5 gl-pb-3">
+              <div class="gl-ml-5 gl-flex gl-grow-2 gl-flex-col" data-testid="card-header">
+                <strong>{{ stage.name }}</strong>
+                <p class="gl-m-0 gl-text-subtle">{{ numberOfJobsSubheader(stage.groups) }}</p>
+              </div>
+            </div>
+            <div class="gl-border-b gl-border-solid gl-border-default"></div>
+            <div class="gl-flex gl-flex-col gl-pt-3">
+              <job-row
+                v-for="group in stage.groups"
+                :key="group.name"
+                :job-name="group.name"
+                :pipeline-id="$options.PIPELINE_ID"
+                :is-hovered="highlightedJob === group.name"
+                :is-faded-out="isFadedOut(group.name)"
+                @on-mouse-enter="setHoveredJob"
+                @on-mouse-leave="removeHoveredJob"
+              />
+            </div>
           </div>
         </div>
       </links-layer>

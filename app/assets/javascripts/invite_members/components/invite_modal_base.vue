@@ -1,5 +1,14 @@
 <script>
-import { GlFormGroup, GlModal, GlDatepicker, GlLink, GlSprintf, GlButton } from '@gitlab/ui';
+import {
+  GlFormGroup,
+  GlModal,
+  GlDatepicker,
+  GlLink,
+  GlSprintf,
+  GlButton,
+  GlCollapse,
+  GlIcon,
+} from '@gitlab/ui';
 
 import Tracking from '~/tracking';
 import { sprintf } from '~/locale';
@@ -8,6 +17,7 @@ import { initialSelectedRole, roleDropdownItems } from 'ee_else_ce/members/utils
 import RoleSelector from '~/members/components/role_selector.vue';
 import {
   ACCESS_EXPIRE_DATE,
+  GRANT_TEMPORARY_ACCESS,
   READ_MORE_TEXT,
   READ_MORE_ACCESS_EXPIRATION_TEXT,
   INVITE_BUTTON_TEXT,
@@ -37,6 +47,8 @@ export default {
     GlModal,
     GlSprintf,
     GlButton,
+    GlCollapse,
+    GlIcon,
     ContentTransition,
   },
   mixins: [Tracking.mixin()],
@@ -149,6 +161,7 @@ export default {
       selectedRole: null,
       selectedDate: undefined,
       minDate: new Date(),
+      isTemporaryAccessExpanded: false,
     };
   },
   computed: {
@@ -213,8 +226,12 @@ export default {
       // This component isn't necessarily disposed, so we might need to reset its state.
       this.resetSelectedAccessLevel();
       this.selectedDate = undefined;
+      this.isTemporaryAccessExpanded = false;
 
       this.$emit('reset');
+    },
+    toggleTemporaryAccess() {
+      this.isTemporaryAccessExpanded = !this.isTemporaryAccessExpanded;
     },
     onShowModal() {
       this.$emit('shown');
@@ -252,6 +269,7 @@ export default {
   },
   HEADER_CLOSE_LABEL,
   ACCESS_EXPIRE_DATE,
+  GRANT_TEMPORARY_ACCESS,
   READ_MORE_TEXT,
   READ_MORE_ACCESS_EXPIRATION_TEXT,
   INVITE_BUTTON_TEXT,
@@ -282,14 +300,12 @@ export default {
     >
       <template #[$options.DEFAULT_SLOT]>
         <div class="gl-flex" data-testid="modal-base-intro-text">
-          <slot name="intro-text-before"></slot>
           <p>
             <gl-sprintf :message="introText">
               <template #strong="{ content }">
                 <strong>{{ content }}</strong>
               </template>
             </gl-sprintf>
-            <slot name="intro-text-after"></slot>
           </p>
         </div>
 
@@ -301,9 +317,11 @@ export default {
           :label-for="selectId"
           :invalid-feedback="invalidFeedbackMessage"
           :state="exceptionState"
-          :description="formGroupDescription"
           data-testid="members-form-group"
         >
+          <template v-if="formGroupDescription" #label-description>
+            <span class="gl-text-subtle">{{ formGroupDescription }}</span>
+          </template>
           <slot name="select" v-bind="{ exceptionState, inputId: selectId }"></slot>
         </gl-form-group>
 
@@ -325,32 +343,56 @@ export default {
             data-testid="access-level-dropdown"
             :roles="roleDropdownItems"
             :loading="isLoadingRoles"
-            class="gl-max-w-30"
+            class="gl-w-full"
             header-text=""
           />
         </gl-form-group>
 
-        <gl-form-group :label="$options.ACCESS_EXPIRE_DATE" :label-for="datepickerId">
-          <gl-datepicker
-            v-model="selectedDate"
-            :input-id="datepickerId"
-            class="!gl-block"
-            :min-date="minDate"
-            :target="null"
-          />
-          <template #description>
-            <gl-sprintf :message="$options.READ_MORE_ACCESS_EXPIRATION_TEXT">
-              <template #link="{ content }">
-                <gl-link
-                  :href="accessExpirationHelpLink"
-                  target="_blank"
-                  data-testid="invite-modal-access-expiration-link"
-                  >{{ content }}</gl-link
-                >
+        <slot name="membership-selector"></slot>
+
+        <div data-testid="temporary-access-section">
+          <gl-button
+            variant="link"
+            data-testid="temporary-access-toggle"
+            :aria-expanded="isTemporaryAccessExpanded"
+            aria-controls="temporary-access-collapse"
+            @click="toggleTemporaryAccess"
+          >
+            <gl-icon
+              name="chevron-right"
+              class="gl-transition-all"
+              :class="{ 'gl-rotate-90': isTemporaryAccessExpanded }"
+            />
+            {{ $options.GRANT_TEMPORARY_ACCESS }}
+          </gl-button>
+          <gl-collapse id="temporary-access-collapse" v-model="isTemporaryAccessExpanded">
+            <gl-form-group
+              :label="$options.ACCESS_EXPIRE_DATE"
+              :label-for="datepickerId"
+              class="gl-mt-5 gl-pl-6"
+            >
+              <gl-datepicker
+                v-model="selectedDate"
+                :input-id="datepickerId"
+                class="!gl-block"
+                :min-date="minDate"
+                :target="null"
+              />
+              <template #description>
+                <gl-sprintf :message="$options.READ_MORE_ACCESS_EXPIRATION_TEXT">
+                  <template #link="{ content }">
+                    <gl-link
+                      :href="accessExpirationHelpLink"
+                      target="_blank"
+                      data-testid="invite-modal-access-expiration-link"
+                      >{{ content }}</gl-link
+                    >
+                  </template>
+                </gl-sprintf>
               </template>
-            </gl-sprintf>
-          </template>
-        </gl-form-group>
+            </gl-form-group>
+          </gl-collapse>
+        </div>
       </template>
 
       <template v-for="{ key } in extraSlots" #[key]>

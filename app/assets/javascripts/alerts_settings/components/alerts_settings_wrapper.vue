@@ -32,6 +32,7 @@ import IntegrationsList from './alerts_integrations_list.vue';
 import AlertSettingsForm from './alerts_settings_form.vue';
 
 export default {
+  name: 'AlertsSettingsWrapper',
   i18n,
   components: {
     IntegrationsList,
@@ -353,6 +354,7 @@ export default {
         :count="integrations.length"
         :toggle-text="canAddIntegration ? $options.i18n.addNewIntegration : ''"
         icon="warning"
+        title-tag="h3"
       >
         <template #form>
           <alert-settings-form

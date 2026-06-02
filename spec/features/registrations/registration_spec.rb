@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Registrations', :with_current_organization, feature_category: :system_access do
+RSpec.describe 'Registrations', :with_current_organization, feature_category: :activation do
   let_it_be(:user) { create(:user) }
 
   context 'when the user visits the registration page when already signed in', :clean_gitlab_redis_sessions do
@@ -28,17 +28,21 @@ RSpec.describe 'Registrations', :with_current_organization, feature_category: :s
       stub_application_setting(require_admin_approval_after_user_signup: false)
     end
 
-    it 'becomes a member after confirmation' do
+    it 'becomes a member after confirmation', :aggregate_failures do
       create(:group_member, :invited, :developer, source: group, invite_email: new_user.email)
 
       visit new_user_registration_path
       fill_in_sign_up_form(new_user)
 
+      # Wait for registration to complete so `confirm_email` doesn't race the
+      # in-flight request and find the user before it is persisted.
+      expect(page).to have_no_current_path(new_user_registration_path)
+
       confirm_email(new_user)
       visit polymorphic_path(group)
 
       expect(page).to have_content(group.name)
-      expect(page).not_to have_content('Page not found')
+      expect(page).to have_no_content('Page not found')
     end
   end
 end

@@ -19,7 +19,8 @@ module API
       end
     end
 
-    desc 'Get the current application settings' do
+    desc 'Retrieve application settings' do
+      detail 'Retrieves the current application settings for this GitLab instance.'
       tags ['instance']
       success Entities::ApplicationSetting
     end
@@ -27,7 +28,8 @@ module API
       present current_settings, with: Entities::ApplicationSetting
     end
 
-    desc 'Modify application settings' do
+    desc 'Update application settings' do
+      detail 'Updates the current application settings for this GitLab instance.'
       tags ['instance']
       success Entities::ApplicationSetting
     end
@@ -55,11 +57,15 @@ module API
       optional :default_branch_protection, type: Integer, values: ::Gitlab::Access.protection_values, desc: 'Determine if developers can push to default branch'
       optional :default_branch_protection_defaults, type: Hash, desc: 'Determine if developers can push to default branch' do
         optional :allowed_to_push, type: Array, desc: 'An array of access levels allowed to push' do
+          # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
           requires :access_level, type: Integer, values: ProtectedBranch::PushAccessLevel.allowed_access_levels, desc: 'A valid access level'
+          # rubocop:enable API/AccessLevelStringType
         end
         optional :allow_force_push, type: Boolean, desc: 'Allow force push for all users with push access.'
         optional :allowed_to_merge, type: Array, desc: 'An array of access levels allowed to merge' do
+          # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
           requires :access_level, type: Integer, values: ProtectedBranch::MergeAccessLevel.allowed_access_levels, desc: 'A valid access level'
+          # rubocop:enable API/AccessLevelStringType
         end
         optional :code_owner_approval_required, type: Boolean, desc: "Require approval from code owners"
         optional :developer_can_initial_push, type: Boolean, desc: 'Allow developers to initial push'
@@ -74,6 +80,7 @@ module API
       optional :domain_denylist_enabled, type: Boolean, desc: 'Enable domain denylist for sign ups'
       optional :domain_denylist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Users with e-mail addresses that match these domain(s) will NOT be able to sign-up. Wildcards allowed. Enter multiple entries on separate lines. Ex: domain.com, *.domain.com'
       optional :domain_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'ONLY users with e-mail addresses that match these domain(s) will be able to sign-up. Wildcards allowed. Enter multiple entries on separate lines. Ex: domain.com, *.domain.com'
+      optional :email_otp_enabled, type: Boolean, desc: 'Enable Email-based one-time passwords (OTP) as a multi-factor authentication method.'
       optional :iframe_rendering_enabled, type: Boolean, desc: 'Allow rendering of iframes in Markdown.'
       optional :iframe_rendering_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Allowed iframe src host[:port] entries. Enter multiple entries separated by commas or on separate lines.'
       optional :iframe_rendering_allowlist_raw, type: String, desc: 'Raw newline- or comma-separated list of allowed iframe src host[:port] entries.'
@@ -207,7 +214,9 @@ module API
       end
       optional :issues_create_limit, type: Integer, desc: "Maximum number of issue creation requests allowed per minute per user. Set to 0 for unlimited requests per minute."
       optional :raw_blob_request_limit, type: Integer, desc: "Maximum number of requests per minute for each raw path. Set to 0 for unlimited requests per minute."
+      optional :raw_blob_request_limit_unauthenticated, type: Integer, desc: "Maximum number of requests per minute for a raw blob for unauthenticated requests. Set to 0 for unlimited requests per minute."
       optional :wiki_page_max_content_bytes, type: Integer, desc: "Maximum wiki page content size in bytes"
+      optional :description_and_note_max_size, type: Integer, desc: 'Maximum work item, merge request, and vulnerability description and comment content size in bytes.'
       optional :wiki_asciidoc_allow_uri_includes, type: Boolean, desc: "Allow URI includes for AsciiDoc wiki pages"
       optional :require_admin_approval_after_user_signup, type: Boolean, desc: 'Require explicit admin approval for new signups'
       optional :whats_new_variant, type: String, values: ApplicationSetting.whats_new_variants.keys, desc: "What's new variant, possible values: `all_tiers`, `current_tier`, and `disabled`."
@@ -253,7 +262,6 @@ module API
       optional :ai_action_api_rate_limit, type: Integer, desc: 'Maximum requests a user can make per 8 hours to aiAction endpoint'
       optional :code_suggestions_api_rate_limit, type: Integer, desc: 'Maximum requests a user can make per minute to code suggestions endpoint'
       optional :resource_usage_limits, type: JSON, desc: 'Definition for resource usage limits enforced in Sidekiq workers'
-      optional :ropc_without_client_credentials, type: Boolean, desc: 'Allows the use of Oauth ROPC flow without client credentials'
       optional :vscode_extension_marketplace, type: Hash, desc: 'Settings for VS Code Extension Marketplace' do
         optional :enabled, type: Boolean, desc: 'Enables VS Code Extension Marketplace for Web IDE and Workspaces'
         optional :preset, type: String, desc: "The preset configuration of URL's for the VS Code Extension Marketplace"

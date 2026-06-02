@@ -16,7 +16,7 @@ module AuthenticatesWithTwoFactor
   # user - User record
   #
   # Returns nil
-  def prompt_for_two_factor(user)
+  def prompt_for_two_factor(user, status: :ok)
     @user = user # rubocop:disable Gitlab/ModuleWithInstanceVariables -- Set @user for Devise views
 
     return handle_locked_user(user) unless user.can?(:log_in)
@@ -27,7 +27,7 @@ module AuthenticatesWithTwoFactor
     add_gon_variables
     setup_webauthn_authentication(user)
 
-    render 'devise/sessions/two_factor'
+    render 'devise/sessions/two_factor', status: status
   end
 
   def prompt_for_passwordless_authentication_via_passkey
@@ -168,8 +168,7 @@ module AuthenticatesWithTwoFactor
 
       get_options = WebAuthn::Credential.options_for_get(
         allow: webauthn_registration_ids,
-        user_verification: 'discouraged',
-        extensions: { appid: WebAuthn.configuration.origin }
+        user_verification: 'discouraged'
       )
       session[:challenge] = get_options.challenge
       gon.push(webauthn: { options: Gitlab::Json.dump(get_options) })
@@ -217,9 +216,14 @@ module AuthenticatesWithTwoFactor
     user.increment_failed_attempts!
     log_failed_two_factor(user, method)
 
-    Gitlab::AppLogger.info("Failed Login: user=#{user.username} ip=#{request.remote_ip} method=#{method}")
+    Gitlab::AppLogger.info(
+      message: "Failed Login",
+      username: user.username,
+      method: method,
+      remote_ip: request.remote_ip
+    )
     flash.now[:alert] = message
-    prompt_for_two_factor(user)
+    prompt_for_two_factor(user, status: :unauthorized)
   end
 
   def handle_passwordless_auth_with_passkey_success(user)
@@ -261,7 +265,7 @@ module AuthenticatesWithTwoFactor
     # overridden in EE
   end
 
-  def handle_changed_user_password(user)
+  def handle_changed_user_password(_user)
     clear_two_factor_attempt!
 
     redirect_to new_user_session_path, alert: _('An error occurred. Please sign in again.')

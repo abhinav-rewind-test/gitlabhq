@@ -1,36 +1,19 @@
 ---
 stage: AI-powered
 group: AI Coding
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: Set up Code Suggestions (Classic) in your IDE.
-title: Set up Code Suggestions (Classic)
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Set up Code Suggestions in your IDE.
+title: Set up Code Suggestions
 ---
 
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Add-on: GitLab Duo Core, Pro, or Enterprise, GitLab Duo with Amazon Q
-- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-{{< history >}}
-
-- Changed to include GitLab Duo Core in GitLab 18.0.
-
-{{< /history >}}
-
-You can use GitLab Duo Code Suggestions (Classic) in several different IDEs.
+You can use GitLab Duo Code Suggestions in several different IDEs.
 
 To set up Code Suggestions, follow the instructions for your IDE.
 
 ## Prerequisites
 
-To use Code Suggestions, you need:
-
-- If you have GitLab Duo Core, [IDE features turned on](../../../gitlab_duo/turn_on_off.md#turn-gitlab-duo-core-on-or-off).
-- To confirm that Code Suggestions [supports your preferred language](supported_extensions.md#supported-languages-by-ide).
-  Different IDEs support different languages.
+- If you have GitLab Duo Core, [IDE features are on](../../../gitlab_duo/turn_on_off.md#turn-gitlab-duo-core-on-or-off).
+- You have a project in a language that Code Suggestions [supports](supported_extensions.md).
 
 ## Configure editor extension
 
@@ -57,27 +40,29 @@ To confirm, open your IDE and verify if Code Suggestions works.
 
 To verify that Code Suggestions is turned on in VS Code:
 
-1. In VS Code, go to **Settings** > **Extensions** > **GitLab Workflow**.
-1. Select **Manage** ({{< icon name="settings" >}}).
-1. Ensure that **GitLab** > **Duo Code Suggestions: Enabled** is selected.
-1. Optional. For **GitLab** > **Duo Code Suggestions: Enabled Supported Languages**,
+1. In VS Code, open the Settings editor:
+   - For macOS, press <kbd>Command</kbd>+<kbd>,</kbd>.
+   - For Windows or Linux, press <kbd>Control</kbd>+<kbd>,</kbd>.
+1. Select **Extensions** > **GitLab** > **GitLab Duo**.
+1. Ensure that the checkbox under **GitLab › Duo Code Suggestions: Enabled** is selected.
+1. Optional. Under **GitLab › Duo Code Suggestions: Enabled Supported Languages**,
    select the languages you want to suggest or generate code for.
-1. Optional. For **GitLab** > **Duo Code Suggestions: Additional Languages**, add other languages you'd like to use.
+1. Optional. Under **GitLab › Duo Code Suggestions: Additional Languages**, add other languages you'd like to use.
 
 ### Visual Studio
 
 To verify that Code Suggestions is turned on in Visual Studio:
 
 1. In Visual Studio, on the bottom status bar, point to the GitLab icon.
-1. When Code Suggestions is enabled, the icon tooltip shows `GitLab code suggestions are enabled.`
-1. If Code Suggestions are not enabled, on the top bar select **Extensions** > **GitLab** > **Toggle Code Suggestions** to enable it.
+1. Check the icon tooltip to confirm that the feature is enabled.
+1. If Code Suggestions is not enabled, in the top bar select **Extensions** > **GitLab** > **Toggle Code Suggestions** to enable it.
 
 ### JetBrains IDEs
 
 To verify that Code Suggestions is turned on in JetBrains IDEs:
 
-1. In your IDE, on the top bar, select your IDE's name, then select **Settings**.
-1. On the left sidebar, expand **Tools**, then select **GitLab Duo**.
+1. In your IDE, in the top bar, select your IDE's name, then select **Settings**.
+1. In the left sidebar, expand **Tools**, then select **GitLab Duo**.
 1. In the **Features** section, ensure that **Enable Code Suggestions** and **Enable GitLab Duo Chat** are selected.
 1. Select **OK** or **Save**.
 
@@ -95,8 +80,8 @@ to use a custom SSL certificate when connecting to your GitLab instance.
 
 To use a custom SSL certificate with GitLab Duo:
 
-1. In your IDE, on the top bar, select your IDE name, then select **Settings**.
-1. On the left sidebar, expand **Tools**, then select **GitLab Duo**.
+1. In your IDE, in the top bar, select your IDE name, then select **Settings**.
+1. In the left sidebar, expand **Tools**, then select **GitLab Duo**.
 1. Under **Connection**, enter the **URL to GitLab instance**.
 1. To verify your connection, select **Verify setup**.
 1. Select **OK** or **Save**.
@@ -110,8 +95,8 @@ If your IDE detects a non-trusted SSL certificate:
 
 To review certificates you've already accepted:
 
-1. In your IDE, on the top bar, select your IDE name, then select **Settings**.
-1. On the left sidebar, select **Tools** > **Server Certificates**.
+1. In your IDE, in the top bar, select your IDE name, then select **Settings**.
+1. In the left sidebar, select **Tools** > **Server Certificates**.
 1. Select [**Server Certificates**](https://www.jetbrains.com/help/idea/settings-tools-server-certificates.html).
 1. Select a certificate to view it.
 
@@ -162,9 +147,11 @@ The process for turning off Code Suggestions is different for each IDE.
 
 To turn off Code Suggestions in VS Code:
 
-1. Go to **Code** > **Settings** > **Extensions**.
-1. Select **Manage** ({{< icon name="settings" >}}) > **Settings**.
-1. Clear the **GitLab Duo Code Suggestions** checkbox.
+1. In VS Code, open the Settings editor:
+   - For macOS, press <kbd>Command</kbd>+<kbd>,</kbd>.
+   - For Windows or Linux, press <kbd>Control</kbd>+<kbd>,</kbd>.
+1. Select **Extensions** > **GitLab** > **GitLab Duo**.
+1. Under **GitLab › Duo Code Suggestions: Enabled**, clear the checkbox.
 
 Instead, you can [set `gitlab.duoCodeSuggestions.enabled` to `false` in the VS Code `settings.json` file](../../../../editor_extensions/visual_studio_code/settings.md#extension-settings).
 

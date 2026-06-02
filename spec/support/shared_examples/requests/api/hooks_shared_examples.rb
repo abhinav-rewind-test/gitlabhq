@@ -118,7 +118,7 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
   end
 
   let(:hook_params) do
-    event_names.to_h { [_1, true] }.merge(hook_param_overrides).merge(
+    event_names.index_with { true }.merge(hook_param_overrides).merge(
       url: "http://example.com",
       url_variables: [
         { key: 'token', value: 'very-secret' },
@@ -241,7 +241,7 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
 
           expect(response).to have_gitlab_http_status(:ok)
 
-          expect(json_response).to include('alert_status' => 'disabled') unless hook.executable?
+          expect(json_response).to include('alert_status' => 'temporarily_disabled') unless hook.executable?
         end
       end
 
@@ -327,11 +327,38 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
       expect(response).to have_gitlab_http_status(:created)
       expect(json_response["url"]).to eq("http://example.com")
       expect(json_response).not_to include("token")
+      expect(json_response["token_present"]).to be(true)
 
       hook = scope.find(json_response["id"])
 
       expect(hook.url).to eq("http://example.com")
       expect(hook.token).to eq(token)
+    end
+
+    context 'with signing_token' do
+      it "saves the signing_token without including it in the response" do
+        signing_token = "whsec_#{Base64.strict_encode64('a' * 32)}"
+
+        expect do
+          post api(collection_uri, user, admin_mode: user.admin?),
+            params: { url: "http://example.com", signing_token: signing_token }
+        end.to change { hooks_count }.by(1)
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(json_response).not_to have_key("signing_token")
+        expect(json_response["signing_token_present"]).to be(true)
+
+        hook = scope.find(json_response["id"])
+
+        expect(hook.signing_token).to eq(signing_token)
+      end
+
+      it "returns signing_token_present: false when no signing_token is set" do
+        post api(collection_uri, user, admin_mode: user.admin?), params: { url: "http://example.com" }
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(json_response["signing_token_present"]).to be(false)
+      end
     end
 
     it "returns a 400 error if url not given" do
@@ -368,6 +395,14 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
       post api(collection_uri, user, admin_mode: user.admin?), params: { url: "ftp://example.com" }
 
       expect(response).to have_gitlab_http_status(:unprocessable_entity)
+    end
+
+    it "returns a 422 error if custom_headers validation fails" do
+      post api(collection_uri, user, admin_mode: user.admin?),
+        params: { url: "http://example.com", custom_headers: [{ key: 'Content-Length', value: 'foo \n bar' }] }
+
+      expect(response).to have_gitlab_http_status(:unprocessable_entity)
+      expect(response.body).to include('Custom headers validation failed')
     end
   end
 
@@ -422,9 +457,22 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
       expect(response).to have_gitlab_http_status(:ok)
       expect(json_response["url"]).to eq("http://example.org")
       expect(json_response).not_to include("token")
+      expect(json_response["token_present"]).to be(true)
 
       expect(hook.reload.url).to eq("http://example.org")
       expect(hook.reload.token).to eq(token)
+    end
+
+    it "updates the signing_token without including it in the response" do
+      signing_token = "whsec_#{Base64.strict_encode64('a' * 32)}"
+
+      put api(hook_uri, user, admin_mode: user.admin?),
+        params: { url: "http://example.com", signing_token: signing_token }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response).not_to have_key("signing_token")
+      expect(json_response["signing_token_present"]).to be(true)
+      expect(hook.reload.signing_token).to eq(signing_token)
     end
 
     it "returns 404 error if hook id not found" do
@@ -449,6 +497,14 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
       put api(hook_uri, user, admin_mode: user.admin?), params: { token: %w[foo bar].join("\n") }
 
       expect(response).to have_gitlab_http_status(:unprocessable_entity)
+    end
+
+    it "returns a 422 error for invalid custom headers" do
+      put api(hook_uri, user, admin_mode: user.admin?),
+        params: { custom_headers: [{ key: 'bar', value: 'foo \n foo' }] }
+
+      expect(response).to have_gitlab_http_status(:unprocessable_entity)
+      expect(json_response["error"]).to include("Custom headers validation failed")
     end
   end
 
@@ -614,6 +670,25 @@ RSpec.shared_examples 'web-hook API endpoints' do |prefix|
       expect(response).to have_gitlab_http_status(:unprocessable_entity)
     end
 
+    it "returns a 400 error when the header name exceeds 255 characters" do
+      long_name = 'a' * 256
+
+      put api("#{hook_uri}/custom_headers/#{long_name}", user, admin_mode: user.admin?),
+        params: { value: 'xyz' }
+
+      expect(response).to have_gitlab_http_status(:bad_request)
+    end
+
+    it "accepts a header name at the maximum length of 255 characters" do
+      max_name = 'a' * 255
+
+      put api("#{hook_uri}/custom_headers/#{max_name}", user, admin_mode: user.admin?),
+        params: { value: 'some secret value' }
+
+      expect(response).to have_gitlab_http_status(:no_content)
+      expect(hook.reload.custom_headers).to include(max_name => 'some secret value')
+    end
+
     it "returns a 422 error when the key has leading whitespace" do
       put api("#{hook_uri}/custom_headers/%20abcdef", user, admin_mode: user.admin?),
         params: { value: 'xyz' }
@@ -720,7 +795,7 @@ RSpec.shared_examples 'test web-hook endpoint' do
     end
 
     it_behaves_like 'rate limited endpoint', rate_limit_key: :web_hook_test do
-      let_it_be(:user2) { create(:user) }
+      let_it_be(:user2, freeze: false) { create(:user) }
 
       let(:current_user) { user }
 
@@ -959,7 +1034,7 @@ RSpec.shared_examples 'resend web-hook event endpoint' do
     stub_full_request(hook.url, method: :post).to_return(status: 200)
   end
 
-  let_it_be(:log) { create(:web_hook_log, web_hook: hook, response_status: '404') }
+  let_it_be(:log, freeze: false) { create(:web_hook_log, web_hook: hook, response_status: '404') }
 
   it_behaves_like 'rate limited endpoint', rate_limit_key: :web_hook_event_resend do
     let(:current_user) { user }
@@ -1005,7 +1080,9 @@ RSpec.shared_examples 'resend web-hook event endpoint' do
   end
 
   context 'when hook URL has changed' do
-    let_it_be(:log) { create(:web_hook_log, web_hook: hook, response_status: '404', url_hash: 'new_hash') }
+    let_it_be(:log, freeze: false) do
+      create(:web_hook_log, web_hook: hook, response_status: '404', url_hash: 'new_hash')
+    end
 
     it "returns 422" do
       post api("#{hook_uri}/events/#{log.id}/resend", user, admin_mode: user.admin?), params: {}
@@ -1023,12 +1100,15 @@ end
 
 RSpec.shared_examples 'get web-hook event endpoint' do
   describe 'hooks events' do
-    let_it_be(:log_200) { create(:web_hook_log, web_hook: hook) }
-    let_it_be(:log_400) { create(:web_hook_log, web_hook: hook, response_status: '400') }
-    let_it_be(:log_404) { create(:web_hook_log, web_hook: hook, response_status: '404') }
-    let_it_be(:log_500) { create(:web_hook_log, web_hook: hook, response_status: '500') }
-    let_it_be(:log_502) { create(:web_hook_log, web_hook: hook, response_status: '502') }
-    let_it_be(:log_internal_error) { create(:web_hook_log, web_hook: hook, response_status: 'internal error') }
+    let_it_be(:log_200, freeze: false) { create(:web_hook_log, web_hook: hook) }
+    let_it_be(:log_400, freeze: false) { create(:web_hook_log, web_hook: hook, response_status: '400') }
+    let_it_be(:log_404, freeze: false) { create(:web_hook_log, web_hook: hook, response_status: '404') }
+    let_it_be(:log_500, freeze: false) { create(:web_hook_log, web_hook: hook, response_status: '500') }
+    let_it_be(:log_502, freeze: false) { create(:web_hook_log, web_hook: hook, response_status: '502') }
+    let_it_be(:log_internal_error, freeze: false) do
+      create(:web_hook_log, web_hook: hook, response_status: 'internal error')
+    end
+
     let(:path) { "#{hook_uri}/events" }
     let(:recent_logs) { [log_200, log_400, log_404, log_500, log_502, log_internal_error] }
 

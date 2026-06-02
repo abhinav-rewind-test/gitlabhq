@@ -281,8 +281,8 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
     it 'returns the correct refspecs' do
       is_expected.to contain_exactly(
-        "+refs/heads/#{build.ref}:refs/remotes/origin/#{build.ref}",
-        "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}"
+        "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
+        "+refs/heads/#{build.ref}:refs/remotes/origin/#{build.ref}"
       )
     end
 
@@ -291,8 +291,8 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
       it 'returns the correct refspecs' do
         is_expected.to contain_exactly(
-          "+refs/tags/#{build.ref}:refs/tags/#{build.ref}",
-          "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}"
+          "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
+          "+refs/tags/#{build.ref}:refs/tags/#{build.ref}"
         )
       end
 
@@ -303,9 +303,9 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
         it 'returns the correct refspecs' do
           is_expected.to contain_exactly(
+            "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
             '+refs/tags/*:refs/tags/*',
-            '+refs/heads/*:refs/remotes/origin/*',
-            "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}"
+            '+refs/heads/*:refs/remotes/origin/*'
           )
         end
       end
@@ -316,13 +316,8 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
       let(:pipeline) { merge_request.all_pipelines.first }
       let(:build) { create(:ci_build, ref: pipeline.ref, pipeline: pipeline) }
 
-      before do
-        pipeline.persistent_ref.create # rubocop:disable Rails/SaveBang
-      end
-
       it 'returns the correct refspecs' do
-        is_expected
-          .to contain_exactly("+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}")
+        is_expected.to contain_exactly("+#{pipeline.sha}:#{pipeline.persistent_ref.path}")
       end
 
       context 'when GIT_DEPTH is zero' do
@@ -332,7 +327,7 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
         it 'returns the correct refspecs' do
           is_expected.to contain_exactly(
-            "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
+            "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
             '+refs/heads/*:refs/remotes/origin/*',
             '+refs/tags/*:refs/tags/*'
           )
@@ -344,7 +339,7 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
         it 'returns the correct refspecs' do
           is_expected.to contain_exactly(
-            "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
+            "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
             "+refs/heads/#{build.ref}:refs/remotes/origin/#{build.ref}"
           )
         end
@@ -356,27 +351,7 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
       let(:build) { create(:ci_build, ref: workload_ref, tag: false) }
 
       it 'returns the correct refspecs' do
-        is_expected.to contain_exactly(
-          "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}"
-        )
-      end
-    end
-
-    context 'when persistent pipeline ref exists' do
-      let(:project) { create(:project, :repository) }
-      let(:sha) { project.repository.commit.sha }
-      let(:pipeline) { create(:ci_pipeline, sha: sha, project: project) }
-      let(:build) { create(:ci_build, pipeline: pipeline) }
-
-      before do
-        pipeline.persistent_ref.create # rubocop:disable Rails/SaveBang
-      end
-
-      it 'exposes the persistent pipeline ref' do
-        is_expected.to contain_exactly(
-          "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
-          "+refs/heads/#{build.ref}:refs/remotes/origin/#{build.ref}"
-        )
+        is_expected.to contain_exactly("+#{pipeline.sha}:#{pipeline.persistent_ref.path}")
       end
     end
   end
@@ -423,6 +398,24 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
 
       it 'returns an empty array' do
         expect(presenter.runner_inputs).to eq([])
+      end
+    end
+
+    context 'when a boolean input with default: true is overridden to false' do
+      let(:inputs_spec) do
+        { boolean_input: { type: 'boolean', default: true } }
+      end
+
+      before do
+        create(:ci_job_input,
+          job: build, project: build.project,
+          name: 'boolean_input', value: false)
+      end
+
+      it 'returns the false override, not the true default' do
+        expect(presenter.runner_inputs).to contain_exactly(
+          { key: :boolean_input, value: { content: false, type: 'boolean' } }
+        )
       end
     end
   end
@@ -513,6 +506,72 @@ RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integrati
           { key: 'B', value: 'refB-value-$D', public: false, masked: false },
           { key: 'A', value: 'refA-refB-value-$D', public: false, masked: false }
         ]
+      end
+    end
+  end
+
+  describe '#suspend_options' do
+    subject(:suspend_options) { presenter.suspend_options }
+
+    context 'when no suspend options are set' do
+      let(:build) { build_stubbed(:ci_build) }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when suspend_on_success is set' do
+      let(:build) { build_stubbed(:ci_build, options: { suspend_options: { suspend_on_success: true } }) }
+
+      it 'returns suspend options' do
+        expect(suspend_options).to eq(
+          suspend_on_success: true,
+          suspend_on_failure: false
+        )
+      end
+    end
+
+    context 'when suspend_on_failure is set' do
+      let(:build) { build_stubbed(:ci_build, options: { suspend_options: { suspend_on_failure: true } }) }
+
+      it 'returns suspend options' do
+        expect(suspend_options).to eq(
+          suspend_on_success: false,
+          suspend_on_failure: true
+        )
+      end
+    end
+
+    context 'when environment_key is set' do
+      let(:build) do
+        build_stubbed(:ci_build, options: { suspend_options: { environment_key: 'runner-1/executor-specific-data' } })
+      end
+
+      it 'returns suspend options with environment_key' do
+        expect(suspend_options).to eq(
+          suspend_on_success: false,
+          suspend_on_failure: false,
+          environment_key: 'runner-1/executor-specific-data'
+        )
+      end
+    end
+
+    context 'when all options are set' do
+      let(:build) do
+        build_stubbed(:ci_build, options: {
+          suspend_options: {
+            suspend_on_success: true,
+            suspend_on_failure: true,
+            environment_key: 'runner-1/executor-specific-data'
+          }
+        })
+      end
+
+      it 'returns all suspend options' do
+        expect(suspend_options).to eq(
+          suspend_on_success: true,
+          suspend_on_failure: true,
+          environment_key: 'runner-1/executor-specific-data'
+        )
       end
     end
   end

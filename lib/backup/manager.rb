@@ -114,6 +114,7 @@ module Backup
     private
 
     # @return [Hash<String, Backup::Tasks::Task>]
+    # rubocop:disable Metrics/AbcSize -- TODO: Complexity will be solved in the Unified Backup implementation (https://gitlab.com/groups/gitlab-org/-/epics/11635)
     def backup_tasks
       @backup_tasks ||= {
         Backup::Tasks::Database.id => Backup::Tasks::Database.new(progress: progress, options: options),
@@ -128,9 +129,12 @@ module Backup
         Backup::Tasks::Registry.id => Backup::Tasks::Registry.new(progress: progress, options: options),
         Backup::Tasks::Packages.id => Backup::Tasks::Packages.new(progress: progress, options: options),
         Backup::Tasks::CiSecureFiles.id => Backup::Tasks::CiSecureFiles.new(progress: progress, options: options),
+        Backup::Tasks::AgentPlanContent.id =>
+          Backup::Tasks::AgentPlanContent.new(progress: progress, options: options),
         Backup::Tasks::ExternalDiffs.id => Backup::Tasks::ExternalDiffs.new(progress: progress, options: options)
       }.freeze
     end
+    # rubocop:enable Metrics/AbcSize
 
     def run_all_create_tasks
       if options.incremental?
@@ -320,6 +324,9 @@ module Backup
 
       Dir.chdir(backup_path) do
         backup_file_list.each do |file|
+          # Never remove the backup we just created.
+          next if file == tar_file
+
           # For backward compatibility, there are 3 names the backups can have:
           # - 1495527122_gitlab_backup.tar
           # - 1495527068_2017_05_23_gitlab_backup.tar

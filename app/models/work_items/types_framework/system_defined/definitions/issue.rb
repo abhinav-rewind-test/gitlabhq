@@ -8,6 +8,8 @@ module WorkItems
           class << self
             def widgets
               %w[
+                agent_plan
+                ai_session
                 assignees
                 award_emoji
                 crm_contacts
@@ -37,7 +39,7 @@ module WorkItems
             end
 
             def widget_options
-              { weight: { editable: true, rollup: false } }
+              {}
             end
 
             def configuration
@@ -49,6 +51,10 @@ module WorkItems
               }
             end
 
+            def allowed_child_types
+              [{ type: :task, maximum_depth: 1 }]
+            end
+
             # This method adds a configuration for the parent of the Type, and it coresponding license.
             # The format should be { parent.base_type.to_s: license_name.to_sym}
             def licenses_for_parent
@@ -56,6 +62,10 @@ module WorkItems
             end
 
             def supports_move_action?
+              true
+            end
+
+            def filterable_board_view?
               true
             end
           end

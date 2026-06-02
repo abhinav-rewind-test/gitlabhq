@@ -21,6 +21,7 @@ class ProjectHook < WebHook
     :push_hooks,
     :release_hooks,
     :resource_access_token_hooks,
+    :resource_deploy_token_hooks,
     :tag_push_hooks,
     :wiki_page_hooks
   ].freeze
@@ -48,7 +49,7 @@ class ProjectHook < WebHook
 
   override :application_context
   def application_context
-    super.merge(project: project)
+    super.merge(project: project, organization: project.organization)
   end
 
   override :parent

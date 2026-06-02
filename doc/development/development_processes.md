@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Development processes
 ---
 
@@ -11,6 +11,8 @@ Consult these topics for information on development processes for contributing t
 
 Must-reads:
 
+- [Cells](cells/_index.md) for understanding the Cells architecture and how to
+  write Cells-compatible code
 - [Guide on adapting existing and introducing new components](architecture.md#adapting-existing-and-introducing-new-components)
 - [Code review guidelines](code_review.md) for reviewing code and having code
   reviewed
@@ -62,8 +64,8 @@ In these cases, use the following workflow:
    - [User Experience (UX)](https://handbook.gitlab.com/handbook/product/ux/)
    - [Security](https://handbook.gitlab.com/handbook/security/)
    - [Quality](https://handbook.gitlab.com/handbook/engineering/quality/)
-     - [Engineering Productivity](https://handbook.gitlab.com/handbook/engineering/infrastructure/engineering-productivity/)
-   - [Infrastructure](https://handbook.gitlab.com/handbook/engineering/infrastructure/)
+     - [Engineering Productivity](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/developer-experience/engineering-productivity/)
+   - [Infrastructure](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/)
 
    You can skip this step for MRs authored by EMs or Staff Engineers responsible
    for their area.
@@ -84,6 +86,25 @@ Any Maintainer can merge the MR.
 If you would like a review by a technical writer, post a message in the `#docs` Slack channel.
 Technical writers do not need to review the content, however, and any Maintainer
 other than the MR author can merge.
+
+### Merge request approval settings
+
+The `gitlab-org/gitlab` project enforces the following approval settings to satisfy the
+CHG-04 control of the GitLab
+[Change Management Controls](https://handbook.gitlab.com/handbook/security/security-and-technology-policies/change-management-policy/):
+
+- [Prevent approval by merge request creator](../user/project/merge_requests/approvals/settings.md#prevent-approval-by-merge-request-creator).
+- [Prevent approvals by users who add commits](../user/project/merge_requests/approvals/settings.md#prevent-approvals-by-users-who-add-commits).
+- [Prevent editing approval rules in merge requests](../user/project/merge_requests/approvals/settings.md#prevent-editing-approval-rules-in-merge-requests).
+- [Remove all approvals when commits are added to the source branch](../user/project/merge_requests/approvals/settings.md#remove-all-approvals-when-commits-are-added-to-the-source-branch).
+
+To update code owners in the `CODEOWNERS` file, follow the
+[code owners approvals process](https://handbook.gitlab.com/handbook/engineering/workflow/code-review/#code-owner-approvals).
+
+> [!note]
+> Rebasing locally or applying suggestions counts as adding a commit and resets approvals.
+> Approvals are not reset when rebasing from the UI or with the
+> [`/rebase` quick action](../user/project/quick_actions.md#rebase).
 
 ### Reviewer values
 

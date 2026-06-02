@@ -4,9 +4,9 @@ require 'spec_helper'
 
 RSpec.describe BulkImports::Common::Pipelines::BoardsPipeline, feature_category: :importers do
   let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group, freeze: false) { create(:group) }
   let_it_be(:project) { create(:project, group: group) }
-  let_it_be(:bulk_import) { create(:bulk_import, user: user) }
+  let_it_be(:bulk_import, freeze: false) { create(:bulk_import, user: user) }
 
   let(:board_data) do
     {
@@ -47,7 +47,7 @@ RSpec.describe BulkImports::Common::Pipelines::BoardsPipeline, feature_category:
   end
 
   context 'when issue board belongs to a project' do
-    let_it_be(:entity) do
+    let_it_be(:entity, freeze: false) do
       create(
         :bulk_import_entity,
         source_type: :project_entity,
@@ -61,7 +61,7 @@ RSpec.describe BulkImports::Common::Pipelines::BoardsPipeline, feature_category:
 
     describe '#run' do
       it 'imports issue boards into destination project' do
-        expect { subject.run }.to change(::Board, :count).by(1)
+        expect { subject.run }.to change { ::Board.count }.by(1)
         board = project.boards.find_by(name: board_data["name"])
         expect(board).to be_present
         expect(board.project.id).to eq(project.id)
@@ -73,7 +73,7 @@ RSpec.describe BulkImports::Common::Pipelines::BoardsPipeline, feature_category:
   end
 
   context 'when issue board belongs to a group' do
-    let_it_be(:entity) do
+    let_it_be(:entity, freeze: false) do
       create(
         :bulk_import_entity,
         group: group,
@@ -86,7 +86,7 @@ RSpec.describe BulkImports::Common::Pipelines::BoardsPipeline, feature_category:
 
     describe '#run' do
       it 'imports issue boards into destination group' do
-        expect { subject.run }.to change(::Board, :count).by(1)
+        expect { subject.run }.to change { ::Board.count }.by(1)
         board = group.boards.find_by(name: board_data["name"])
         expect(board).to be_present
         expect(board.group.id).to eq(group.id)

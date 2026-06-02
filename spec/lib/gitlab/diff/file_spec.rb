@@ -204,9 +204,22 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
   describe '#highlighted_diff_lines' do
     it 'highlights the diff and memoises the result' do
       expect(Gitlab::Diff::Highlight).to receive(:new)
-                                           .with(diff_file, repository: project.repository)
-                                           .once
-                                           .and_call_original
+                                            .with(diff_file, repository: project.repository, plain: false)
+                                            .once
+                                            .and_call_original
+
+      diff_file.highlighted_diff_lines
+    end
+  end
+
+  describe '#prevent_syntax_highlighting!' do
+    it 'causes highlighted_diff_lines to use plain highlighting' do
+      diff_file.prevent_syntax_highlighting!
+
+      expect(Gitlab::Diff::Highlight).to receive(:new)
+                                            .with(diff_file, repository: project.repository, plain: true)
+                                            .once
+                                            .and_call_original
 
       diff_file.highlighted_diff_lines
     end
@@ -275,7 +288,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
       it 'does not update @diff_lines' do
         expect { diff_file.unfold_diff_lines(position) }
-          .not_to change(diff_file, :diff_lines)
+          .not_to change { diff_file.diff_lines }
       end
     end
   end
@@ -288,13 +301,13 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     it 'returns true for a file that is too large' do
       expect(diff).to receive(:too_large?).and_return(true)
 
-      expect(diff_file.too_large?).to eq(true)
+      expect(diff_file.too_large?).to be(true)
     end
 
     it 'returns false for a file that is small enough' do
       expect(diff).to receive(:too_large?).and_return(false)
 
-      expect(diff_file.too_large?).to eq(false)
+      expect(diff_file.too_large?).to be(false)
     end
   end
 
@@ -302,13 +315,13 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     it 'returns true for a file that is quite big' do
       expect(diff).to receive(:collapsed?).and_return(true)
 
-      expect(diff_file.collapsed?).to eq(true)
+      expect(diff_file.collapsed?).to be(true)
     end
 
     it 'returns false for a file that is small enough' do
       expect(diff).to receive(:collapsed?).and_return(false)
 
-      expect(diff_file.collapsed?).to eq(false)
+      expect(diff_file.collapsed?).to be(false)
     end
   end
 
@@ -491,6 +504,12 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     end
   end
 
+  describe '#short_file_hash' do
+    it 'returns the first 9 characters of file_hash' do
+      expect(diff_file.short_file_hash.length).to eq(9)
+    end
+  end
+
   describe '#file_identifier_hash' do
     it 'returns a hash of file_identifier' do
       expect(diff_file.file_identifier_hash).to eq(Digest::SHA1.hexdigest(diff_file.file_identifier))
@@ -501,6 +520,63 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     it 'returns a hash' do
       expect(diff_file.code_review_id).to match(/\A[0-9a-f]{40}\z/)
     end
+
+    context 'when diff has to_id from Gitaly' do
+      before do
+        allow(diff).to receive(:to_id).and_return('efd587ccb47caf5f31fc954edb21f0a713d9ecc3')
+      end
+
+      it 'does not load the blob' do
+        expect(diff_file).not_to receive(:blob)
+        diff_file.code_review_id
+      end
+
+      it 'includes the to_id in the hash' do
+        expected = Digest::SHA1.hexdigest("#{diff_file.file_identifier}-efd587ccb47caf5f31fc954edb21f0a713d9ecc3")
+        expect(diff_file.code_review_id).to eq(expected)
+      end
+    end
+
+    context 'when diff has both to_id and from_id' do
+      before do
+        allow(diff).to receive(:to_id).and_return('efd587ccb47caf5f31fc954edb21f0a713d9ecc3')
+        allow(diff).to receive(:from_id).and_return('0792c58905eff3432b721f8c4a64363d8e28d9ae')
+      end
+
+      it 'uses to_id over from_id' do
+        expected = Digest::SHA1.hexdigest("#{diff_file.file_identifier}-efd587ccb47caf5f31fc954edb21f0a713d9ecc3")
+        expect(diff_file.code_review_id).to eq(expected)
+      end
+    end
+
+    context 'when diff has from_id but not to_id (deleted file)' do
+      before do
+        allow(diff).to receive(:to_id).and_return(nil)
+        allow(diff).to receive(:from_id).and_return('0792c58905eff3432b721f8c4a64363d8e28d9ae')
+      end
+
+      it 'does not load the blob' do
+        expect(diff_file).not_to receive(:blob)
+        diff_file.code_review_id
+      end
+
+      it 'uses from_id in the hash' do
+        expected = Digest::SHA1.hexdigest("#{diff_file.file_identifier}-0792c58905eff3432b721f8c4a64363d8e28d9ae")
+        expect(diff_file.code_review_id).to eq(expected)
+      end
+    end
+
+    context 'when diff has neither from_id nor to_id (persisted diff)' do
+      before do
+        allow(diff).to receive(:to_id).and_return(nil)
+        allow(diff).to receive(:from_id).and_return(nil)
+      end
+
+      it 'falls back to blob.id' do
+        expected = Digest::SHA1.hexdigest("#{diff_file.file_identifier}-#{diff_file.blob&.id}")
+        expect(diff_file.code_review_id).to eq(expected)
+      end
+    end
   end
 
   context 'diff file stats' do
@@ -509,7 +585,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     end
 
     let(:raw_diff) do
-      <<~EOS
+      <<~DIFF
         --- a/files/ruby/popen.rb
         +++ b/files/ruby/popen.rb
         @@ -6,12 +6,18 @@ module Popen
@@ -520,7 +596,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
         +      raise RuntimeError, "System commands must be given as an array of strings"
         +      # foobar
              end
-      EOS
+      DIFF
     end
 
     describe '#added_lines' do
@@ -958,7 +1034,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
   describe '#diff_hunk' do
     context 'when first line is a match' do
       let(:raw_diff) do
-        <<~EOS
+        <<~DIFF
           --- a/files/ruby/popen.rb
           +++ b/files/ruby/popen.rb
           @@ -6,12 +6,18 @@ module Popen
@@ -968,21 +1044,21 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
           -      raise "System commands must be given as an array of strings"
           +      raise RuntimeError, "System commands must be given as an array of strings"
                end
-        EOS
+        DIFF
       end
 
       it 'returns raw diff up to given line index' do
         allow(diff_file).to receive(:raw_diff) { raw_diff }
         diff_line = instance_double(Gitlab::Diff::Line, index: 5)
 
-        diff_hunk = <<~EOS
+        diff_hunk = <<~DIFF
           @@ -6,12 +6,18 @@ module Popen
 
              def popen(cmd, path=nil)
                unless cmd.is_a?(Array)
           -      raise "System commands must be given as an array of strings"
           +      raise RuntimeError, "System commands must be given as an array of strings"
-        EOS
+        DIFF
 
         expect(diff_file.diff_hunk(diff_line)).to eq(diff_hunk.strip)
       end
@@ -990,7 +1066,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
     context 'when first line is not a match' do
       let(:raw_diff) do
-        <<~EOS
+        <<~DIFF
           @@ -1,4 +1,4 @@
           -Copyright (c) 2011-2017 GitLab B.V.
           +Copyright (c) 2011-2019 GitLab B.V.
@@ -1000,14 +1076,14 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
           @@ -9,17 +9,21 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
           copies of the Software, and to permit persons to whom the Software is
           furnished to do so, subject to the following conditions:
-        EOS
+        DIFF
       end
 
       it 'returns raw diff up to given line index' do
         allow(diff_file).to receive(:raw_diff) { raw_diff }
         diff_line = instance_double(Gitlab::Diff::Line, index: 5)
 
-        diff_hunk = <<~EOS
+        diff_hunk = <<~DIFF
           -Copyright (c) 2011-2017 GitLab B.V.
           +Copyright (c) 2011-2019 GitLab B.V.
 
@@ -1015,7 +1091,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
           @@ -9,17 +9,21 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
           copies of the Software, and to permit persons to whom the Software is
-        EOS
+        DIFF
 
         expect(diff_file.diff_hunk(diff_line)).to eq(diff_hunk.strip)
       end
@@ -1196,18 +1272,18 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
     subject(:ai_reviewable?) { diff_file.ai_reviewable? }
 
-    it { is_expected.to eq(true) }
+    it { is_expected.to be(true) }
 
     context 'when not diffable' do
       let(:diffable?) { false }
 
-      it { is_expected.to eq(false) }
+      it { is_expected.to be(false) }
     end
 
     context 'when not text' do
       let(:text?) { false }
 
-      it { is_expected.to eq(false) }
+      it { is_expected.to be(false) }
     end
   end
 
@@ -1215,22 +1291,22 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     subject(:diffable_text?) { diff_file.diffable_text? }
 
     it 'returns true for text diffs' do
-      expect(diffable_text?).to eq(true)
+      expect(diffable_text?).to be(true)
     end
 
     it 'returns false for non text files' do
       allow(diff_file).to receive(:text?).and_return(false)
-      expect(diffable_text?).to eq(false)
+      expect(diffable_text?).to be(false)
     end
 
     it 'returns false for non diffable files' do
       allow(diff_file).to receive(:diffable?).and_return(false)
-      expect(diffable_text?).to eq(false)
+      expect(diffable_text?).to be(false)
     end
 
     it 'returns false for too large' do
       allow(diff_file).to receive(:too_large?).and_return(true)
-      expect(diffable_text?).to eq(false)
+      expect(diffable_text?).to be(false)
     end
   end
 
@@ -1242,7 +1318,7 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
       allow(diff_file).to receive(:diff_lines_for_serializer).and_return(nil)
       allow(diff_file).to receive(:added_lines).and_return(2)
       allow(diff_file).to receive(:removed_lines).and_return(2)
-      expect(whitespace_only?).to eq(true)
+      expect(whitespace_only?).to be(true)
     end
 
     context 'when file is binary' do
@@ -1263,19 +1339,19 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
     it 'returns true for image diffs' do
       allow(diff_file).to receive_messages(different_type?: false, external_storage_error?: false)
       allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
-      expect(image_diff?).to eq(true)
+      expect(image_diff?).to be(true)
     end
 
     it 'returns false for different types' do
       allow(diff_file).to receive_messages(different_type?: true, external_storage_error?: false)
       allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
-      expect(image_diff?).to eq(false)
+      expect(image_diff?).to be(false)
     end
 
     it 'returns false for storage error' do
       allow(diff_file).to receive_messages(different_type?: false, external_storage_error?: true)
       allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
-      expect(image_diff?).to eq(false)
+      expect(image_diff?).to be(false)
     end
   end
 
@@ -1288,17 +1364,17 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
     it 'returns true for new file' do
       allow(diff_file).to receive(:new_file?).and_return(true)
-      expect(modified_file?).to eq(true)
+      expect(modified_file?).to be(true)
     end
 
     it 'returns true for deleted file' do
       allow(diff_file).to receive(:deleted_file?).and_return(true)
-      expect(modified_file?).to eq(true)
+      expect(modified_file?).to be(true)
     end
 
     it 'returns true for changed file' do
       allow(diff_file).to receive(:content_changed?).and_return(true)
-      expect(modified_file?).to eq(true)
+      expect(modified_file?).to be(true)
     end
   end
 
@@ -1321,28 +1397,28 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
 
     it 'returns true for collapsed file' do
       allow(diff_file).to receive(:collapsed?).and_return(true)
-      expect(no_preview?).to eq(true)
+      expect(no_preview?).to be(true)
     end
 
     it 'returns true for unmodified file' do
       allow(diff_file).to receive(:modified_file?).and_return(false)
-      expect(no_preview?).to eq(true)
+      expect(no_preview?).to be(true)
     end
 
     it 'returns false for submodule' do
       allow(diff_file).to receive(:submodule?).and_return(true)
-      expect(no_preview?).to eq(false)
+      expect(no_preview?).to be(false)
     end
 
     context 'with empty files' do
       it 'returns true for empty file without content change' do
         allow(diff_file).to receive_messages(empty?: true, content_changed?: false)
-        expect(no_preview?).to eq(true)
+        expect(no_preview?).to be(true)
       end
 
       it 'returns false for empty file with content change' do
         allow(diff_file).to receive_messages(empty?: true, content_changed?: true)
-        expect(no_preview?).to eq(false)
+        expect(no_preview?).to be(false)
       end
     end
   end
@@ -1377,6 +1453,16 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
         expect(old_positions).to eq(old_positions.sort)
       end
 
+      it 'does not duplicate lines at expansion boundaries' do
+        diff_file.expand_to_full!
+
+        lines = diff_file.highlighted_diff_lines
+        context_lines = lines.reject { |l| l.type == 'old' }
+        new_positions = context_lines.map(&:new_pos)
+
+        expect(new_positions).to eq(new_positions.uniq)
+      end
+
       it 'preserves line codes on changed lines for commenting' do
         diff_file.expand_to_full!
 
@@ -1390,11 +1476,11 @@ RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
       it 'returns true after expand_to_full is called' do
         diff_file.expand_to_full!
 
-        expect(diff_file.manually_expanded?).to eq(true)
+        expect(diff_file.manually_expanded?).to be(true)
       end
 
       it 'returns false before expand_to_ful is called' do
-        expect(diff_file.manually_expanded?).to eq(false)
+        expect(diff_file.manually_expanded?).to be(false)
       end
     end
 

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project templates API
 ---
 
@@ -12,7 +12,7 @@ title: Project templates API
 
 {{< /details >}}
 
-Use this API to retrieve project-specific version of these endpoints:
+Use this API to retrieve a project-specific version of these endpoints:
 
 - [Dockerfile templates](templates/dockerfiles.md)
 - [Gitignore templates](templates/gitignores.md)
@@ -27,9 +27,9 @@ templates are also available from this API endpoint.
 
 Support is also available for [file templates for groups](../user/group/manage.md#group-file-templates).
 
-## Get all templates of a particular type
+## List all templates of a particular type
 
-Get all templates of a specific type for a project.
+Lists all templates of a specified type for a project.
 
 ```plaintext
 GET /projects/:id/templates/:type
@@ -112,9 +112,9 @@ Example response (licenses):
 ]
 ```
 
-## Get one template of a particular type
+## Retrieve a template of a particular type
 
-Get a single template of a specific type for a project.
+Retrieves a template of a specified type for a project.
 
 ```plaintext
 GET /projects/:id/templates/:type/:name

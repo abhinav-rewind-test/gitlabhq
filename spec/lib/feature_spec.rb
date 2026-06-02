@@ -92,6 +92,33 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     end
   end
 
+  describe '.current_endpoint' do
+    it 'returns nil when no caller_id is present' do
+      expect(described_class.current_endpoint).to be_nil
+    end
+
+    context 'when caller_id is present', :request_store do
+      where(:caller_id_type, :caller_id_value) do
+        [
+          ['controller actions', 'ProjectsController#show'],
+          ['API endpoints', 'GET /api/v4/projects/:id'],
+          ['worker jobs', 'BackgroundMigrationWorker']
+        ]
+      end
+
+      with_them do
+        it 'returns an Endpoint with the correct flipper_id' do
+          Gitlab::ApplicationContext.push(caller_id: caller_id_value)
+
+          endpoint = described_class.current_endpoint
+
+          expect(endpoint).to be_a(Feature::Endpoint)
+          expect(endpoint.flipper_id).to eq("Endpoint:#{caller_id_value}")
+        end
+      end
+    end
+  end
+
   describe '.get' do
     let(:feature) { double(:feature) }
     let(:key) { 'my_feature' }
@@ -105,6 +132,12 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
   end
 
   describe '.persisted_names' do
+    before do
+      stub_feature_flag_definition('foo')
+      stub_feature_flag_definition('foo1')
+      stub_feature_flag_definition('foo2')
+    end
+
     it 'returns the names of the persisted features' do
       described_class.enable('foo')
 
@@ -320,8 +353,7 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     it 'returns the default value when the database does not exist' do
       fake_default = double('fake default')
 
-      base_class = Feature::FlipperRecord
-      expect(base_class).to receive(:connection) { raise ActiveRecord::NoDatabaseError, "No database" }
+      allow(Feature::FlipperRecord).to receive(:with_connection).and_raise(ActiveRecord::NoDatabaseError, "No database")
 
       expect(described_class.enabled?(:a_feature, type: :undefined, default_enabled_if_undefined: fake_default)).to eq(fake_default)
     end
@@ -344,6 +376,10 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
       it 'logs other feature flags' do
         expect(described_class.logged_states).to have_key(:enabled_feature_flag)
         expect(described_class.logged_states[:enabled_feature_flag]).to be_truthy
+      end
+
+      it 'formats logged states as key:value strings' do
+        expect(described_class.logged_states_for_log).to include('enabled_feature_flag:1')
       end
     end
 
@@ -505,6 +541,36 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
       end
     end
 
+    context 'with endpoint actors' do
+      let(:endpoint) { Feature::Endpoint.new('ProjectsController#show') }
+      let(:another_endpoint) { Feature::Endpoint.new('GET /api/v4/projects/:id') }
+
+      before do
+        stub_feature_flag_definition(:endpoint_feature)
+        described_class.enable(:endpoint_feature, endpoint)
+      end
+
+      it 'returns true when endpoint is enabled' do
+        expect(described_class.enabled?(:endpoint_feature, endpoint)).to be_truthy
+      end
+
+      it 'returns false when a different endpoint is enabled' do
+        expect(described_class.enabled?(:endpoint_feature, another_endpoint)).to be_falsey
+      end
+
+      it 'returns false when no actor is provided' do
+        expect(described_class.enabled?(:endpoint_feature)).to be_falsey
+      end
+
+      it 'works with opt_out' do
+        described_class.enable(:endpoint_feature)
+        described_class.opt_out(:endpoint_feature, endpoint)
+
+        expect(described_class.enabled?(:endpoint_feature, endpoint)).to be_falsey
+        expect(described_class.enabled?(:endpoint_feature, another_endpoint)).to be_truthy
+      end
+    end
+
     context 'with invalid actor' do
       let(:actor) { double('invalid actor') }
 
@@ -641,6 +707,29 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
         end
       end
     end
+
+    context 'when running outside of the rails executor' do
+      shared_examples 'does not leak database connections' do |flag|
+        it "checks in the database connection on #{flag}" do
+          # Run a feature flag check in a new thread so that the current thread's database connections do not interfere
+          test_thread = Thread.new do
+            expect(Feature::FlipperRecord.connection_pool.active_connection?).to be_falsey
+
+            described_class.enabled?(flag)
+
+            expect(Feature::FlipperRecord.connection_pool.active_connection?).to be_falsey
+          ensure
+            # Don't leak a connection even if this test fails
+            Feature::FlipperRecord.connection_pool.release_connection
+          end
+
+          test_thread.join
+        end
+      end
+
+      it_behaves_like 'does not leak database connections', :enabled_feature_flag
+      it_behaves_like 'does not leak database connections', :disabled_feature_flag
+    end
   end
 
   describe '.disabled?' do
@@ -690,6 +779,10 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     let(:key) { :awesome_feature }
     let(:thing) { true }
 
+    before do
+      stub_feature_flag_definition(:awesome_feature)
+    end
+
     it_behaves_like 'logging' do
       let(:expected_action) { :enable }
       let(:expected_extra) { { "extra.thing" => "true" } }
@@ -708,6 +801,93 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
         let(:expected_extra) { { "extra.thing" => thing.flipper_id.to_s } }
       end
     end
+
+    context 'when the feature flag has no YAML definition' do
+      let(:key) { :undefined_feature_flag_xyz }
+
+      after do
+        Feature::Definition.reload!
+      end
+
+      context 'in development or test environment' do
+        it 'raises InvalidFeatureFlagError' do
+          expect { described_class.enable(key) }
+            .to raise_error(Feature::InvalidFeatureFlagError,
+              /Feature flag 'undefined_feature_flag_xyz' has no YAML definition/)
+        end
+
+        context 'when a similar flag name exists' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+          end
+
+          it 'suggests similar flag names in the error' do
+            expect { described_class.enable(key) }
+              .to raise_error(Feature::InvalidFeatureFlagError,
+                /Did you mean: undefined_feature_flag_abc/)
+          end
+        end
+      end
+
+      context 'in production environment' do
+        before do
+          allow(Gitlab).to receive(:dev_or_test_env?).and_return(false)
+        end
+
+        it 'logs a warning to Rails.logger' do
+          allow(Rails.logger).to receive(:warn)
+          described_class.enable(key)
+          expect(Rails.logger).to have_received(:warn)
+            .with(a_string_matching(/WARNING: Feature flag 'undefined_feature_flag_xyz' has no YAML definition/))
+        end
+
+        context 'when a similar flag name exists' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+          end
+
+          it 'suggests similar flag names in the warning' do
+            allow(Rails.logger).to receive(:warn)
+            described_class.enable(key)
+            expect(Rails.logger).to have_received(:warn)
+              .with(a_string_matching(/Did you mean: undefined_feature_flag_abc\?/))
+          end
+        end
+
+        context 'when multiple similar flag names exist' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+            stub_feature_flag_definition(:undefined_feature_flag_def)
+            stub_feature_flag_definition(:undefined_feature_flag_ghi)
+            stub_feature_flag_definition(:undefined_feature_flag_jkl)
+          end
+
+          it 'suggests maximum 3 similar flag names in the warning' do
+            allow(Rails.logger).to receive(:warn)
+            described_class.enable(key)
+            expect(Rails.logger).to have_received(:warn)
+              .with(a_string_matching(
+                /Did you mean: undefined_feature_flag_jkl, undefined_feature_flag_ghi, undefined_feature_flag_def\?/
+              ))
+          end
+        end
+
+        context 'when DidYouMean::SpellChecker is unavailable' do
+          before do
+            hide_const('DidYouMean::SpellChecker')
+          end
+
+          it 'omits the Did you mean suggestion from the warning' do
+            allow(Rails.logger).to receive(:warn)
+            described_class.enable(key)
+            expect(Rails.logger).to have_received(:warn)
+              .with(a_string_matching(/WARNING: Feature flag 'undefined_feature_flag_xyz' has no YAML definition/))
+            expect(Rails.logger).not_to have_received(:warn)
+              .with(a_string_matching(/Did you mean/))
+          end
+        end
+      end
+    end
   end
 
   describe '.disable' do
@@ -715,6 +895,10 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
 
     let(:key) { :awesome_feature }
     let(:thing) { false }
+
+    before do
+      stub_feature_flag_definition(:awesome_feature)
+    end
 
     it_behaves_like 'logging' do
       let(:expected_action) { :disable }
@@ -774,6 +958,89 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
         end
       end
     end
+
+    context 'when the feature flag has no YAML definition' do
+      let(:key) { :undefined_feature_flag_xyz }
+
+      after do
+        Feature::Definition.reload!
+      end
+
+      context 'in development or test environment' do
+        it 'raises InvalidFeatureFlagError' do
+          expect { described_class.disable(key) }
+            .to raise_error(Feature::InvalidFeatureFlagError,
+              /Feature flag 'undefined_feature_flag_xyz' has no YAML definition/)
+        end
+
+        context 'when a similar flag name exists' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+          end
+
+          it 'suggests similar flag names in the error' do
+            expect { described_class.disable(key) }
+              .to raise_error(Feature::InvalidFeatureFlagError,
+                /Did you mean: undefined_feature_flag_abc/)
+          end
+        end
+      end
+
+      context 'in production environment' do
+        before do
+          allow(Gitlab).to receive(:dev_or_test_env?).and_return(false)
+        end
+
+        it 'logs a warning to Rails.logger' do
+          expect(Rails.logger).to receive(:warn)
+            .with(a_string_matching(/WARNING: Feature flag 'undefined_feature_flag_xyz' has no YAML definition/))
+          described_class.disable(key)
+        end
+
+        context 'when a similar flag name exists' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+          end
+
+          it 'suggests similar flag names in the warning' do
+            expect(Rails.logger).to receive(:warn)
+              .with(a_string_matching(/Did you mean: undefined_feature_flag_abc\?/))
+            described_class.disable(key)
+          end
+        end
+
+        context 'when multiple similar flag names exist' do
+          before do
+            stub_feature_flag_definition(:undefined_feature_flag_abc)
+            stub_feature_flag_definition(:undefined_feature_flag_def)
+            stub_feature_flag_definition(:undefined_feature_flag_ghi)
+            stub_feature_flag_definition(:undefined_feature_flag_jkl)
+          end
+
+          it 'suggests maximum 3 similar flag names in the warning' do
+            expect(Rails.logger).to receive(:warn)
+              .with(a_string_matching(
+                /Did you mean: undefined_feature_flag_jkl, undefined_feature_flag_ghi, undefined_feature_flag_def\?/
+              ))
+            described_class.disable(key)
+          end
+        end
+
+        context 'when DidYouMean::SpellChecker is unavailable' do
+          before do
+            hide_const('DidYouMean::SpellChecker')
+          end
+
+          it 'omits the Did you mean suggestion from the warning' do
+            expect(Rails.logger).to receive(:warn)
+              .with(a_string_matching(/WARNING: Feature flag 'undefined_feature_flag_xyz' has no YAML definition/))
+            expect(Rails.logger).not_to receive(:warn)
+              .with(a_string_matching(/Did you mean/))
+            described_class.disable(key)
+          end
+        end
+      end
+    end
   end
 
   describe '.group_ids_for' do
@@ -784,6 +1051,10 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     let_it_be(:user) { create(:user) }
 
     let(:key) { :awesome_feature }
+
+    before do
+      stub_feature_flag_definition(:awesome_feature)
+    end
 
     it 'returns empty array' do
       expect(subject).to be_empty
@@ -1011,6 +1282,7 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     let(:actor) { create(:user) }
 
     before do
+      stub_feature_flag_definition(key)
       described_class.enable(key)
     end
 
@@ -1038,6 +1310,9 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
     let(:flag_type) { 'development' }
 
     before do
+      stub_feature_flag_definition(:feature_flag_state_logs)
+      stub_feature_flag_definition(:some_flag)
+
       described_class.enable(:feature_flag_state_logs)
       described_class.enable(:some_flag)
 
@@ -1243,6 +1518,22 @@ RSpec.describe Feature, :clean_gitlab_redis_feature_flag, stub_feature_flags: fa
               '999999 is not found!'
             )
           end
+        end
+      end
+
+      context 'when endpoint target is provided' do
+        subject do
+          described_class.new(endpoint: 'GET /api/v4/projects/:id,ProjectsController#show')
+        end
+
+        it 'returns endpoint actors for each caller_id' do
+          targets = subject.targets
+
+          expect(targets).to all(be_a(Feature::Endpoint))
+          expect(targets.map(&:flipper_id)).to eq([
+            'Endpoint:GET /api/v4/projects/:id',
+            'Endpoint:ProjectsController#show'
+          ])
         end
       end
 

@@ -5,14 +5,15 @@ query getProjectSecurityConfiguration($projectId: ProjectID!) {
     autoDevopsHelpPagePath
     autoDevopsPath
     canEnableAutoDevops
-    canEnableSpp
     containerScanningForRegistryEnabled
+    licenseScanningForCyclonedxEnabled
     features {
       type
       configured
       configurationPath
       available
       canEnableByMergeRequest
+      canUserConfigure
       metaInfoPath
       onDemandAvailable
       securityFeatures {
@@ -34,13 +35,12 @@ query getProjectSecurityConfiguration($projectId: ProjectID!) {
     gitlabCiHistoryPath
     gitlabCiPresent
     helpPagePath
-    isGitlabCom
     latestPipelinePath
     licenseConfigurationSource
     secretDetectionConfigurationPath
     secretPushProtectionAvailable
+    secretPushProtectionEnforced
     secretPushProtectionEnabled
-    secretPushProtectionLicensed
     securityTrainingEnabled
     userIsProjectAdmin
     validityChecksAvailable

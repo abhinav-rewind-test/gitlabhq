@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe 'User page', feature_category: :user_profile do
   include ExternalAuthorizationServiceHelpers
 
-  let_it_be(:user) { create(:user, bio: '<b>Lorem</b> <i>ipsum</i> dolor sit <a href="https://example.com">amet</a>') }
+  let_it_be(:user, freeze: false) { create(:user, bio: '<b>Lorem</b> <i>ipsum</i> dolor sit <a href="https://example.com">amet</a>') }
 
   subject(:visit_profile) { visit(user_path(user)) }
 
@@ -36,7 +36,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
 
     context 'work information' do
       it 'shows job title and organization details' do
-        user.update!(user_detail_organization: 'GitLab - work info test', job_title: 'Frontend Engineer')
+        user.update!(company: 'GitLab - work info test', job_title: 'Frontend Engineer')
 
         subject
 
@@ -44,7 +44,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       end
 
       it 'shows job title' do
-        user.update!(user_detail_organization: nil, job_title: 'Frontend Engineer - work info test')
+        user.update!(company: nil, job_title: 'Frontend Engineer - work info test')
 
         subject
 
@@ -52,7 +52,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       end
 
       it 'shows organization details' do
-        user.update!(user_detail_organization: 'GitLab - work info test', job_title: '')
+        user.update!(company: 'GitLab - work info test', job_title: '')
 
         subject
 
@@ -64,7 +64,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       let_it_be(:location) { 'San Francisco, CA' }
 
       context 'when location is set' do
-        let_it_be(:user) { create(:user, location: location) }
+        let_it_be(:user, freeze: false) { create(:user, location: location) }
 
         it 'shows location' do
           subject
@@ -91,7 +91,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       end
 
       context 'when timezone is set' do
-        let_it_be(:user) { create(:user, timezone: timezone) }
+        let_it_be(:user, freeze: false) { create(:user, timezone: timezone) }
 
         it 'shows local time' do
           subject
@@ -103,7 +103,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       end
 
       context 'when timezone is not set' do
-        let_it_be(:user) { create(:user, timezone: nil) }
+        let_it_be(:user, freeze: false) { create(:user, timezone: nil) }
 
         it 'does not show local time' do
           subject
@@ -113,7 +113,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
       end
 
       context 'when timezone is invalid' do
-        let_it_be(:user) { build(:user, timezone: 'Foo/Bar') }
+        let_it_be(:user, freeze: false) { build(:user, timezone: 'Foo/Bar') }
 
         it 'shows local time using the configured default timezone (UTC in this case)' do
           user.save!(validate: false)
@@ -187,7 +187,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
   end
 
   context 'with private profile' do
-    let_it_be(:user) { create(:user, private_profile: true) }
+    let_it_be(:user, freeze: false) { create(:user, private_profile: true) }
 
     it 'shows no page content container', :aggregate_failures do
       subject
@@ -206,11 +206,11 @@ RSpec.describe 'User page', feature_category: :user_profile do
   end
 
   context 'with blocked profile' do
-    let_it_be(:user) do
+    let_it_be(:user, freeze: false) do
       create(
         :user,
         state: :blocked,
-        user_detail_organization: 'GitLab - work info test',
+        company: 'GitLab - work info test',
         job_title: 'Frontend Engineer',
         pronunciation: 'pruh-nuhn-see-ay-shn',
         bio: 'My personal bio'
@@ -256,11 +256,11 @@ RSpec.describe 'User page', feature_category: :user_profile do
   end
 
   context 'with unconfirmed user' do
-    let_it_be(:user) do
+    let_it_be(:user, freeze: false) do
       create(
         :user,
         :unconfirmed,
-        user_detail_organization: 'GitLab - work info test',
+        company: 'GitLab - work info test',
         job_title: 'Frontend Engineer',
         pronunciation: 'pruh-nuhn-see-ay-shn',
         bio: 'My personal bio'
@@ -385,7 +385,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
   end
 
   context 'structured markup' do
-    let_it_be(:user) { create(:user, website_url: 'https://gitlab.com', user_detail_organization: 'GitLab', job_title: 'Frontend Engineer', email: 'public@example.com', public_email: 'public@example.com', location: 'Country', created_at: Time.zone.now, updated_at: Time.zone.now) }
+    let_it_be(:user, freeze: false) { create(:user, website_url: 'https://gitlab.com', company: 'GitLab', job_title: 'Frontend Engineer', email: 'public@example.com', public_email: 'public@example.com', location: 'Country', created_at: Time.zone.now, updated_at: Time.zone.now) }
 
     it 'shows Person structured markup' do
       subject
@@ -406,7 +406,7 @@ RSpec.describe 'User page', feature_category: :user_profile do
 
   context 'GPG keys' do
     context 'when user has verified GPG keys' do
-      let_it_be(:user) { create(:user, email: GpgHelpers::User1.emails.first) }
+      let_it_be(:user, freeze: false) { create(:user, email: GpgHelpers::User1.emails.first) }
       let_it_be(:gpg_key) { create(:gpg_key, user: user, key: GpgHelpers::User1.public_key) }
       let_it_be(:gpg_key2) { create(:gpg_key, user: user, key: GpgHelpers::User1.public_key2) }
 

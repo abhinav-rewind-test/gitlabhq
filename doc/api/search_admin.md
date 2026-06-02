@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Global Search
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Search admin API
 ---
 
@@ -26,7 +26,7 @@ Prerequisites:
 
 ## List all advanced search migrations
 
-Get a list of all advanced search migrations for the GitLab instance.
+Lists all advanced search migrations for the GitLab instance.
 
 ```plaintext
 GET /admin/search/migrations
@@ -84,9 +84,9 @@ Example response:
 ]
 ```
 
-## Get an advanced search migration
+## Retrieve an advanced search migration
 
-Get a single advanced search migration by providing the migration version or name.
+Retrieves a specified advanced search migration by migration version or name.
 
 ```plaintext
 GET /admin/search/migrations/:version_or_name

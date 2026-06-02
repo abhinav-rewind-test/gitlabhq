@@ -8,7 +8,7 @@ RSpec.describe RapidDiffs::DiffFileComponent, type: :component, feature_category
   include_context "with diff file component tests"
 
   describe 'header slot' do
-    let_it_be(:diff_file) { build(:diff_file) }
+    let_it_be(:diff_file, freeze: false) { build(:diff_file) }
 
     it 'renders the default header when no custom header is provided' do
       allow_next_instance_of(
@@ -51,6 +51,83 @@ RSpec.describe RapidDiffs::DiffFileComponent, type: :component, feature_category
 
         expect(result.to_html).to include('diff-file-header-with-env')
       end
+    end
+  end
+
+  describe 'before_body slot' do
+    let_it_be(:diff_file, freeze: false) { build(:diff_file) }
+
+    it 'renders before_body before the diff file body' do
+      custom_content = '<div data-testid="before-body">Before Body</div>'.html_safe
+
+      result = render_component do |c|
+        c.with_before_body { custom_content }
+      end
+
+      html = result.at_css('details[data-file-body]').to_html
+      before_body_pos = html.index('data-testid="before-body"')
+      body_pos = html.index('data-testid="rd-diff-file-body"')
+
+      expect(before_body_pos).to be < body_pos
+    end
+  end
+
+  describe 'extra_file_data' do
+    let_it_be(:diff_file, freeze: false) { build(:diff_file) }
+
+    it 'merges extra_file_data into file_data' do
+      extra_data = { custom_field: 'custom_value', another_field: 123 }
+
+      result = render_component(extra_file_data: extra_data)
+
+      web_component = result.at_css('diff-file')
+      file_data = Gitlab::Json.safe_parse(web_component['data-file-data'])
+
+      expect(file_data['custom_field']).to eq('custom_value')
+      expect(file_data['another_field']).to eq(123)
+    end
+  end
+
+  describe 'extra_options' do
+    let_it_be(:diff_file, freeze: false) { build(:diff_file) }
+
+    it 'merges extra classes with base classes' do
+      extra_options = { class: 'custom-class another-class' }
+
+      result = render_component(extra_options: extra_options)
+
+      web_component = result.at_css('diff-file')
+      classes = web_component['class'].split
+
+      expect(classes).to include('rd-diff-file-component')
+      expect(classes).to include('custom-class')
+      expect(classes).to include('another-class')
+    end
+
+    it 'merges extra data attributes with base data attributes' do
+      extra_options = { data: { custom_attr: 'custom_value', another: 123 } }
+
+      result = render_component(extra_options: extra_options)
+
+      web_component = result.at_css('diff-file')
+
+      expect(web_component['data-testid']).to eq('rd-diff-file')
+      expect(web_component['data-file-data']).to be_present
+      expect(web_component['data-custom-attr']).to eq('custom_value')
+      expect(web_component['data-another']).to eq('123')
+    end
+
+    it 'accepts array of classes' do
+      extra_options = { class: %w[class-one class-two] }
+
+      result = render_component(extra_options: extra_options)
+
+      web_component = result.at_css('diff-file')
+      classes = web_component['class'].split
+
+      expect(classes).to include('rd-diff-file-component')
+      expect(classes).to include('class-one')
+      expect(classes).to include('class-two')
     end
   end
 

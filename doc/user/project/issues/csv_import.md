@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Importing issues from CSV
 description: "Import issues to a project by uploading a CSV file."
 ---
@@ -39,7 +39,7 @@ Alternatively, you can [move an issue](managing_issues.md#move-an-issue). Moving
 
 The user uploading the CSV file is set as the author of the imported issues.
 
-You must have the Planner role or at least the Developer role for a project to import issues.
+You must have the Planner, Reporter, Security Manager, Developer, Maintainer, or Owner role for a project to import issues.
 
 ## Prepare for the import
 
@@ -103,4 +103,4 @@ An issue with milestone,"My milestone is created",,v1.0
 The limit depends on how your GitLab instance is hosted:
 
 - GitLab Self-Managed: Set by the configuration value of `Max Attachment Size` for the GitLab instance.
-- GitLab SaaS: On GitLab.com, it's set to 10 MB.
+- GitLab.com: Limited to 10 MB.

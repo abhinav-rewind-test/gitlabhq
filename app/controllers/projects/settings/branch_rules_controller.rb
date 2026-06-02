@@ -3,7 +3,7 @@
 module Projects
   module Settings
     class BranchRulesController < Projects::ApplicationController
-      before_action :authorize_admin_project!
+      before_action :authorize_read_branch_rule!
 
       feature_category :source_code_management
 

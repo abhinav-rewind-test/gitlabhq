@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::ContainerRepositories, feature_category: :container_registry do
+RSpec.describe API::ContainerRepositories, :with_current_organization, feature_category: :container_registry do
   include_context 'container registry client stubs'
 
   let_it_be(:project) { create(:project, :private) }
@@ -34,6 +34,14 @@ RSpec.describe API::ContainerRepositories, feature_category: :container_registry
 
     it_behaves_like 'rejected container repository access', :guest, :forbidden
     it_behaves_like 'rejected container repository access', :anonymous, :unauthorized
+
+    it_behaves_like 'authorizing granular token permissions', :read_container_repository do
+      let(:boundary_object) { project }
+      let(:user) { reporter }
+      let(:request) do
+        get api(url, personal_access_token: pat)
+      end
+    end
 
     context 'for allowed user' do
       it 'returns a repository' do

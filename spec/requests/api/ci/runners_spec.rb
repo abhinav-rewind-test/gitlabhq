@@ -7,7 +7,7 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
 
   let_it_be(:users) { create_list(:user, 2) }
 
-  let_it_be(:group) { create(:group, owners: users.first) }
+  let_it_be(:group, freeze: false) { create(:group, owners: users.first) }
   let_it_be(:subgroup) { create(:group, parent: group) }
 
   let_it_be(:organization) { create_default(:organization) }
@@ -23,11 +23,11 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
 
   let_it_be(:project2) { create(:project, creator_id: users.first.id, maintainers: users.first) }
 
-  let_it_be(:shared_runner, reload: true) do
+  let_it_be_with_reload(:shared_runner) do
     create(:ci_runner, :instance, :with_runner_manager, description: 'Shared runner', maintenance_note: 'Maintenance note')
   end
 
-  let_it_be(:project_runner, reload: true) do
+  let_it_be_with_reload(:project_runner) do
     create(:ci_runner, :project, description: 'Project runner', projects: [project], maintenance_note: 'Maintenance note')
   end
 
@@ -215,7 +215,7 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
       end
 
       context 'job_execution_status attribute' do
-        context 'when no executing builds present for runners' do
+        context 'when no running builds present for runners' do
           it 'returns "idle" as job execution status' do
             perform_request
 
@@ -223,15 +223,27 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
           end
         end
 
-        context 'when executing build present' do
+        context 'when running build present' do
           before do
-            create(:ci_build, :running, runner: project_runner, project: project)
+            create(:ci_build, :picked, runner: project_runner, project: project)
           end
 
           it 'returns "active" as job execution status' do
             perform_request
 
             expect(json_response.find { |runner| runner['id'] == project_runner.id }['job_execution_status']).to eq 'active'
+          end
+        end
+
+        context 'when only canceling build present' do
+          before do
+            create(:ci_build, :canceling, runner: project_runner, project: project)
+          end
+
+          it 'returns "idle" as job execution status' do
+            perform_request
+
+            expect(json_response.find { |runner| runner['id'] == project_runner.id }['job_execution_status']).to eq 'idle'
           end
         end
 
@@ -273,11 +285,9 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
         let(:runner) { shared_runner }
         let(:manager) { runner.runner_managers.first }
 
-        before do
-          create(:ci_build, :running, runner_manager: manager, runner: shared_runner)
-        end
-
         it 'returns all managers of the runner' do
+          create(:ci_build, :picked, runner_manager: manager, runner: shared_runner)
+
           perform_request
 
           expect(response).to have_gitlab_http_status(:ok)
@@ -289,15 +299,39 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
         end
 
         context 'job_execution_status' do
-          before do
-            create(:ci_build, :running, runner_manager: manager, project: project)
+          context 'when the runner manager does not have running builds' do
+            it 'returns "idle" as job execution status' do
+              perform_request
+
+              expect(json_response).to all(include('job_execution_status'))
+              expect(json_response.find { |runner_manager| runner_manager['id'] == manager.id }['job_execution_status']).to eq 'idle'
+            end
           end
 
-          it 'returns job execution status' do
-            perform_request
+          context 'when the runner manager has running builds' do
+            before do
+              create(:ci_build, :picked, runner_manager: manager, project: project)
+            end
 
-            expect(json_response).to all(include('job_execution_status'))
-            expect(json_response.find { |runner_manager| runner_manager['id'] == manager.id }['job_execution_status']).to eq 'active'
+            it 'returns "active" as job execution status' do
+              perform_request
+
+              expect(json_response).to all(include('job_execution_status'))
+              expect(json_response.find { |runner_manager| runner_manager['id'] == manager.id }['job_execution_status']).to eq 'active'
+            end
+          end
+
+          context 'when the runner manager has only canceling builds' do
+            before do
+              create(:ci_build, :canceling, runner_manager: manager, project: project)
+            end
+
+            it 'returns "idle" as job execution status' do
+              perform_request
+
+              expect(json_response).to all(include('job_execution_status'))
+              expect(json_response.find { |runner_manager| runner_manager['id'] == manager.id }['job_execution_status']).to eq 'idle'
+            end
           end
 
           context 'N+1 query performance' do
@@ -1823,6 +1857,22 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
       end
     end
 
+    context 'when project runner is not assigned to any project', :enable_admin_mode do
+      let_it_be_with_reload(:unassigned_runner) { create(:ci_runner, :project, :without_projects) }
+
+      let(:current_user) { admin }
+      let(:runner) { unassigned_runner }
+
+      it 'returns unprocessable_entity' do
+        expect do
+          perform_request
+
+          expect(response).to have_gitlab_http_status(:unprocessable_entity)
+          expect(json_response['error']).to include('needs to be assigned to at least one project')
+        end.not_to change { runner.reload.token }
+      end
+    end
+
     context 'unauthorized user' do
       let(:current_user) { nil }
       let(:runner) { project_runner }
@@ -2245,6 +2295,43 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
         end
       end
     end
+
+    context 'when repository is disabled' do # rubocop:disable RSpec/MultipleMemoizedHelpers -- Need helpers for scenarios
+      let_it_be(:project_with_disabled_repo) { create(:project, :repository_disabled, maintainers: users.first) }
+      let_it_be(:runner_with_disabled_repo_jobs) { create(:ci_runner, :with_runner_manager, :project, projects: [project_with_disabled_repo]) }
+      let_it_be(:disabled_repo_jobs) do
+        create_list(:ci_build, 2, runner_manager: runner_with_disabled_repo_jobs.runner_managers.sole, project: project_with_disabled_repo)
+      end
+
+      let(:runner) { runner_with_disabled_repo_jobs }
+      let(:current_user) { users.first }
+
+      it 'does not return jobs from projects with disabled repository' do
+        perform_request
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to be_empty
+      end
+    end
+
+    context 'when builds are disabled' do # rubocop:disable RSpec/MultipleMemoizedHelpers -- Need helpers for scenarios
+      let_it_be(:project_with_disabled_builds) { create(:project, :builds_disabled, maintainers: users.first) }
+      let_it_be(:runner_with_disabled_builds_jobs) { create(:ci_runner, :project, projects: [project_with_disabled_builds]) }
+      let_it_be(:disabled_builds_manager) { create(:ci_runner_machine, runner: runner_with_disabled_builds_jobs) }
+      let_it_be(:disabled_builds_jobs) do
+        create_list(:ci_build, 2, runner_manager: disabled_builds_manager, project: project_with_disabled_builds)
+      end
+
+      let(:runner) { runner_with_disabled_builds_jobs }
+      let(:current_user) { users.first }
+
+      it 'does not return jobs from projects with disabled builds' do
+        perform_request
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to be_empty
+      end
+    end
   end
 
   shared_examples_for 'unauthorized access to runners list' do
@@ -2587,7 +2674,7 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
     end
 
     context 'authorized user' do
-      let_it_be(:project_runner2) { create(:ci_runner, :project, projects: [project2]) }
+      let_it_be(:project_runner2, freeze: false) { create(:ci_runner, :project, projects: [project2]) }
 
       let(:current_user) { users.first }
       let(:runner) { project_runner2 }
@@ -2859,6 +2946,12 @@ RSpec.describe API::Ci::Runners, :aggregate_failures, factory_default: :keep, fe
         expect(json_response).to eq({
           'server_url' => kas_external_url
         })
+      end
+
+      it_behaves_like 'storing arguments in the application context for the API' do
+        subject { discovery }
+
+        let(:expected_params) { { organization_id: project_runner.organization_id } }
       end
 
       context 'when KAS is disabled' do

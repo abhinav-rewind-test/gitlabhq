@@ -19,6 +19,9 @@ describe('utils', () => {
             'passwordSymbolRequired',
             'promotionManagementAvailable',
             'enableMemberPromotionManagement',
+            'ldapSyncConfigured',
+            'samlScimConfigured',
+            'contractOveragesAllowed',
           ],
         }),
       ).toEqual(mockData);

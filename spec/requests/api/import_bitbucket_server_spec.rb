@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::ImportBitbucketServer, feature_category: :importers do
+RSpec.describe API::ImportBitbucketServer, :with_current_organization, feature_category: :importers do
   let(:base_uri) { "https://test:7990" }
   let(:user) { create(:user, organizations: [current_organization]) }
   let(:token) { "asdasd12345" }
@@ -126,6 +126,28 @@ RSpec.describe API::ImportBitbucketServer, feature_category: :importers do
 
         expect(response).to have_gitlab_http_status(:bad_request)
         expect(json_response["error"]).to eq("timeout_strategy does not have a valid value")
+      end
+    end
+
+    context 'with an invalid project key' do
+      it 'returns 422 with an error message' do
+        post api("/import/bitbucket_server", user), params: params.merge(
+          bitbucket_server_project: 'PROJ?ECT'
+        )
+
+        expect(response).to have_gitlab_http_status(:unprocessable_entity)
+        expect(json_response['message']['error']).to include(_('Missing or invalid project key'))
+      end
+    end
+
+    context 'with an invalid repository slug' do
+      it 'returns 422 with an error message' do
+        post api("/import/bitbucket_server", user), params: params.merge(
+          bitbucket_server_repo: 'my~repo'
+        )
+
+        expect(response).to have_gitlab_http_status(:unprocessable_entity)
+        expect(json_response['message']['error']).to include(_('Missing or invalid repository slug'))
       end
     end
 

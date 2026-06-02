@@ -1,11 +1,11 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Compromised password detection development
 ---
 
-For information on this feature that are not development-specific, see the [feature documentation](../security/compromised_password_detection.md).
+For information on this feature that are not development-specific, see the [feature documentation](../user/profile/user_passwords.md).
 
 ## CloudFlare
 

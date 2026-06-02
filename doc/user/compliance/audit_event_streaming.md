@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Audit event streaming for top-level groups
 ---
 
@@ -62,8 +62,8 @@ Prerequisites:
 
 To add streaming destinations to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **HTTP endpoint** to show the section for adding destinations.
 1. In the **Name** and **Destination URL** fields, add a destination name and URL.
@@ -81,8 +81,8 @@ Prerequisites:
 
 To update a streaming destination's name:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. In the **Name** fields, add a destination name to update.
@@ -90,8 +90,8 @@ To update a streaming destination's name:
 
 To update a streaming destination's custom HTTP headers:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Custom HTTP headers** table.
@@ -123,8 +123,8 @@ Prerequisites:
 
 To list streaming destinations and see the verification tokens:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Verification token** input.
@@ -144,8 +144,8 @@ A streaming destination that has an event type filter set has a **filtered** ({{
 
 To update a streaming destination's event filters:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Filter by audit event type** dropdown list.
@@ -167,8 +167,8 @@ A streaming destination that has a namespace filter set has a **filtered** ({{< 
 
 To update a streaming destination's namespace filters:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Filter by groups or projects** dropdown list.
@@ -213,8 +213,8 @@ Prerequisites:
 
 To add Google Cloud Logging streaming destinations to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **Google Cloud Logging** to show the section for adding destinations.
 1. Enter a random string to use as a name for the new destination.
@@ -236,8 +236,8 @@ Prerequisites:
 
 To update Google Cloud Logging streaming destinations to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the Google Cloud Logging stream to expand.
 1. Enter a random string to use as a name for the destination.
@@ -273,8 +273,8 @@ Prerequisites:
 
 To add AWS S3 streaming destinations to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **AWS S3** to show the section for adding destinations.
 1. Enter a random string to use as a name for the new destination.
@@ -290,8 +290,8 @@ Prerequisites:
 
 To update an AWS S3 streaming destination to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the AWS S3 stream to expand.
 1. Enter a random string to use as a name for the destination.
@@ -308,8 +308,8 @@ Prerequisites:
 
 To list streaming destinations for a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 
@@ -336,8 +336,8 @@ Prerequisites:
 
 To deactivate a streaming destination:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Clear the **Active** checkbox.
@@ -349,8 +349,8 @@ The destination stops receiving audit events.
 
 To reactivate a previously deactivated streaming destination:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Select the **Active** checkbox.
@@ -369,8 +369,8 @@ Prerequisites:
 
 To delete streaming destinations to a top-level group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Select **Delete destination**.
@@ -384,8 +384,8 @@ Prerequisites:
 
 To delete only the custom HTTP headers for a streaming destination:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Audit events**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Custom HTTP headers** table.

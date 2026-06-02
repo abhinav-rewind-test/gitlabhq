@@ -6,41 +6,29 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
   include DropzoneHelper
   include ListboxHelpers
 
-  let_it_be(:project) { create(:project_empty_repo, :public) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:project, freeze: false) { create(:project_empty_repo, :public) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
-  before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-  end
+  context "when unauthenticated" do
+    before do
+      sign_out(:user)
+    end
 
-  with_and_without_sign_in_form_vue do
-    context "when unauthenticated" do
-      before do
-        sign_out(:user)
-      end
+    it "redirects to signin then back to new issue after signin" do
+      visit new_project_issue_path(project)
 
-      it "redirects to signin then back to new issue after signin" do
-        create(:issue, project: project)
+      expect(page).to have_current_path new_user_session_path, ignore_query: true
 
-        visit project_issues_path(project)
+      gitlab_sign_in(create(:user))
 
-        click_link 'New item'
-
-        expect(page).to have_current_path new_user_session_path, ignore_query: true
-
-        gitlab_sign_in(create(:user))
-
-        expect(page).to have_current_path new_project_issue_path(project), ignore_query: true
-      end
+      expect(page).to have_current_path new_project_work_item_path(project), ignore_query: true
     end
   end
 
   context "when signed in as guest" do
     before do
       project.add_guest(user)
+      create(:callout, user: user, feature_name: :work_items_onboarding_modal)
       sign_in(user)
     end
 
@@ -101,7 +89,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
           select_listbox_item label_titles.first
           send_keys(:escape)
         end
-        click_button("Create issue")
+        click_button("Create Issue")
 
         expect(page).to have_content(issue_title)
                     .and have_content(user.name)
@@ -124,7 +112,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
         end
         click_button date.day
         click_button 'Apply'
-        click_button 'Create issue'
+        click_button 'Create Issue'
 
         expect(page).to have_text date.to_fs(:medium)
       end
@@ -156,7 +144,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
 
             expect(page).to have_button('Attach a file or image')
             expect(page).not_to have_button('Cancel')
-            expect(page).not_to have_selector('.uploading-progress-container', visible: true)
+            expect(page).not_to have_selector('.uploading-progress-container', visible: :visible)
           end
         end
       end
@@ -182,7 +170,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
     end
 
     context 'form create handles issue creation by default' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
 
       before do
         visit new_project_issue_path(project)
@@ -194,7 +182,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
     end
 
     context 'form create handles incident creation' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
 
       before do
         visit new_project_issue_path(project, { issuable_template: 'incident', issue: { issue_type: 'incident' } })
@@ -232,7 +220,8 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
         fill_in 'Title', with: 'bug 345'
         fill_in 'Description', with: 'bug description'
 
-        click_button 'Create issue'
+        click_button 'Create Issue'
+        expect(page).to have_content('bug 345')
       end
     end
 
@@ -253,7 +242,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
   end
 
   context 'when signed in as reporter' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     before_all do
       project.add_reporter(user)
@@ -278,7 +267,7 @@ RSpec.describe "User creates issue", :js, feature_category: :team_planning do
   end
 
   context 'when signed in as a maintainer' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     before_all do
       project.add_maintainer(user)

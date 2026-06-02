@@ -1,7 +1,8 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: View and resolve abuse reports submitted by users.
 gitlab_dedicated: yes
 title: Review abuse reports
 ---
@@ -23,7 +24,7 @@ reports in the **Admin** area.
 To receive notifications of new abuse reports by email:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Reporting**.
+1. In the left sidebar, select **Settings** > **Reporting**.
 1. Expand the **Abuse reports** section.
 1. Provide an email address and select **Save changes**.
 
@@ -46,7 +47,7 @@ To find out more about reporting abuse, see
 To access abuse reports:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Abuse reports**.
+1. In the left sidebar, select **Abuse reports**.
 
 There are four ways to resolve an abuse report, with a button for each method:
 
@@ -64,7 +65,7 @@ There are four ways to resolve an abuse report, with a button for each method:
 
 The following is an example of the **Abuse reports** page:
 
-![A list of example abuse reports submitted for various users, with resolution actions available for each.](img/abuse_reports_page_v13_11.png)
+![A dashboard showing example abuse reports submitted for a user.](img/abuse_reports_page_v18_6.png)
 
 ### Blocking users
 
@@ -86,11 +87,6 @@ After blocking, you can still either:
 
 - Remove the user and report if necessary.
 - Remove the report.
-
-The following is an example of a blocked user listed on the **Abuse reports**
-page:
-
-![The block user action is unavailable for an abuse report because the user is already blocked.](img/abuse_report_blocked_user_v11_7.png)
 
 ## Related topics
 

@@ -11,11 +11,8 @@ import { ISSUE_MR_CHANGE_MILESTONE } from '~/behaviors/shortcuts/keybindings';
 import projectMilestonesQuery from '~/sidebar/queries/project_milestones.query.graphql';
 import groupMilestonesQuery from '~/sidebar/queries/group_milestones.query.graphql';
 import updateWorkItemMutation from '~/work_items/graphql/update_work_item.mutation.graphql';
-import {
-  I18N_WORK_ITEM_ERROR_UPDATING,
-  NAME_TO_TEXT_LOWERCASE_MAP,
-  TRACKING_CATEGORY_SHOW,
-} from '../constants';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import { I18N_WORK_ITEM_ERROR_UPDATING, TRACKING_CATEGORY_SHOW, VIEW_CONTEXT } from '../constants';
 
 export default {
   i18n: {
@@ -31,7 +28,10 @@ export default {
     WorkItemSidebarDropdownWidget,
     GlLink,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [glFeatureFlagsMixin(), Tracking.mixin()],
+  inject: {
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
+  },
   props: {
     fullPath: {
       type: String,
@@ -78,6 +78,7 @@ export default {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_milestone',
         property: `type_${this.workItemType}`,
+        extra: { viewContext: this.viewContext },
       };
     },
     emptyPlaceholder() {
@@ -194,6 +195,7 @@ export default {
                 milestoneId: selectedMilestoneId,
               },
             },
+            useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
           },
         })
         .then(({ data }) => {
@@ -205,7 +207,7 @@ export default {
         .catch((error) => {
           this.localMilestone = this.workItemMilestone;
           const msg = sprintf(I18N_WORK_ITEM_ERROR_UPDATING, {
-            workItemType: NAME_TO_TEXT_LOWERCASE_MAP[this.workItemType],
+            workItemType: this.workItemType,
           });
           this.$emit('error', msg);
           Sentry.captureException(error);

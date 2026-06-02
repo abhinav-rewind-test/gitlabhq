@@ -8,7 +8,7 @@ RSpec.describe TestHooks::ProjectService, feature_category: :code_testing do
   let(:current_user) { create(:user) }
 
   describe '#execute' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     let(:hook) { create(:project_hook, project: project) }
     let(:trigger) { 'not_implemented_events' }
@@ -166,7 +166,7 @@ RSpec.describe TestHooks::ProjectService, feature_category: :code_testing do
     end
 
     context 'wiki_page_events' do
-      let_it_be(:project) { create(:project, :wiki_repo) }
+      let_it_be(:project, freeze: false) { create(:project, :wiki_repo) }
 
       let(:trigger) { 'wiki_page_events' }
       let(:trigger_key) { :wiki_page_hooks }
@@ -250,6 +250,18 @@ RSpec.describe TestHooks::ProjectService, feature_category: :code_testing do
 
       it 'executes hook' do
         allow(Gitlab::DataBuilder::ResourceAccessTokenPayload).to receive(:build).and_return(sample_data)
+
+        expect(hook).to receive(:execute).with(sample_data, trigger_key, force: true).and_return(success_result)
+        expect(service.execute).to include(success_result)
+      end
+    end
+
+    context 'when resource deploy token events hook' do
+      let(:trigger) { 'resource_deploy_token_events' }
+      let(:trigger_key) { :resource_deploy_token_hooks }
+
+      it 'executes hook' do
+        allow(Gitlab::DataBuilder::ResourceDeployTokenPayload).to receive(:build).and_return(sample_data)
 
         expect(hook).to receive(:execute).with(sample_data, trigger_key, force: true).and_return(success_result)
         expect(service.execute).to include(success_result)

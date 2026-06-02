@@ -1,15 +1,13 @@
 <script>
 import { GlButton, GlIcon } from '@gitlab/ui';
-import { isString } from 'lodash';
-import highlight from '~/lib/utils/highlight';
+import { isString } from 'lodash-es';
 import { truncateNamespace } from '~/lib/utils/text_utility';
 import ProjectAvatar from '~/vue_shared/components/project_avatar.vue';
-import SafeHtml from '~/vue_shared/directives/safe_html';
+import HighlightedText from '~/vue_shared/components/highlighted_text.vue';
 
 export default {
   name: 'ProjectListItem',
-  components: { GlIcon, ProjectAvatar, GlButton },
-  directives: { SafeHtml },
+  components: { GlIcon, ProjectAvatar, GlButton, HighlightedText },
   props: {
     project: {
       type: Object,
@@ -32,9 +30,6 @@ export default {
     truncatedNamespace() {
       return truncateNamespace(this.projectNameWithNamespace);
     },
-    highlightedProjectName() {
-      return highlight(this.project.name, this.matcher);
-    },
   },
   methods: {
     onClick() {
@@ -50,7 +45,7 @@ export default {
     @click="onClick"
   >
     <div class="project-namespace-name-container gl-flex gl-flex-wrap gl-items-center">
-      <gl-icon v-if="selected" data-testid="selected-icon" name="mobile-issue-close" />
+      <gl-icon v-if="selected" data-testid="selected-icon" name="check" />
       <project-avatar
         :project-id="project.id"
         :project-avatar-url="projectAvatarUrl"
@@ -66,12 +61,9 @@ export default {
         {{ truncatedNamespace }}
         <span v-if="truncatedNamespace" class="gl-text-subtle">/&nbsp;</span>
       </div>
-      <div
-        v-safe-html="highlightedProjectName"
-        data-testid="project-name"
-        :title="project.name"
-        class="gl-truncate"
-      ></div>
+      <div data-testid="project-name" :title="project.name" class="gl-truncate">
+        <highlighted-text :text="project.name" :match="matcher" />
+      </div>
     </div>
   </gl-button>
 </template>

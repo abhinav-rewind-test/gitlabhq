@@ -4,16 +4,18 @@ require 'spec_helper'
 
 RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfolio_management do
   describe '#execute' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:project) { create(:project) }
-    let_it_be(:work_item) { create(:work_item, project: project) }
-    let_it_be(:task) { create(:work_item, :task, project: project) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:work_item, freeze: false) { create(:work_item, project: project) }
+    let_it_be(:task, freeze: false) { create(:work_item, :task, project: project) }
     let_it_be_with_reload(:task1) { create(:work_item, :task, project: project) }
     let_it_be_with_reload(:task2) { create(:work_item, :task, project: project) }
-    let_it_be(:invalid_task) { build_stubbed(:work_item, :task, id: non_existing_record_id) }
-    let_it_be(:another_project) { (create :project) }
-    let_it_be(:other_project_task) { create(:work_item, :task, iid: 100, project: another_project) }
-    let_it_be(:existing_parent_link) { create(:parent_link, work_item: task, work_item_parent: work_item) }
+    let_it_be(:invalid_task, freeze: false) { build_stubbed(:work_item, :task, id: non_existing_record_id) }
+    let_it_be(:another_project, freeze: false) { (create :project) }
+    let_it_be(:other_project_task, freeze: false) { create(:work_item, :task, iid: 100, project: another_project) }
+    let_it_be(:existing_parent_link, freeze: false) do
+      create(:parent_link, work_item: task, work_item_parent: work_item)
+    end
 
     let(:parent_link_class) { WorkItems::ParentLink }
     let(:issuable_type) { :task }
@@ -76,11 +78,11 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
     context 'when adjacent is already in place' do
       using RSpec::Parameterized::TableSyntax
 
-      let_it_be_with_reload(:parent_item) { create(:work_item, :objective, project: project) }
-      let_it_be_with_reload(:current_item) { create(:work_item, :objective, project: project) }
+      let_it_be_with_reload(:parent_item) { create(:work_item, :issue, project: project) }
+      let_it_be_with_reload(:current_item) { create(:work_item, :task, project: project) }
 
       let_it_be_with_reload(:adjacent) do
-        create(:work_item, :objective, project: project)
+        create(:work_item, :task, project: project)
       end
 
       let_it_be_with_reload(:link_to_adjacent) do
@@ -124,7 +126,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       context 'when tasks had different parent before' do
-        let_it_be(:previous_parent) { create(:work_item, :issue, project: project) }
+        let_it_be(:previous_parent, freeze: false) { create(:work_item, :issue, project: project) }
 
         before do
           create(:parent_link, work_item: task1, work_item_parent: previous_parent)
@@ -145,8 +147,8 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       context 'when tasks had different parents before' do
-        let_it_be(:previous_parent1) { create(:work_item, :issue, project: project) }
-        let_it_be(:previous_parent2) { create(:work_item, :issue, project: project) }
+        let_it_be(:previous_parent1, freeze: false) { create(:work_item, :issue, project: project) }
+        let_it_be(:previous_parent2, freeze: false) { create(:work_item, :issue, project: project) }
 
         before do
           create(:parent_link, work_item: task1, work_item_parent: previous_parent1)
@@ -193,10 +195,10 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
 
         work_item_notes = work_item.notes.last(2)
         resource_link_events = WorkItems::ResourceLinkEvent.last(2)
-        expect(work_item_notes.first.note).to eq("added #{task1.to_reference} as child task")
-        expect(work_item_notes.last.note).to eq("added #{task2.to_reference} as child task")
-        expect(task1.notes.last.note).to eq("added #{work_item.to_reference} as parent issue")
-        expect(task2.notes.last.note).to eq("added #{work_item.to_reference} as parent issue")
+        expect(work_item_notes.first.note).to eq("added #{task1.to_reference} as child item")
+        expect(work_item_notes.last.note).to eq("added #{task2.to_reference} as child item")
+        expect(task1.notes.last.note).to eq("added #{work_item.to_reference} as parent item")
+        expect(task2.notes.last.note).to eq("added #{work_item.to_reference} as parent item")
         expect(resource_link_events.first).to have_attributes(
           user_id: user.id,
           issue_id: work_item.id,
@@ -252,8 +254,8 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
             .and change { WorkItems::ResourceLinkEvent.count }.by(1)
 
           expect(subject[:created_references].map(&:work_item_id)).to match_array([task2.id])
-          expect(work_item.notes.last.note).to eq("added #{task2.to_reference} as child task")
-          expect(task2.notes.last.note).to eq("added #{work_item.to_reference} as parent issue")
+          expect(work_item.notes.last.note).to eq("added #{task2.to_reference} as child item")
+          expect(task2.notes.last.note).to eq("added #{work_item.to_reference} as parent item")
           expect(task.notes).to be_empty
           expect(WorkItems::ResourceLinkEvent.last).to have_attributes(
             user_id: user.id,
@@ -266,7 +268,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       context 'when there are invalid children' do
-        let_it_be(:issue) { create(:work_item, project: project) }
+        let_it_be(:issue, freeze: false) { create(:work_item, project: project) }
 
         let(:params) { { issuable_references: [task1, issue, other_project_task] } }
 
@@ -284,8 +286,8 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
         it 'creates notes for valid links', :aggregate_failures do
           subject
 
-          expect(work_item.notes.last.note).to eq("added #{other_project_task.to_reference(full: true)} as child task")
-          expect(task1.notes.last.note).to eq("added #{work_item.to_reference} as parent issue")
+          expect(work_item.notes.last.note).to eq("added #{other_project_task.to_reference(full: true)} as child item")
+          expect(task1.notes.last.note).to eq("added #{work_item.to_reference} as parent item")
           expect(issue.notes).to be_empty
           expect(other_project_task.notes).not_to be_empty
         end

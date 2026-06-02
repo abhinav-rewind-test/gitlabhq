@@ -20,8 +20,17 @@ RSpec.describe ContainerExpirationPolicy, type: :model do
     end
 
     describe '#older_than' do
+      it { is_expected.to allow_value('1d').for(:older_than) }
+      it { is_expected.to allow_value('3d').for(:older_than) }
       it { is_expected.to allow_value('7d').for(:older_than) }
       it { is_expected.to allow_value('14d').for(:older_than) }
+      it { is_expected.to allow_value('30d').for(:older_than) }
+      it { is_expected.to allow_value('60d').for(:older_than) }
+      it { is_expected.to allow_value('90d').for(:older_than) }
+      it { is_expected.to allow_value('180d').for(:older_than) }
+      it { is_expected.to allow_value('365d').for(:older_than) }
+      it { is_expected.to allow_value('730d').for(:older_than) }
+      it { is_expected.to allow_value('1095d').for(:older_than) }
       it { is_expected.to allow_value(nil).for(:older_than) }
       it { is_expected.not_to allow_value('123asdf').for(:older_than) }
     end
@@ -60,7 +69,7 @@ RSpec.describe ContainerExpirationPolicy, type: :model do
     end
 
     context 'with a set of regexps' do
-      let_it_be(:container_expiration_policy) { create(:container_expiration_policy) }
+      let_it_be(:container_expiration_policy, freeze: false) { create(:container_expiration_policy) }
 
       subject { container_expiration_policy }
 
@@ -80,7 +89,7 @@ RSpec.describe ContainerExpirationPolicy, type: :model do
       end
 
       context 'with a disabled container expiration policy' do
-        let_it_be(:container_expiration_policy) { create(:container_expiration_policy, :disabled) }
+        let_it_be(:container_expiration_policy, freeze: false) { create(:container_expiration_policy, :disabled) }
 
         subject { container_expiration_policy }
 

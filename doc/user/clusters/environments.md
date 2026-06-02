@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Cluster Environments (deprecated)
 ---
 
@@ -34,7 +34,7 @@ With cluster environments, you can gain insight into:
 - How many pods are in use for each project's environment.
 - The CI job that was used to deploy to that environment.
 
-![Cluster environments page](img/cluster_environments_table_v12_3.png)
+![The cluster environments page showing a list of projects, their environments, and pod status.](img/cluster_environments_table_v12_3.png)
 
 Access to cluster environments is restricted to
 [group maintainers and owners](../permissions.md#group-permissions).

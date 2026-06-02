@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Why you should sign your GitLab commits cryptographically, and how to verify signed commits.
 title: Signed commits
 ---
@@ -31,17 +31,17 @@ marked **Verified** in the GitLab UI.
 > The committer and author fields are distinct in Git. The author writes the commit, and the committer
 > applies it. Commit signing verifies only the committer's identity.
 
-GitLab supports the following commit signing methods:
+GitLab verifies signatures on commits and tags. The following signing methods are supported:
 
 - [SSH key](ssh.md)
 - [GPG key](gpg.md)
-- [Personal X.509 certificate](x509.md)
+- [X.509 certificate](x509.md)
 
 ## Verify commits
 
 To review commits for a merge request, or for an entire project, and verify they are signed:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. To review commits:
    - For a project, select **Code** > **Commits**.
    - For a merge request:
@@ -61,44 +61,47 @@ To review commits for a merge request, or for an entire project, and verify they
 
    ![Unverified signature details for a commit.](img/project_signed_commit_unverified_signature_v17_4.png)
 
-You can also [use the Commits API](../../../../api/commits.md#retrieve-commit-signature)
+You can also [use the commits API](../../../../api/commits.md#retrieve-commit-signature)
 to check a commit's signature.
 
 ### Verify web UI commits
 
 GitLab uses SSH to sign commits created through the web UI.
 To verify these commits locally, obtain the GitLab public key for signing web commits
-using the [Web Commits API](../../../../api/web_commits.md#retrieve-public-signing-key).
+using the [web commits API](../../../../api/web_commits.md#retrieve-public-signing-key).
 
-### Mailmap email detection for signed commits
+### Warning badge for unverified committer email
 
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/425042) in GitLab 17.5 [with a flag](../../../../administration/feature_flags/_index.md) named `check_for_mailmapped_commit_emails`. Disabled by default.
+- [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/work_items/481441) in GitLab 18.9.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/481441) in GitLab 19.1. Feature flag `check_for_mailmapped_commit_emails` removed.
 
 {{< /history >}}
 
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This flag enables the infrastructure for `mailmap` detection. Full `mailmap` support requires
-> additional configuration and is not yet enabled by default.
+When a verified signed commit's committer email is no longer verified to the signing user,
+GitLab displays an orange verified badge with a warning sign ({{< icon name="warning" >}} **Verified**).
 
-GitLab stores the original committer email address for signed commits (SSH, GPG, and X.509).
-This prepares GitLab to detect when [`gitmailmap`](https://git-scm.com/docs/gitmailmap)
-modifies a commit's email. A `mailmap` maps author and committer names and email addresses
-to different values.
+This can occur when the committer email was removed from the user's verified emails.
 
-For verified signatures with `mailmapped` committer emails, GitLab displays an orange verified label with a warning sign.
-To restore the green verified label, verify the mapped email address, or remove the `mailmap` entry.
+To restore the green **Verified** badge, add the committer email address to your
+GitLab profile and verify it.
 
 ## Enforce signed commits with push rules
+
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can require signed commits across your projects using push rules.
 The **Reject unsigned commits** push rule prevents any unsigned commits from being pushed
 to a repository, helping organizations maintain code integrity and meet compliance requirements.
 
-For more information about how this rule works and its limitations, see [Require signed commits](../push_rules.md#require-signed-commits).
+For more information about how this rule works and its limitations, see [require signed commits](../push_rules.md#require-signed-commits).
 
 ## Troubleshooting
 

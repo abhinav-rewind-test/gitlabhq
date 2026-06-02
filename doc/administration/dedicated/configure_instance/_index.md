@@ -1,7 +1,7 @@
 ---
 stage: GitLab Dedicated
 group: Switchboard
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure your GitLab Dedicated instance with Switchboard.
 title: Configure GitLab Dedicated
 ---
@@ -17,7 +17,9 @@ The instructions on this page guide you through configuring your GitLab Dedicate
 
 Administrators can configure additional settings in their GitLab application by using the [**Admin** area](../../admin_area.md).
 
-As a GitLab-managed solution, you cannot change any GitLab functionality controlled by SaaS environment settings. Examples of such SaaS environment settings include `gitlab.rb` configurations and access to shell, Rails console, and PostgreSQL console.
+However, because GitLab Dedicated is a managed solution, you cannot change functionality controlled
+by environment-level settings. These include `gitlab.rb` configurations and access to the shell,
+Rails console, and PostgreSQL console.
 
 GitLab Dedicated engineers do not have direct access to your environment, except for [break glass situations](../../../subscriptions/gitlab_dedicated/_index.md#access-controls).
 
@@ -32,8 +34,8 @@ The following configuration settings are available in Switchboard:
 
 - [IP allowlist](network_security.md#ip-allowlist)
 - [SAML settings](authentication/saml.md)
-- [Custom certificates](network_security.md#custom-certificate-authorities-for-external-services)
-- [Outbound private links](network_security.md#outbound-private-link)
+- [Custom certificate authorities](network_security.md#custom-certificate-authorities-for-external-services)
+- [Outbound PrivateLink connections](network_security.md#outbound-privatelink-connections)
 - [Private hosted zones](network_security.md#private-hosted-zones)
 
 Prerequisites:
@@ -98,19 +100,6 @@ To view the configuration change log:
 
 Each configuration change appears as an entry in the table. Select **View details** to see more information about each change.
 
-## Self-hosted AI Gateway for GitLab Dedicated instances
-
-{{< history >}}
-
-- The `ALLOW_DEDICATED_SELF_HOSTED_AIGW` environment variable was [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/584642) in GitLab 18.9.
-
-{{< /history >}}
-
-To self-host an AI Gateway:
-
-1. Submit a [support ticket](https://support.gitlab.com/hc/en-us/requests/new?ticket_form_id=4414917877650) and ask to enable this feature.
-1. After it's enabled, proceed to [install an AI gateway](../../../install/install_ai_gateway.md).
-
 ## Request configuration changes with a support ticket
 
 Certain configuration changes require that you submit a support ticket to request the changes. For more information on how to create a support ticket, see [creating a ticket](https://about.gitlab.com/support/portal/#creating-a-ticket).
@@ -120,7 +109,7 @@ Configuration changes requested with a [support ticket](https://support.gitlab.c
 - Are applied during your environment's weekly four-hour maintenance window.
 - Can be requested for options specified during onboarding or for optional features listed on this page.
 - May be postponed to the following week if GitLab needs to perform high-priority maintenance tasks.
-- Can't be applied outside the weekly maintenance window unless they qualify for [emergency support](https://about.gitlab.com/support/#how-to-engage-emergency-support).
+- Can't be applied outside the weekly maintenance window unless they qualify for [emergency support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#how-to-engage-emergency-support).
 
 > [!note]
 > Even if a change request meets the minimum lead time, it might not be applied during the upcoming maintenance window.

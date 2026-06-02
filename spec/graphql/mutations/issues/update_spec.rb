@@ -5,10 +5,10 @@ require 'spec_helper'
 RSpec.describe Mutations::Issues::Update, feature_category: :team_planning do
   include GraphqlHelpers
 
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project, freeze: false) { create(:project) }
   let_it_be(:current_user) { create(:user) }
-  let_it_be(:project_label) { create(:label, project: project) }
-  let_it_be(:issue) { create(:issue, project: project, labels: [project_label]) }
+  let_it_be(:project_label, freeze: false) { create(:label, project: project) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project, labels: [project_label]) }
   let_it_be(:milestone) { create(:milestone, project: project) }
 
   let(:expected_attributes) do
@@ -60,6 +60,22 @@ RSpec.describe Mutations::Issues::Update, feature_category: :team_planning do
         end
       end
 
+      context 'when setting milestone with a global id' do
+        let(:mutation_params) do
+          {
+            project_path: project.full_path,
+            iid: issue.iid,
+            milestone_id: milestone.to_global_id.to_s
+          }
+        end
+
+        it 'sets the milestone correctly' do
+          subject
+
+          expect(issue.reload.milestone).to eq(milestone)
+        end
+      end
+
       context 'when setting milestone to nil' do
         let(:expected_attributes) { { milestone_id: nil } }
 
@@ -67,6 +83,26 @@ RSpec.describe Mutations::Issues::Update, feature_category: :team_planning do
           issue.update_column(:milestone_id, milestone.id)
 
           expect { subject }.to change { issue.reload.milestone }.from(milestone).to(nil)
+        end
+      end
+
+      context 'when milestone_id is not provided' do
+        before do
+          issue.update_column(:milestone_id, milestone.id)
+        end
+
+        it 'does not clear the milestone when adding labels' do
+          mutation_params.except!(:title, :description, :confidential, :due_date, :discussion_locked, :milestone_id)
+          mutation_params[:add_label_ids] = []
+
+          expect { subject }.not_to change { issue.reload.milestone }
+        end
+
+        it 'does not clear the milestone when closing the issue' do
+          mutation_params.except!(:title, :description, :confidential, :due_date, :discussion_locked, :milestone_id)
+          mutation_params[:state_event] = 'close'
+
+          expect { subject }.not_to change { issue.reload.milestone }
         end
       end
 

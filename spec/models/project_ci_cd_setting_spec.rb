@@ -10,6 +10,13 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
 
     subject { described_class.new(project: project) }
 
+    it 'validates max_pipelines_per_merge_train is at least 1 or nil' do
+      expect(subject).to validate_numericality_of(:max_pipelines_per_merge_train)
+        .only_integer
+        .is_greater_than_or_equal_to(1)
+        .allow_nil
+    end
+
     it 'validates default_git_depth is between 0 and 1000 or nil' do
       expect(subject).to validate_numericality_of(:default_git_depth)
         .only_integer
@@ -38,8 +45,8 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
         .to include("not_existing_claim is not an allowed sub claim component")
     end
 
-    it 'validates environment_protected and deployment_tier are allowed sub claim components' do
-      subject.id_token_sub_claim_components = %w[project_path environment_protected deployment_tier]
+    it 'validates ref_protected, environment_protected and deployment_tier are allowed sub claim components' do
+      subject.id_token_sub_claim_components = %w[project_path ref_protected environment_protected deployment_tier]
       expect(subject).to be_valid
     end
 
@@ -141,7 +148,7 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
 
   describe '#default_git_depth' do
     let(:default_value) { described_class::DEFAULT_GIT_DEPTH }
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     it 'sets default value for new records' do
       expect(project.ci_cd_settings.default_git_depth).to eq(default_value)
@@ -191,7 +198,7 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
   end
 
   describe '#display_pipeline_variables' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
 
     it 'defaults to false' do
       expect(project.ci_cd_settings.display_pipeline_variables).to be(false)
@@ -204,8 +211,30 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
     end
   end
 
+  describe '#pipeline_override_role_privileged?' do
+    let(:project) { build(:project) }
+    let(:setting) { project.ci_cd_settings }
+
+    subject { setting.pipeline_override_role_privileged? }
+
+    before do
+      setting.pipeline_variables_minimum_override_role = role
+    end
+
+    where(:role, :expected) do
+      :owner          | true
+      :no_one_allowed | true
+      :maintainer     | false
+      :developer      | false
+    end
+
+    with_them do
+      it { is_expected.to eq(expected) }
+    end
+  end
+
   describe '.configured_to_delete_old_pipelines' do
-    let_it_be(:project) { create(:project, ci_delete_pipelines_in_seconds: 2.weeks.to_i) }
+    let_it_be(:project, freeze: false) { create(:project, ci_delete_pipelines_in_seconds: 2.weeks.to_i) }
     let_it_be(:other_project) { create(:project, group_runners_enabled: true) }
 
     it 'includes settings with values present' do
@@ -214,8 +243,8 @@ RSpec.describe ProjectCiCdSetting, feature_category: :continuous_integration do
   end
 
   describe '#resource_group_default_process_mode' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:setting) { project.ci_cd_settings }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:setting, freeze: false) { project.ci_cd_settings }
 
     it 'defines an enum with all process modes' do
       expect(described_class.resource_group_default_process_modes).to eq({

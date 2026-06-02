@@ -9,7 +9,7 @@ module API
 
     LOG_FILENAME = Rails.root.join("log", "api_json.log")
 
-    NO_SLASH_URL_PART_REGEX = %r{[^/]+}
+    NO_SLASH_URL_PART_REGEX = ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX
     NAMESPACE_OR_PROJECT_REQUIREMENTS = { id: NO_SLASH_URL_PART_REGEX }.freeze
     COMMIT_ENDPOINT_REQUIREMENTS = NAMESPACE_OR_PROJECT_REQUIREMENTS.merge(sha: NO_SLASH_URL_PART_REGEX).freeze
     USER_REQUIREMENTS = { user_id: NO_SLASH_URL_PART_REGEX }.freeze
@@ -47,7 +47,8 @@ module API
         Gitlab::GrapeLogging::Loggers::CorrelationIdLogger.new,
         Gitlab::GrapeLogging::Loggers::ContextLogger.new,
         Gitlab::GrapeLogging::Loggers::ContentLogger.new,
-        Gitlab::GrapeLogging::Loggers::UrgencyLogger.new
+        Gitlab::GrapeLogging::Loggers::UrgencyLogger.new,
+        Gitlab::GrapeLogging::Loggers::FeatureFlagStatesLogger.new
       ]
 
     allow_access_with_scope :api
@@ -212,6 +213,7 @@ module API
         # Keep in alphabetical order
         mount ::API::AccessRequests
         mount ::API::Admin::BatchedBackgroundMigrations
+        mount ::API::Admin::BatchedBackgroundOperations
         mount ::API::Admin::BroadcastMessages
         mount ::API::Admin::Ci::Variables
         mount ::API::Admin::Dictionary
@@ -251,6 +253,7 @@ module API
         mount ::API::Conan::V2::ProjectPackages
         mount ::API::ContainerRegistryEvent
         mount ::API::ContainerRepositories
+        mount ::API::Databases
         mount ::API::DebianGroupPackages
         mount ::API::DebianProjectPackages
         mount ::API::DependencyProxy
@@ -357,6 +360,7 @@ module API
         mount ::API::Terraform::Modules::V1::NamespacePackages
         mount ::API::Terraform::Modules::V1::ProjectPackages
         mount ::API::Terraform::State
+        mount ::API::Terraform::StateProtectionRules
         mount ::API::Terraform::StateVersion
         mount ::API::Topics
         mount ::API::Unleash
@@ -368,6 +372,16 @@ module API
         mount ::API::UserCounts
         mount ::API::UserRunners
         mount ::API::WebCommits
+        mount ::API::WorkItems::Delete
+        mount ::API::WorkItems::Create
+        mount ::API::WorkItems::Update
+        mount ::API::WorkItems::List
+        mount ::API::WorkItems::Show
+        mount ::API::WorkItems::Children
+        mount ::API::WorkItems::LinkedItems
+        mount ::API::WorkItems::AwardEmoji
+        mount ::API::WorkItems::Notes
+        mount ::API::WorkItems::EmailParticipants
         mount ::API::Wikis
 
         add_open_api_documentation!
@@ -383,6 +397,7 @@ module API
       mount ::API::GroupBoards
       mount ::API::GroupLabels
       mount ::API::GroupMilestones
+      mount ::API::GroupServiceAccounts
       mount ::API::Labels
       mount ::API::Mcp::Base # MCP uses JSON-RPC for base protocol, omit from OpenAPI V2 documentation for REST API
       mount ::API::Notes
@@ -390,10 +405,12 @@ module API
       mount ::API::ProjectEvents
       mount ::API::ProjectMilestones
       mount ::API::ProjectRepositoryStorageMoves
+      mount ::API::ProjectServiceAccounts
       mount ::API::ProtectedTags
       mount ::API::ResourceAccessTokens
       mount ::API::ResourceLabelEvents
       mount ::API::ResourceStateEvents
+      mount ::API::ServiceAccounts
       mount ::API::Settings
       mount ::API::SidekiqMetrics
       mount ::API::SnippetRepositoryStorageMoves
@@ -405,6 +422,7 @@ module API
       mount ::API::UsageDataServicePing
       mount ::API::UsageDataTrack
       mount ::API::UsageDataNonSqlMetrics
+      mount ::API::UserApplications
       mount ::API::Users
       mount ::API::VsCode::Settings::VsCodeSettingsSync
       mount ::API::Ml::Mlflow::Entrypoint
@@ -422,11 +440,41 @@ module API
     mount ::API::Internal::MailRoom
     mount ::API::Internal::Workhorse
     mount ::API::Internal::Shellhorse
+    mount ::API::Internal::Gitaly
 
     route :any, '*path', feature_category: :not_owned do
       error!('404 Not Found', 404)
     end
   end
+
+  class TrackAPIRequestFromPersonalAccessToken < ::Grape::Middleware::Base
+    delegate :endpoint_id, to: :context
+
+    def after
+      token_info = ::Current.token_info
+      return unless token_info.is_a?(Hash) && token_info[:token_type] == 'PersonalAccessToken'
+
+      # NOTE: use instance_variable_get to avoid triggering lazy current_user evaluation
+      user = context.instance_variable_get(:@current_user)
+
+      return unless user
+      return unless Feature.enabled?(:track_api_request_from_personal_access_token, user)
+
+      ::Gitlab::InternalEvents.track_event(
+        'use_pat',
+        user: user,
+        additional_properties: {
+          label: endpoint_id,
+          pat_type: token_info[:pat_type],
+          response_code: context.status
+        }
+      )
+
+      # Explicit nil is needed or the api call return value will be overwritten
+      nil
+    end
+  end
 end
 
+API::API.use API::TrackAPIRequestFromPersonalAccessToken
 API::API.prepend_mod

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Trigger pipelines with the API
 ---
 
@@ -12,8 +12,11 @@ title: Trigger pipelines with the API
 
 {{< /details >}}
 
-To trigger a pipeline for a specific branch or tag, you can use an API call
-to the [pipeline triggers API endpoint](../../api/pipeline_triggers.md).
+You can use an API call to the [pipeline triggers API endpoint](../../api/pipeline_triggers.md)
+to trigger a pipeline for a specific branch or tag.
+
+You can also [trigger a downstream pipeline from a CI/CD job](../pipelines/downstream_pipelines.md)
+with the `trigger` keyword.
 
 If you are [migrating to GitLab CI/CD](../migration/plan_a_migration.md), you can
 trigger GitLab CI/CD pipelines by calling the API endpoint from the other provider's jobs.
@@ -39,7 +42,7 @@ Prerequisites:
 To create a trigger token:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Pipeline trigger tokens**.
 1. Select **Add new token**
 1. Enter a description and select **Create pipeline trigger token**.
@@ -199,7 +202,7 @@ spec:
 To revoke a pipeline trigger token:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Pipeline triggers**.
 1. To the left of the trigger token you want to revoke, select **Revoke** ({{< icon name="remove" >}}).
 

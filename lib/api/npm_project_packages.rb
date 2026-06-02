@@ -26,6 +26,7 @@ module API
 
     helpers do
       include Gitlab::Utils::StrongMemoize
+      include Gitlab::InternalEventsTracking
 
       def error_reason_to_http_status(reason)
         ERROR_REASON_TO_HTTP_STATUS_MAPPTING.fetch(reason, 400)
@@ -108,7 +109,7 @@ module API
         hidden true
       end
       route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true
-      route_setting :authorization, permissions: :authorize_npm_package, boundary_type: :project,
+      route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization,
         job_token_policies: :admin_packages
       put ':package_name/authorize', requirements: ::API::Helpers::Packages::Npm::NPM_ENDPOINT_REQUIREMENTS do
         authorize_upload!(project)
@@ -118,8 +119,9 @@ module API
         ::Packages::PackageFileUploader.workhorse_authorize(has_length: true, maximum_size: project.actual_limits.npm_max_file_size)
       end
 
-      desc 'Create or deprecate NPM package' do
-        detail 'Create was introduced in GitLab 11.8 & deprecate suppport was added in 16.0'
+      desc 'Create or deprecate an NPM package' do
+        detail 'Creates or deprecates an NPM package for a specified project. Deprecate support was added in ' \
+          'GitLab 16.0.'
         success code: 200
         failure [
           { code: 400, message: 'Bad Request' },
@@ -153,7 +155,9 @@ module API
           render_structured_api_error!({ message: response.message, error: response.message }, error_reason_to_http_status(response.reason))
         end
 
-        unless npm_command_deprecate?
+        if npm_command_deprecate?
+          track_internal_event('deprecate_npm_package', project: project, user: current_user)
+        else
           track_package_event('push_package', :npm, category: 'API::NpmPackages', project: project, namespace: project.namespace)
         end
 

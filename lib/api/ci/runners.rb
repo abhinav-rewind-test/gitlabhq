@@ -6,7 +6,10 @@ module API
       include APIGuard
       include PaginationParams
 
-      before { authenticate! }
+      before do
+        authenticate!
+        set_current_organization
+      end
 
       feature_category :runner_core
       urgency :low
@@ -24,8 +27,8 @@ module API
           optional :status, type: String, values: ::Ci::Runner::AVAILABLE_STATUSES_INCL_DEPRECATED,
             desc: 'The status of runners to return'
           optional :tag_list, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
-            desc: 'A list of runner tags', documentation: { example: "['macos', 'shell']" }
-          optional :version_prefix, type: String, desc: 'The version prefix of runners to return', documentation: { example: "'15.1.' or '16.'" },
+            desc: 'A list of runner tags', documentation: { example: %w[macos shell] }
+          optional :version_prefix, type: String, desc: 'The version prefix of runners to return', documentation: { example: '15.1.' },
             regexp: /^[\d+.]+/
 
           use :pagination
@@ -228,7 +231,7 @@ module API
           optional :active, type: Boolean, desc: 'Deprecated: Use `paused` instead. Flag indicating whether the runner is allowed to receive jobs'
           optional :paused, type: Boolean, desc: 'Specifies if the runner should ignore new jobs'
           optional :tag_list, type: Array[String], coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
-            desc: 'The list of tags for a runner', documentation: { example: "['macos', 'shell']" }
+            desc: 'The list of tags for a runner', documentation: { example: %w[macos shell] }
           optional :run_untagged, type: Boolean, desc: 'Specifies if the runner can execute untagged jobs'
           optional :locked, type: Boolean, desc: 'Specifies if the runner is locked'
           optional :access_level, type: String, values: ::Ci::Runner.access_levels.keys,
@@ -308,7 +311,7 @@ module API
         desc 'Reset runner authentication token' do
           summary "Reset runner's authentication token"
           success Entities::Ci::ResetTokenResult
-          failure [[403, 'No access granted'], [404, 'Runner not found']]
+          failure [[403, 'No access granted'], [404, 'Runner not found'], [422, 'Unprocessable Entity']]
           tags %w[runners]
         end
         params do
@@ -318,7 +321,8 @@ module API
           runner = get_runner(params[:id])
           authenticate_update_runner!(runner)
 
-          ::Ci::Runners::ResetAuthenticationTokenService.new(runner: runner, current_user: current_user).execute!
+          result = ::Ci::Runners::ResetAuthenticationTokenService.new(runner: runner, current_user: current_user).execute
+          error!(result.message, result.reason) if result.error?
 
           present runner.token_with_expiration, with: Entities::Ci::ResetTokenResult
         end

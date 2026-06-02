@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Build and test your application.
 title: Get started with GitLab CI/CD
 ---
@@ -30,7 +30,7 @@ To use GitLab CI/CD, you start with a `.gitlab-ci.yml` file at the root of your 
 This file specifies the stages, jobs, and scripts to be executed during your CI/CD pipeline.
 It is a YAML file with its own custom syntax.
 
-By default, the file is named `.gitlab-ci.yml`, but you can use any filename.
+The filename must be `.gitlab-ci.yml` and is case-sensitive, but you can [configure a different filename](pipelines/settings.md#specify-a-custom-cicd-configuration-file).
 
 In this file, you define variables, dependencies between jobs, and specify when
 and how each job should be executed.

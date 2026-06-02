@@ -1,7 +1,7 @@
 ---
 stage: Growth
 group: Acquisition
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Broadcast Messages API
 description: Manage broadcast messages with user role targeting, path filtering, and customizable themes.
 ---
@@ -145,6 +145,7 @@ following levels are valid:
 - Guest (`10`)
 - Planner (`15`)
 - Reporter (`20`)
+- Security Manager (`25`)
 - Developer (`30`)
 - Maintainer (`40`)
 - Owner (`50`)

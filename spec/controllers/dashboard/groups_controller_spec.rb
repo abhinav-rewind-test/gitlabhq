@@ -8,6 +8,8 @@ RSpec.describe Dashboard::GroupsController do
   let_it_be(:user) { create(:user) }
   let_it_be(:current_organization) { user.organization }
 
+  render_views
+
   before do
     sign_in(user)
   end

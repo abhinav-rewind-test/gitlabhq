@@ -94,35 +94,58 @@ RSpec.describe Banzai::Filter::IframeLinkFilter, feature_category: :markdown do
     it_behaves_like 'an unchanged element'
   end
 
-  context 'when data-canonical-src is empty' do
-    let(:image) { %(<img src="#{src}" data-canonical-src=""/>) }
+  context 'when the element src matches a URL transform rule' do
+    it 'transforms a YouTube watch URL and matches the allowlist' do
+      image = link_to_image('https://www.youtube.com/watch?v=foo')
+      container = filter(image).children.first
 
-    context 'and src is for an iframe' do
-      let(:src) { "https://www.youtube.com/embed/foo" }
+      expect(container.name).to eq 'span'
+      expect(container['class']).to eq 'media-container img-container'
 
-      it_behaves_like 'an iframe element'
+      iframe = container.children.first
+      expect(iframe.name).to eq 'img'
+      expect(iframe['src']).to eq 'https://www.youtube.com/embed/foo'
+      expect(iframe['data-iframe-canonical-src']).to eq 'https://www.youtube.com/watch?v=foo'
     end
 
-    context 'and src is an image' do
-      let(:src) { 'https://path/my_image.jpg' }
-
-      it_behaves_like 'an unchanged element'
-    end
-  end
-
-  context 'when data-canonical-src is set' do
-    it 'uses the correct src' do
-      proxy_src = 'https://assets.example.com/6d8b63'
-      canonical_src = 'https://www.youtube.com/embed/foo'
-      image = %(<img src="#{proxy_src}" data-canonical-src="#{canonical_src}"/>)
+    it 'transforms a YouTube short URL and matches the allowlist' do
+      image = link_to_image('https://youtu.be/foo')
       container = filter(image).children.first
 
       expect(container['class']).to eq 'media-container img-container'
 
       iframe = container.children.first
+      expect(iframe['src']).to eq 'https://www.youtube.com/embed/foo'
+      expect(iframe['data-iframe-canonical-src']).to eq 'https://youtu.be/foo'
+    end
 
-      expect(iframe['src']).to eq proxy_src
-      expect(iframe['data-canonical-src']).to eq canonical_src
+    it 'transforms a Figma view URL and matches the allowlist' do
+      allow(Gitlab::CurrentSettings).to receive(:iframe_rendering_allowlist)
+        .and_return(["embed.figma.com"])
+
+      image = link_to_image('https://www.figma.com/design/abc123/My-Design')
+      container = filter(image).children.first
+
+      expect(container['class']).to eq 'media-container img-container'
+
+      iframe = container.children.first
+      expect(iframe['src']).to eq 'https://embed.figma.com/design/abc123?embed-host=gitlab'
+      expect(iframe['data-iframe-canonical-src']).to eq 'https://www.figma.com/design/abc123/My-Design'
+    end
+
+    it 'does not set data-iframe-canonical-src when no transform is applied' do
+      image = link_to_image('https://www.youtube.com/embed/foo')
+      container = filter(image).children.first
+      iframe = container.children.first
+
+      expect(iframe['data-iframe-canonical-src']).to be_nil
+    end
+
+    it 'leaves the element unchanged when the transformed URL does not match the allowlist' do
+      image = link_to_image('https://www.figma.com/design/abc123')
+      element = filter(image).children.first
+
+      expect(element.name).to eq 'img'
     end
   end
 

@@ -7,6 +7,9 @@ import getProtectableBranches from '../graphql/queries/protectable_branches.quer
 const wildcardsHelpDocLink = helpPagePath('user/project/repository/branches/protected', {
   anchor: 'use-wildcard-rules',
 });
+
+// 255 characters is filesystem path limit on most systems
+const MAX_BRANCH_NAME_LENGTH = 255;
 export default {
   name: 'BranchRuleModal',
   wildcardsHelpDocLink,
@@ -75,6 +78,9 @@ export default {
 
       return items;
     },
+    isBranchNameTooLong() {
+      return this.searchQuery.length > MAX_BRANCH_NAME_LENGTH;
+    },
     filteredOpenBranches() {
       const openBranches = this.protectableBranches.map((item) => ({
         text: item,
@@ -108,7 +114,7 @@ export default {
       return this.filteredOpenBranches.some((branch) => branch.text === this.searchQuery);
     },
     isBranchAvailable() {
-      return this.searchQuery.trim() && !this.hasMatchingBranch;
+      return this.searchQuery.trim() && !this.hasMatchingBranch && !this.isBranchNameTooLong;
     },
     isWildcardAvailable() {
       return this.isBranchAvailable && this.searchQuery.includes('*');
@@ -124,7 +130,7 @@ export default {
         text: this.actionPrimaryText,
         attributes: {
           variant: 'confirm',
-          disabled: !this.branchRuleName,
+          disabled: !this.branchRuleName || this.isBranchNameTooLong,
         },
       };
     },
@@ -169,11 +175,20 @@ export default {
     @change="searchQuery = ''"
   >
     <gl-form-group :label="s__('BranchRules|Branch name or pattern')">
+      <div
+        v-if="isBranchNameTooLong"
+        class="gl-mb-2 gl-text-danger"
+        data-testid="branch-name-error"
+        role="alert"
+      >
+        {{ s__('BranchRules|Branch name cannot exceed 255 characters.') }}
+      </div>
       <gl-collapsible-listbox
         v-model="branchRuleName"
         searchable
         :items="createRuleItems"
         :toggle-text="createRuleText"
+        :search-placeholder="s__('BranchRules|Search branches')"
         block
         @search="handleBranchRuleSearch"
         @select="selectBranchRuleName"

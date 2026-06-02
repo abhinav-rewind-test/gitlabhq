@@ -284,31 +284,6 @@ class NotificationService
   end
 
   NEW_COMMIT_EMAIL_DISPLAY_LIMIT = 20
-  def push_to_merge_request(merge_request, current_user, new_commits: [], existing_commits: [])
-    total_new_commits_count = new_commits.count
-    truncated_new_commits = new_commits.first(NEW_COMMIT_EMAIL_DISPLAY_LIMIT).map do |commit|
-      { short_id: commit.short_id, title: commit.title }
-    end
-
-    # We don't need the list of all existing commits. We need the first, the
-    # last, and the total number of existing commits only.
-    total_existing_commits_count = existing_commits.count
-    existing_commits = [existing_commits.first, existing_commits.last] if total_existing_commits_count > 2
-    existing_commits = existing_commits.map do |commit|
-      { short_id: commit.short_id, title: commit.title }
-    end
-
-    recipients = NotificationRecipients::BuildService.build_recipients(merge_request, current_user, action: "push_to")
-
-    recipients.each do |recipient|
-      mailer.send(
-        :push_to_merge_request_email,
-        recipient.user.id, merge_request.id, current_user.id, recipient.reason,
-        new_commits: truncated_new_commits, total_new_commits_count: total_new_commits_count,
-        existing_commits: existing_commits, total_existing_commits_count: total_existing_commits_count
-      ).deliver_later
-    end
-  end
 
   # Sends push notification emails using pre-computed commit data.
   # This method is designed for async workers that need to avoid large Sidekiq payloads.
@@ -507,6 +482,19 @@ class NotificationService
     send_service_desk_notification(note)
   end
 
+  # Notify users when note is edited to add a mention of them
+  def new_mentions_in_note(note, new_mentioned_users, current_user)
+    return true unless note.noteable_type.present?
+    return true if note.system_note_with_references?
+
+    unless current_user.can_trigger_notifications?
+      warn_skipping_notifications(current_user, note)
+      return false
+    end
+
+    send_new_mentions_in_note_notifications(note, new_mentioned_users)
+  end
+
   # Notify users when a new release is created
   def send_new_release_notifications(release)
     unless release.author&.can_trigger_notifications?
@@ -539,6 +527,17 @@ class NotificationService
 
   def user_deactivated(name, email)
     mailer.user_deactivated_email(name, email).deliver_later
+  end
+
+  def group_was_transferred(group, old_path_with_namespace)
+    return if group.emails_disabled?
+
+    recipients = group_transferred_recipients(group)
+    recipients = notifiable_users(recipients, :custom, custom_action: :moved_project)
+
+    recipients.each do |recipient|
+      mailer.group_was_transferred_email(group.id, recipient.id, old_path_with_namespace).deliver_later
+    end
   end
 
   def project_was_moved(project, old_path_with_namespace)
@@ -602,7 +601,7 @@ class NotificationService
     return unless mailer.respond_to?(email_template)
 
     recipients ||= notifiable_users(
-      [pipeline.user], :watch,
+      pipeline_notification_recipients(pipeline, status), :watch,
       custom_action: :"#{status}_pipeline",
       target: pipeline
     ).map do |user|
@@ -801,8 +800,8 @@ class NotificationService
     end
   end
 
-  def new_achievement_email(user, achievement)
-    mailer.new_achievement_email(user, achievement)
+  def new_achievement_email(user, achievement, user_achievement)
+    mailer.new_achievement_email(user, achievement, user_achievement)
   end
 
   def project_scheduled_for_deletion(project)
@@ -913,9 +912,21 @@ class NotificationService
   private
 
   def send_new_note_notifications(note)
+    recipients = NotificationRecipients::BuildService.build_new_note_recipients(note)
+
+    send_note_notifications(note, recipients)
+  end
+
+  def send_new_mentions_in_note_notifications(note, new_mentioned_users)
+    recipients = NotificationRecipients::BuildService.build_new_note_recipients(note)
+    recipients = recipients.select { |r| new_mentioned_users.include?(r.user) }
+
+    send_note_notifications(note, recipients)
+  end
+
+  def send_note_notifications(note, recipients)
     notify_method = :"note_#{note.noteable_ability_name}_email"
 
-    recipients = NotificationRecipients::BuildService.build_new_note_recipients(note)
     recipients.each do |recipient|
       mailer.send(notify_method, recipient.user.id, note.id, recipient.reason).deliver_later
     end
@@ -966,7 +977,7 @@ class NotificationService
     recipients = ::NotificationRecipients::BuildService.build_recipients(merge_request, current_user, action: 'approve')
 
     recipients.each do |recipient|
-      mailer.approved_merge_request_email(recipient.user.id, merge_request.id, current_user.id).deliver_later
+      mailer.approved_merge_request_email(recipient.user.id, merge_request.id, current_user.id, recipient.reason).deliver_later
     end
   end
 
@@ -974,7 +985,7 @@ class NotificationService
     recipients = ::NotificationRecipients::BuildService.build_recipients(merge_request, current_user, action: 'unapprove')
 
     recipients.each do |recipient|
-      mailer.unapproved_merge_request_email(recipient.user.id, merge_request.id, current_user.id).deliver_later
+      mailer.unapproved_merge_request_email(recipient.user.id, merge_request.id, current_user.id, recipient.reason).deliver_later
     end
   end
 
@@ -988,6 +999,25 @@ class NotificationService
     end
   end
 
+  def pipeline_notification_recipients(pipeline, status)
+    recipients = [pipeline.user].compact
+
+    if status == 'failed'
+      # rubocop:disable CodeReuse/ActiveRecord -- eager-load author and merge_user to avoid N+1 when iterating head-pipeline MRs
+      merge_requests = pipeline.merge_requests_as_head_pipeline.includes(:author, :merge_user)
+      # rubocop:enable CodeReuse/ActiveRecord
+      merge_requests.each do |merge_request|
+        next unless merge_request.auto_merge_enabled?
+        next if [merge_request.author_id, merge_request.merge_user_id].include?(pipeline.user_id)
+
+        recipients << merge_request.author unless merge_request.author&.bot?
+        recipients << merge_request.merge_user unless merge_request.merge_user&.bot?
+      end
+    end
+
+    recipients.compact.uniq
+  end
+
   def owners_and_maintainers_without_invites(project)
     recipients = project.members.active_without_invites_and_requests.owners_and_maintainers
 
@@ -996,6 +1026,18 @@ class NotificationService
     end
 
     recipients
+  end
+
+  def group_transferred_recipients(group)
+    recipients = group.members.active_without_invites_and_requests.owners_and_maintainers
+      .preload_user_and_notification_settings.to_a
+
+    if recipients.empty? && group.parent
+      recipients = group.parent.members.active_without_invites_and_requests.owners_and_maintainers
+        .preload_user_and_notification_settings.to_a
+    end
+
+    recipients.map(&:user)
   end
 
   def project_moved_recipients(project)

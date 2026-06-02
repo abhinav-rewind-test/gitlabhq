@@ -163,7 +163,7 @@ production: &base
     # This happens when the commit is pushed or merged into the default branch of a project.
     # When not specified the default issue_closing_pattern as specified below will be used.
     # Tip: you can test your closing pattern at http://rubular.com.
-    # issue_closing_pattern: '\b((?:[Cc]los(?:e[sd]?|ing)|\b[Ff]ix(?:e[sd]|ing)?|\b[Rr]esolv(?:e[sd]?|ing)|\b[Ii]mplement(?:s|ed|ing)?)(:?) +(?:(?:issues? +)?%{issue_ref}(?:(?:, *| +and +)?)|([A-Z][A-Z0-9_]+-\d+))+)'
+    # issue_closing_pattern: '\b((?:[Cc]los(?:e[sd]?|ing)|\b[Ff]ix(?:e[sd]|ing)?|\b[Rr]esolv(?:e[sd]?|ing)|\b[Ii]mplement(?:s|ed|ing)?)(:?) +(?:(?:issues? +)?%{issue_ref}(?:(?: *,? +and +| *,? *)?)|([A-Z][A-Z0-9_]+-\d+))+)'
 
     ## Default project features settings
     default_projects_features:
@@ -235,9 +235,14 @@ production: &base
   ##
   ## If internal_url is not specified, the Rails application will use the external URL
   ## If neither is specified, defaults to GitLab's host with port 8200
+  ##
+  ## - jwt_audience: JWT audience claim for OpenBao authentication. Use when secondary Geo sites
+  ##   have different OpenBao URLs - set a consistent audience across all sites for JWT validation.
+  ##   Defaults to url when not specified. Example: https://openbao.shared.example.com:8200
   # openbao:
     # url: https://vault.company.com:8200  # External URL for runners and external clients
     # internal_url: https://vault.company-internal.com:8200 # Internal URL for Rails application
+    # jwt_audience: https://openbao.shared.example.com:8200  # Optional: for Geo with different URLs per site
     # authentication_token_secret_file_path: /home/git/gitlab/.gitlab_openbao_authentication_token_secret
 
   ## Custom claim values for JWT ID Tokens
@@ -365,6 +370,8 @@ production: &base
   #       bucket: packages
   #     dependency_proxy:
   #       bucket: dependency_proxy
+  #     agent_plan_content:
+  #       bucket: agent-plan-content
 
   ## Consolidated object store config for Google Cloud Storage
   # object_store:
@@ -395,6 +402,8 @@ production: &base
   #       bucket: gitlab-ci-secure-files
   #     pages:
   #       bucket: gitlab-pages
+  #     agent_plan_content:
+  #       bucket: gitlab-agent-plan-content
 
   ## Build Artifacts
   artifacts:
@@ -543,6 +552,34 @@ production: &base
         # aws_signature_version: 4 # For creation of signed URLs. Set to 2 if provider does not support v4.
         # path_style: true # Use 'host/bucket_name/object' instead of 'bucket_name.host/object'
 
+  ## Agent Plan Content (object storage for work item agent plan markdown)
+  agent_plan_content:
+    # storage_path: shared/agent_plan_content
+    object_store:
+      enabled: false
+      remote_directory: agent-plan-content # The bucket name
+      connection:
+        provider: AWS
+        aws_access_key_id: AWS_ACCESS_KEY_ID
+        aws_secret_access_key: AWS_SECRET_ACCESS_KEY
+        region: us-east-1
+
+  ## AI Catalog
+  ai_catalog:
+    # storage_path: shared/ai_catalog
+    object_store:
+      enabled: false
+      remote_directory: ai-catalog # The bucket name
+      connection:
+        provider: AWS
+        aws_access_key_id: AWS_ACCESS_KEY_ID
+        aws_secret_access_key: AWS_SECRET_ACCESS_KEY
+        region: us-east-1
+        # host: 'localhost' # default: s3.amazonaws.com
+        # endpoint: 'http://127.0.0.1:9000' # default: nil
+        # aws_signature_version: 4 # For creation of signed URLs. Set to 2 if provider does not support v4.
+        # path_style: true # Use 'host/bucket_name/object' instead of 'bucket_name.host/object'
+
   ## GitLab Pages
   pages:
     enabled: false
@@ -637,9 +674,6 @@ production: &base
     # Stop expired environments
     environments_auto_stop_cron_worker:
       cron: "24 * * * *"
-    # Delete stopped environments
-    environments_auto_delete_cron_worker:
-      cron: "34 * * * *"
     # Periodically run 'git fsck' on all repositories. If started more than
     # once per hour you will have concurrent 'git fsck' jobs.
     repository_check_worker:
@@ -816,21 +850,27 @@ production: &base
   # 3. Auth settings
   # ==========================
 
-  ## Authentication settings
-  authn:
-    ## IAM Service settings
-    # The IAM Service handles OAuth flows with external providers and forwards
-    # authenticated user data to GitLab Rails.
-    iam_service:
-      # Enable OAuth access token authentication from IAM Service
-      # enabled: false
+  iam_auth_service:
+    # enabled: false
 
-      # IAM Service URL
-      # url: http://localhost:8084
+    # File that contains the secret token for authenticating with the IAM auth service.
+    # secret_file: /etc/gitlab/iam-auth/.gitlab_iam_auth_secret
 
-      # Expected JWT audience (must match 'aud' claim in tokens)
-      # Set to 'gitlab-rails' or your GitLab instance identifier
-      # audience: gitlab-rails
+    # IAM auth service HTTP endpoint (used for JWKS and JWT authentication)
+    # http:
+    #   host: localhost
+    #   port: 8084
+
+    # IAM auth service gRPC endpoint (reserved for future use)
+    # grpc:
+    #   host: localhost
+    #   port: 8085
+
+    # Expected JWT audience claim
+    # jwt_audience: gitlab-rails
+
+    # JWT issuer (must match the 'iss' claim in tokens issued by the IAM auth service)
+    # jwt_issuer: https://iam.example.com
 
   ## LDAP settings
   # You can test connections and inspect a sample of the LDAP users with login
@@ -1294,8 +1334,8 @@ production: &base
 
   # Gitaly settings
   gitaly:
-    # In some cases, when Gitaly returns an error GitLab can backoff 
-    # and retry the request, before giving up and returning an error 
+    # In some cases, when Gitaly returns an error GitLab can backoff
+    # and retry the request, before giving up and returning an error
     # to the client.
     # The 2 configuration below allows to tweak that retry configuration:
     # `client_max_attempts`: the maximum number of retry attempt
@@ -1422,11 +1462,10 @@ production: &base
     # The client timeout in seconds for the KAS API (used by the GitLab backend)
     # client_timeout_seconds: 5
 
-  zoekt:
-    # Files that contain username and password for basic auth for Zoekt
-    # Default is '.gitlab_zoekt_username' and '.gitlab_zoekt_password' in Rails.root
-    # username_file: /home/git/gitlab/.gitlab_zoekt_username
-    # password_file: /home/git/gitlab/.gitlab_zoekt_password
+  ## GitLab Knowledge Graph settings
+  knowledge_graph:
+    # enabled: false
+    # grpc_endpoint: localhost:50054
 
   ## GitLab Elasticsearch settings
   elasticsearch:
@@ -1640,6 +1679,28 @@ test:
     object_store:
       enabled: false
       remote_directory: ci-secure-files
+      connection:
+        provider: AWS # Only AWS supported at the moment
+        aws_access_key_id: AWS_ACCESS_KEY_ID
+        aws_secret_access_key: AWS_SECRET_ACCESS_KEY
+        region: us-east-1
+
+  agent_plan_content:
+    storage_path: tmp/tests/agent_plan_content
+    object_store:
+      enabled: false
+      remote_directory: agent-plan-content
+      connection:
+        provider: AWS
+        aws_access_key_id: AWS_ACCESS_KEY_ID
+        aws_secret_access_key: AWS_SECRET_ACCESS_KEY
+        region: us-east-1
+
+  ai_catalog:
+    storage_path: tmp/tests/ai_catalog
+    object_store:
+      enabled: false
+      remote_directory: ai-catalog
       connection:
         provider: AWS # Only AWS supported at the moment
         aws_access_key_id: AWS_ACCESS_KEY_ID

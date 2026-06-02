@@ -1,13 +1,22 @@
 ---
 name: read_work_item
 description: Grants the ability to read work items
+boundaries:
+  - group
+  - instance
+  - project
+  - user
+available_for:
+  - granular_access_token
 permissions:
+  - read_work_item
   - read_epic
   - read_epic_award_emoji
   - read_epic_board
   - read_epic_board_list
   - read_epic_discussion
   - read_epic_discussion_note
+  - read_epic_label_event
   - read_epic_link
   - read_epic_issue
   - read_epic_note
@@ -17,6 +26,7 @@ permissions:
   - read_issue_award_emoji
   - read_issue_closing_merge_request
   - read_issue_iteration_event
+  - read_issue_label_event
   - read_issue_board
   - read_issue_board_list
   - read_issue_discussion
@@ -33,7 +43,7 @@ permissions:
   - read_issue_user_agent_detail
   - read_issue_weight_event
   - read_iteration
-  - read_label
+  - read_iteration_cadence
   - read_merge_request_award_emoji
   - read_merge_request_milestone_event
   - read_merge_request_note
@@ -51,8 +61,3 @@ permissions:
   - read_snippet_note
   - read_snippet_note_award_emoji
   - read_wiki_page_meta_note
-boundaries:
-  - group
-  - instance
-  - project
-  - user

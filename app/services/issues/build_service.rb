@@ -7,13 +7,6 @@ module Issues
     def execute(initialize_callbacks: true)
       filter_resolve_discussion_params
 
-      container_param = case container
-                        when Project, Namespaces::ProjectNamespace
-                          { project: container.owner_entity }
-                        else
-                          { namespace: container }
-                        end
-
       @issue = model_klass.new(issue_params.merge(container_param)).tap do |issue|
         set_work_item_type(issue)
         initialize_callbacks!(issue) if initialize_callbacks
@@ -33,12 +26,12 @@ module Issues
     def description_for_discussions
       if discussions_to_resolve.empty?
         return "There are no unresolved discussions. " \
-               "Review the conversation in #{merge_request_to_resolve_discussions_of.to_reference}"
+          "Review the conversation in #{merge_request_to_resolve_discussions_of.to_reference}"
       end
 
       description = "The following #{'discussion'.pluralize(discussions_to_resolve.size)} " \
-                    "from #{merge_request_to_resolve_discussions_of.to_reference} " \
-                    "should be addressed:"
+        "from #{merge_request_to_resolve_discussions_of.to_reference} " \
+        "should be addressed:"
 
       [description, *items_for_discussions].join("\n\n")
     end
@@ -72,23 +65,47 @@ module Issues
 
     private
 
+    def container_param
+      case container
+      when Project, Namespaces::ProjectNamespace
+        {
+          project: container.owner_entity,
+          namespace: container.owner_entity.namespace
+        }
+      else
+        { namespace: container }
+      end
+    end
+
     def set_work_item_type(issue)
+      explicit_type_requested = params[:work_item_type_id].present? || params[:work_item_type].present?
+      work_item_type = resolve_work_item_type(skip_visibility_check: issue.importing?)
+
+      issue.work_item_type = work_item_type || work_item_type_provider.default_issue_type
+
+      return unless explicit_type_requested && work_item_type.nil?
+
+      issue.errors.add(:work_item_type, s_('WorkItem|could not be found or is not accessible.'))
+    end
+
+    def resolve_work_item_type(skip_visibility_check: false)
       work_item_type = work_item_type_provider.fetch_work_item_type(extract_work_item_type_param)
 
       # We need to support the legacy input params[:issue_type] even if we don't have the issue_type column anymore.
       # In the future only params[:work_item_type] should be provided
       base_type = work_item_type&.base_type || params[:issue_type]
 
-      # For custom types we need to bypass this check and instead check create_work_item
-      # and check whether type belongs to namespace hierarchy
-      # See https://gitlab.com/gitlab-org/gitlab/-/issues/581940
-      issue.work_item_type = if create_issue_type_allowed?(container, base_type)
-                               work_item_type || work_item_type_provider.find_by_base_type(base_type)
-                             else
-                               # If no work item type was provided or not allowed, we need to set it to
-                               # the default issue_type
-                               work_item_type_provider.default_issue_type
-                             end
+      return unless create_issue_type_allowed?(container, base_type)
+
+      resolved_type = work_item_type || work_item_type_provider.find_by_base_type(base_type)
+
+      # Enforce visibility controls (disabled via namespace settings, or archived).
+      # Intentionally does NOT use enabled? because that also checks visible_in_context?
+      # which rejects group-only types (e.g. Epic) in project context - already gated
+      # by create_issue_type_allowed? and Provider filtering above. Imports are exempt.
+      return if !skip_visibility_check && resolved_type && (!resolved_type.enabled || resolved_type.archived?)
+
+      resolved_type
     end
 
     def extract_work_item_type_param
@@ -124,7 +141,7 @@ module Issues
     end
 
     def author
-      Gitlab::Auth::Identity.invert_composite_identity(current_user)
+      Gitlab::Auth::Identity.resolve_composite_identity_actor(current_user)
     end
   end
 end

@@ -1,7 +1,6 @@
 import { GlCollapsibleListbox, GlButton } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import PersonalAccessTokenGranularPermissionsList from '~/personal_access_tokens/components/create_granular_token/personal_access_token_granular_permissions_list.vue';
 import {
   mockGroupPermissions,
@@ -16,7 +15,7 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
   const createComponent = ({ props = {}, mountFn = shallowMountExtended } = {}) => {
     wrapper = mountFn(PersonalAccessTokenGranularPermissionsList, {
       propsData: {
-        targetBoundaries: ['GROUP', 'PROJECT'],
+        scope: 'namespace',
         permissions: mockGroupPermissions,
         selectedResources: mockGroupResources,
         ...props,
@@ -24,12 +23,18 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
     });
   };
 
-  const findCrudComponent = () => wrapper.findComponent(CrudComponent);
-  const findCategory = (key) => wrapper.findByTestId(`category-${key}`);
-  const findCategoryHeading = (key) => findCategory(key).find('[data-testid="category-heading"]');
-  const findResourceName = (key) => findCategory(key).findAll('[data-testid="resource-name"]');
-  const findResourceDescription = (key) =>
-    findCategory(key).findAll('[data-testid="resource-description"]');
+  const findSelectedCategories = () => wrapper.findAll('[data-testid="selected-category"]');
+  const findSelectedCategory = (index) => findSelectedCategories().at(index);
+  const findCategoryHeading = (index) =>
+    findSelectedCategory(index).find('[data-testid="selected-category-heading"]');
+
+  const findResources = () => wrapper.findAll('[data-testid="selected-resource"]');
+  const findResource = (index) => findResources().at(index);
+  const findResourceName = (index) =>
+    findResource(index).find('[data-testid="selected-resource-name"]');
+  const findResourceDescription = (index) =>
+    findResource(index).find('[data-testid="selected-resource-description"]');
+
   const findListboxes = () => wrapper.findAllComponents(GlCollapsibleListbox);
   const findListbox = (index) => findListboxes().at(index);
   const findButtons = () => wrapper.findAllComponents(GlButton);
@@ -39,43 +44,48 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
     createComponent();
   });
 
-  describe('rendering', () => {
-    it('renders crud component for group scope', () => {
-      createComponent({ mountFn: mountExtended });
+  describe('props validation', () => {
+    it('validates `scope` prop correctly', () => {
+      const { validator } = PersonalAccessTokenGranularPermissionsList.props.scope;
 
-      expect(findCrudComponent().exists()).toBe(true);
-      expect(findCrudComponent().text()).toContain('Group and project permissions');
-      expect(findCrudComponent().text()).toContain(
-        'Grant permissions only to specific resources in your groups or projects.',
-      );
+      expect(validator('namespace')).toBe(true);
+      expect(validator('user')).toBe(true);
+      expect(validator('invalid')).toBe(false);
+      expect(validator('')).toBe(false);
+    });
+  });
+
+  describe('rendering', () => {
+    it('renders title', () => {
+      expect(wrapper.text()).toContain('Group and project');
     });
 
     it('shows empty state when no resources are selected', () => {
-      createComponent({ props: { selectedResources: [] }, mountFn: mountExtended });
+      createComponent({ props: { selectedResources: [] } });
 
-      expect(findCrudComponent().text()).toContain('No resources selected');
+      expect(wrapper.text()).toContain('No resources added');
     });
 
     it('renders a row for each selected resource with category', () => {
-      expect(findCategoryHeading('groups_and_projects').text()).toBe('Groups and projects');
+      expect(findCategoryHeading(0).text()).toBe('Groups and projects');
+      expect(findCategoryHeading(1).text()).toBe('Merge request');
 
-      expect(findResourceName('groups_and_projects').at(0).text()).toBe('Project');
-      expect(findResourceDescription('groups_and_projects').at(0).text()).toBe(
-        'Project resource description',
-      );
+      expect(findResourceName(0).text()).toBe('Project');
+      expect(findResourceDescription(0).text()).toBe('Project resource description');
 
-      expect(findCategoryHeading('merge_request').text()).toBe('Merge request');
-      expect(findResourceName('merge_request').at(0).text()).toBe('Repository');
-      expect(findResourceDescription('merge_request').at(0).text()).toBe(
-        'Repository resource description',
-      );
+      expect(findResourceName(1).text()).toBe('Contributed project');
+      expect(findResourceDescription(1).text()).toBe('Contributed project resource description');
+
+      expect(findResourceName(2).text()).toBe('Repository');
+      expect(findResourceDescription(2).text()).toBe('Repository resource description');
     });
 
     it('renders a listbox for each selected resource', () => {
-      expect(findListboxes()).toHaveLength(2);
+      expect(findListboxes()).toHaveLength(3);
 
       expect(findListbox(0).props('multiple')).toBe(true);
       expect(findListbox(1).props('multiple')).toBe(true);
+      expect(findListbox(2).props('multiple')).toBe(true);
     });
 
     it('renders correct list of permissions for each resource', () => {
@@ -85,6 +95,10 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
       ]);
 
       expect(findListbox(1).props('items')).toMatchObject([
+        { value: 'read_contributed_project', text: 'Read' },
+      ]);
+
+      expect(findListbox(2).props('items')).toMatchObject([
         { value: 'read_repository', text: 'Read' },
       ]);
     });
@@ -112,7 +126,7 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
     });
 
     it('renders button to remove resource', () => {
-      expect(findButtons()).toHaveLength(2);
+      expect(findButtons()).toHaveLength(3);
       expect(findButton(0).props('icon')).toBe('close');
     });
 
@@ -120,7 +134,7 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
       beforeEach(() => {
         createComponent({
           props: {
-            targetBoundaries: ['USER'],
+            scope: 'user',
             permissions: mockUserPermissions,
             selectedResources: mockUserResources,
           },
@@ -128,12 +142,8 @@ describe('PersonalAccessTokenGranularPermissionsList', () => {
         });
       });
 
-      it('renders crud component for user scope', () => {
-        expect(findCrudComponent().exists()).toBe(true);
-        expect(findCrudComponent().text()).toContain('User permissions');
-        expect(findCrudComponent().text()).toContain(
-          'Grant permissions to resources in your GitLab user account.',
-        );
+      it('renders title for user scope', () => {
+        expect(wrapper.text()).toContain('User');
       });
 
       it('renders correct list of permissions for each resource', () => {

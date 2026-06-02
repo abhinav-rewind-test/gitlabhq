@@ -17,20 +17,11 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
   end
 
   let(:provider_oidc_config_with_step_up_auth) do
-    GitlabSettings::Options.new(
-      name: provider_oidc,
-      step_up_auth: {
-        namespace: {
-          id_token: {
-            required: { acr: 'gold' }
-          }
-        }
-      }
-    )
+    build(:omniauth_provider_config, :with_namespace_scope, provider_name: provider_oidc)
   end
 
   let(:provider_oidc_config_without_step_up_auth) do
-    GitlabSettings::Options.new(name: provider_oidc)
+    build(:omniauth_provider_config, :no_step_up_auth, provider_name: provider_oidc)
   end
 
   let(:additional_info_rejected_step_up_auth) { { extra: { raw_info: { acr: 'bronze' } } } }
@@ -76,8 +67,6 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
             additional_info: additional_info_success_step_up_auth)
 
           # Should now be able to access the group page
-          visit group_path(group)
-          expect(page).to have_current_path(group_path(group))
           expect(page).to have_content(group.name)
 
           # Test Case 2: Navigation to different group pages
@@ -86,7 +75,7 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
           expect(page).to have_current_path(edit_group_path(group))
 
           visit issues_group_path(group)
-          expect(page).to have_current_path(group_work_items_path(group))
+          expect(page).to have_current_path(group_work_items_path(group), ignore_query: true)
 
           # Test Case 3: Navigation in and out of group scope
           # Verify step-up auth session persists when navigating away and returning
@@ -95,7 +84,6 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
 
           visit group_path(group)
           expect(page).to have_current_path(group_path(group))
-          expect(page).not_to have_current_path(new_group_step_up_auth_path(group))
         end
 
         context 'when feature flag :omniauth_step_up_auth_for_namespace is disabled' do
@@ -110,7 +98,6 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
       context 'for different initial sign-in methods' do
         shared_examples 'successful group step-up auth process' do
           before do
-            wait_for_requests
             expect(page).to have_current_path(root_path, ignore_query: true) # rubocop:disable RSpec/ExpectInHook -- Just to ensure our setup is correct
 
             # Try to access group - should redirect to step-up auth
@@ -128,14 +115,12 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
           it_behaves_like 'user can access group page successfully'
         end
 
-        with_and_without_sign_in_form_vue do
-          context 'when user signed in initially with username and password' do
-            before do
-              gitlab_sign_in(user)
-            end
-
-            it_behaves_like 'successful group step-up auth process'
+        context 'when user signed in initially with username and password' do
+          before do
+            gitlab_sign_in(user)
           end
+
+          it_behaves_like 'successful group step-up auth process'
         end
 
         context 'when user signed in initially with same omniauth provider (openid_connect)' do
@@ -149,7 +134,7 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
         context 'when user signed in initially with another omniauth provider (github)' do
           let(:provider_github) { 'github' }
           let(:provider_github_config) { GitlabSettings::Options.new(name: provider_github) }
-          let(:provider_github_extern_uid) { "github_user_uid" }
+          let(:provider_github_extern_uid) { 'github_user_uid' }
 
           before do
             # Add both github and openid_connect identities to user
@@ -181,8 +166,7 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
           # Failed step-up auth redirects back to step-up auth page
           # Authentication fails due to insufficient acr level
           gitlab_group_step_up_auth_sign_in_via(provider_oidc, user, provider_oidc_extern_uid,
-            additional_info: additional_info_rejected_step_up_auth)
-          expect(page).to have_current_path(new_group_step_up_auth_path(group))
+            additional_info: additional_info_rejected_step_up_auth, expect_fail: true)
           expect(page).to have_content('Step-up authentication required This group requires additional authentication.')
         end
 
@@ -191,19 +175,17 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
 
           # First attempt - authentication fails
           gitlab_group_step_up_auth_sign_in_via(provider_oidc, user, provider_oidc_extern_uid,
-            additional_info: additional_info_rejected_step_up_auth)
-          expect(page).to have_current_path(new_group_step_up_auth_path(group))
+            additional_info: additional_info_rejected_step_up_auth, expect_fail: true)
 
           # Second attempt - authentication succeeds with correct acr level
           gitlab_group_step_up_auth_sign_in_via(provider_oidc, user, provider_oidc_extern_uid,
             additional_info: additional_info_success_step_up_auth)
 
           # Verify successful access to group and navigation to different pages
-          expect(page).to have_current_path(group_path(group))
           expect(page).to have_content(group.name)
 
           visit issues_group_path(group)
-          expect(page).to have_current_path(group_work_items_path(group))
+          expect(page).to have_current_path(group_work_items_path(group), ignore_query: true)
         end
       end
     end
@@ -233,8 +215,16 @@ RSpec.describe 'Group step-up authentication', :with_current_organization, :js, 
 
   # Helper method for group step-up authentication
   # This simulates the step-up auth flow for groups
-  def gitlab_group_step_up_auth_sign_in_via(provider, user, uid, additional_info: {})
+  def gitlab_group_step_up_auth_sign_in_via(provider, user, uid, additional_info: {}, expect_fail: false)
     mock_auth_hash(provider, uid, user.email, additional_info: additional_info)
     click_button Gitlab::Auth::OAuth::Provider.label_for(provider)
+
+    # rubocop:disable RSpec/AvoidConditionalStatements -- Testing deterministic behavior after sign-in: either success or fail.
+    if expect_fail
+      expect(page).to have_current_path(new_group_step_up_auth_path(group))
+    else
+      expect(page).to have_current_path(group_path(group))
+    end
+    # rubocop:enable RSpec/AvoidConditionalStatements
   end
 end

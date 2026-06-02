@@ -1,6 +1,6 @@
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import getStandardContext from './get_standard_context';
-import { isEventEligible, validateEvent } from './utils';
+import { isEventEligible, parseToNumeric, validateEvent } from './utils';
 
 export function dispatchSnowplowEvent(
   category = document.body.dataset.page,
@@ -32,9 +32,7 @@ export function dispatchSnowplowEvent(
     }
   }
 
-  if (value !== undefined) {
-    value = Number(value);
-  }
+  value = parseToNumeric(value);
 
   try {
     window.snowplow('trackStructEvent', {
@@ -47,7 +45,8 @@ export function dispatchSnowplowEvent(
     });
     return true;
   } catch (error) {
-    Sentry.captureException(error);
+    // Override gon.feature_category as this code loads on all pages
+    Sentry.captureException(error, { tags: { feature_category: 'product_analytics' } });
     return false;
   }
 }

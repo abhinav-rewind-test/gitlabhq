@@ -14,11 +14,11 @@ module API
 
     %w[project group].each do |source_type|
       resource source_type.pluralize, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
-        desc 'Get list of all access tokens for the specified resource' do
-          detail 'This feature was introduced in GitLab 13.9.'
+        desc "List all #{source_type} access tokens" do
+          detail "Lists all #{source_type} access tokens for a specified #{source_type}."
           is_array true
-          tags ["#{source_type}_access_tokens"]
-          success Entities::ResourceAccessToken
+          tags ['access_tokens']
+          success code: 200, model: Entities::ResourceAccessToken
         end
         params do
           requires :id, types: [String, Integer], desc: "ID or URL-encoded path of the #{source_type}"
@@ -36,10 +36,10 @@ module API
           present paginate(tokens), with: Entities::ResourceAccessToken, resource: resource
         end
 
-        desc 'Get an access token for the specified resource by ID' do
-          detail 'This feature was introduced in GitLab 14.10.'
-          tags ["#{source_type}_access_tokens"]
-          success Entities::ResourceAccessToken
+        desc "Retrieve details on a #{source_type} access token" do
+          detail "Retrieves details on a specified #{source_type} access token."
+          tags ['access_tokens']
+          success code: 200, model: Entities::ResourceAccessToken
         end
         params do
           requires :id, types: [String, Integer], desc: "ID or URL-encoded path of the #{source_type}"
@@ -59,9 +59,9 @@ module API
           present token, with: Entities::ResourceAccessToken, resource: resource
         end
 
-        desc 'Revoke a resource access token' do
-          detail 'This feature was introduced in GitLab 13.9.'
-          tags ["#{source_type}_access_tokens"]
+        desc "Revoke a #{source_type} access token" do
+          detail "Revokes a specified #{source_type} access token."
+          tags ['access_tokens']
           success code: 204
           failure [
             { code: 400, message: 'Bad Request' },
@@ -88,10 +88,13 @@ module API
           service.success? ? no_content! : bad_request!(service.message)
         end
 
-        desc 'Create a resource access token' do
-          detail 'This feature was introduced in GitLab 13.9.'
-          tags ["#{source_type}_access_tokens"]
-          success Entities::ResourceAccessTokenWithToken
+        desc "Create a #{source_type} access token" do
+          detail "Creates a #{source_type} access token for a specified #{source_type}. You cannot create a token " \
+            "with an access level greater than your account. For example, a user with the Maintainer role cannot " \
+            "create a #{source_type} access token with the Owner role. You must use a personal access token with " \
+            "this endpoint. You cannot authenticate with a #{source_type} access token."
+          tags ['access_tokens']
+          success code: 201, model: Entities::ResourceAccessTokenWithToken
         end
         params do
           use :create_personal_access_token_params
@@ -108,14 +111,16 @@ module API
             type: Date,
             desc: "The expiration date of the token. If 'Require personal access token expiry' is enabled, you must provide a valid value, if not, the token will never expire.",
             documentation: {
-              example: '2026-02-14T17:26:19.810Z'
+              example: '2026-02-14'
             }
+          # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
           optional :access_level,
             type: Integer,
             values: ALLOWED_RESOURCE_ACCESS_LEVELS.values,
             default: Gitlab::Access::MAINTAINER,
             desc: "The access level of the token in the #{source_type}",
             documentation: { example: 40 }
+          # rubocop:enable API/AccessLevelStringType
         end
         route_setting :authorization, permissions: :create_resource_access_token, boundary_type: source_type.to_sym
         post ':id/access_tokens' do
@@ -125,6 +130,7 @@ module API
             current_user,
             resource,
             declared(params, include_missing: false)
+            .merge(creation_source: PersonalAccessToken::CREATION_SOURCE_API)
           ).execute
 
           if token_response.success?
@@ -134,10 +140,14 @@ module API
           end
         end
 
-        desc 'Rotate a resource access token' do
-          detail 'This feature was introduced in GitLab 16.0.'
-          tags ["#{source_type}_access_tokens"]
-          success Entities::ResourceAccessTokenWithToken
+        desc "Rotate a #{source_type} access token" do
+          detail "Rotates a #{source_type} access token. This immediately revokes the previous token and creates a " \
+            "token. Generally, this endpoint rotates a specific #{source_type} access token by authenticating with " \
+            "a personal access token. You can also use a #{source_type} access token to rotate itself. If you " \
+            "attempt to use this endpoint to rotate a token that was previously revoked, any active tokens from " \
+            "the same token family are revoked. This feature was introduced in GitLab 16.0."
+          tags ['access_tokens']
+          success code: 200, model: Entities::ResourceAccessTokenWithToken
         end
         params do
           requires :id, type: String, desc: "The #{source_type} ID"

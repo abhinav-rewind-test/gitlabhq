@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workflow do
   include ExclusiveLeaseHelpers
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:user2) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:user2, freeze: false) { create(:user) }
 
   let(:merge_request) { create(:merge_request, :simple, author: user2, assignees: [user2]) }
   let(:project) { merge_request.project }
@@ -528,6 +528,32 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
       it { expect(todo).to be_done }
     end
 
+    context 'when the target branch is pending deletion', :clean_gitlab_redis_shared_state do
+      let(:target_branch_deletion_lease) do
+        Gitlab::ExclusiveLease.new(
+          "#{MergeRequests::DeleteSourceBranchWorker::LEASE_KEY_PREFIX}:#{merge_request.target_project_id}:#{merge_request.target_branch}",
+          timeout: MergeRequests::DeleteSourceBranchWorker::LEASE_TIMEOUT
+        )
+      end
+
+      before do
+        target_branch_deletion_lease.try_obtain
+      end
+
+      it 'does not merge the MR' do
+        service.execute(merge_request)
+
+        expect(merge_request).not_to be_merged
+      end
+
+      it 'sets the merge error' do
+        service.execute(merge_request)
+
+        expect(merge_request.merge_error)
+          .to eq('The target branch is scheduled for deletion. Please wait for the branch to be retargeted.')
+      end
+    end
+
     context 'source branch removal' do
       context 'when the source branch is protected' do
         let(:service) do
@@ -574,8 +600,55 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
             expect(merge_request.reload.should_remove_source_branch?).to be_nil
           end
 
+          context 'with the branch deletion lease', :clean_gitlab_redis_shared_state do
+            let(:source_branch_deletion_lease) do
+              Gitlab::ExclusiveLease.new(
+                "#{MergeRequests::DeleteSourceBranchWorker::LEASE_KEY_PREFIX}:#{merge_request.source_project_id}:#{merge_request.source_branch}",
+                timeout: MergeRequests::DeleteSourceBranchWorker::LEASE_TIMEOUT
+              )
+            end
+
+            it 'obtains the branch deletion lease' do
+              service.execute(merge_request)
+
+              expect(source_branch_deletion_lease.exists?).to be true
+            end
+
+            context 'when the merge fails' do
+              before do
+                allow(merge_request).to receive(:in_locked_state).and_raise(MergeRequests::MergeBaseService::MergeError, 'merge failed')
+              end
+
+              it 'releases the branch deletion lease' do
+                service.execute(merge_request)
+
+                expect(merge_request).not_to be_merged
+                expect(source_branch_deletion_lease.exists?).to be false
+              end
+            end
+
+            context 'when the lease is already held by another process' do
+              before do
+                source_branch_deletion_lease.try_obtain
+              end
+
+              it 'still merges successfully' do
+                service.execute(merge_request)
+
+                expect(merge_request).to be_merged
+                expect(source_branch_deletion_lease.exists?).to be true
+              end
+            end
+          end
+
           context 'when the merger set the source branch not to be removed' do
             let(:service) { described_class.new(project: project, current_user: user, params: merge_params.merge('should_remove_source_branch' => false)) }
+            let(:source_branch_deletion_lease) do
+              Gitlab::ExclusiveLease.new(
+                "#{MergeRequests::DeleteSourceBranchWorker::LEASE_KEY_PREFIX}:#{merge_request.source_project_id}:#{merge_request.source_branch}",
+                timeout: MergeRequests::DeleteSourceBranchWorker::LEASE_TIMEOUT
+              )
+            end
 
             it 'does not delete the source branch' do
               expect(::MergeRequests::DeleteSourceBranchWorker).not_to receive(:perform_async)
@@ -583,6 +656,12 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
               service.execute(merge_request)
 
               expect(merge_request.reload.should_remove_source_branch?).to be false
+            end
+
+            it 'does not obtain the branch deletion lease', :clean_gitlab_redis_shared_state do
+              service.execute(merge_request)
+
+              expect(source_branch_deletion_lease.exists?).to be false
             end
           end
         end
@@ -779,10 +858,10 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
           )
         end
 
-        context 'when fast-forward merge is not allowed and ff rebase_on_merge_automatic is off' do
+        context 'when fast-forward merge is not allowed and automatic rebase is off' do
           before do
             allow_any_instance_of(Repository).to receive(:ancestor?).and_return(nil)
-            stub_feature_flags(rebase_on_merge_automatic: false)
+            project.project_setting.update!(automatic_rebase_enabled: false)
           end
 
           %w[semi-linear ff].each do |merge_method|
@@ -811,7 +890,7 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
       end
 
       context 'when not mergeable' do
-        let!(:error_message) { 'Merge request is not mergeable' }
+        let(:error_message) { 'Merge request is not mergeable' }
 
         context 'with failing CI' do
           before do

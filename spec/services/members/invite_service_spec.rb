@@ -4,10 +4,10 @@ require 'spec_helper'
 
 RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_shared_state, :sidekiq_inline,
   feature_category: :groups_and_projects do
-  let_it_be(:project, reload: true) { create(:project) }
+  let_it_be_with_reload(:project) { create(:project) }
   let_it_be(:organization) { project.organization }
   let_it_be(:user) { project.first_owner }
-  let_it_be(:project_user, reload: true) { create(:user) }
+  let_it_be_with_reload(:project_user) { create(:user) }
   let_it_be(:user_invited_by_id) { create(:user) }
   let_it_be(:namespace) { project.namespace }
 
@@ -478,7 +478,7 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
       let(:params) { { email: existing_member.user.email.to_s, access_level: ProjectMember::MAINTAINER } }
 
       it 'allows re-invite of an already invited email and updates the access_level' do
-        expect { result }.not_to change(ProjectMember, :count)
+        expect { result }.not_to change { ProjectMember.count }
         expect(result[:status]).to eq(:success)
         expect(existing_member.reset.access_level).to eq ProjectMember::MAINTAINER
       end
@@ -529,7 +529,7 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
     context 'with user_id that already exists in a parent group' do
       let_it_be(:group) { create(:group) }
       let_it_be(:group_member) { create(:group_member, :developer, source: group, user: project_user) }
-      let_it_be(:project, reload: true) { create(:project, group: group) }
+      let_it_be_with_reload(:project) { create(:project, group: group) }
       let_it_be(:user) { project.creator }
 
       before_all do
@@ -612,11 +612,11 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
   end
 
   def expect_to_create_members(count:)
-    expect { result }.to change(ProjectMember, :count).by(count)
+    expect { result }.to change { ProjectMember.count }.by(count)
   end
 
   def expect_not_to_create_members
-    expect { result }.not_to change(ProjectMember, :count)
+    expect { result }.not_to change { ProjectMember.count }
     expect(result[:status]).to eq(:error)
   end
 end

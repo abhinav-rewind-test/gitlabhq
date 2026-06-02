@@ -9,7 +9,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
   include_context 'workhorse headers'
 
   let_it_be(:personal_access_token) { create(:personal_access_token) }
-  let_it_be(:project, reload: true) { create(:project) }
+  let_it_be_with_reload(:project) { create(:project) }
   let_it_be(:deploy_token_rw) do
     create(:deploy_token, read_package_registry: true, write_package_registry: true, projects: [project])
   end
@@ -80,7 +80,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
   shared_examples 'secure endpoint' do
     before do
-      project.add_developer(user)
+      project.add_developer(user) # -- Does not work in before_all
     end
 
     it 'rejects malicious request' do
@@ -97,17 +97,6 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       end
 
       let(:request) { authorize_upload_file(workhorse_headers.merge(job_token_header(target_job.token))) }
-    end
-
-    it_behaves_like 'authorizing granular token permissions', :authorize_generic_package do
-      let(:boundary_object) { project }
-      let(:request) do
-        authorize_upload_file(workhorse_headers.merge(personal_access_token_header(pat.token)))
-      end
-
-      before do
-        project.add_developer(user)
-      end
     end
 
     context 'with valid project' do
@@ -210,7 +199,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
     context 'for use_final_store_path' do
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
 
       it 'sends use_final_store_path with true' do
@@ -318,7 +307,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       end
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
     end
 
@@ -395,7 +384,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
     context 'when user can upload packages and has valid credentials' do
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
 
       shared_examples 'creates a package and package file' do
@@ -618,7 +607,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       context 'with existing package' do
         let_it_be(:package_name) { 'mypackage' }
         let_it_be(:package_version) { '1.2.3' }
-        let_it_be(:existing_package) do
+        let_it_be(:existing_package, freeze: false) do
           create(:generic_package, name: package_name, version: package_version, project: project)
         end
 
@@ -743,6 +732,103 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
             expect(response).to have_gitlab_http_status(:created)
           end
+        end
+      end
+
+      shared_examples 'handling a race condition' do
+        let(:headers) { workhorse_headers.merge(personal_access_token_header) }
+        it 'retries and creates the package and package file successfully' do
+          call_count = 0
+
+          allow(Packages::Generic::FindOrCreatePackageService).to receive(:new).and_wrap_original do |original, *args|
+            call_count += 1
+            service = original.call(*args)
+
+            allow(service).to receive(:execute).and_raise(error) if call_count == 1
+
+            service
+          end
+
+          expect { upload_file(params, headers) }
+            .to change { ::Packages::Generic::Package.for_projects(project).count }.by(1)
+            .and change { Packages::PackageFile.count }.by(1)
+
+          expect(response).to have_gitlab_http_status(:created)
+        end
+      end
+
+      context 'when a race condition causes ActiveRecord::RecordNotUnique' do
+        let(:error) { ActiveRecord::RecordNotUnique }
+
+        it_behaves_like 'handling a race condition'
+      end
+
+      context 'when a race condition causes ActiveRecord::RecordInvalid with name taken' do
+        let(:error) do
+          record = Packages::Generic::Package.new
+          record.errors.add(:name, :taken)
+          ActiveRecord::RecordInvalid.new(record)
+        end
+
+        it_behaves_like 'handling a race condition'
+      end
+
+      context 'when service returns an error' do
+        let(:headers) { workhorse_headers.merge(personal_access_token_header) }
+
+        subject { upload_file(params, headers) }
+
+        before do
+          allow_next_instance_of(Packages::Generic::CreatePackageFileService) do |service|
+            allow(service).to receive(:execute).and_return(error)
+          end
+        end
+
+        context 'when error is invalid_parameter' do
+          let(:error) { ServiceResponse.error(message: 'invalid parameter', reason: :invalid_parameter) }
+
+          it_behaves_like 'returning response status with message',
+            status: :bad_request,
+            message: '400 Bad request - invalid parameter'
+        end
+
+        context 'when error is package_already_exists' do
+          let(:error) do
+            ServiceResponse.error(message: 'ActiveRecord::RecordNotUnique', reason: :package_already_exists)
+          end
+
+          it_behaves_like 'returning response status with message',
+            status: :bad_request,
+            message: '400 Bad request - Package already exists'
+        end
+
+        context 'when error has an unrecognized reason' do
+          let(:error) { ServiceResponse.error(message: 'Something went wrong', reason: :unknown_error) }
+
+          it_behaves_like 'returning response status with message',
+            status: :bad_request,
+            message: '400 Bad request - Something went wrong'
+        end
+      end
+
+      context 'when ObjectStorage::RemoteStoreError is raised' do
+        let(:headers) { workhorse_headers.merge(personal_access_token_header) }
+
+        before do
+          allow_next_instance_of(Packages::Generic::CreatePackageFileService) do |service|
+            allow(service).to receive(:execute).and_raise(ObjectStorage::RemoteStoreError)
+          end
+        end
+
+        it 'tracks the exception and returns forbidden' do
+          expect(Gitlab::ErrorTracking).to receive(:track_exception).with(
+            an_instance_of(ObjectStorage::RemoteStoreError),
+            extra: { file_name: 'myfile.tar.gz', project_id: project.id }
+          )
+
+          upload_file(params, headers)
+
+          expect(response).to have_gitlab_http_status(:forbidden)
         end
       end
 
@@ -902,7 +988,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
   describe 'GET /api/v4/projects/:id/packages/generic/:package_name/:package_version/(*path)/:file_name' do
     let_it_be(:package) { create(:generic_package, project: project) }
-    let_it_be(:package_file) { create(:package_file, :generic, package: package) }
+    let_it_be(:package_file, freeze: false) { create(:package_file, :generic, package: package) }
 
     it_behaves_like 'enforcing job token policies', :read_packages,
       allow_public_access_for_enabled_project_features: :package_registry do
@@ -922,7 +1008,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       end
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
     end
 
@@ -1041,7 +1127,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
       with_them do
         before do
-          project.add_developer(user)
+          project.add_developer(user) # -- Does not work in before_all
           package.update!(status: package_status)
         end
 
@@ -1061,7 +1147,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
     context 'event tracking' do
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
 
       subject { download_file(personal_access_token_header) }
@@ -1136,7 +1222,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       let_it_be(:file_path) { "path/to/#{package_file.file_name}" }
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
         package_file.update_column(:file_name, URI.encode_uri_component(file_path))
       end
 
@@ -1151,7 +1237,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       let(:file_name) { 'my+file.tar.gz' }
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
         package_file.update_column(:file_name, file_name)
       end
 
@@ -1166,7 +1252,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       let(:expected_checksum) { Digest::SHA256.hexdigest('test content') }
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
 
       context 'when package file has a checksum' do
@@ -1201,7 +1287,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       subject(:download) { download_file(personal_access_token_header) }
 
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
       end
 
       context 'when direct download is enabled' do
@@ -1264,7 +1350,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
     context 'for head request' do
       before do
-        project.add_developer(user)
+        project.add_developer(user) # -- Does not work in before_all
         download_file(personal_access_token_header, method: :head)
       end
 

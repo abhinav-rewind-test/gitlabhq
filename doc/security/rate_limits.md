@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Rate limits
 ---
 
@@ -15,7 +15,7 @@ title: Rate limits
 > [!note]
 > For GitLab.com, see
 > [GitLab.com-specific rate limits](../user/gitlab_com/_index.md#rate-limits-on-gitlabcom).
-> 
+>
 > For GitLab Dedicated, see
 > [Authenticated user rate limits](../administration/dedicated/user_rate_limits.md).
 
@@ -174,7 +174,7 @@ The rate limit is 60 deletions per minute.
 
 {{< history >}}
 
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/578527) in GitLab 18.6.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/211239) in GitLab 18.6.
 
 {{< /history >}}
 
@@ -186,7 +186,7 @@ GET /groups/:id/members/all
 GET /projects/:id/members/all
 ```
 
-Administrators can [configure the rate limit](../administration/settings/rate_limit_on_members_api.md)
+Administrators can [configure the rate limit](../administration/settings/rate_limit_on_groups_api.md)
 for the projects endpoint.
 
 ### Repository blob and file access
@@ -258,7 +258,7 @@ The rate limit is 5 calls per minute per user per project.
 Rack Attack may block your load balancer if all traffic appears to come from
 the load balancer. In that case, you must:
 
-1. [Configure `nginx[real_ip_trusted_addresses]`](https://docs.gitlab.com/omnibus/settings/nginx/#configuring-gitlab-trusted_proxies-and-the-nginx-real_ip-module).
+1. [Configure `nginx[real_ip_trusted_addresses]`](https://docs.gitlab.com/omnibus/settings/nginx/#configure-gitlab-trusted-proxies-and-nginx-real_ip-module).
    This keeps users' IPs from being listed as the load balancer IPs.
 1. Allowlist the load balancer's IP addresses.
 1. Reconfigure GitLab:
@@ -298,5 +298,5 @@ To remove a blocked IP:
 
    By default, the [`keys` command is disabled](https://docs.gitlab.com/omnibus/settings/redis/#renamed-commands).
 
-1. Optionally, add [the IP to the allowlist](https://docs.gitlab.com/omnibus/settings/configuration/#configuring-rack-attack)
+1. Optionally, add [the IP to the allowlist](https://docs.gitlab.com/omnibus/settings/configuration/#configure-a-failed-authentication-ban)
    to prevent it being denylisted again.

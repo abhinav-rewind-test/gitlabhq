@@ -20,7 +20,12 @@ RSpec.describe MergeRequests::BuildService, feature_category: :code_review_workf
   let(:milestone_id) { nil }
   let(:label_ids) { [] }
   let(:merge_request) { service.execute }
-  let(:compare) { double(:compare, commits: commits) }
+  let(:compare) do
+    double(:compare).tap do |c|
+      allow(c).to receive(:commits).and_return(commits)
+    end
+  end
+
   let(:commit_1) do
     double(:commit_1,
       sha: 'f00ba6',
@@ -126,6 +131,20 @@ RSpec.describe MergeRequests::BuildService, feature_category: :code_review_workf
 
     it 'does not assign force_remove_source_branch' do
       expect(merge_request.force_remove_source_branch?).to be_truthy
+    end
+
+    it 'sets COMPARE_COMMITS_LIMIT to one more than COMMITS_SAFE_SIZE for truncation detection' do
+      expect(described_class::COMPARE_COMMITS_LIMIT).to eq(MergeRequestDiff::COMMITS_SAFE_SIZE + 1)
+    end
+
+    it 'limits the number of compare commits' do
+      stub_compare
+
+      expect(compare).to receive(:commits)
+        .with(limit: described_class::COMPARE_COMMITS_LIMIT)
+        .and_return([])
+
+      merge_request
     end
 
     context 'with force_remove_source_branch parameter when the user is authorized' do
@@ -721,6 +740,129 @@ RSpec.describe MergeRequests::BuildService, feature_category: :code_review_workf
 
       it 'sets the attribute from the quick actions' do
         expect(merge_request.target_branch).to eq('with-codeowners')
+      end
+    end
+
+    context 'with mr_default_title_template' do
+      before do
+        project.add_developer(user)
+      end
+
+      context 'when the project has a title template configured' do
+        before do
+          project.mr_default_title_template = title_template
+          stub_compare
+        end
+
+        context 'with a static template' do
+          let(:title_template) { 'Draft: New merge request' }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'uses the static template as the title' do
+            expect(merge_request.title).to eq('Draft: New merge request')
+          end
+        end
+
+        context 'with a single commit' do
+          let(:title_template) { '%{source_branch}' }
+          let(:commits) { Commit.decorate([commit_2], project) }
+
+          it 'still uses the template instead of the commit title' do
+            expect(merge_request.title).to eq('feature')
+          end
+
+          it 'still populates the description from the commit body' do
+            expect(merge_request.description).to eq('Create the app')
+          end
+        end
+
+        context 'when user provides an explicit title in params' do
+          let(:title_template) { '%{source_branch}' }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          let(:params) do
+            {
+              title: 'My custom title',
+              source_branch: source_branch,
+              target_branch: target_branch
+            }
+          end
+
+          it 'uses the user-provided title over the template' do
+            expect(merge_request.title).to eq('My custom title')
+          end
+        end
+
+        context 'when template is set and there are no commits' do
+          let(:title_template) { '%{source_branch}' }
+          let(:commits) { [] }
+
+          it 'sets a draft title' do
+            expect(merge_request.title).to start_with('Draft:')
+          end
+        end
+
+        context 'when source branch matches an issue' do
+          let(:title_template) { '%{source_branch}' }
+          let(:source_branch) { "#{issue.iid}-fix-bug" }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'still appends closes description' do
+            expect(merge_request.description).to include(issue.to_reference)
+          end
+        end
+
+        context 'with %{issue_id} template and branch-linked issue' do
+          let(:title_template) { 'Resolve %{issue_id}' }
+          let(:source_branch) { "#{issue.iid}-fix-bug" }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'expands issue IID from the branch name' do
+            expect(merge_request.title).to eq("Resolve #{issue.iid}")
+          end
+        end
+
+        context 'with %{issue_title} template and branch-linked issue' do
+          let(:title_template) { '%{issue_title}' }
+          let(:source_branch) { "#{issue.iid}-fix-bug" }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'expands issue title from the branch name' do
+            expect(merge_request.title).to eq(issue.title)
+          end
+        end
+
+        context 'with combined %{issue_id} and %{issue_title} template' do
+          let(:title_template) { 'Resolve %{issue_id} "%{issue_title}"' }
+          let(:source_branch) { "#{issue.iid}-fix-bug" }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'expands both issue placeholders' do
+            expect(merge_request.title).to eq("Resolve #{issue.iid} \"#{issue.title}\"")
+          end
+        end
+
+        context 'with %{issue_id} template when branch has no linked issue' do
+          let(:title_template) { 'Resolve %{issue_id}' }
+          let(:source_branch) { 'fix-bug-no-issue' }
+          let(:commits) { Commit.decorate([commit_1], project) }
+
+          it 'leaves surrounding text and strips the blank placeholder' do
+            expect(merge_request.title).to eq('Resolve')
+          end
+        end
+      end
+
+      context 'when the project has no title template' do
+        let(:commits) { Commit.decorate([commit_2], project) }
+
+        before do
+          stub_compare
+        end
+
+        it 'falls back to the existing cascade behavior' do
+          expect(merge_request.title).to eq(commit_2.safe_message.split("\n").first)
+        end
       end
     end
   end

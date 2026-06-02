@@ -6,6 +6,31 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
   let_it_be(:user) { create(:user) }
   let_it_be_with_reload(:package) { create(:pypi_package) }
 
+  shared_examples 'marks the package for destruction' do
+    it 'marks the package for destruction' do
+      expect { execute }.to change { package.reload.status }.from('default').to('pending_destruction')
+    end
+  end
+
+  shared_examples 'an instrumented service' do
+    it "triggers an internal event" do
+      expect { execute }.to trigger_internal_events('delete_package_from_registry').with(
+        category: 'InternalEventTracking',
+        project: package.project,
+        namespace: package.project.group,
+        user: user,
+        additional_properties: {
+          label: package.package_type,
+          property: 'user'
+        }
+      ).and increment_usage_metrics(
+        "counts.package_events_i_package_#{package.package_type}_delete_package",
+        'counts.package_events_i_package_delete_package',
+        'counts.package_events_i_package_delete_package_by_user'
+      )
+    end
+  end
+
   describe '#execute' do
     let(:service) { described_class.new(container: package, current_user: user) }
 
@@ -21,6 +46,7 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
           expect(package).to receive(:mark_package_files_for_destruction).and_call_original
           expect(package).not_to receive(:sync_maven_metadata)
           expect(package).not_to receive(:sync_npm_metadata_cache)
+          expect(Packages::Rubygems::CreateSpecFilesWorker).not_to receive(:perform_async)
           expect(Packages::Helm::BulkSyncHelmMetadataCacheService).not_to receive(:new)
           expect { execute }.to change { package.status }.from('default').to('pending_destruction')
         end
@@ -32,6 +58,8 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
           expect(response).to be_success
           expect(response.message).to eq("Package was successfully marked as pending destruction")
         end
+
+        it_behaves_like 'an instrumented service'
       end
 
       context 'when it is not successful' do
@@ -50,6 +78,7 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
 
           expect(package).not_to receive(:sync_maven_metadata)
           expect(package).not_to receive(:sync_npm_metadata_cache)
+          expect(Packages::Rubygems::CreateSpecFilesWorker).not_to receive(:perform_async)
           expect(Packages::Helm::BulkSyncHelmMetadataCacheService).not_to receive(:new)
           expect(response).to be_a(ServiceResponse)
           expect(response).to be_error
@@ -65,6 +94,20 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
           expect(package).to receive(:sync_npm_metadata_cache).and_call_original
           expect(execute).to be_success
         end
+
+        it_behaves_like 'an instrumented service'
+      end
+
+      context 'with rubygems package' do
+        let_it_be_with_reload(:package) { create(:rubygems_package) }
+
+        it 'enqueues spec file generation' do
+          expect(Packages::Rubygems::CreateSpecFilesWorker).to receive(:perform_async).with(package.project_id)
+
+          expect(execute).to be_success
+        end
+
+        it_behaves_like 'an instrumented service'
       end
 
       context 'with helm package' do
@@ -88,6 +131,8 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
               expect(context_proc.call(expected_metadatum)).to eq(project: package.project, user: user)
             end
         end
+
+        it_behaves_like 'an instrumented service'
       end
 
       context 'with maven package' do
@@ -97,6 +142,70 @@ RSpec.describe Packages::MarkPackageForDestructionService, :aggregate_failures, 
           expect(package).to receive(:sync_maven_metadata).and_call_original
           expect(execute).to be_success
         end
+
+        it_behaves_like 'an instrumented service'
+      end
+    end
+
+    context 'with package deletion protection' do
+      let_it_be(:protection_rule, freeze: false) do
+        create(:package_protection_rule,
+          :pypi,
+          project: package.project,
+          package_name_pattern: package.name,
+          minimum_access_level_for_delete: Gitlab::Access::OWNER)
+      end
+
+      before_all do
+        package.project.add_maintainer(user)
+      end
+
+      context 'when a matching protection rule exists' do
+        it { is_expected.to be_error.and have_attributes(message: 'Package is deletion protected.', http_status: 403) }
+
+        it 'does not mark the package for destruction' do
+          expect { execute }.not_to change { package.status }
+        end
+
+        context 'when user has sufficient permissions' do
+          let(:owner) { create(:user, owner_of: [package.project]) }
+          let(:service) { described_class.new(container: package, current_user: owner) }
+
+          it_behaves_like 'marks the package for destruction'
+        end
+
+        context 'with skip_protection_check: true' do
+          let(:service) { described_class.new(container: package, current_user: user, skip_protection_check: true) }
+
+          it_behaves_like 'marks the package for destruction'
+        end
+
+        context 'when feature flag :packages_protected_packages_delete is disabled' do
+          before do
+            stub_feature_flags(packages_protected_packages_delete: false)
+          end
+
+          it_behaves_like 'marks the package for destruction'
+        end
+
+        context 'when CheckRuleExistenceService returns an error' do
+          before do
+            allow_next_instance_of(::Packages::Protection::CheckRuleExistenceService) do |service|
+              allow(service).to receive(:execute)
+                .and_return(ServiceResponse.error(message: 'Unauthorized', reason: :unauthorized))
+            end
+          end
+
+          it_behaves_like 'marks the package for destruction'
+        end
+      end
+
+      context 'when no rule matches the package name' do
+        before do
+          protection_rule.update!(package_name_pattern: 'non_matching_*')
+        end
+
+        it_behaves_like 'marks the package for destruction'
       end
     end
 

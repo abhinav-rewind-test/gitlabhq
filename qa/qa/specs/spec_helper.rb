@@ -4,13 +4,10 @@ require 'active_support'
 require 'active_support/testing/time_helpers'
 require 'factory_bot'
 require 'gitlab_quality/test_tooling'
-require 'gitlab/rspec/configurations/test_metrics'
-
+require 'gitlab/rspec-metrics-exporter'
 require_relative '../../qa'
 # Extension for GitlabQuality::TestTooling::TestQuarantine::QuarantineFormatter
 require_relative 'helpers/quarantine_formatter_extension'
-
-QA::Specs::QaDeprecationToolkitEnv.configure!
 
 Knapsack::Adapters::RSpecAdapter.bind if QA::Runtime::Env.knapsack? && !QA::Runtime::Env.dry_run
 
@@ -71,10 +68,11 @@ RSpec.configure do |config|
   unless QA::Runtime::Env.dry_run || config.dry_run?
     config.add_formatter QA::Support::Formatters::CoverbandFormatter if QA::Runtime::Env.coverband_enabled?
 
-    Gitlab::Rspec::Configurations::TestMetrics.configure!(QA::Runtime::Env.run_type) do |exporter_config|
-      exporter_config.test_retried_proc = ->(_example) { QA::Runtime::Env.rspec_retried? }
-      exporter_config.logger = QA::Runtime::Logger.logger
-      exporter_config.spec_file_path_prefix = "qa/"
+    Gitlab::RSpecMetricsExporter::ConfigHelper.configure!(QA::Runtime::Env.run_type) do |exp_config|
+      exp_config.test_retried_proc = ->(_example) { QA::Runtime::Env.rspec_retried? }
+      exp_config.custom_metrics_proc = ->(_example) { { test_level: "e2e" } }
+      exp_config.logger = QA::Runtime::Logger.logger
+      exp_config.spec_file_path_prefix = "qa/"
     end
   end
 
@@ -116,6 +114,7 @@ RSpec.configure do |config|
 
   config.before(:suite) do
     FactoryBot.find_definitions
+    QA::Tools::TestResourceDataProcessor.load_prior_resources
   end
 
   config.after do

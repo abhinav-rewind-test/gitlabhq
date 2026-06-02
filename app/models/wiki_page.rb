@@ -80,7 +80,6 @@ class WikiPage
   def self.link_reference_pattern
     @link_reference_pattern ||= project_or_group_link_reference_pattern(
       'wikis',
-      namespace_reference_pattern,
       %r{(?<wiki_page>[\/\w-]+)}
     )
   end
@@ -230,7 +229,7 @@ class WikiPage
   def count_versions
     return [] unless persisted?
 
-    wiki.repository.count_commits(ref: wiki.default_branch, path: page.path)
+    wiki.repository.count_commits(revisions: wiki.default_branch, path: page.path)
   end
 
   def last_version

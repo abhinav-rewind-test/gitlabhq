@@ -30,9 +30,9 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::QueueManager,
     }
   end
 
-  let(:job) { { 'args' => [1, 2] } }
+  let(:job) { { 'args' => [1, 2], 'jid' => 'abc123' } }
   let(:job_with_wal_locations) do
-    { 'args' => [1, 2], 'wal_locations' => { 'main' => '0/D525E3A8', 'ci' => '0/D525E3A8' } }
+    { 'args' => [1, 2], 'jid' => 'def456', 'wal_locations' => { 'main' => '0/D525E3A8', 'ci' => '0/D525E3A8' } }
   end
 
   subject(:service) { described_class.new(worker_name: worker_class_name, prefix: 'some_prefix') }
@@ -67,6 +67,17 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::QueueManager,
       end
     end
 
+    it 'stores the jid' do
+      add_to_queue!
+
+      Gitlab::Redis::SharedState.with do |r|
+        set_key = service.redis_key
+        stored_job = service.send(:deserialize, r.lrange(set_key, 0, -1).first)
+
+        expect(stored_job['jid']).to eq(job['jid'])
+      end
+    end
+
     context 'with wal locations' do
       subject(:add_to_queue!) { service.add_to_queue!(job_with_wal_locations, worker_context) }
 
@@ -91,20 +102,21 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::QueueManager,
     end
   end
 
-  describe '#resume_processing!' do
+  describe '#resume_processing!', :clean_gitlab_redis_queues_metadata do
     let(:wal_locations) { { 'main' => '0/D525E3A8', 'ci' => '0/D525E3A8' } }
     let(:jobs) do
       [
-        { 'args' => [1], 'wal_locations' => wal_locations },
-        { 'args' => [2], 'wal_locations' => wal_locations },
-        { 'args' => [3], 'wal_locations' => wal_locations }
+        { 'args' => [1], 'jid' => 'jid1', 'wal_locations' => wal_locations },
+        { 'args' => [2], 'jid' => 'jid2', 'wal_locations' => wal_locations },
+        { 'args' => [3], 'jid' => 'jid3', 'wal_locations' => wal_locations }
       ]
     end
 
     let(:buffered_at) { Time.now.utc }
     let(:metadata_key) { service.metadata_key }
     let(:expected_metadata) do
-      { 'concurrency_limit_buffered_at' => be_within(1.second).of(buffered_at.to_f),
+      { 'jid' => anything,
+        'concurrency_limit_buffered_at' => be_within(1.second).of(buffered_at.to_f),
         'concurrency_limit_resume' => true,
         'wal_locations' => wal_locations }.merge(stored_context)
     end
@@ -125,11 +137,11 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::QueueManager,
         end
 
         expect(Gitlab::SidekiqLogging::ConcurrencyLimitLogger.instance)
-          .to receive(:resumed_log)
-                .with(worker_class_name, [[1], [2]]).ordered
+          .to receive(:batch_resumed_log)
+                .with(worker_class_name, 2).ordered
         expect(Gitlab::SidekiqLogging::ConcurrencyLimitLogger.instance)
-          .to receive(:resumed_log)
-                .with(worker_class_name, [[3]]).ordered
+          .to receive(:batch_resumed_log)
+                .with(worker_class_name, 1).ordered
         expect(Gitlab::SafeRequestStore).to receive(:write).with(
           metadata_key,
           kind_of(Queue)
@@ -242,6 +254,29 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::QueueManager,
 
         expect(resumed).to eq(2)
         expect(service.queue_size).to eq(1)
+      end
+    end
+
+    context 'when lease needs to be renewed during processing' do
+      before do
+        stub_feature_flags(concurrency_limit_eager_resume_processing: true)
+      end
+
+      it 'renews the lease before each batch to prevent expiration' do
+        lease_instance = instance_double(Gitlab::ExclusiveLease)
+        allow(lease_instance).to receive_messages(try_obtain: 'lease_uuid', renew: 'lease_uuid')
+        allow(Gitlab::ExclusiveLease).to receive(:new).and_return(lease_instance)
+
+        expect(worker_class).to receive(:bulk_perform_async).with([[1], [2]])
+        expect(worker_class).to receive(:bulk_perform_async).with([[3]])
+
+        # Verify that renew is called before each iteration of the loop
+        # With 3 jobs and concurrency limit of 2: first iteration resumes 2 jobs,
+        # second iteration resumes 1 job, third iteration finds no jobs and breaks.
+        # So renew is called 3 times (before each iteration).
+        expect(lease_instance).to receive(:renew).exactly(3).times
+
+        service.resume_processing!
       end
     end
   end

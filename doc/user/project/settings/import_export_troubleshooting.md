@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting file export project migrations
 description: "Troubleshooting file export project migrations. Covers common errors, performance issues, and solutions."
 ---
@@ -177,12 +177,31 @@ Rather than attempting to push all changes at once, this workaround:
    git push -u origin --tags
    ```
 
+## Error: `HTTP 524 A timeout occurred` when importing a project
+
+On GitLab.com, importing a project can fail with an `HTTP 524 A timeout occurred` error.
+This error can occur with archives that are several gigabytes in size.
+
+Each upload must finish within a time limit. Large archives can exceed that limit, which closes
+the connection before the upload finishes.
+
+To avoid the error, host the archive at an HTTPS location (for example, an AWS S3 bucket) and
+have GitLab download it during the import. Use one of these endpoints:
+
+- [`POST /api/v4/projects/remote-import`](../../../api/project_import_export.md#import-a-project-from-a-remote-archive)
+  works with any HTTPS URL, including S3 presigned URLs.
+- [`POST /api/v4/projects/remote-import-s3`](../../../api/project_import_export.md#import-a-project-from-an-aws-s3-bucket)
+  works with AWS S3 by using credentials.
+
+Because GitLab downloads the archive in the background, the size of the archive does not cause
+a timeout.
+
 ## Sidekiq process fails to export a project
 
 Occasionally the Sidekiq process can fail to export a project, for example if
 it is terminated during execution.
 
-GitLab.com users should [contact Support](https://about.gitlab.com/support/#contact-support) to resolve this issue.
+GitLab.com users should [contact Support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#contact-support) to resolve this issue.
 
 GitLab Self-Managed administrators can use the Rails console to bypass the Sidekiq process and
 manually trigger the project export:
@@ -212,7 +231,8 @@ ProjectExportWorker.new.perform(current_user.id, project.id)
 
 ## Manually execute export steps
 
-You usually export a project through [the web interface](import_export.md#export-a-project-and-its-data) or through [the API](../../../api/project_import_export.md). Exporting using these
+You usually export a project through [the web interface](import_export.md#export-a-project-and-its-data)
+or through the [project import and export API](../../../api/project_import_export.md). Exporting using these
 methods can sometimes fail without giving enough information to troubleshoot. In these cases,
 [open a Rails console session](../../../administration/operations/rails_console.md#starting-a-rails-console-session) and loop through
 [all the defined exporters](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/services/projects/import_export/export_service.rb).
@@ -253,20 +273,6 @@ s.send(:save_upload)
 
 After the project is successfully uploaded, the exported project is located in a `.tar.gz` file in `/var/opt/gitlab/gitlab-rails/uploads/-/system/import_export_upload/export_file/`.
 
-## Import using the REST API fails when using a group access token
-
-[Group access tokens](../../group/settings/group_access_tokens.md)
-don't work for project or group import operations. When a group access token initiates an import,
-the import fails with this message:
-
-```plaintext
-Error adding importer user to Project members.
-Validation failed: User project bots cannot be added to other groups / projects
-```
-
-To use [Import REST API](../../../api/project_import_export.md),
-pass regular user account credentials such as [personal access tokens](../../profile/personal_access_tokens.md).
-
 ## Error: `PG::QueryCanceled: ERROR: canceling statement due to statement timeout`
 
 Some migrations can time out with the error: `PG::QueryCanceled: ERROR: canceling statement due to statement timeout`.
@@ -306,7 +312,7 @@ Read through the current performance problems using the Import/Export below.
 
 ### OOM errors
 
-Out of memory (OOM) errors are usually caused by the [Sidekiq Memory Killer](../../../administration/sidekiq/sidekiq_memory_killer.md):
+Out-of-memory (OOM) errors are usually caused by the [Sidekiq memory killer](../../../administration/sidekiq/sidekiq_memory_killer.md):
 
 ```shell
 SIDEKIQ_MEMORY_KILLER_MAX_RSS = 2000000

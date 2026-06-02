@@ -520,8 +520,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
             page: 'application',
             page_type_id: nil,
             group: nil,
-            group_full_path: nil,
-            project_studio_enabled: 'true'
+            group_full_path: nil
           }
         )
       end
@@ -537,8 +536,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
               page: 'application',
               page_type_id: nil,
               group: group.path,
-              group_full_path: group.full_path,
-              project_studio_enabled: 'true'
+              group_full_path: group.full_path
             }
           )
         end
@@ -564,8 +562,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
             project_id: project.id,
             project: project.path,
             project_full_path: project.full_path,
-            namespace_id: project.namespace.id,
-            project_studio_enabled: 'true'
+            namespace_id: project.namespace.id
           }
         )
       end
@@ -583,8 +580,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
               project_id: project.id,
               project: project.path,
               project_full_path: project.full_path,
-              namespace_id: project.namespace.id,
-              project_studio_enabled: 'true'
+              namespace_id: project.namespace.id
             }
           )
         end
@@ -610,8 +606,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
                 project_id: issue.project.id,
                 project: issue.project.path,
                 project_full_path: project.full_path,
-                namespace_id: issue.project.namespace.id,
-                project_studio_enabled: 'true'
+                namespace_id: issue.project.namespace.id
               }
             )
           end
@@ -748,43 +743,7 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
     end
 
     describe 'with-header' do
-      context 'when @with_header is falsey' do
-        before do
-          helper.instance_variable_set(:@with_header, nil)
-        end
-
-        context 'when current_user' do
-          before do
-            allow(helper).to receive(:current_user).and_return(user)
-          end
-
-          it { is_expected.to include('with-header') }
-
-          context 'when `project studio` feature is disabled' do
-            before do
-              allow(helper).to receive(:project_studio_enabled?).and_return(false)
-            end
-
-            it { is_expected.not_to include('with-header') }
-          end
-        end
-
-        context 'when no current_user' do
-          before do
-            allow(helper).to receive(:current_user).and_return(nil)
-          end
-
-          it { is_expected.to include('with-header') }
-        end
-      end
-
-      context 'when @with_header is true' do
-        before do
-          helper.instance_variable_set(:@with_header, true)
-        end
-
-        it { is_expected.to include('with-header') }
-      end
+      it { is_expected.to include('with-header') }
     end
 
     describe 'with-top-bar' do
@@ -792,38 +751,30 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
     end
 
     describe 'page-with-panels' do
-      context 'when `project studio` feature is disabled' do
-        before do
-          allow(helper).to receive(:project_studio_enabled?).and_return(false)
-        end
-
-        it { is_expected.not_to include('page-with-panels') }
-      end
-
-      context 'when `project studio` feature is enabled' do
-        before do
-          allow(helper).to receive(:project_studio_enabled?).and_return(true)
-        end
-
-        it { is_expected.to include('page-with-panels') }
-      end
+      it { is_expected.to include('page-with-panels') }
     end
 
     describe 'application-chrome' do
-      context 'when `project studio` feature is disabled' do
+      it { is_expected.to include('application-chrome') }
+    end
+
+    describe 'user-logged-in and user-logged-out' do
+      context 'when current_user is present' do
         before do
-          allow(helper).to receive(:project_studio_enabled?).and_return(false)
+          allow(helper).to receive(:current_user).and_return(user)
         end
 
-        it { is_expected.not_to include('application-chrome') }
+        it { is_expected.to include('user-logged-in') }
+        it { is_expected.not_to include('user-logged-out') }
       end
 
-      context 'when `project studio` feature is enabled' do
+      context 'when no current_user' do
         before do
-          allow(helper).to receive(:project_studio_enabled?).and_return(true)
+          allow(helper).to receive(:current_user).and_return(nil)
         end
 
-        it { is_expected.to include('application-chrome') }
+        it { is_expected.to include('user-logged-out') }
+        it { is_expected.not_to include('user-logged-in') }
       end
     end
   end
@@ -960,40 +911,23 @@ RSpec.describe ApplicationHelper, feature_category: :shared do
   end
 
   describe 'collapsed_super_sidebar?' do
-    context 'when @force_desktop_expanded_sidebar is true' do
+    context 'when super_sidebar_collapsed cookie is true' do
       before do
-        helper.instance_variable_set(:@force_desktop_expanded_sidebar, true)
+        helper.request.cookies['super_sidebar_collapsed'] = 'true'
+      end
+
+      it 'returns true' do
+        expect(helper.collapsed_super_sidebar?).to eq(true)
+      end
+    end
+
+    context 'when super_sidebar_collapsed cookie is false' do
+      before do
+        helper.request.cookies['super_sidebar_collapsed'] = 'false'
       end
 
       it 'returns false' do
         expect(helper.collapsed_super_sidebar?).to eq(false)
-      end
-
-      it 'does not use the cookie value' do
-        expect(helper).not_to receive(:cookies)
-        helper.collapsed_super_sidebar?
-      end
-    end
-
-    context 'when @force_desktop_expanded_sidebar is not set (default)' do
-      context 'when super_sidebar_collapsed cookie is true' do
-        before do
-          helper.request.cookies['super_sidebar_collapsed'] = 'true'
-        end
-
-        it 'returns true' do
-          expect(helper.collapsed_super_sidebar?).to eq(true)
-        end
-      end
-
-      context 'when super_sidebar_collapsed cookie is false' do
-        before do
-          helper.request.cookies['super_sidebar_collapsed'] = 'false'
-        end
-
-        it 'returns false' do
-          expect(helper.collapsed_super_sidebar?).to eq(false)
-        end
       end
     end
   end

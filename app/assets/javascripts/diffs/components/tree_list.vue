@@ -209,16 +209,16 @@ export default {
       // scroll to file, sticky elements update, file browser height update
       // file browser height might be shrunk, so we need to scroll to the selected file
       setTimeout(() => {
+        const { scroller } = this.$refs;
+        if (!scroller) return;
+
         const itemElement = this.$el.querySelector(`[data-file-row="${hash}"]`);
+
         if (!itemElement) {
-          if (!this.$refs.scroller) return;
-          this.$refs.scroller.scrollToItem(
-            this.treeList.findIndex((item) => item.fileHash === hash),
-          );
-          return;
+          scroller.scrollToItem(this.treeList.findIndex((item) => item.fileHash === hash));
+        } else if (isElementClipped(itemElement, scroller.$el)) {
+          itemElement.scrollIntoView({ block: 'nearest', behavior: 'instant' });
         }
-        if (!isElementClipped(itemElement, this.$refs.scroller.$el)) return;
-        itemElement.scrollIntoView({ block: 'nearest', behavior: 'instant' });
       }, 20);
     },
     openFileTree(hash) {
@@ -268,6 +268,7 @@ export default {
           v-gl-tooltip.hover
           icon="list-bulleted"
           :selected="!renderTreeList"
+          :aria-current="!renderTreeList ? 'true' : null"
           :title="__('List view')"
           :aria-label="__('List view')"
           data-testid="list-view-toggle"
@@ -277,6 +278,7 @@ export default {
           v-gl-tooltip.hover
           icon="file-tree"
           :selected="renderTreeList"
+          :aria-current="renderTreeList ? 'true' : null"
           :title="__('Tree view')"
           :aria-label="__('Tree view')"
           data-testid="tree-view-toggle"

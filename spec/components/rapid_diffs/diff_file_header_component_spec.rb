@@ -3,10 +3,10 @@
 require "spec_helper"
 
 RSpec.describe RapidDiffs::DiffFileHeaderComponent, type: :component, feature_category: :code_review_workflow do
-  let_it_be(:diff_file) { build(:diff_file) }
+  let_it_be(:diff_file, freeze: false) { build(:diff_file) }
   let(:header) { page.find('[data-testid="rd-diff-file-header"]') }
 
-  it "renders file path" do
+  it "renders file path with tooltip" do
     project = diff_file.repository.project
     namespace = project.namespace
     href = "/#{namespace.to_param}/#{project.to_param}/-/blob/#{diff_file.content_sha}/#{diff_file.new_path}"
@@ -14,13 +14,19 @@ RSpec.describe RapidDiffs::DiffFileHeaderComponent, type: :component, feature_ca
     link = header.find('h2 a')
     expect(link.text).to eq(diff_file.file_path)
     expect(link[:href]).to eq(href)
+    expect(link[:title]).to eq(s_('RapidDiffs|Open file in new tab'))
+    expect(link[:class]).to include('has-tooltip')
   end
 
-  it "renders file toggle" do
+  it "renders file toggle with tooltips" do
     render_component
-    expect(header).to have_css('button[data-click="toggleFile"][aria-expanded="true"][aria-label="Hide file contents"]')
-    expect(header)
-      .to have_css('button[data-click="toggleFile"][aria-expanded="false"][aria-label="Show file contents"]')
+    toggle = 'button[data-click="toggleFile"]'
+    expect(header).to have_css(
+      "#{toggle}[aria-expanded=\"true\"][aria-label=\"Hide file contents\"][title=\"Hide file contents\"]"
+    )
+    expect(header).to have_css(
+      "#{toggle}[aria-expanded=\"false\"][aria-label=\"Show file contents\"][title=\"Show file contents\"]"
+    )
   end
 
   it "renders copy path button" do
@@ -363,11 +369,26 @@ RSpec.describe RapidDiffs::DiffFileHeaderComponent, type: :component, feature_ca
     end
   end
 
+  describe 'before_file_menu slot' do
+    it 'renders content before the options menu' do
+      result = render_component do |c|
+        c.with_before_file_menu { '<div class="custom-menu">Custom Menu</div>'.html_safe }
+      end
+
+      expect(result.css('.custom-menu').text).to eq('Custom Menu')
+
+      custom_menu_position = result.to_html.index('custom-menu')
+      options_menu_position = result.to_html.index('rd-diff-file-options-menu')
+
+      expect(custom_menu_position).to be < options_menu_position
+    end
+  end
+
   def create_instance(**args)
     described_class.new(diff_file:, **args)
   end
 
-  def render_component(**args)
-    render_inline(create_instance(**args))
+  def render_component(**args, &block)
+    render_inline(create_instance(**args), &block)
   end
 end

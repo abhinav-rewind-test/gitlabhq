@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Understand how to name, manage, and protect Git branches.
 title: Branch rules
 ---
@@ -46,20 +46,20 @@ and their protection methods:
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To view the branch rules overview list:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules** to view all branches with protections.
 
 ### View branch rule details
 
 To view branch rules and protections for a single branch:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules** to view all branches with protections.
 1. Identify the branch you want and select **View details**.
 
@@ -78,12 +78,12 @@ To view branch rules and protections for a single branch:
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To create a branch rule:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules**.
 1. Select **Add branch rule**.
 1. Choose one of the following options:
@@ -104,8 +104,8 @@ To create a branch rule:
 
 To add protections to a new branch:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules**.
 1. Select **Add branch rule**.
 1. Select one of **All protected branches** or **Branch name or pattern**.
@@ -125,7 +125,7 @@ To add protections to a new branch:
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To add a merge request approval rule:
 
@@ -143,7 +143,7 @@ To add a merge request approval rule:
      GitLab suggests approvers based on previous authors of the files changed by the merge request.
 1. Select **Save changes**.
 
-For additional information, see [Approval rules](../../merge_requests/approvals/rules.md#approvals-for-protected-branches).
+For additional information, see [approval rules](../../merge_requests/approvals/rules.md#approvals-for-protected-branches).
 
 ### Edit squash commits option
 
@@ -164,7 +164,7 @@ For additional information, see [Approval rules](../../merge_requests/approvals/
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - In GitLab Free, this feature is available only if the branch rule targets **All branches**.
 - In GitLab Premium and GitLab Ultimate, this feature is available for all branch rules.
 
@@ -215,7 +215,7 @@ To add a status check service:
 
 ![Branch rules status checks](img/branch_rule_status_check_v17_4.png)
 
-For more information, see [External status checks](../../merge_requests/status_checks.md).
+For more information, see [external status checks](../../merge_requests/status_checks.md).
 
 ## Edit a branch rule target
 
@@ -231,12 +231,12 @@ For more information, see [External status checks](../../merge_requests/status_c
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To edit a branch rule target:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules** to view all branches with protections.
 1. Identify the branch you want and select **View details**.
 1. In the **Rule target** section, select **Edit**.
@@ -264,12 +264,12 @@ For information about branch protection controls, see [Protected branches](prote
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To delete a branch rule:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch rules**.
 1. Next to a rule you want to delete, select **View details**.
 1. In the upper-right corner, select **Delete rule**.

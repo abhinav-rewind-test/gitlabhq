@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Use Service Desk
 ---
 
@@ -19,8 +19,8 @@ In these tickets, you can also see our friendly neighborhood [Support Bot](confi
 
 To check what the Service Desk email address is for your project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Service Desk**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Monitor** > **Service Desk**.
 
 The email address is available at the top of the ticket list.
 
@@ -41,7 +41,7 @@ are sent as emails.
 
 Any responses they send by email are displayed in the ticket itself.
 
-For additional information see [External participants](external_participants.md) and the
+For more information, see [external participants](external_participants.md) and the
 [headers used for treating email](../../../administration/incoming_email.md#accepted-headers).
 
 ### Create a Service Desk ticket in GitLab UI
@@ -62,7 +62,7 @@ To create a Service Desk ticket from the UI:
 1. Optional. Add a comment on the ticket to send an initial Service Desk email to the external participant.
 
 <i class="fa-youtube-play" aria-hidden="true"></i>
-For a walkthrough, see [Create Service Desk tickets in the UI and API (GitLab 16.10)](https://www.youtube.com/watch?v=ibUGNc2wifQ).
+For an overview, see [create Service Desk tickets in the UI and API (GitLab 16.10)](https://www.youtube.com/watch?v=ibUGNc2wifQ).
 <!-- Video published on 2024-03-05 -->
 
 ## As a responder to the ticket
@@ -74,7 +74,7 @@ tickets created through customer support requests, and filter or interact with t
 ![Service Desk ticket tracker](img/service_desk_issue_tracker_v16_10.png)
 
 Messages from the end user are shown as coming from the special
-[Support Bot user](../../../subscriptions/manage_users_and_seats.md#criteria-for-non-billable-users).
+[Support Bot user](../../../subscriptions/manage_seats.md#criteria-for-non-billable-users).
 You can read and write comments as you usually do in GitLab:
 
 - The project's visibility (private, internal, public) does not affect Service Desk.
@@ -84,12 +84,12 @@ You can read and write comments as you usually do in GitLab:
 
 Prerequisites:
 
-- You must have at least the Reporter role for the project.
+- You must have the Reporter, Developer, Maintainer, or Owner role for the project.
 
 To view Service Desk tickets:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Service Desk**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Monitor** > **Service Desk**.
 
 #### Redesigned ticket list
 
@@ -104,7 +104,7 @@ The Service Desk ticket list more closely matches the regular issue list.
 Available features include:
 
 - The same sorting and ordering options [as on the issue list](../issues/sorting_issue_lists.md).
-- The same filters, including [the OR operator](#filter-the-list-of-tickets) and [filtering by ticket ID](#filter-tickets-by-id).
+- The same filters, including the [OR operator](#filter-the-list-of-tickets) and [filtering by ticket ID](#filter-tickets-by-id).
 
 There is no longer an option to create a new ticket from the Service Desk ticket list.
 This decision better reflects the nature of Service Desk, where new tickets are created by emailing
@@ -112,8 +112,8 @@ a dedicated email address.
 
 ##### Filter the list of tickets
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Service Desk**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Monitor** > **Service Desk**.
 1. Above the list of tickets, select **Search or filter results**.
 1. In the dropdown list that appears, select the attribute you want to filter by.
 1. Select or type the operator to use for filtering the attribute. The following operators are
@@ -139,8 +139,8 @@ when you [filter the list of tickets](#filter-the-list-of-tickets) by:
 
 ##### Filter tickets by ID
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Service Desk**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Monitor** > **Service Desk**.
 1. In the **Search** box, type the ticket ID. For example, enter filter `#10` to return only ticket 10.
 
 ## Email contents and formatting
@@ -190,7 +190,7 @@ into a Service Desk ticket. This assigns the provided email address as the exter
 and adds them to the list of external participants. They receive Service Desk emails for any public
 comment on the ticket and can reply to these emails. Replies add a new comment on the ticket.
 
-GitLab doesn't send [the default `thank_you` email](configure.md#customize-emails-sent-to-external-participants).
+GitLab doesn't send the default [`thank_you` email](configure.md#customize-emails-sent-to-external-participants).
 You can add a public comment on the ticket to let the end user know that the ticket has been created.
 
 ## Privacy considerations
@@ -205,7 +205,7 @@ Service Desk tickets are [confidential](../issues/confidential_issues.md), so th
 only visible to project members. The project owner can
 [make a ticket public](../issues/confidential_issues.md#in-an-existing-issue).
 When a Service Desk ticket becomes public, the ticket creator's and participants' email addresses are
-visible to signed-in users with at least the Reporter role for the project.
+visible to signed-in users with the Reporter, Developer, Maintainer, or Owner role for the project.
 
 In GitLab 15.8 and earlier, when a Service Desk ticket becomes public, the ticket creator's email
 address is disclosed to everyone who can view the project.

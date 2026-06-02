@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Label, feature_category: :team_planning do
+RSpec.describe Label, feature_category: :team_planning, factory_default: :keep do
   using RSpec::Parameterized::TableSyntax
 
-  let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project) }
+  let_it_be(:group) { create_default(:group) }
+  let_it_be(:project) { create_default(:project) }
 
   describe 'modules' do
     it { is_expected.to include_module(Referable) }
@@ -211,7 +211,7 @@ RSpec.describe Label, feature_category: :team_planning do
       # rubocop:enable Rails/SaveBang
 
       context 'when updating a label' do
-        let_it_be(:template_label) { create(:label, template: true) }
+        let_it_be(:template_label, freeze: false) { create(:label, template: true) }
 
         where(:lock_on_merge, :valid, :errors) do
           true         | false   | [validation_error]
@@ -254,6 +254,26 @@ RSpec.describe Label, feature_category: :team_planning do
 
         expect(resource_label_event.reload.label_id).to be_nil
         expect(described_class.find_by(id: label.id)).to be_nil
+      end
+    end
+
+    describe 'strip_whitespace_from_title' do
+      it 'strips leading and trailing whitespace from the title' do
+        label = create(:label, title: '   Untrimmed   ')
+
+        expect(label.title).to eq('Untrimmed')
+      end
+
+      it 'does not write the title attribute when no whitespace needs stripping' do
+        label = create(:label, title: 'Already Stripped')
+
+        # Re-validate the label without changing anything. The callback runs
+        # but must not call `_write_attribute` on a no-op, so that a
+        # let_it_be-cached (and frozen) label can be re-validated without
+        # raising FrozenError.
+        expect(label).not_to receive(:[]=)
+
+        label.valid?
       end
     end
   end
@@ -315,7 +335,7 @@ RSpec.describe Label, feature_category: :team_planning do
   end
 
   describe '#hook_attrs' do
-    let_it_be(:label) { build_stubbed(:label) }
+    let_it_be(:label, freeze: false) { build_stubbed(:label) }
 
     subject(:attrs) { label.hook_attrs }
 
@@ -355,7 +375,7 @@ RSpec.describe Label, feature_category: :team_planning do
     describe '#prioritize!' do
       context 'when label is not prioritized' do
         it 'creates a label priority' do
-          expect { label.prioritize!(project, 1) }.to change(label.priorities, :count).by(1)
+          expect { label.prioritize!(project, 1) }.to change { label.priorities.count }.by(1)
         end
 
         it 'sets label priority' do
@@ -369,7 +389,7 @@ RSpec.describe Label, feature_category: :team_planning do
         let!(:priority) { create(:label_priority, project: project, label: label, priority: 0) }
 
         it 'does not create a label priority' do
-          expect { label.prioritize!(project, 1) }.not_to change(label.priorities, :count)
+          expect { label.prioritize!(project, 1) }.not_to change { label.priorities.count }
         end
 
         it 'updates label priority' do
@@ -383,7 +403,7 @@ RSpec.describe Label, feature_category: :team_planning do
         subject(:label) { create(:label, :archived, project: project) }
 
         it 'does not create label priority' do
-          expect { label.prioritize!(project, 1) }.not_to change(label.priorities, :count)
+          expect { label.prioritize!(project, 1) }.not_to change { label.priorities.count }
         end
       end
     end
@@ -392,7 +412,7 @@ RSpec.describe Label, feature_category: :team_planning do
       it 'removes label priority' do
         create(:label_priority, project: project, label: label, priority: 0)
 
-        expect { label.unprioritize!(project) }.to change(label.priorities, :count).by(-1)
+        expect { label.unprioritize!(project) }.to change { label.priorities.count }.by(-1)
       end
 
       context 'when archiving label' do
@@ -400,7 +420,7 @@ RSpec.describe Label, feature_category: :team_planning do
           create(:label_priority, project: project, label: label, priority: 0)
 
           label.archived = true
-          expect { label.save! }.to change(label.priorities, :count).by(-1)
+          expect { label.save! }.to change { label.priorities.count }.by(-1)
         end
 
         it 'does not unprioritize other labels' do
@@ -408,7 +428,7 @@ RSpec.describe Label, feature_category: :team_planning do
           create(:label_priority, project: project, label: other_label, priority: 0)
 
           label.archived = true
-          expect { label.save! }.not_to change(other_label.priorities, :count)
+          expect { label.save! }.not_to change { other_label.priorities.count }
         end
 
         it 'does not trigger the callbacks when not archived' do
@@ -457,8 +477,8 @@ RSpec.describe Label, feature_category: :team_planning do
   describe '.top_labels_by_target' do
     let(:label) { create(:label) }
     let(:popular_label) { create(:label) }
-    let(:merge_request1) { create(:merge_request) }
-    let(:merge_request2) { create(:merge_request) }
+    let(:merge_request1) { create(:merge_request, source_branch: 'feature-1') }
+    let(:merge_request2) { create(:merge_request, source_branch: 'feature-2') }
 
     before do
       merge_request1.labels = [label, popular_label]

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Add new tables to the CI database
 ---
 
@@ -32,8 +32,7 @@ Here is an example on how to use database helpers to create a new table and fore
       column: [:partition_id, :build_id],
       target_column: [:partition_id, :id],
       on_update: :cascade,
-      on_delete: :cascade,
-      reverse_lock_order: true
+      on_delete: :cascade
     )
   end
 

@@ -1,6 +1,14 @@
 <script>
-import { GlAlert, GlButton, GlCollapse, GlIcon } from '@gitlab/ui';
-import { partition, isString, uniqueId, isEmpty } from 'lodash';
+import {
+  GlAlert,
+  GlButton,
+  GlCollapse,
+  GlFormGroup,
+  GlFormRadio,
+  GlFormRadioGroup,
+  GlIcon,
+} from '@gitlab/ui';
+import { partition, isString, uniqueId, isEmpty } from 'lodash-es';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import InviteModalBase from 'ee_else_ce/invite_members/components/invite_modal_base.vue';
 import Api from '~/api';
@@ -13,7 +21,7 @@ import {
   baseBindingAttributes,
 } from 'ee_else_ce/invite_members/utils/member_utils';
 import { responseFromSuccess } from 'ee_else_ce/invite_members/utils/response_message_parser';
-import { captureException } from '~/ci/runner/sentry_utils';
+import { captureException } from '~/sentry/sentry_browser_wrapper';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import {
   BLOCKED_SEAT_OVERAGES_ERROR_REASON,
@@ -22,15 +30,20 @@ import {
   BLOCKED_SEAT_OVERAGES_CTA_DOCS,
   MEMBER_MODAL_LABELS,
   INVITE_MEMBER_MODAL_TRACKING_CATEGORY,
+  MEMBERSHIP_RADIO_GROUP_LABEL,
+  MEMBERSHIP_THIS_GROUP_OR_PROJECT,
+  MEMBERSHIP_ALL_GROUPS_AND_PROJECTS,
+  INVALID_ENTRIES_FEEDBACK,
+  EMPTY_INVITES_FEEDBACK,
+  INVITE_CAP_REACHED_TEXT,
+  MAX_INVITES,
 } from '../constants';
 import eventHub from '../event_hub';
-import { getInvalidFeedbackMessage } from '../utils/get_invalid_feedback_message';
 import {
   displaySuccessfulInvitationAlert,
   reloadOnMemberInvitationSuccess,
   markLocalStorageForQueuedAlert,
 } from '../utils/trigger_successful_invite_alert';
-import ModalConfetti from './confetti.vue';
 import MembersTokenSelect from './members_token_select.vue';
 import UserLimitNotification from './user_limit_notification.vue';
 
@@ -40,10 +53,12 @@ export default {
     GlAlert,
     GlButton,
     GlCollapse,
+    GlFormGroup,
+    GlFormRadio,
+    GlFormRadioGroup,
     GlIcon,
     InviteModalBase,
     MembersTokenSelect,
-    ModalConfetti,
     UserLimitNotification,
     ActiveTrialNotification: () =>
       import('ee_component/invite_members/components/active_trial_notification.vue'),
@@ -113,6 +128,21 @@ export default {
       required: false,
       default: false,
     },
+    rootGroupName: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    isTopLevelGroup: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    canInviteToRootGroup: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   data() {
     return {
@@ -127,13 +157,20 @@ export default {
       mode: 'default',
       errorsLimit: 2,
       isErrorsSectionExpanded: false,
-      shouldShowEmptyInvitesAlert: false,
       hasIncompleteMemberInput: false,
+      inviteToRootGroup: false,
+      hasReachedInviteCap: false,
     };
   },
   computed: {
-    isCelebration() {
-      return this.mode === 'celebrate';
+    showMembershipRadio() {
+      return this.canInviteToRootGroup && !this.isTopLevelGroup && Boolean(this.rootGroupName);
+    },
+    membershipThisLabel() {
+      return sprintf(MEMBERSHIP_THIS_GROUP_OR_PROJECT, { sourceName: this.name });
+    },
+    membershipAllProjectsLabel() {
+      return sprintf(MEMBERSHIP_ALL_GROUPS_AND_PROJECTS, { groupName: this.rootGroupName });
     },
     modalTitle() {
       return this.$options.labels.modal[this.mode].title;
@@ -142,12 +179,25 @@ export default {
       return this.isProject ? 'toProject' : 'toGroup';
     },
     labelIntroText() {
+      if (this.inviteToRootGroup) {
+        return (
+          this.$options.labels.toGroup[this.mode]?.introText ||
+          this.$options.labels.toGroup.default.introText
+        );
+      }
+
       return this.$options.labels[this.inviteTo][this.mode].introText;
+    },
+    effectiveName() {
+      return this.inviteToRootGroup ? this.rootGroupName : this.name;
     },
     accessExpirationHelpLink() {
       return this.isProject
         ? helpPagePath('user/project/members/_index', { anchor: 'add-users-to-a-project' })
         : helpPagePath('user/group/_index', { anchor: 'add-users-to-a-group' });
+    },
+    inviteCapReachedText() {
+      return sprintf(INVITE_CAP_REACHED_TEXT, { max: MAX_INVITES });
     },
     hasInvites() {
       return Boolean(this.newUsersToInvite.length);
@@ -200,9 +250,6 @@ export default {
         count: this.errorsExpanded.length,
       });
     },
-    formGroupDescription() {
-      return this.invalidFeedbackMessage ? null : this.$options.labels.placeHolder;
-    },
     shouldShowSeatOverageNotification() {
       return this.errorReason === BLOCKED_SEAT_OVERAGES_ERROR_REASON && this.addSeatsHref;
     },
@@ -215,8 +262,8 @@ export default {
   },
   watch: {
     hasEmptyOrIncompleteInvites(hasEmptyOrIncomplete) {
-      if (!hasEmptyOrIncomplete && this.shouldShowEmptyInvitesAlert) {
-        this.clearEmptyInviteError();
+      if (!hasEmptyOrIncomplete && this.invalidFeedbackMessage) {
+        this.clearValidation();
       }
     },
   },
@@ -233,8 +280,14 @@ export default {
     handleTokenizationStateChange(hasPendingInput) {
       this.hasIncompleteMemberInput = hasPendingInput;
     },
-    showInvalidFeedbackMessage(response) {
-      this.invalidFeedbackMessage = getInvalidFeedbackMessage(response);
+    handleInviteCapReached(isReached) {
+      this.hasReachedInviteCap = isReached;
+    },
+    showInvalidFeedbackMessage() {
+      this.invalidFeedbackMessage = INVALID_ENTRIES_FEEDBACK;
+      this.$nextTick(() => {
+        this.$refs.alerts?.focus();
+      });
     },
     partitionNewUsersToInvite() {
       const [usersToInviteByEmail, usersToAddById] = partition(
@@ -257,10 +310,15 @@ export default {
     closeModal() {
       this.$root.$emit(BV_HIDE_MODAL, this.modalId);
     },
-    showEmptyInvitesAlert() {
-      this.invalidFeedbackMessage = this.$options.labels.placeHolder;
-      this.shouldShowEmptyInvitesAlert = true;
-      this.$refs.alerts.focus();
+    showInvalidInputFeedback() {
+      if (!this.hasInvites && !this.hasIncompleteMemberInput) {
+        this.invalidFeedbackMessage = EMPTY_INVITES_FEEDBACK;
+      } else {
+        this.invalidFeedbackMessage = INVALID_ENTRIES_FEEDBACK;
+      }
+      this.$nextTick(() => {
+        this.$refs.alerts?.focus();
+      });
     },
     getInvitePayload({ accessLevel, expiresAt, memberRoleId }) {
       const [usersToInviteByEmail, usersToAddById] = this.partitionNewUsersToInvite();
@@ -282,19 +340,22 @@ export default {
       this.clearValidation();
 
       if (this.hasEmptyOrIncompleteInvites) {
-        this.showEmptyInvitesAlert();
+        this.showInvalidInputFeedback();
         return;
       }
 
       this.isLoading = true;
 
-      const apiAddByInvite = this.isProject
-        ? Api.inviteProjectMembers.bind(Api)
-        : Api.inviteGroupMembers.bind(Api);
+      const apiAddByInvite =
+        this.inviteToRootGroup || !this.isProject
+          ? Api.inviteGroupMembers.bind(Api)
+          : Api.inviteProjectMembers.bind(Api);
+
+      const targetId = this.inviteToRootGroup ? this.rootId : this.id;
 
       try {
         const payload = this.getInvitePayload({ accessLevel, expiresAt, memberRoleId });
-        const response = await apiAddByInvite(this.id, payload);
+        const response = await apiAddByInvite(targetId, payload);
 
         const { error, message, usersWithWarning } = responseFromSuccess(response);
 
@@ -309,7 +370,7 @@ export default {
           this.onInviteSuccess();
         }
       } catch (error) {
-        captureException({ error, component: this.$options.name });
+        captureException(error);
         this.showInvalidFeedbackMessage(error);
       } finally {
         this.isLoading = false;
@@ -317,7 +378,7 @@ export default {
     },
     showErrors(message) {
       if (isString(message)) {
-        this.invalidFeedbackMessage = message;
+        this.invalidFeedbackMessage = INVALID_ENTRIES_FEEDBACK;
       } else {
         this.invalidMembers = message;
         this.$refs.alerts.focus();
@@ -336,9 +397,10 @@ export default {
     resetFields() {
       this.clearValidation();
       this.isLoading = false;
-      this.shouldShowEmptyInvitesAlert = false;
       this.newUsersToInvite = [];
       this.hasIncompleteMemberInput = false;
+      this.inviteToRootGroup = false;
+      this.hasReachedInviteCap = false;
     },
     onInviteSuccess() {
       this.track('invite_successful', { label: this.source });
@@ -362,10 +424,6 @@ export default {
       this.usersWithWarning = {};
       this.invalidMembers = {};
     },
-    clearEmptyInviteError() {
-      this.invalidFeedbackMessage = '';
-      this.shouldShowEmptyInvitesAlert = false;
-    },
     removeToken(token) {
       delete this.invalidMembers[memberName(token)];
       this.invalidMembers = { ...this.invalidMembers };
@@ -377,6 +435,7 @@ export default {
   labels: MEMBER_MODAL_LABELS,
   i18n: {
     BLOCKED_SEAT_OVERAGES_BODY,
+    MEMBERSHIP_RADIO_GROUP_LABEL,
   },
 };
 </script>
@@ -384,7 +443,7 @@ export default {
   <invite-modal-base
     :modal-id="modalId"
     :modal-title="modalTitle"
-    :name="name"
+    :name="effectiveName"
     :access-levels="staticRoles"
     :default-access-level="defaultAccessLevel"
     :default-member-role-id="defaultMemberRoleId"
@@ -392,7 +451,6 @@ export default {
     :access-expiration-help-link="accessExpirationHelpLink"
     :label-intro-text="labelIntroText"
     :label-search-field="$options.labels.searchField"
-    :form-group-description="formGroupDescription"
     :invalid-feedback-message="invalidFeedbackMessage"
     :has-incomplete-member-input="hasIncompleteMemberInput"
     :is-loading="isLoading"
@@ -408,29 +466,8 @@ export default {
     @reset="resetFields"
     @submit="sendInvite"
   >
-    <template #intro-text-before>
-      <div v-if="isCelebration" class="gl-p-4 gl-text-size-h1">
-        <gl-emoji data-name="tada" />
-      </div>
-    </template>
-    <template #intro-text-after>
-      <br />
-      <span v-if="isCelebration">{{ $options.labels.modal.celebrate.intro }} </span>
-      <modal-confetti v-if="isCelebration" />
-    </template>
-
     <template #alert>
       <div ref="alerts" tabindex="-1">
-        <gl-alert
-          v-if="shouldShowEmptyInvitesAlert"
-          id="empty-invites-alert"
-          class="gl-mb-4"
-          variant="danger"
-          :dismissible="false"
-          data-testid="empty-invites-alert"
-        >
-          {{ $options.labels.emptyInvitesAlertText }}
-        </gl-alert>
         <gl-alert
           v-if="hasInvalidMembers"
           class="gl-mb-4"
@@ -488,14 +525,30 @@ export default {
     </template>
 
     <template #active-trial-alert>
-      <active-trial-notification v-if="!isCelebration" :active-trial-dataset="activeTrialDataset" />
+      <active-trial-notification :active-trial-dataset="activeTrialDataset" />
+    </template>
+
+    <template #membership-selector>
+      <gl-form-group
+        v-if="showMembershipRadio"
+        :label="$options.i18n.MEMBERSHIP_RADIO_GROUP_LABEL"
+        data-testid="membership-radio-group"
+      >
+        <gl-form-radio-group v-model="inviteToRootGroup" name="invite_membership_scope">
+          <gl-form-radio :value="false" data-testid="membership-current">
+            {{ membershipThisLabel }}
+          </gl-form-radio>
+          <gl-form-radio :value="true" data-testid="membership-root-group">
+            {{ membershipAllProjectsLabel }}
+          </gl-form-radio>
+        </gl-form-radio-group>
+      </gl-form-group>
     </template>
 
     <template #select="{ exceptionState, inputId }">
       <members-token-select
         v-model="newUsersToInvite"
         class="gl-mb-2"
-        aria-labelledby="empty-invites-alert"
         :input-id="inputId"
         :exception-state="exceptionState"
         :users-with-warning="usersWithWarning"
@@ -503,7 +556,16 @@ export default {
         @clear="clearValidation"
         @token-remove="removeToken"
         @tokenization-state-change="handleTokenizationStateChange"
+        @invite-cap-reached="handleInviteCapReached"
       />
+      <span
+        v-if="hasReachedInviteCap"
+        class="gl-mt-2 gl-block gl-text-warning"
+        data-testid="invite-cap-reached"
+        role="status"
+      >
+        {{ inviteCapReachedText }}
+      </span>
     </template>
 
     <template #after-members-input>

@@ -30,15 +30,82 @@
       "minItems": 1,
       "description": "List of components that make up the flow",
       "items": {
-        "oneOf": [
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "AgentComponent",
+              "DeterministicStepComponent",
+              "OneOffComponent",
+              "HumanInputComponent"
+            ],
+            "description": "Component type discriminator"
+          }
+        },
+        "allOf": [
           {
-            "$ref": "#/definitions/AgentComponent"
+            "if": {
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "AgentComponent"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/AgentComponent"
+            }
           },
           {
-            "$ref": "#/definitions/DeterministicStepComponent"
+            "if": {
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "DeterministicStepComponent"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/DeterministicStepComponent"
+            }
           },
           {
-            "$ref": "#/definitions/OneOffComponent"
+            "if": {
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "OneOffComponent"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/OneOffComponent"
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "HumanInputComponent"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/HumanInputComponent"
+            }
           }
         ]
       }
@@ -139,11 +206,111 @@
         },
         "toolset": {
           "type": "array",
-          "description": "List of tools available to the agent. Examples: ['read_file', 'list_dir', 'edit_file']",
+          "description": "List of tools available to the agent. Can be tool names or objects with tool options. Examples: ['read_file', {'create_merge_request_note': {'internal': true}}]",
           "items": {
-            "type": "string",
-            "description": "Tool name from tools registry"
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Tool name from tools registry"
+              },
+              {
+                "type": "object",
+                "description": "Tool with options. Key is tool name, value is options object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "object",
+                  "description": "Tool-specific options as key-value pairs",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
           }
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the agent's purpose and capabilities. Required when the agent is used as a sub-agent (listed in another agent's subagents)."
+        },
+        "subagents": {
+          "type": "array",
+          "description": "List of subagent config dicts this agent supervises. When provided, the agent runs in Supervisor Mode. Each entry must contain a 'name' key referencing another AgentComponent with a description field.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/definitions/ComponentName"
+              }
+            }
+          }
+        },
+        "max_delegations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of delegate_task calls allowed before the supervisor is forced to call final_response_tool. Only applicable in Supervisor Mode."
+        },
+        "model_size_preference": {
+          "type": "string",
+          "enum": [
+            "small",
+            "large"
+          ],
+          "description": "Preferred model size to use for this agent. 'small' selects a smaller, faster model; 'large' selects a larger, more capable model."
         },
         "ui_log_events": {
           "type": "array",
@@ -153,7 +320,9 @@
             "enum": [
               "on_agent_final_answer",
               "on_tool_execution_success",
-              "on_tool_execution_failed"
+              "on_tool_execution_failed",
+              "on_delegation",
+              "on_delegation_returns"
             ]
           }
         },
@@ -269,10 +438,77 @@
         "toolset": {
           "type": "array",
           "minItems": 1,
-          "description": "List of tools available to the component. Examples: ['read_file', 'list_dir', 'edit_file']",
+          "description": "List of tools available to the component. Can be tool names or objects with tool options. Examples: ['read_file', {'create_merge_request_note': {'internal': true}}]",
           "items": {
-            "type": "string",
-            "description": "Tool name from tools registry"
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Tool name from tools registry"
+              },
+              {
+                "type": "object",
+                "description": "Tool with options. Key is tool name, value is options object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "object",
+                  "description": "Tool-specific options as key-value pairs",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         "inputs": {
@@ -313,6 +549,70 @@
         }
       }
     },
+    "HumanInputComponent": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "sends_response_to",
+        "message_template"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/ComponentName"
+        },
+        "type": {
+          "type": "string",
+          "const": "HumanInputComponent"
+        },
+        "sends_response_to": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "description": "Name of the component that receives the human's response"
+        },
+        "message_template": {
+          "type": "string",
+          "description": "Message template shown to the user when requesting input"
+        },
+        "inputs": {
+          "type": "array",
+          "description": "List of input data sources for the human input prompt",
+          "default": [],
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Simple input reference. Examples: 'context:goal'"
+              },
+              {
+                "$ref": "#/definitions/InputMapping"
+              }
+            ]
+          }
+        },
+        "interaction_type": {
+          "type": "string",
+          "enum": [
+            "approval",
+            "input"
+          ],
+          "default": "approval",
+          "description": "Type of user interaction expected. 'approval' renders approval/rejection buttons; 'input' renders a text input field"
+        },
+        "ui_log_events": {
+          "type": "array",
+          "description": "UI logging configuration for human input interactions",
+          "items": {
+            "type": "string",
+            "enum": [
+              "on_user_input_prompt",
+              "on_user_response"
+            ]
+          }
+        }
+      }
+    },
     "InputMapping": {
       "type": "object",
       "required": [
@@ -332,6 +632,10 @@
         "literal": {
           "type": "boolean",
           "description": "Whether the 'from' value should be treated as a literal value"
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "Whether the input is optional. Default is false. If true, no error is raised for missing input data"
         }
       }
     },

@@ -108,7 +108,7 @@ module Ci
     # Explicitly set the value here before each save operation instead.
     override :schedule_next_run!
     def schedule_next_run!
-      return if cron_values_changed?
+      return if cron_or_activation_changed?
 
       set_next_run_at
       super
@@ -131,7 +131,7 @@ module Ci
     end
 
     def worker_cron_expression
-      Settings.cron_jobs['pipeline_schedule_worker']['cron']
+      Gitlab::SidekiqConfig.cron_jobs['pipeline_schedule_worker']['cron']
     end
 
     # Using destroy instead of before_destroy as we want nullify_dependent_associations_in_batches
@@ -165,8 +165,8 @@ module Ci
       end
     end
 
-    def cron_values_changed?
-      cron_changed? || cron_timezone_changed?
+    def cron_or_activation_changed?
+      cron_changed? || cron_timezone_changed? || active_changed?(from: false, to: true)
     end
 
     # This method will block updates to next_run_at on simple record mutations
@@ -175,7 +175,7 @@ module Ci
     # call schedule_next_run!
     override :allow_next_run_at_update?
     def allow_next_run_at_update?
-      cron_values_changed?
+      cron_or_activation_changed?
     end
   end
 end

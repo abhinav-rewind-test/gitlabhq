@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Deploy keys
 description: Public SSH keys, repository access, bot users, and read-only access.
 ---
@@ -65,9 +65,11 @@ If you use another user account to create deploy keys, that user is granted priv
 
 In addition:
 
-- If the deploy key owner is blocked or removed from the instance, the deploy key is
+- If the deploy key owner is blocked, the deploy key is
   [rejected](#deploy-key-is-rejected). It cannot be used for any repository operations,
   including pulls and pushes.
+- Deploy keys are not rejected when the deploy key owner is removed from the group or project.
+  The deploy key continues to provide access until it is revoked.
 - When a deploy key is specified in a protected branch rule, the creator of the deploy key:
   - Gains access to the protected branch, and to the deploy key itself.
   - Can push to the protected branch, if the deploy key has read-write permission.
@@ -83,8 +85,8 @@ To help detect a potential secret leak, you can use the
 
 To view the deploy keys available to a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy keys**.
 
 The deploy keys available are listed:
@@ -103,8 +105,8 @@ Prerequisites:
 - [Generate an SSH key pair](../../ssh.md#generate-an-ssh-key-pair). Put the private SSH
   key on the host that requires access to the repository.
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy keys**.
 1. Select **Add new key**.
 1. Complete the fields.
@@ -135,7 +137,7 @@ Prerequisites:
 To create a public deploy key:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Deploy keys**.
+1. In the left sidebar, select **Deploy keys**.
 1. Select **New deploy key**.
 1. Complete the fields.
    - Use a meaningful description for **Name**. For example, include the name of the external host
@@ -151,8 +153,8 @@ Prerequisites:
 
 To grant a public deploy key access to a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy keys**.
 1. Select **Publicly accessible deploy keys**.
 1. In the key's row, select **Enable**.
@@ -168,8 +170,8 @@ Prerequisites:
 
 To edit the project access permissions of a deploy key:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy keys**.
 1. In the key's row, select **Edit** ({{< icon name="pencil" >}}).
 1. Select or clear the **Grant write permissions to this key** checkbox.
@@ -185,8 +187,8 @@ Prerequisites:
 
 To disable a deploy key:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy keys**.
 1. Select **Disable** ({{< icon name="cancel" >}}).
 
@@ -236,7 +238,7 @@ To resolve this issue, you can use the deploy keys API to create deploy keys for
 
 1. [Create a service account user](../../../api/service_accounts.md#create-a-group-service-account).
 1. [Create a personal access token](../../../api/service_accounts.md#create-a-personal-access-token-for-a-group-service-account) for that service account user. This token must have at least the `api` scope.
-1. [Invite the service account user to the project](../../profile/service_accounts.md#service-account-access-to-groups-and-projects).
+1. [Invite the service account user to the project](../../profile/service_accounts.md#add-a-service-account-to-a-group-or-project).
 1. Use the deploy key API to [create a deploy key for the service account user](../../../api/deploy_keys.md#add-deploy-key):
 
    ```shell
@@ -281,8 +283,8 @@ end
 
 #### Set the owner of a deploy key
 
-Deploy keys belong to a specific user and are rejected when the user is blocked or removed from the instance.
-To keep a deploy key working when a user is removed, change its owner to an active user.
+Deploy keys belong to a specific user and are rejected when the user is blocked.
+To keep a deploy key working when the owner is blocked, change its owner to an active user.
 
 If you have the fingerprint of the deploy key, you can change the user associated with a deploy key with the following commands:
 

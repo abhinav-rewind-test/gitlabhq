@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use Git branches to develop new features. Add branch protections to critical branches to ensure only trusted users can merge into them.
 title: Default branch
 ---
@@ -42,19 +42,19 @@ the [Git commands you need](#update-the-default-branch-name-in-your-repository) 
 
 Prerequisites:
 
-- You have the Owner or Maintainer role for the project.
+- You have the Maintainer or Owner role for the project.
 
 To update the default branch for an individual [project](../../_index.md):
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Branch defaults**. For **Default branch**, select a new default branch.
 1. Optional. Select the **Auto-close referenced issues on default branch** checkbox to close
    issues when a merge request
    [uses a closing pattern](../../issues/managing_issues.md#closing-issues-automatically).
 1. Select **Save changes**.
 
-You can also use the `default_branch` attribute of the [Projects API](../../../../api/projects.md).
+You can also use the `default_branch` attribute of the [projects API](../../../../api/projects.md).
 When you create a project with the API and set `initialize_with_readme` to `true`,
 you can specify the `default_branch` parameter as either:
 
@@ -77,7 +77,7 @@ customize the initial branch for projects hosted on that instance. Individual
 groups and subgroups can override the instance default for their projects.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Repository**.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Default branch**.
 1. For **Initial default branch name**, select a new default branch.
 1. Select **Save changes**.
@@ -94,8 +94,8 @@ Prerequisites:
 
 To change the default branch name for new projects in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Default branch**.
 1. For **Initial default branch name**, select a new default branch.
 1. Select **Save changes**.
@@ -154,7 +154,7 @@ Administrators of GitLab Self-Managed instances can customize the initial defaul
 groups and subgroups can override the instance default setting for their projects.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Repository**.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Default branch**.
 1. Select [**Initial default branch protection**](#protect-initial-default-branches).
 1. To allow group owners to override the instance's default branch protection, select
@@ -176,7 +176,7 @@ on a per-group basis. In
 disable this privilege for group owners, enforcing the protection rule set for the instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Repository**.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand the **Default branch** section.
 1. Clear the **Allow owners to manage default branch protection per group** checkbox.
 1. Select **Save changes**.
@@ -199,8 +199,8 @@ on a per-group basis. In
 [enforce protection of initial default branches](#prevent-overrides-of-default-branch-protection)
 which locks this setting for group owners.
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Default branch**.
 1. Select [**Initial default branch protection**](#protect-initial-default-branches).
 1. Select **Save changes**.

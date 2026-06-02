@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use push rules to control the content and format of Git commits your repository accepts. Set standards for commit messages, and block secrets or credentials from being added accidentally.
 title: Group push rules API
 ---
@@ -13,16 +13,16 @@ title: Group push rules API
 
 {{< /details >}}
 
-Use this API to manage [group push rules](../user/group/access_and_permissions.md#group-push-rules)
+Use this API to manage [group push rules](../user/project/repository/push_rules.md#group-push-rules)
 for newly created projects in a group.
 
 Prerequisites:
 
 - You must have the Owner role for the group or be an administrator for the instance.
 
-## Get the push rules of a group
+## Retrieve the push rules of a group
 
-Gets the push rules of a group.
+Retrieves the push rules of a specified group.
 
 ```plaintext
 GET /groups/:id/push_rule
@@ -93,7 +93,7 @@ If push rules were never configured for the group, returns [`404 Not Found`](res
 ```
 
 > [!note]
-> This differs from the [project push rules API](project_push_rules.md#get-project-push-rules),
+> This differs from the [project push rules API](project_push_rules.md#retrieve-the-push-rules-of-a-project),
 > which returns HTTP `200 OK` with the literal string `"null"` when no push rules are configured.
 
 When disabled, some boolean attributes return `null` instead of `false`. For example:
@@ -104,7 +104,7 @@ When disabled, some boolean attributes return `null` instead of `false`. For exa
 
 ## Add push rules to a group
 
-Adds push rules to the group. Use only if you haven't defined any push rules so far.
+Adds push rules to the specified group. Use only if you haven't defined any push rules so far.
 
 ```plaintext
 POST /groups/:id/push_rule
@@ -180,9 +180,9 @@ Example response:
 }
 ```
 
-## Edit the push rules of a group
+## Update push rules of a group
 
-Edits the push rules for the group.
+Updates the push rules for the specified group.
 
 ```plaintext
 PUT /groups/:id/push_rule
@@ -260,7 +260,7 @@ Example response:
 
 ## Delete the push rules of a group
 
-Deletes all the push rules of a group.
+Deletes all the push rules of a specified group.
 
 ```plaintext
 DELETE /groups/:id/push_rule

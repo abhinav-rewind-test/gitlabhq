@@ -11,12 +11,27 @@ class ProjectSetting < ApplicationRecord
 
   columns_changing_default :auto_duo_code_review_enabled, :duo_remote_flows_enabled
 
+  REVIEWER_ASSIGNMENT_STRATEGIES = {
+    disabled: 0,
+    code_owners: 1,
+    dap_powered: 2
+  }.freeze
+
   ALLOWED_TARGET_PLATFORMS = %w[ios osx tvos watchos android].freeze
+
+  HUMANIZED_ATTRIBUTES = {
+    mr_default_title_template: 'Merge request default title template'
+  }.freeze
+
+  def self.human_attribute_name(attribute, *options)
+    HUMANIZED_ATTRIBUTES[attribute.to_sym] || super
+  end
 
   belongs_to :project, inverse_of: :project_setting
 
   ignore_column :pages_multiple_versions_enabled, remove_with: '17.9', remove_after: '2025-02-20'
   ignore_column :pages_default_domain_redirect, remove_with: '17.9', remove_after: '2025-02-20'
+  ignore_column :code_owner_reviewer_assignment_strategy, remove_with: '19.0', remove_after: '2026-04-22'
 
   scope :for_projects, ->(projects) { where(project_id: projects) }
   scope :with_namespace, -> { joins(project: :namespace) }
@@ -39,8 +54,16 @@ class ProjectSetting < ApplicationRecord
 
   self.primary_key = :project_id
 
+  # TODO: Remove once we confirm schema rollback scenarios no longer require this explicit attribute declaration.
+  attribute :reviewer_assignment_strategy, :integer, default: 0, limit: 2
+
+  enum :reviewer_assignment_strategy, REVIEWER_ASSIGNMENT_STRATEGIES,
+    prefix: :reviewer_assignment
+
   validates :merge_commit_template, length: { maximum: Project::MAX_COMMIT_TEMPLATE_LENGTH }
   validates :squash_commit_template, length: { maximum: Project::MAX_COMMIT_TEMPLATE_LENGTH }
+  validates :mr_default_title_template, length: { maximum: Project::MAX_MR_TITLE_TEMPLATE_LENGTH }
+  validate :mr_default_title_template_no_newlines
   validates :issue_branch_template, length: { maximum: Issue::MAX_BRANCH_TEMPLATE }
   validates :target_platforms, inclusion: { in: ALLOWED_TARGET_PLATFORMS }
   validates :suggested_reviewers_enabled, inclusion: { in: [true, false] }
@@ -54,13 +77,8 @@ class ProjectSetting < ApplicationRecord
     presence: { if: :require_unique_domain? }
 
   validate :validates_mr_default_target_self
-  validate :presence_of_merge_request_title_regex_settings,
-    if: -> { Feature.enabled?(:merge_request_title_regex, project) }
 
   validate :pages_unique_domain_availability, if: :pages_unique_domain_changed?
-
-  after_update :enqueue_auto_merge_workers,
-    if: -> { Feature.enabled?(:merge_request_title_regex, project) && saved_change_to_merge_request_title_regex }
 
   attribute :legacy_open_source_license_available, default: -> do
     Feature.enabled?(:legacy_open_source_license_available, type: :ops)
@@ -101,6 +119,14 @@ class ProjectSetting < ApplicationRecord
     ::Projects::AllBranchesRule.new(project)
   end
 
+  def reviewer_auto_assignment_available?
+    false
+  end
+
+  def reviewer_auto_assignment_enabled?
+    reviewer_auto_assignment_available? && reviewer_assignment_strategy != 'disabled'
+  end
+
   private
 
   def presence_of_merge_request_title_regex_settings
@@ -109,6 +135,14 @@ class ProjectSetting < ApplicationRecord
       errors.add :merge_request_title_regex, _('and regex description must be either both set, or neither.')
       errors.add :merge_request_title_regex_description, _('and regex must be either both set, or neither.')
     end
+  end
+
+  def mr_default_title_template_no_newlines
+    return if mr_default_title_template.blank?
+
+    return unless mr_default_title_template.match?(/[\r\n]/)
+
+    errors.add(:mr_default_title_template, _('must be a single line'))
   end
 
   def validates_mr_default_target_self

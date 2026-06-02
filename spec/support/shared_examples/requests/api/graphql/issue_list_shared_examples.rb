@@ -128,8 +128,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
       end
 
       context 'when filtering by labels' do
-        let_it_be(:label_a) { create(:label, project: issue_a.project) }
-        let_it_be(:label_b) { create(:label, project: issue_b.project) }
+        let_it_be(:label_a, freeze: false) { create(:label, project: issue_a.project) }
+        let_it_be(:label_b, freeze: false) { create(:label, project: issue_b.project) }
 
         let(:issue_filter_params) { { or: { label_names: [label_a.title, label_b.title] } } }
 
@@ -161,6 +161,67 @@ RSpec.shared_examples 'graphql issue list request spec' do
         post_query
 
         expect_graphql_errors_to_be_empty
+      end
+    end
+
+    context 'when filtering by workItemTypeIds' do
+      let_it_be(:incident, freeze: false) { create(:incident, project: issue_a.project) }
+
+      # Override base_params so the iids constraint in issues_spec.rb doesn't
+      # interfere with type-based filtering (no-op for project/issues_spec.rb).
+      let(:base_params) { {} }
+
+      context 'with a single work item type id' do
+        let(:issue_filter_params) { { workItemTypeIds: [incident.work_item_type.to_global_id.to_s] } }
+
+        it 'returns only issues of that type' do
+          post_query
+
+          expect(issue_ids).to contain_exactly(incident.to_global_id.to_s)
+        end
+      end
+
+      context 'with multiple work item type ids' do
+        let(:issue_filter_params) do
+          {
+            workItemTypeIds: [
+              incident.work_item_type.to_global_id.to_s,
+              issue_a.work_item_type.to_global_id.to_s
+            ]
+          }
+        end
+
+        it 'returns issues of all specified types' do
+          post_query
+
+          expect(issue_ids).to include(incident.to_global_id.to_s, issue_a.to_global_id.to_s)
+        end
+      end
+
+      context 'when both types and workItemTypeIds are provided' do
+        let(:issue_filter_params) do
+          { types: [:INCIDENT], workItemTypeIds: [incident.work_item_type.to_global_id.to_s] }
+        end
+
+        it 'returns a mutually exclusive filter error' do
+          post_query
+
+          expect_graphql_errors_to_include(
+            'Only one of [issueTypes, workItemTypeIds] arguments is allowed at the same time.'
+          )
+        end
+      end
+
+      context 'when workItemTypeIds exceeds the maximum limit' do
+        let(:issue_filter_params) do
+          { workItemTypeIds: (1..101).map { |id| "gid://gitlab/WorkItems::Type/#{id}" } }
+        end
+
+        it 'returns an error' do
+          post_query
+
+          expect_graphql_errors_to_include('workItemTypeIds is too long (maximum is 100)')
+        end
       end
     end
 
@@ -272,14 +333,14 @@ RSpec.shared_examples 'graphql issue list request spec' do
     # Will be removed with https://gitlab.com/gitlab-org/gitlab/-/issues/505024
     context 'when filtering by Service Desk issues/tickets' do
       # Use items only for this context because it's temporary. This way we don't need to modify other examples.
-      let_it_be(:service_desk_issue) { create(:issue, project: project, author: create(:support_bot)) }
+      let_it_be(:service_desk_issue, freeze: false) { create(:issue, project: project, author: create(:support_bot)) }
 
       # don't use support bot because this isn't a req for ticket WIT
-      let_it_be(:ticket) { create(:work_item, :ticket, project: project, author: current_user) }
+      let_it_be(:ticket, freeze: false) { create(:work_item, :ticket, project: project, author: current_user) }
       # Get work item as issue because this query only returns issues.
-      let_it_be(:service_desk_items) { [service_desk_issue, Issue.find(ticket.id)] }
+      let_it_be(:service_desk_items, freeze: false) { [service_desk_issue, Issue.find(ticket.id)] }
 
-      let_it_be(:base_params) { { iids: service_desk_items.map { |issue| issue.iid.to_s } } }
+      let_it_be(:base_params, freeze: false) { { iids: service_desk_items.map { |issue| issue.iid.to_s } } }
 
       let(:issue_filter_params) { { author_username: 'support-bot' } }
 
@@ -419,8 +480,7 @@ RSpec.shared_examples 'graphql issue list request spec' do
       post_query
     end
 
-    context 'when requesting `user_notes_count` and `user_discussions_count`',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17052' do
+    context 'when requesting `user_notes_count` and `user_discussions_count`' do
       let(:requested_fields) { 'userNotesCount userDiscussionsCount' }
 
       before do
@@ -437,13 +497,14 @@ RSpec.shared_examples 'graphql issue list request spec' do
       before do
         create_list(:merge_requests_closing_issues, 2, issue: issue_a)
         create_list(:merge_requests_closing_issues, 3, issue: issue_b)
+        # Warm up sign-in side effects so they don't pollute control vs. test runs
+        post_graphql(query, current_user: current_user)
       end
 
       include_examples 'N+1 query check'
     end
 
-    context 'when requesting `timelogs`',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17054' do
+    context 'when requesting `timelogs`' do
       let(:requested_fields) { 'timelogs { nodes { timeSpent } }' }
 
       before do
@@ -456,12 +517,12 @@ RSpec.shared_examples 'graphql issue list request spec' do
 
     context 'when requesting `closed_as_duplicate_of`' do
       let(:requested_fields) { 'closedAsDuplicateOf { id }' }
-      let(:issue_a_dup) { create(:issue, project: issue_a.project) }
-      let(:issue_b_dup) { create(:issue, project: issue_b.project) }
+      let_it_be(:issue_a_dup, freeze: false) { create(:issue, project: issue_a.project) }
+      let_it_be(:issue_b_dup, freeze: false) { create(:issue, project: issue_b.project) }
 
       before do
-        issue_a.update!(duplicated_to_id: issue_a_dup)
-        issue_b.update!(duplicated_to_id: issue_a_dup)
+        issue_a.update!(duplicated_to_id: issue_a_dup.id)
+        issue_b.update!(duplicated_to_id: issue_b_dup.id)
       end
 
       include_examples 'N+1 query check'
@@ -492,7 +553,9 @@ RSpec.shared_examples 'graphql issue list request spec' do
         same_project_issue2.update!(labels: [project_labels, group_labels].flatten)
       end
 
-      include_examples 'N+1 query check', skip_cached: false
+      # threshold: 1 accounts for an additional project namespace lookup
+      # (find_namespaces_by_id) when loading the second issue
+      include_examples 'N+1 query check', skip_cached: false, threshold: 1
     end
   end
 
@@ -600,8 +663,11 @@ RSpec.shared_examples 'graphql issue list request spec' do
   end
 
   context 'when fetching escalation status' do
-    let_it_be(:escalation_status) { create(:incident_management_issuable_escalation_status, issue: issue_a) }
-    let_it_be(:incident_type) { build(:work_item_system_defined_type, :incident) }
+    let_it_be(:escalation_status, freeze: false) do
+      create(:incident_management_issuable_escalation_status, issue: issue_a)
+    end
+
+    let_it_be(:incident_type, freeze: false) { build(:work_item_system_defined_type, :incident) }
 
     let(:fields) do
       <<~QUERY
@@ -654,6 +720,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
     context 'when the feature flag is disabled' do
       before do
         stub_feature_flags(hide_incident_management_features: false)
+        create(:alert_management_alert, project: same_project_issue1.project, issue: same_project_issue1)
+        create(:alert_management_alert, project: same_project_issue2.project, issue: same_project_issue2)
       end
 
       it 'avoids N+1 queries' do
@@ -745,6 +813,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
         label = create(:label, project: issue.project)
         issue.update!(labels: [label])
       end
+      # Warm up sign-in side effects so they don't pollute control vs. test runs
+      post_graphql(query, current_user: current_user)
     end
 
     def response_label_ids(response_data)
@@ -794,6 +864,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
         assignee = create(:user)
         issue.update!(assignees: [assignee])
       end
+      # Warm up sign-in side effects so they don't pollute control vs. test runs
+      post_graphql(query, current_user: current_user)
     end
 
     def response_assignee_ids(response_data)

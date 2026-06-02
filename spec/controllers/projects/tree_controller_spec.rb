@@ -133,6 +133,18 @@ RSpec.describe Projects::TreeController, feature_category: :source_code_manageme
         end
       end
 
+      context "valid branch, whitespace-only path" do
+        let(:id) { 'master/ /' }
+
+        it 'redirects when whitespace-only path does not exist' do
+          allow(project.repository).to receive(:tree).and_return(instance_double(Tree, entries: []))
+
+          request
+          expect(assigns(:path)).to eq(' ')
+          expect(subject).to redirect_to("/#{project.full_path}/-/tree/master")
+        end
+      end
+
       context "invalid branch, valid path" do
         let(:id) { 'invalid-branch/encoding/' }
 
@@ -382,6 +394,25 @@ RSpec.describe Projects::TreeController, feature_category: :source_code_manageme
             expect(response).to render_template('errors/not_found')
           end
         end
+      end
+    end
+
+    describe 'when gitaly is unavailable' do
+      let(:params) do
+        {
+          namespace_id: project.namespace.to_param, project_id: project, id: 'master'
+        }
+      end
+
+      before do
+        allow(Gitlab::Git::Commit).to receive(:find)
+          .and_raise(Gitlab::Git::CommandError, 'Gitaly unavailable')
+      end
+
+      it 'returns 503' do
+        get :show, params: params
+
+        expect(response).to have_gitlab_http_status(:service_unavailable)
       end
     end
   end

@@ -24,7 +24,6 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         admin_mode: false,
         ai_action_api_rate_limit: 160,
         akismet_enabled: false,
-        allow_immediate_namespaces_deletion: true,
         allow_account_deletion: true,
         allow_bypass_placeholder_confirmation: false,
         allow_contribution_mapping_to_admins: false,
@@ -52,7 +51,6 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         ci_job_live_trace_enabled: false,
         ci_max_includes: 150,
         ci_max_total_yaml_size_bytes: 314572800,
-        ci_partitions_size_limit: 100.gigabytes,
         code_suggestions_api_rate_limit: 60,
         commit_email_hostname: "users.noreply.#{Gitlab.config.gitlab.host}",
         concurrent_bitbucket_import_jobs_limit: 100,
@@ -93,9 +91,11 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         dependency_proxy_ttl_group_policy_worker_capacity: 2,
         diagramsnet_enabled: true,
         diagramsnet_url: 'https://embed.diagrams.net',
+        diff_max_commits: 1_000_000,
         diff_max_files: Commit::DEFAULT_MAX_DIFF_FILES_SETTING,
         diff_max_lines: Commit::DEFAULT_MAX_DIFF_LINES_SETTING,
         diff_max_patch_bytes: Gitlab::Git::Diff::DEFAULT_MAX_PATCH_BYTES,
+        diff_max_versions: 1_000,
         disable_admin_oauth_scopes: false,
         disable_feed_token: false,
         disable_invite_members: false,
@@ -112,6 +112,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         enable_language_server_restrictions: false,
         eks_integration_enabled: false,
         email_confirmation_setting: 'off',
+        email_otp_enabled: false,
         email_restrictions_enabled: false,
         enforce_email_subaddress_restrictions: false,
         enforce_terms: false,
@@ -130,7 +131,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         gitlab_product_usage_data_enabled: Settings.gitlab['initial_gitlab_product_usage_data'],
         gitlab_shell_operation_limit: 600,
         global_search_block_anonymous_searches_enabled: false,
-        global_search_issues_enabled: true,
+        global_search_work_items_enabled: true,
         global_search_merge_requests_enabled: true,
         global_search_snippet_titles_enabled: true,
         global_search_users_enabled: true,
@@ -162,6 +163,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         issues_create_limit: 300,
         jira_connect_public_key_storage_enabled: false,
         kroki_formats: { 'blockdiag' => false, 'bpmn' => false, 'excalidraw' => false, 'mermaid' => false },
+        kroki_diagram_proxy_enabled: false,
         local_markdown_version: 0,
         lock_maven_package_requests_forwarding: false,
         lock_npm_package_requests_forwarding: false,
@@ -202,6 +204,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         password_authentication_enabled_for_web: Settings.gitlab['signin_enabled'],
         personal_access_token_prefix: 'glpat-',
         plantuml_enabled: false,
+        plantuml_diagram_proxy_enabled: false,
         project_api_limit: 400,
         project_members_api_limit: 200,
         project_download_export_limit: 1,
@@ -214,10 +217,12 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         projects_api_rate_limit_unauthenticated: 400,
         protected_ci_variables: true,
         protected_paths: ApplicationSettingImplementation::DEFAULT_PROTECTED_PATHS,
+        protected_paths_for_get_request: ApplicationSettingImplementation::DEFAULT_PROTECTED_PATHS_FOR_GET_REQUEST,
         push_event_activities_limit: 3,
         push_event_hooks_limit: 3,
         pypi_package_requests_forwarding: true,
         raw_blob_request_limit: 300,
+        raw_blob_request_limit_unauthenticated: ApplicationSetting::DEFAULT_RAW_BLOB_UNAUTHENTICATED_REQUEST_LIMIT,
         rate_limiting_response_text: nil,
         recaptcha_enabled: false,
         reindexing_minimum_index_size: 1.gigabyte,
@@ -236,7 +241,6 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         resource_usage_limits: {},
         restricted_visibility_levels: Settings.gitlab['restricted_visibility_levels'],
         root_moved_permanently_redirection: false,
-        ropc_without_client_credentials: true,
         rsa_key_restriction: 0,
         runner_jobs_request_api_limit: 2000,
         runner_jobs_patch_trace_api_limit: 200,
@@ -259,7 +263,8 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
           'disable_password_authentication_for_users_with_sso_identities' => false,
           'root_moved_permanently_redirection' => false,
           'session_expire_from_init' => false,
-          'require_minimum_email_based_otp_for_users_with_passwords' => false
+          'require_minimum_email_based_otp_for_users_with_passwords' => false,
+          'email_otp_enabled' => false
         },
         signup_enabled: Settings.gitlab['signup_enabled'],
         silent_admin_exports_enabled: false,
@@ -308,11 +313,13 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         valid_runner_registrars: ApplicationSettingImplementation::VALID_RUNNER_REGISTRAR_TYPES,
         vscode_extension_marketplace: {
           'enabled' => false,
-          'extension_host_domain' => ::WebIde::ExtensionMarketplace::DEFAULT_EXTENSION_HOST_DOMAIN
+          'extension_host_domain' => ::WebIde::ExtensionMarketplace::DEFAULT_EXTENSION_HOST_DOMAIN,
+          'single_origin_fallback_enabled' => true
         },
         vscode_extension_marketplace_enabled?: false,
         vscode_extension_marketplace_extension_host_domain:
           ::WebIde::ExtensionMarketplace::DEFAULT_EXTENSION_HOST_DOMAIN,
+        vscode_extension_marketplace_single_origin_fallback_enabled: true,
         whats_new_variant: 'all_tiers', # changed from 0 to "all_tiers" due to enum conversion
         wiki_asciidoc_allow_uri_includes: false,
         wiki_page_max_content_bytes: 5.megabytes,
@@ -527,7 +534,6 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
           ci_max_includes
           ci_max_total_yaml_size_bytes
           container_registry_cleanup_tags_service_max_list_size
-          container_registry_data_repair_detail_worker_max_concurrency
           container_registry_delete_tags_service_timeout
           container_registry_expiration_policies_worker_capacity
           decompress_archive_file_timeout
@@ -558,6 +564,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
           projects_api_limit
           projects_api_rate_limit_unauthenticated
           raw_blob_request_limit
+          raw_blob_request_limit_unauthenticated
           runner_jobs_request_api_limit
           runner_jobs_patch_trace_api_limit
           runner_jobs_endpoints_api_limit
@@ -609,12 +616,13 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
           autocomplete_users_limit
           autocomplete_users_unauthenticated_limit
           bulk_import_concurrent_pipeline_batch_limit
-          ci_partitions_size_limit
           code_suggestions_api_rate_limit
           concurrent_bitbucket_import_jobs_limit
           concurrent_bitbucket_server_import_jobs_limit
           concurrent_github_import_jobs_limit
           container_registry_token_expire_delay
+          diff_max_commits
+          diff_max_versions
           housekeeping_optimize_repository_period
           max_artifacts_size
           max_artifacts_content_include_size
@@ -800,7 +808,7 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
       end
 
       it 'allows valid scopes' do
-        %w[projects issues merge_requests blobs users milestones snippet_titles wiki_blobs commits
+        %w[blobs commits merge_requests milestones projects snippet_titles users wiki_blobs work_items
           notes].each do |scope|
           setting.default_search_scope = scope
 
@@ -1198,63 +1206,6 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
 
         it 'keeps existing key restrictions' do
           expect(setting.repository_storages_with_default_weight).to eq({ 'default' => 100, 'custom' => 0 })
-        end
-      end
-    end
-
-    describe '#allow_immediate_namespaces_deletion_for_user?' do
-      let(:user) { build_stubbed(:user) }
-      let(:admin) { build_stubbed(:admin) }
-
-      before do
-        stub_application_setting(admin_mode: false)
-      end
-
-      context 'with allow_immediate_namespaces_deletion disabled in database' do
-        before do
-          setting.update!(allow_immediate_namespaces_deletion: false)
-        end
-
-        it { expect(setting.allow_immediate_namespaces_deletion_for_user?(user)).to be(false) }
-
-        context 'when user is an admin' do
-          it { expect(setting.allow_immediate_namespaces_deletion_for_user?(admin)).to be(true) }
-        end
-
-        context 'when the :allow_immediate_namespaces_deletion feature flag is disabled' do
-          before do
-            stub_feature_flags(allow_immediate_namespaces_deletion: false)
-          end
-
-          it { expect(setting.allow_immediate_namespaces_deletion_for_user?(user)).to be(true) }
-
-          context 'when user is an admin' do
-            it { expect(setting.allow_immediate_namespaces_deletion_for_user?(admin)).to be(true) }
-          end
-        end
-      end
-
-      context 'with allow_immediate_namespaces_deletion enabled in database' do
-        before do
-          setting.update!(allow_immediate_namespaces_deletion: true)
-        end
-
-        it { expect(setting.allow_immediate_namespaces_deletion_for_user?(user)).to be(true) }
-
-        context 'when user is an admin' do
-          it { expect(setting.allow_immediate_namespaces_deletion_for_user?(admin)).to be(true) }
-        end
-
-        context 'when the :allow_immediate_namespaces_deletion feature flag is disabled' do
-          before do
-            stub_feature_flags(allow_immediate_namespaces_deletion: false)
-          end
-
-          it { expect(setting.allow_immediate_namespaces_deletion_for_user?(user)).to be(true) }
-
-          context 'when user is an admin' do
-            it { expect(setting.allow_immediate_namespaces_deletion_for_user?(admin)).to be(true) }
-          end
         end
       end
     end
@@ -1877,6 +1828,22 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
           it { is_expected.not_to allow_value(true).for(:ci_job_live_trace_enabled) }
         end
       end
+
+      describe 'ci_partitions_in_seconds_limit default value' do
+        it 'has correct default for ci_partitions_in_seconds_limit' do
+          expect(setting.ci_partitions_in_seconds_limit).to eq(ChronicDuration.parse('1 month'))
+        end
+      end
+
+      describe '#ci_partitions_in_seconds_limit validations' do
+        it { is_expected.to allow_value(ChronicDuration.parse('2 month')).for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.to allow_value(ChronicDuration.parse('6 month')).for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.not_to allow_value(ChronicDuration.parse('1 week')).for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.not_to allow_value(ChronicDuration.parse('1 year')).for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.not_to allow_value('').for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.not_to allow_value(nil).for(:ci_partitions_in_seconds_limit) }
+        it { is_expected.not_to allow_value(0).for(:ci_partitions_in_seconds_limit) }
+      end
     end
 
     context 'for resource_access_tokens_settings' do
@@ -1938,23 +1905,55 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
       end
     end
 
-    describe 'for allow_immediate_namespaces_deletion' do
-      context 'when on Dedicated' do
-        before do
-          stub_application_setting(gitlab_dedicated_instance: true)
-        end
-
-        it { is_expected.to allow_value(false).for(:allow_immediate_namespaces_deletion) }
-        it { is_expected.not_to allow_value(true).for(:allow_immediate_namespaces_deletion) }
+    describe 'for personal_access_token_settings' do
+      it 'allows enforce_granular_tokens with true' do
+        is_expected.to allow_value({ enforce_granular_tokens: true })
+          .for(:personal_access_token_settings)
       end
 
-      context 'when not on Dedicated' do
+      it 'allows enforce_granular_tokens with false' do
+        is_expected.to allow_value({ enforce_granular_tokens: false })
+          .for(:personal_access_token_settings)
+      end
+
+      it 'allows granular_tokens_enforced_after with nil when enforce_granular_tokens is false' do
+        is_expected.to allow_value({ granular_tokens_enforced_after: nil })
+          .for(:personal_access_token_settings)
+      end
+
+      context 'when enforce_granular_tokens is true' do
         before do
-          stub_application_setting(gitlab_dedicated_instance: false)
+          setting.enforce_granular_tokens = true
         end
 
-        it { is_expected.to allow_value(false).for(:allow_immediate_namespaces_deletion) }
-        it { is_expected.to allow_value(true).for(:allow_immediate_namespaces_deletion) }
+        it 'requires granular_tokens_enforced_after' do
+          is_expected.not_to allow_value(nil)
+            .for(:granular_tokens_enforced_after)
+            .with_message("can't be blank")
+        end
+
+        it 'allows granular_tokens_enforced_after with a future date' do
+          is_expected.to allow_value(1.day.from_now.to_date)
+            .for(:granular_tokens_enforced_after)
+        end
+
+        it 'allows granular_tokens_enforced_after with the current date' do
+          is_expected.to allow_value(Date.current)
+            .for(:granular_tokens_enforced_after)
+        end
+
+        it 'does not allow granular_tokens_enforced_after with a past date' do
+          is_expected.not_to allow_value(1.day.ago.to_date)
+            .for(:granular_tokens_enforced_after)
+            .with_message('cannot be a date in the past')
+        end
+
+        it 'allows granular_tokens_enforced_after with a past date when unchanged' do
+          allow(setting).to receive(:granular_tokens_enforced_after_changed?).and_return(false)
+
+          is_expected.to allow_value(1.day.ago.to_date)
+            .for(:granular_tokens_enforced_after)
+        end
       end
     end
   end
@@ -2273,6 +2272,33 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         end
       end
     end
+
+    describe 'diff_limits jsonb settings' do
+      context 'for diff_limits json schema validation' do
+        it 'allows valid integer values' do
+          is_expected.to allow_value({ diff_max_versions: 500, diff_max_commits: 100 })
+            .for(:diff_limits)
+        end
+
+        it 'allows empty hash' do
+          is_expected.to allow_value({}).for(:diff_limits)
+        end
+
+        it 'does not allow unknown properties' do
+          is_expected.not_to allow_value({ unknown_key: 1 }).for(:diff_limits)
+        end
+
+        where(:attribute) do
+          %i[diff_max_versions diff_max_commits]
+        end
+
+        with_them do
+          it { is_expected.not_to allow_value({ attribute => -1 }).for(:diff_limits) }
+          it { is_expected.not_to allow_value({ attribute => 0 }).for(:diff_limits) }
+          it { is_expected.not_to allow_value({ attribute => 'abc' }).for(:diff_limits) }
+        end
+      end
+    end
   end
 
   describe '#sourcegraph_url_is_com?' do
@@ -2568,6 +2594,24 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
     end
   end
 
+  describe '#vscode_extension_marketplace_single_origin_fallback_enabled' do
+    it 'is updated when underlying vscode_extension_marketplace changes' do
+      expect(setting.vscode_extension_marketplace_single_origin_fallback_enabled).to be(true)
+
+      setting.vscode_extension_marketplace = { single_origin_fallback_enabled: false }
+
+      expect(setting.vscode_extension_marketplace_single_origin_fallback_enabled).to be(false)
+    end
+
+    it 'updates the underlying vscode_extension_marketplace when changed' do
+      setting.vscode_extension_marketplace = { single_origin_fallback_enabled: true }
+
+      setting.vscode_extension_marketplace_single_origin_fallback_enabled = false
+
+      expect(setting.vscode_extension_marketplace).to eq({ "single_origin_fallback_enabled" => false })
+    end
+  end
+
   describe '#static_objects_external_storage_auth_token=', :aggregate_failures do
     subject(:set_auth_token) { setting.static_objects_external_storage_auth_token = token }
 
@@ -2772,6 +2816,71 @@ RSpec.describe ApplicationSetting, feature_category: :settings, type: :model do
         setting.update!(default_search_scope: 'users')
 
         expect(setting.custom_default_search_scope_set?).to be(true)
+      end
+    end
+  end
+
+  describe '#granular_tokens_enforced?' do
+    subject(:granular_tokens_enforced?) { setting.granular_tokens_enforced? }
+
+    context 'when `granular_personal_access_tokens_enforcement` feature flag is disabled' do
+      before do
+        stub_feature_flags(granular_personal_access_tokens_enforcement: false)
+      end
+
+      it { is_expected.to be false }
+    end
+
+    context 'when `granular_personal_access_tokens_enforcement` feature flag is enabled' do
+      before do
+        stub_feature_flags(granular_personal_access_tokens_enforcement: true)
+      end
+
+      context 'when enforce_granular_tokens is false' do
+        before do
+          setting.update!(enforce_granular_tokens: false)
+        end
+
+        it { is_expected.to be false }
+      end
+
+      context 'when enforce_granular_tokens is true' do
+        context 'when granular_token_enforced_after is in the future' do
+          before do
+            setting.update!(
+              enforce_granular_tokens: true,
+              granular_tokens_enforced_after: 1.month.from_now.to_date
+            )
+          end
+
+          it { is_expected.to be false }
+        end
+
+        context 'when granular_token_enforced_after is today' do
+          before do
+            setting.update!(
+              enforce_granular_tokens: true,
+              granular_tokens_enforced_after: Date.current
+            )
+          end
+
+          it { is_expected.to be true }
+        end
+
+        context 'when granular_token_enforced_after is in the past' do
+          before do
+            setting.update_columns(
+              personal_access_token_settings: {
+                enforce_granular_tokens: true,
+                granular_tokens_enforced_after: 1.month.ago.to_date
+              }
+            )
+
+            setting.reload
+          end
+
+          it { is_expected.to be true }
+        end
       end
     end
   end

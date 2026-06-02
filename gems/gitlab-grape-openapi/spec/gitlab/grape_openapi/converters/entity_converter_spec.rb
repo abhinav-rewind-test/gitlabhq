@@ -173,6 +173,26 @@ RSpec.describe Gitlab::GrapeOpenapi::Converters::EntityConverter do
       include_examples 'entity reference', 'TestEntities::UserEntity', "#/components/schemas/TestEntitiesUserEntity"
       include_examples 'entity reference', TestEntities::UserEntity, "#/components/schemas/TestEntitiesUserEntity"
 
+      context 'when nested entity is a real Class' do
+        before do
+          # The describe-level before stubs Class#name to a fixed value; restore
+          # PersonEntity's real name so it registers under a distinct key.
+          allow(TestEntities::User::PersonEntity).to receive(:name).and_call_original
+        end
+
+        let(:entity_class) do
+          Class.new(Grape::Entity) do
+            expose :child, using: TestEntities::User::PersonEntity
+          end
+        end
+
+        it 'recursively registers the nested entity in the schema registry' do
+          converter.convert
+
+          expect(schema_registry.schemas.keys).to include('TestEntitiesUserPersonEntity')
+        end
+      end
+
       context 'with namespaced entity' do
         let(:entity_class) do
           Class.new(Grape::Entity) do
@@ -182,6 +202,84 @@ RSpec.describe Gitlab::GrapeOpenapi::Converters::EntityConverter do
 
         include_examples 'converts to expected schema',
           { user: { "$ref" => "#/components/schemas/HelloWorldHuman" } }
+      end
+    end
+
+    context 'with merge: true exposures' do
+      before do
+        allow(TestEntities::User::PersonEntity).to receive(:name).and_call_original
+      end
+
+      context 'with merge: true and a Grape::Entity using:' do
+        let(:entity_class) do
+          Class.new(Grape::Entity) do
+            expose :child, merge: true, using: TestEntities::User::PersonEntity
+            expose :requested_at
+          end
+        end
+
+        it 'inlines the nested entity properties instead of emitting a $ref' do
+          properties = converter.convert.properties
+
+          expect(properties).not_to have_key(:child)
+          TestEntities::User::PersonEntity.root_exposure.nested_exposures.each do |nested_exposure|
+            expect(properties).to have_key(nested_exposure.attribute)
+          end
+          expect(properties).to have_key(:requested_at)
+        end
+
+        it 'does not register the merged entity as a standalone component' do
+          # `merge: true` flattens the entity into its parent at runtime, so the
+          # entity has no API surface of its own and should not pollute the
+          # component schema list (Redocly would flag it as unused).
+          converter.convert
+
+          expect(schema_registry.schemas.keys).not_to include('TestEntitiesUserPersonEntity')
+        end
+
+        context 'when the merged entity is also referenced via a non-merge using:' do
+          let(:entity_class) do
+            Class.new(Grape::Entity) do
+              expose :child, merge: true, using: TestEntities::User::PersonEntity
+              expose :other, using: TestEntities::User::PersonEntity
+            end
+          end
+
+          it 'registers the entity once (the non-merge path keeps it in the registry)' do
+            converter.convert
+
+            expect(schema_registry.schemas.keys).to include('TestEntitiesUserPersonEntity')
+          end
+        end
+      end
+
+      context 'when a later parent exposure overrides a merged child key' do
+        let(:entity_class) do
+          Class.new(Grape::Entity) do
+            expose :child, merge: true, using: TestEntities::User::PersonEntity
+            expose :id, documentation: { type: 'string', desc: 'Parent ID' }
+          end
+        end
+
+        it 'lets the parent exposure win, matching Grape Entity runtime semantics' do
+          properties = converter.convert.properties
+
+          expect(properties[:id]).to include(type: 'string', description: 'Parent ID')
+        end
+      end
+
+      context 'with merge: true but no using:' do
+        let(:entity_class) do
+          Class.new(Grape::Entity) do
+            expose :dist_tags, merge: true, documentation: { type: 'object' }
+          end
+        end
+
+        it 'falls back to emitting the property as-is' do
+          # Without a `using:` we cannot inline; preserve the existing (imperfect)
+          # behavior rather than dropping the exposure on the floor.
+          expect(converter.convert.properties).to eq(dist_tags: { type: 'object' })
+        end
       end
     end
 
@@ -288,6 +386,27 @@ RSpec.describe Gitlab::GrapeOpenapi::Converters::EntityConverter do
         )
 
         expect(schema_registry.schemas.keys).to include('TestEntitiesUserEntity')
+      end
+
+      it 'registers entities from array of Grape::Entity classes' do
+        described_class.register([TestEntities::UserEntity], schema_registry)
+
+        expect(schema_registry.schemas.keys).to include('TestEntitiesUserEntity')
+      end
+
+      it 'registers entities from a mixed array of Class and Hash items' do
+        # The describe-level before stubs Class#name; restore PersonEntity's
+        # real name so the two items register under distinct keys.
+        allow(TestEntities::User::PersonEntity).to receive(:name).and_call_original
+
+        described_class.register(
+          [TestEntities::UserEntity, { code: 200, model: TestEntities::User::PersonEntity }],
+          schema_registry
+        )
+
+        expect(schema_registry.schemas.keys).to include(
+          'TestEntitiesUserEntity', 'TestEntitiesUserPersonEntity'
+        )
       end
 
       it 'skips array items without :model' do

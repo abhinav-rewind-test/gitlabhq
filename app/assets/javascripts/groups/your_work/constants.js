@@ -4,7 +4,7 @@ import {
   SORT_LABEL_NAME,
   SORT_LABEL_CREATED,
   SORT_LABEL_UPDATED,
-  PAGINATION_TYPE_OFFSET,
+  PAGINATION_TYPE_KEYSET,
 } from '~/groups_projects/constants';
 import NestedGroupsProjectsList from '~/vue_shared/components/nested_groups_projects_list/nested_groups_projects_list.vue';
 import ResourceListsEmptyState from '~/vue_shared/components/resource_lists/empty_state.vue';
@@ -17,12 +17,12 @@ export const SORT_OPTION_NAME = {
 };
 
 export const SORT_OPTION_CREATED = {
-  value: 'created_at',
+  value: 'created',
   text: SORT_LABEL_CREATED,
 };
 
 export const SORT_OPTION_UPDATED = {
-  value: 'updated_at',
+  value: 'updated',
   text: SORT_LABEL_UPDATED,
 };
 
@@ -41,11 +41,11 @@ const baseTab = {
   },
   query: groupsQuery,
   queryPath: 'groups',
-  paginationType: PAGINATION_TYPE_OFFSET,
+  paginationType: PAGINATION_TYPE_KEYSET,
   listComponent: NestedGroupsProjectsList,
   queryErrorMessage: __("Your groups couldn't be loaded. Refresh the page to try again."),
   sortOptions: SORT_OPTIONS,
-  defaultSortOption: SORT_OPTION_UPDATED,
+  defaultSortOption: SORT_OPTION_CREATED,
 };
 
 export const MEMBER_TAB = {

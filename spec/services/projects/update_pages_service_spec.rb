@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
-  let_it_be(:project, refind: true) { create(:project, :repository) }
+  let_it_be_with_refind(:project) { create(:project, :repository) }
 
   let_it_be(:old_pipeline) { create(:ci_pipeline, project: project, sha: project.commit('HEAD').sha) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project, sha: project.commit('HEAD').sha) }
@@ -75,7 +75,7 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
 
     it 'assigns the deploy stage' do
       expect { service.execute }
-        .to change(GenericCommitStatus, :count).by(1)
+        .to change { GenericCommitStatus.count }.by(1)
         .and not_change(Ci::Stage.where(name: 'deploy'), :count)
 
       status = GenericCommitStatus.last
@@ -90,8 +90,8 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
   context 'when a deploy stage does not exists' do
     it 'assigns the deploy stage' do
       expect { service.execute }
-        .to change(GenericCommitStatus, :count).by(1)
-        .and change(Ci::Stage.where(name: 'deploy'), :count).by(1)
+        .to change { GenericCommitStatus.count }.by(1)
+        .and change { Ci::Stage.where(name: 'deploy').count }.by(1)
 
       status = GenericCommitStatus.last
 

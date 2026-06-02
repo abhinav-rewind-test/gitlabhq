@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Rate limits on Projects API
 description: Set rate limits on Projects API endpoints.
 ---
@@ -32,9 +32,9 @@ Configure the rate limit for each IP address and user for requests to the follow
 |-------------------------------------------------------------------------------------------------------------|---------|----------|
 | [`GET /projects`](../../api/projects.md#list-all-projects) (unauthenticated requests)                       | 400     | 10 minutes |
 | [`GET /projects`](../../api/projects.md#list-all-projects) (authenticated requests)                         | 2000    | 10 minutes |
-| [`GET /projects/:id`](../../api/projects.md#retrieve-a-project)                                           | 400     | 1 minute |
-| [`GET /users/:user_id/projects`](../../api/projects.md#list-all-personal-projects-for-a-user)                               | 300     | 1 minute |
-| [`GET /users/:user_id/contributed_projects`](../../api/projects.md#list-projects-a-user-has-contributed-to) | 100     | 1 minute |
+| [`GET /projects/:id`](../../api/projects.md#retrieve-a-project)                                             | 400     | 1 minute |
+| [`GET /users/:user_id/projects`](../../api/projects.md#list-all-personal-projects-for-a-user)               | 300     | 1 minute |
+| [`GET /users/:user_id/contributed_projects`](../../api/projects.md#list-all-projects-contributions-for-a-user) | 100     | 1 minute |
 | [`GET /users/:user_id/starred_projects`](../../api/project_starring.md#list-projects-starred-by-a-user)     | 100     | 1 minute |
 
 Prerequisites:
@@ -44,7 +44,7 @@ Prerequisites:
 To change the rate limit:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Projects API rate limits**.
 1. Change the value of a rate limit, or set a rate limit to `0` to disable it.
 1. Select **Save changes**.
@@ -69,7 +69,7 @@ For more information about project API endpoints, see the [projects API](../../a
 {{< /history >}}
 
 Configure the rate limit for each project and user for requests to the
-[delete members endpoint](../../api/project_members.md#remove-a-member-from-a-project).
+[delete members endpoint](../../api/project_members.md#remove-a-direct-member-of-a-project).
 
 Prerequisites:
 
@@ -78,7 +78,7 @@ Prerequisites:
 To change the rate limit:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
+1. In the left sidebar, select **Settings** > **Network**.
 1. Expand **Members API rate limit**.
 1. In the **Maximum requests per minute per group / project** text box, enter a value.
 1. Select **Save changes**.
@@ -117,9 +117,9 @@ Prerequisites:
 To change the rate limit:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Network**.
-1. Expand **Projects API**.
-1. In the **Maximum requests to the GET /projects/:id/members/all API per minute per user or IP address** text box, enter a value.
+1. In the left sidebar, select **Settings** > **Network**.
+1. Expand **Projects API rate limits**.
+1. In the **Maximum requests to the `GET /projects/:id/members/all` API per minute per user or IP address** text box, enter a value.
 1. Select **Save changes**.
 
 The rate limit:

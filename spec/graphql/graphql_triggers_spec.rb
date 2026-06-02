@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe GraphqlTriggers, feature_category: :api do
   let_it_be(:project) { create(:project) }
-  let_it_be(:issuable, refind: true) { create(:work_item, project: project) }
+  let_it_be_with_refind(:issuable) { create(:work_item, project: project) }
 
   describe '.issuable_assignees_updated' do
     let(:assignees) { create_list(:user, 2) }
@@ -257,6 +257,27 @@ RSpec.describe GraphqlTriggers, feature_category: :api do
       )
 
       described_class.ci_stage_updated(job)
+    end
+  end
+
+  describe '.ci_stage_status_updated' do
+    let_it_be(:stage) { create(:ci_stage) }
+    let_it_be(:pipeline) { stage.pipeline }
+
+    it 'triggers the ci_stage_status_updated and ci_pipeline_status_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_stage_status_updated,
+        { stage_id: stage.to_gid },
+        stage
+      )
+
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_pipeline_status_updated,
+        { pipeline_id: pipeline.to_gid },
+        pipeline
+      )
+
+      described_class.ci_stage_status_updated(stage)
     end
   end
 

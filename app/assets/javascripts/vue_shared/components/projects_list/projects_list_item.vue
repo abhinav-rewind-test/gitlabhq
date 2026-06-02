@@ -1,16 +1,16 @@
 <script>
-import { GlIcon, GlBadge, GlTooltip } from '@gitlab/ui';
+import { GlBadge, GlIcon, GlTooltip } from '@gitlab/ui';
 
 import ProjectListItemActions from '~/vue_shared/components/projects_list/project_list_item_actions.vue';
 import ListItemInactiveBadge from '~/vue_shared/components/resource_lists/list_item_inactive_badge.vue';
-import { VISIBILITY_TYPE_ICON, PROJECT_VISIBILITY_TYPE } from '~/visibility_level/constants';
+import { PROJECT_VISIBILITY_TYPE, VISIBILITY_TYPE_ICON } from '~/visibility_level/constants';
 import { ACCESS_LEVEL_LABELS, ACCESS_LEVEL_NO_ACCESS_INTEGER } from '~/access_level/constants';
 import { FEATURABLE_ENABLED } from '~/featurable/constants';
-import { __, s__, n__, sprintf } from '~/locale';
+import { __, n__, s__, sprintf } from '~/locale';
 import { numberToHumanSize, numberToMetricPrefix } from '~/lib/utils/number_utils';
 import {
-  TIMESTAMP_TYPES,
   TIMESTAMP_TYPE_CREATED_AT,
+  TIMESTAMP_TYPES,
 } from '~/vue_shared/components/resource_lists/constants';
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
 import ListItem from '~/vue_shared/components/resource_lists/list_item.vue';
@@ -18,6 +18,9 @@ import ListItemStat from '~/vue_shared/components/resource_lists/list_item_stat.
 import ListItemDescription from '~/vue_shared/components/resource_lists/list_item_description.vue';
 import CiCatalogBadge from '~/vue_shared/components/projects_list/ci_catalog_badge.vue';
 import TopicBadges from '~/vue_shared/components/topic_badges.vue';
+import { projectStarrersPath, projectForksPath } from '~/lib/utils/path_helpers/project';
+import { projectMergeRequestsPath } from '~/lib/utils/path_helpers/merge_requests';
+import { projectIssuesPath } from '~/lib/utils/path_helpers/issues';
 
 export default {
   i18n: {
@@ -42,6 +45,12 @@ export default {
     CiIcon,
     TopicBadges,
     CiCatalogBadge,
+  },
+  provide() {
+    return {
+      triggerDeleteLocation: 'list',
+      triggerRestoreLocation: 'list',
+    };
   },
   props: {
     project: {
@@ -114,16 +123,16 @@ export default {
       return Object.hasOwn(this.project, 'statistics');
     },
     starsHref() {
-      return `${this.project.relativeWebUrl}/-/starrers`;
+      return projectStarrersPath(this.project.fullPath);
     },
     mergeRequestsHref() {
-      return `${this.project.relativeWebUrl}/-/merge_requests`;
+      return projectMergeRequestsPath(this.project.fullPath);
     },
     forksHref() {
-      return `${this.project.relativeWebUrl}/-/forks`;
+      return projectForksPath(this.project.fullPath);
     },
     issuesHref() {
-      return `${this.project.relativeWebUrl}/-/issues`;
+      return projectIssuesPath(this.project.fullPath);
     },
     isMergeRequestsEnabled() {
       return (
@@ -333,7 +342,7 @@ export default {
     </template>
 
     <template v-if="hasActions" #actions>
-      <project-list-item-actions :project="project" @refetch="$emit('refetch')" />
+      <project-list-item-actions :project="project" @action="$emit('refetch')" />
     </template>
   </list-item>
 </template>

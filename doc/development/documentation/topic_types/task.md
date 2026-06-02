@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Documentation Guidelines
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this Style Guide page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 title: Task topic type
 ---
 
@@ -46,13 +46,14 @@ Prerequisites:
 
 To create an issue:
 
-1. In the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**.
-1. In the upper-right corner, select **New issue**.
-1. Complete the fields. (If you have reference content that lists each field, link to it here.)
+1. On the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Work items**.
+1. In the upper-right corner, select **New item**.
+1. From the **Type** dropdown list, select **Issue** if it is not already selected.
+1. Enter a title and description. If you have reference content that lists each field, link to it here.
 1. Select **Create issue**.
 
-The issue is created. You can view it by going to **Plan** > **Issues**.
+The issue is created. To view it, filter the **Work items** list by **Type** = **Issue** and select your issue.
 ```
 
 ## Task topic titles
@@ -159,8 +160,8 @@ If the task can only be performed by an administrator, put `Administrator access
 
 `Prerequisites` must always be plural, even if the list includes only one item.
 
-Do not list subscriptions or add-ons in the prerequisites. These should only be included
-in the [product availability details](../styleguide/availability_details.md).
+Do not list subscriptions or add-ons in the prerequisites. These should
+only be included in the [product availability details](../styleguide/availability_details.md).
 
 If several tasks on a page share prerequisites, you can create a separate
 topic with the title `Prerequisites`.

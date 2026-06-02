@@ -28,7 +28,7 @@
 #     updated_after: datetime
 #     updated_before: datetime
 #     confidential: boolean
-#     issue_types: array of strings (one of ::WorkItems::TypesFramework::Provider.new.unfiltered_base_types)
+#     issue_types: array of strings (one of ::WorkItems::TypesFramework::Provider.unfiltered_base_types)
 #
 class IssuesFinder < IssuableFinder
   extend ::Gitlab::Utils::Override
@@ -112,7 +112,6 @@ class IssuesFinder < IssuableFinder
   def use_namespace_traversal_ids_filtering?
     return false unless params.group?
     return false unless include_subgroups_or_descendants?
-    return false unless ::Feature.enabled?(:use_namespace_traversal_ids_for_work_items_finder, current_user)
     return false unless user_can_access_all_subgroup_items?
 
     # For sub-groups it's performant enough to use the traversal_ids and sort in memory.
@@ -161,7 +160,8 @@ class IssuesFinder < IssuableFinder
   # Negates all params found in `negatable_params`
   def filter_negated_items(items)
     issues = super
-    by_negated_issue_types(issues)
+    issues = by_negated_issue_types(issues)
+    by_negated_work_item_type_ids(issues)
   end
 
   override :filter_by_full_text_search
@@ -227,7 +227,7 @@ class IssuesFinder < IssuableFinder
   strong_memoize_attr :types_filter
 
   def by_service_desk(items)
-    return items unless params[:author_username] == "support-bot"
+    return items unless support_bot_username?(params[:author_username])
 
     # Delete param so we don't additionally filter by author username
     params.delete(:author_username)
@@ -238,12 +238,25 @@ class IssuesFinder < IssuableFinder
     items.service_desk
   end
 
+  def support_bot_username?(username)
+    return false if username.blank?
+
+    User.find_by_username(username)&.support_bot?
+  end
+
   def by_negated_issue_types(items)
-    provider = ::WorkItems::TypesFramework::Provider.new(params.parent)
-    issue_type_params = Array(not_params[:issue_types]).map(&:to_s) & provider.unfiltered_base_types
+    issue_type_params =
+      Array(not_params[:issue_types]).map(&:to_s) & ::WorkItems::TypesFramework::Provider.unfiltered_base_types
     return items if issue_type_params.blank?
 
     items.without_issue_type(issue_type_params)
+  end
+
+  def by_negated_work_item_type_ids(items)
+    negated_type_ids = Array(not_params[:work_item_type_ids]).compact
+    return items if negated_type_ids.blank?
+
+    items.without_work_item_type_ids(negated_type_ids)
   end
 end
 

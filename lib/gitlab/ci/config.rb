@@ -10,7 +10,11 @@ module Gitlab
 
       ConfigError = Class.new(StandardError)
       TIMEOUT_SECONDS = ENV.fetch('GITLAB_CI_CONFIG_FETCH_TIMEOUT_SECONDS', 30).to_i.clamp(0, 60).seconds
+      OVERRIDE_TIMEOUT_SECONDS = 90.seconds
       TIMEOUT_MESSAGE = 'Request timed out when fetching configuration files.'
+      GITALY_TIMEOUT_SECONDS = ENV.fetch('GITLAB_CI_CONFIG_GITALY_TIMEOUT_SECONDS', 10).to_i.clamp(1, 60)
+      HTTP_OPEN_TIMEOUT_SECONDS = ENV.fetch('GITLAB_CI_CONFIG_HTTP_OPEN_TIMEOUT_SECONDS', 10).to_i.clamp(1, 60)
+      HTTP_READ_TIMEOUT_SECONDS = ENV.fetch('GITLAB_CI_CONFIG_HTTP_READ_TIMEOUT_SECONDS', 30).to_i.clamp(1, 60)
 
       RESCUE_ERRORS = [
         Gitlab::Config::Loader::FormatError,
@@ -36,10 +40,18 @@ module Gitlab
         @context = self.logger.instrument(:config_build_context, once: true) do
           pipeline ||= ::Ci::Pipeline.new(project: project, sha: sha, ref: ref, user: user, source: source)
 
-          build_context(project: project, pipeline: pipeline, sha: sha, user: user, parent_pipeline: parent_pipeline, pipeline_config: pipeline_config, pipeline_policy_context: pipeline_policy_context)
+          build_context(
+            project: project,
+            pipeline: pipeline,
+            sha: sha,
+            user: user,
+            parent_pipeline: parent_pipeline,
+            pipeline_config: pipeline_config,
+            pipeline_policy_context: pipeline_policy_context
+          )
         end
 
-        @context.set_deadline(TIMEOUT_SECONDS)
+        @context.set_deadline(fetch_timeout(project))
 
         @source = source
 
@@ -57,7 +69,7 @@ module Gitlab
           end
         end
       rescue *rescue_errors => e
-        raise Config::ConfigError, e.message
+        raise ConfigError, e.message
       end
       # rubocop: enable Metrics/ParameterLists
 
@@ -142,6 +154,14 @@ module Gitlab
         normalizer.errors
       end
 
+      # Returns a mapping of original job names to their normalized (expanded) names
+      # for jobs that use parallel:matrix or parallel:N
+      def job_name_mappings
+        Gitlab::Ci::Config::FeatureFlags.with_actor(@project) do
+          normalizer.job_name_mappings
+        end
+      end
+
       def included_templates
         @context.includes.filter_map { |i| i[:location] if i[:type] == :template }
       end
@@ -156,22 +176,19 @@ module Gitlab
           merged_yaml: @config&.deep_stringify_keys&.to_yaml
         }
       end
+      strong_memoize_attr :metadata
 
       private
 
       def expand_config(config, inputs)
         build_config(config, inputs)
 
-      rescue Gitlab::Config::Loader::Yaml::DataTooLargeError => e
-        track_and_raise_for_dev_exception(e)
-        raise Config::ConfigError, e.message
-
-      rescue Gitlab::Ci::Config::External::Context::TimeoutError => e
-        track_and_raise_for_dev_exception(e)
-        raise Config::ConfigError, TIMEOUT_MESSAGE
+      rescue Gitlab::Config::Loader::Yaml::DataTooLargeError, Gitlab::Ci::Config::External::Context::TimeoutError, Gitlab::Ci::Config::External::Context::HTTPTimeoutError => e
+        Gitlab::ErrorTracking.track_exception(e)
+        raise ConfigError, e.message
 
       rescue Gitlab::Ci::Config::Yaml::LoadError => e
-        raise Config::ConfigError, e.message
+        raise ConfigError, e.message
       end
 
       def build_config(config, inputs)
@@ -194,7 +211,9 @@ module Gitlab
         end
 
         initial_config = logger.instrument(:config_external_process, once: true) do
-          Config::External::Processor.new(initial_config, @context).perform
+          Config::GitalyTimeout.with_timeout(GITALY_TIMEOUT_SECONDS) do
+            Config::External::Processor.new(initial_config, @context).perform
+          end
         end
 
         initial_config = logger.instrument(:config_yaml_extend, once: true) do
@@ -220,7 +239,8 @@ module Gitlab
         end
       end
 
-      def build_context(project:, pipeline:, sha:, user:, parent_pipeline:, pipeline_config:, pipeline_policy_context:)
+      def build_context(
+        project:, pipeline:, sha:, user:, parent_pipeline:, pipeline_config:, pipeline_policy_context:)
         Config::External::Context.new(
           project: project,
           pipeline: pipeline,
@@ -243,6 +263,16 @@ module Gitlab
 
       def normalizer
         @normalizer ||= Ci::Config::Normalizer.new(jobs)
+      end
+
+      def fetch_timeout(project)
+        return TIMEOUT_SECONDS unless project
+
+        if Feature.enabled?(:ci_config_fetch_timeout_override, project.root_namespace, type: :ops)
+          OVERRIDE_TIMEOUT_SECONDS
+        else
+          TIMEOUT_SECONDS
+        end
       end
 
       def track_and_raise_for_dev_exception(error)

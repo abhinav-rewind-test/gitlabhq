@@ -20,7 +20,7 @@ module ResourceAccessTokens
 
       return error(s_('AccessTokens|Access token limit reached')) if reached_access_token_limit?
 
-      return error(s_("expires_at is missing")) unless validate_expires_at_field(params)
+      return error(_("expires_at is missing")) unless validate_expires_at_field(params)
 
       response = create_user
 
@@ -133,7 +133,8 @@ module ResourceAccessTokens
         impersonation: false,
         scopes: params[:scopes] || default_scopes,
         expires_at: pat_expiration,
-        description: params[:description]
+        description: params[:description],
+        creation_source: params[:creation_source]
       }
     end
 

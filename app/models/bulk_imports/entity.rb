@@ -19,10 +19,14 @@
 # Groups and Projects.
 class BulkImports::Entity < ApplicationRecord
   include AfterCommitQueue
+  include Gitlab::Utils::StrongMemoize
+
+  GROUP_ENTITY_SOURCE_TYPE = 'group_entity'
+  PROJECT_ENTITY_SOURCE_TYPE = 'project_entity'
 
   self.table_name = 'bulk_import_entities'
 
-  ignore_column :source_xid_convert_to_bigint, remove_with: '18.10', remove_after: '2026-03-13'
+  ignore_column :source_xid_convert_to_bigint, remove_with: '19.2', remove_after: '2026-07-21'
 
   FailedError = Class.new(StandardError)
 
@@ -123,13 +127,21 @@ class BulkImports::Entity < ApplicationRecord
   end
 
   def pipelines
-    @pipelines ||= case source_type
-                   when 'group_entity'
-                     BulkImports::Groups::Stage.new(self).pipelines
-                   when 'project_entity'
-                     BulkImports::Projects::Stage.new(self).pipelines
-                   end
+    stage_classes = if bulk_import.offline?
+                      {
+                        GROUP_ENTITY_SOURCE_TYPE => Import::Offline::Imports::Groups::Stage,
+                        PROJECT_ENTITY_SOURCE_TYPE => Import::Offline::Imports::Projects::Stage
+                      }
+                    else
+                      {
+                        GROUP_ENTITY_SOURCE_TYPE => BulkImports::Groups::Stage,
+                        PROJECT_ENTITY_SOURCE_TYPE => BulkImports::Projects::Stage
+                      }
+                    end
+
+    stage_classes[source_type].new(self).pipelines
   end
+  strong_memoize_attr :pipelines
 
   def pipeline_exists?(name)
     pipelines.any? { _1[:pipeline].to_s == name.to_s }
@@ -189,11 +201,11 @@ class BulkImports::Entity < ApplicationRecord
   end
 
   def project?
-    source_type == 'project_entity'
+    source_type == PROJECT_ENTITY_SOURCE_TYPE
   end
 
   def group?
-    source_type == 'group_entity'
+    source_type == GROUP_ENTITY_SOURCE_TYPE
   end
 
   def update_service

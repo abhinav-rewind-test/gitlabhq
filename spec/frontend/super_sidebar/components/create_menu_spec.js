@@ -9,7 +9,7 @@ import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import InviteMembersTrigger from '~/invite_members/components/invite_members_trigger.vue';
 import CreateWorkItemModal from '~/work_items/components/create_work_item_modal.vue';
 import CreateMenu from '~/super_sidebar/components/create_menu.vue';
-import { CREATION_CONTEXT_SUPER_SIDEBAR, WORK_ITEM_TYPE_NAME_EPIC } from '~/work_items/constants';
+import { CREATION_CONTEXT_SUPER_SIDEBAR } from '~/work_items/constants';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import { createNewMenuGroups, createNewMenuProjects } from '../mock_data';
 
@@ -30,7 +30,6 @@ describe('CreateMenu component', () => {
         isImpersonating: false,
         fullPath: 'full-path',
         isGroup: false,
-        workItemPlanningViewEnabled: true,
         ...provide,
       },
       propsData: {
@@ -57,15 +56,6 @@ describe('CreateMenu component', () => {
     beforeEach(() => {
       createWrapper();
       mockToast.mockReset();
-    });
-
-    it('passes custom offset to the dropdown', () => {
-      createWrapper();
-
-      expect(findGlDisclosureDropdown().props('dropdownOffset')).toEqual({
-        crossAxis: -8,
-        mainAxis: 4,
-      });
     });
 
     it("sets the toggle's label", () => {
@@ -151,7 +141,6 @@ describe('CreateMenu component', () => {
 
       it('does not include href on dropdown item, to prevent it being rendered as an `<a>`', () => {
         createWrapper({
-          provide: { workItemPlanningViewEnabled: false },
           props: { groups: createNewMenuProjects },
           stubs: { GlDisclosureDropdownItem },
         });
@@ -162,36 +151,8 @@ describe('CreateMenu component', () => {
       });
 
       describe('link', () => {
-        it('renders link', () => {
+        it('does not render', () => {
           createWrapper({
-            provide: { workItemPlanningViewEnabled: false },
-            props: { groups: createNewMenuProjects },
-            stubs: { GlDisclosureDropdownItem },
-          });
-
-          expect(findCreateWorkItemModalTrigger().findComponent(GlLink).attributes('href')).toBe(
-            'issues/new',
-          );
-        });
-
-        it('opens modal when clicked', async () => {
-          createWrapper({
-            provide: { workItemPlanningViewEnabled: false },
-            props: { groups: createNewMenuProjects },
-            stubs: { GlDisclosureDropdownItem },
-          });
-
-          findCreateWorkItemModalTrigger()
-            .findComponent(GlLink)
-            .vm.$emit('click', { stopPropagation: jest.fn() });
-          await nextTick();
-
-          expect(findCreateWorkItemModal().exists()).toBe(true);
-        });
-
-        it('does not render when workItemPlanningViewEnabled=true', () => {
-          createWrapper({
-            provide: { workItemPlanningViewEnabled: true },
             props: { groups: createNewMenuProjects },
             stubs: { GlDisclosureDropdownItem },
           });
@@ -201,25 +162,23 @@ describe('CreateMenu component', () => {
       });
 
       describe('preselected work item type', () => {
-        it.each`
-          isGroup  | workItemPlanningViewEnabled | preselectedWorkItemType
-          ${true}  | ${false}                    | ${WORK_ITEM_TYPE_NAME_EPIC}
-          ${true}  | ${true}                     | ${null}
-          ${false} | ${true}                     | ${null}
-          ${false} | ${false}                    | ${null}
-        `(
-          'only returns Epic when group and workItemPlanningViewEnabled=false',
-          async ({ isGroup, workItemPlanningViewEnabled, preselectedWorkItemType }) => {
-            createWrapper({ provide: { isGroup, workItemPlanningViewEnabled } });
+        it('does not preselect a work item type when in a group', async () => {
+          createWrapper({ provide: { isGroup: true } });
 
-            findCreateWorkItemModalTrigger().vm.$emit('action');
-            await nextTick();
+          findCreateWorkItemModalTrigger().vm.$emit('action');
+          await nextTick();
 
-            expect(findCreateWorkItemModal().props('preselectedWorkItemType')).toBe(
-              preselectedWorkItemType,
-            );
-          },
-        );
+          expect(findCreateWorkItemModal().props('preselectedWorkItemType')).toBe(null);
+        });
+
+        it('does not preselect a work item type when not in a group', async () => {
+          createWrapper({ provide: { isGroup: false } });
+
+          findCreateWorkItemModalTrigger().vm.$emit('action');
+          await nextTick();
+
+          expect(findCreateWorkItemModal().props('preselectedWorkItemType')).toBe(null);
+        });
       });
     });
 
@@ -238,15 +197,6 @@ describe('CreateMenu component', () => {
 
       const tooltip = getBinding(findGlDisclosureDropdown().element, 'gl-tooltip');
       expect(tooltip.value).toBe('Create new…');
-    });
-  });
-
-  it('decreases the dropdown offset when impersonating a user', () => {
-    createWrapper({ provide: { isImpersonating: true } });
-
-    expect(findGlDisclosureDropdown().props('dropdownOffset')).toEqual({
-      crossAxis: -8,
-      mainAxis: 4,
     });
   });
 });

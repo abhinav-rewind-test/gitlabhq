@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: How to create a merge request for a confidential issue without leaking information publicly.
 title: Merge requests for confidential issues
 ---
@@ -25,7 +25,7 @@ developers receive the same permissions in your fork. This inheritance ensures:
 - Developer users have the needed permissions to view confidential issues and resolve them.
 - You do not need grant individual users access to your fork.
 
-To learn more, see [Patch release runbook for GitLab engineers: Preparing security fixes for a patch release](https://gitlab.com/gitlab-org/release/docs/blob/master/general/security/engineer.md).
+For more information, see the [patch release runbook for GitLab engineers](https://gitlab.com/gitlab-org/release/docs/blob/master/general/security/engineer.md).
 
 ## Create a confidential merge request
 
@@ -43,15 +43,15 @@ immediately push code to branches in your private fork to help fix the confident
 
 Prerequisites:
 
-- You have the Owner or Maintainer role for the public repository, as you need one
+- You have the Maintainer or Owner role for the public repository, as you need one
   of these roles to [create a subgroup](../../group/subgroups/_index.md).
 - You have [forked](../repository/forking_workflow.md) the public repository.
 - Your fork has a **Visibility level** of **Private**.
 
 To create a confidential merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues** and find the issue you want to create a merge request for.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Plan** > **Work items**, then filter by **Type** = **Issue** and select your issue.
 1. Scroll below the issue description, and select **Create confidential merge request**.
 1. Select the item that meets your needs:
    - To create both a branch and a merge request, select

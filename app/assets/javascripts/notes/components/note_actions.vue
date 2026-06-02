@@ -13,7 +13,7 @@ import { createAlert } from '~/alert';
 import { TYPE_ISSUE } from '~/issues/constants';
 import { __, sprintf, s__ } from '~/locale';
 import UserAccessRoleBadge from '~/vue_shared/components/user_access_role_badge.vue';
-import { splitCamelCase } from '~/lib/utils/text_utility';
+import { splitCamelCase, stripHtml, truncateByWords } from '~/lib/utils/text_utility';
 import AbuseCategorySelector from '~/abuse_reports/components/abuse_category_selector.vue';
 import { useNotes } from '~/notes/store/legacy_notes';
 import Tracking from '~/tracking';
@@ -27,6 +27,12 @@ export default {
     moreActionsLabel: __('More actions'),
     reportAbuse: __('Report abuse'),
     GENIE_CHAT_FEEDBACK_THANKS: s__('AI|Thanks for your feedback!'),
+    editAriaLabel: __('Edit comment, @%{username}'),
+    deleteAriaLabel: __('Delete comment, @%{username}'),
+    replyAriaLabel: __('Reply to @%{username}'),
+    addReactionAriaLabel: __('Add reaction to @%{username}'),
+    moreActionsAriaLabel: __('More actions for @%{username}'),
+    resolveAriaLabel: __('Resolve, @%{username}'),
   },
   name: 'NoteActions',
   components: {
@@ -58,6 +64,11 @@ export default {
       required: true,
     },
     noteUrl: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    notePreview: {
       type: String,
       required: false,
       default: '',
@@ -149,6 +160,7 @@ export default {
       default: '',
     },
   },
+  emits: ['handleDelete', 'handleEdit', 'handleResolve', 'start-replying', 'updateAssignees'],
   data() {
     return {
       isReportAbuseDrawerOpen: false,
@@ -158,18 +170,19 @@ export default {
   computed: {
     ...mapState(useNotes, [
       'isPromoteCommentToTimelineEventInProgress',
-      'getUserDataByProp',
       'getNoteableData',
       'canUserAddIncidentTimelineEvents',
     ]),
-    shouldShowActionsDropdown() {
-      return this.currentUserId;
+    notePreviewText() {
+      if (!this.notePreview) return '';
+      const strippedHtml = stripHtml(this.notePreview);
+      return truncateByWords(strippedHtml);
+    },
+    ariaLabelNotePreview() {
+      return this.notePreviewText ? `: '${this.notePreviewText}'` : '';
     },
     showDeleteAction() {
       return this.canDelete && !this.canReportAsAbuse && !this.noteUrl;
-    },
-    currentUserId() {
-      return this.getUserDataByProp('id');
     },
     isUserAssigned() {
       return this.assignees && this.assignees.some(({ id }) => id === this.author.id);
@@ -220,6 +233,45 @@ export default {
         return () => import('ee_component/ai/components/duo_chat_feedback_modal.vue');
       }
       return null;
+    },
+    replyAriaLabel() {
+      return (
+        sprintf(this.$options.i18n.replyAriaLabel, { username: this.author.username }) +
+        this.ariaLabelNotePreview
+      );
+    },
+    editAriaLabel() {
+      return (
+        sprintf(this.$options.i18n.editAriaLabel, { username: this.author.username }) +
+        this.ariaLabelNotePreview
+      );
+    },
+    deleteAriaLabel() {
+      return (
+        sprintf(this.$options.i18n.deleteAriaLabel, { username: this.author.username }) +
+        this.ariaLabelNotePreview
+      );
+    },
+    addReactionAriaLabel() {
+      return (
+        sprintf(this.$options.i18n.addReactionAriaLabel, { username: this.author.username }) +
+        this.ariaLabelNotePreview
+      );
+    },
+    moreActionsAriaLabel() {
+      return (
+        sprintf(this.$options.i18n.moreActionsAriaLabel, { username: this.author.username }) +
+        this.ariaLabelNotePreview
+      );
+    },
+    resolveAriaLabel() {
+      return [
+        this.resolveButtonTitle,
+        this.author.username && `@${this.author.username}`,
+        this.ariaLabelNotePreview,
+      ]
+        .filter(Boolean)
+        .join(', ');
     },
   },
   methods: {
@@ -336,7 +388,7 @@ export default {
       class="note-action-button"
       :class="{ '!gl-text-success': isResolved }"
       :title="resolveButtonTitle"
-      :aria-label="resolveButtonTitle"
+      :aria-label="resolveAriaLabel"
       :icon="resolveIcon"
       :loading="isResolving"
       @click="onResolve"
@@ -351,19 +403,21 @@ export default {
       v-if="canAwardEmoji"
       toggle-class="add-reaction-button btn-default-tertiary"
       data-testid="note-emoji-button"
+      :toggle-aria-label="addReactionAriaLabel"
       @click="setAwardEmoji"
     />
     <reply-button
       v-if="showReply"
       ref="replyButton"
       class="js-reply-button"
+      :aria-label="replyAriaLabel"
       @start-replying="$emit('start-replying')"
     />
     <gl-button
       v-if="canEdit"
       v-gl-tooltip
       :title="$options.i18n.editCommentLabel"
-      :aria-label="$options.i18n.editCommentLabel"
+      :aria-label="editAriaLabel"
       icon="pencil"
       category="tertiary"
       class="note-action-button js-note-edit"
@@ -373,13 +427,13 @@ export default {
       v-if="showDeleteAction"
       v-gl-tooltip
       :title="$options.i18n.deleteCommentLabel"
-      :aria-label="$options.i18n.deleteCommentLabel"
+      :aria-label="deleteAriaLabel"
       icon="remove"
       category="tertiary"
       class="note-action-button js-note-delete"
       @click="onDelete"
     />
-    <div v-else-if="shouldShowActionsDropdown" class="more-actions dropdown">
+    <div v-else class="more-actions dropdown">
       <gl-disclosure-dropdown
         v-gl-tooltip
         :title="$options.i18n.moreActionsLabel"
@@ -390,6 +444,7 @@ export default {
         placement="bottom-end"
         class="note-action-button more-actions-toggle"
         no-caret
+        :toggle-aria-label="moreActionsAriaLabel"
       >
         <gl-disclosure-dropdown-item
           v-if="noteUrl"

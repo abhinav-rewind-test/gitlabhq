@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Explain vulnerabilities with AI
 ---
 
@@ -44,14 +44,15 @@ identify potential false positives. For more information, see
 
 Prerequisites:
 
+- The Developer, Maintainer, or Owner role for the project.
 - [GitLab Duo](../../gitlab_duo/turn_on_off.md) must be enabled for the group or instance.
 - You must be a member of the project.
 - The vulnerability must be from a SAST scanner.
 
 To explain the vulnerability:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Secure** > **Vulnerability report**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Secure** > **Vulnerability report**.
 1. Optional. To remove the default filters, select **Clear** ({{< icon name="clear" >}}).
 1. Above the list of vulnerabilities, select the filter bar.
 1. In the dropdown list that appears, select **Tool**, then select all the values in the **SAST** category.

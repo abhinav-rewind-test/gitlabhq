@@ -94,6 +94,10 @@
               margin-left: $note-spacing-reply-left;
             }
           }
+
+          &:last-of-type .timeline-entry-inner {
+            @apply gl-rounded-b-lg;
+          }
         }
       }
 
@@ -226,6 +230,7 @@
     }
 
     .note-awards {
+      // stylelint-disable-next-line gitlab/no-js-class
       .js-awards-block {
         margin-top: 16px;
       }

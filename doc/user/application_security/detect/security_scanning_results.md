@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Security scanning results
 ---
 
@@ -30,15 +30,15 @@ For information about configuring security scanners, see [Security configuration
 Key terminology for understanding security scan results:
 
 Finding
-: - A finding is a potential vulnerability identified in a development branch. A finding becomes a
-    vulnerability when the branch is merged into the default branch.
-: - Findings expire, either when the related CI/CD job artifact expires, or 90 days after the
-    pipeline is created, even if the related job artifacts are locked.
+: A finding is a potential vulnerability identified in a development branch. A finding becomes a
+  vulnerability when the branch is merged into the default branch.
+: Findings expire, either when the related CI/CD job artifact expires, or 90 days after the
+  pipeline is created, even if the related job artifacts are locked.
 
 Vulnerability
-: - A vulnerability is a software security weakness identified in the default branch.
-: - Vulnerability records persist until they are [archived](../vulnerability_archival/_index.md),
-    even if the vulnerability is no longer detected in the default branch.
+: A vulnerability is a software security weakness identified in the default branch.
+: Vulnerability records persist until they are [archived](../vulnerability_archival/_index.md),
+  even if the vulnerability is no longer detected in the default branch.
 
 Vulnerabilities identified in the default branch are listed in the [vulnerability report](../vulnerability_report/_index.md).
 
@@ -71,12 +71,12 @@ purposes. A security report is a JSON file.
 
 Prerequisites:
 
-- The Developer, Maintainer, or Owner role for the project.
+- The Security Manager, Developer, Maintainer, or Owner role for the project.
 
 To download a security report:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select the pipeline.
 1. Select the **Security** tab.
 1. Select **Download results**, then the desired security report.
@@ -106,12 +106,12 @@ branch.
 
 Prerequisites:
 
-- The Developer, Maintainer, or Owner role for the project.
+- The Security Manager, Developer, Maintainer, or Owner role for the project.
 
 To view a pipeline security report:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select the latest pipeline.
 
 To see details of a finding or vulnerability, select its description.
@@ -122,12 +122,12 @@ Create an issue to track, document, and manage the remediation work for a findin
 
 Prerequisites:
 
-- The Developer, Maintainer, or Owner role for the project.
+- The Security Manager, Developer, Maintainer, or Owner role for the project.
 
 To create an issue:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select the pipeline.
 1. Select the **Security** tab.
 1. Select a finding's description.
@@ -136,9 +136,9 @@ To create an issue:
 An issue is created in the project, with the description copied from the finding or vulnerability's
 description.
 
-### Change status or severity
+### Change status
 
-You can change the status, severity, or both of a finding or vulnerability in the pipeline's
+You can change the status of a finding or vulnerability in the pipeline's
 security tab. Any changes made to a finding persist when the branch is merged into the default
 branch.
 
@@ -146,10 +146,10 @@ Prerequisites:
 
 - The Maintainer role for the project or the `admin_vulnerability` custom permission.
 
-To change the status and severity of findings or vulnerabilities:
+To change the status of findings or vulnerabilities:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select the latest pipeline.
 1. Select the **Security** tab.
 1. In the finding report:
@@ -160,8 +160,8 @@ To change the status and severity of findings or vulnerabilities:
         - To select all findings or vulnerabilities on the page, select the checkbox in the table
           header.
 
-     1. In the **Select action** dropdown list, select either **Change status** or
-        **Change severity**.
+     1. In the **Select action** dropdown list, select either **Dismissed** or **Needs Triage**.
+     1. Select **Change status**.
 
 ### Download a security report
 
@@ -176,12 +176,12 @@ purposes. A security report is a JSON file.
 
 Prerequisites:
 
-- The Developer, Maintainer, or Owner role for the project.
+- The Security Manager, Developer, Maintainer, or Owner role for the project.
 
 To download a security report:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select the pipeline.
 1. Select the **Security** tab.
 1. Select **Download results**, then the desired security report.
@@ -211,10 +211,10 @@ For example, consider two pipelines with these scan results:
 - `V1` exists on both branches and is not shown on the merge request widget.
 
 To show the differences between the source branch and the target branch, security reports from both
-are required. The 10 most recent pipelines for the commit when the feature branch was created from
-the target branch are checked for a security report. If one can't be found in the 10 most recent
-pipelines then all findings are listed as new. Before enabling security scanning in merge requests
-ensure that security scanning is enabled for the default branch.
+are required. The system checks the last 10 commits on the target branch for valid security pipelines.
+For each commit, up to 10 of the most recent pipelines are checked for a security report. This approach ensures that a valid security report from an earlier commit is found, even if a commit skips the pipeline.
+If no security report is found, all findings are listed as new. Before enabling security scanning in
+merge requests, ensure that security scanning is enabled for the default branch.
 
 ### View security widget
 
@@ -226,8 +226,8 @@ Prerequisites:
 
 To view the security widget:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Merge requests**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Code** > **Merge requests**.
 1. Select a merge request.
 
 To see the details for each security report type, select **Show details**

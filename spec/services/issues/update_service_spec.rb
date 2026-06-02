@@ -3,16 +3,16 @@
 require 'spec_helper'
 
 RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category: :team_planning do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:user2) { create(:user) }
-  let_it_be(:user3) { create(:user) }
-  let_it_be(:guest) { create(:user) }
-  let_it_be(:group) { create(:group, :public, maintainers: user, developers: [user2, user3], guests: guest) }
-  let_it_be(:project, reload: true) { create(:project, :repository, group: group) }
-  let_it_be(:label) { create(:label, title: 'a', project: project) }
-  let_it_be(:label2) { create(:label, title: 'b', project: project) }
-  let_it_be(:label3) { create(:label, title: 'c', project: project) }
-  let_it_be(:milestone) { create(:milestone, project: project) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:user2, freeze: false) { create(:user) }
+  let_it_be(:user3, freeze: false) { create(:user) }
+  let_it_be(:guest, freeze: false) { create(:user) }
+  let_it_be(:group, freeze: false) { create(:group, :public, maintainers: user, developers: [user2, user3], guests: guest) }
+  let_it_be_with_reload(:project) { create(:project, :repository, group: group) }
+  let_it_be(:label, freeze: false) { create(:label, title: 'a', project: project) }
+  let_it_be(:label2, freeze: false) { create(:label, title: 'b', project: project) }
+  let_it_be(:label3, freeze: false) { create(:label, title: 'c', project: project) }
+  let_it_be(:milestone, freeze: false) { create(:milestone, project: project) }
 
   let(:container) { project }
   let(:issue) do
@@ -30,7 +30,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
   end
 
   describe 'execute' do
-    let_it_be(:contact) { create(:contact, group: group) }
+    let_it_be(:contact, freeze: false) { create(:contact, group: group) }
 
     def find_note(starting_with)
       issue.notes.find do |note|
@@ -114,65 +114,6 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
           )
       end
 
-      context 'for work_item_description' do
-        let_it_be_with_reload(:issue) { create(:issue, :with_work_item_description, description: "old") }
-
-        context 'when the issue already has a work item description record' do
-          it_behaves_like 'syncs successfully to work_item_description' do
-            subject { update_issue(opts) }
-          end
-        end
-
-        context 'when the issue has no work item description record' do
-          let_it_be_with_reload(:issue) { create(:issue) }
-
-          it_behaves_like 'syncs successfully to work_item_description' do
-            subject { update_issue(opts) }
-          end
-        end
-
-        context 'when title changes' do
-          let(:opts) { { title: "change" } }
-
-          it 'upserts to sync lock_version' do
-            expect(WorkItems::Description).to receive(:upsert).and_call_original
-
-            update_issue(opts)
-
-            expect(issue.reload.lock_version).to eq(issue.work_item_description.lock_version)
-          end
-        end
-
-        context 'when no description related data changes' do
-          let(:opts) { { state_event: "close" } }
-
-          it 'does not upsert' do
-            expect(WorkItems::Description).not_to receive(:upsert)
-
-            update_issue(opts)
-          end
-        end
-
-        context 'when upserting has no effect' do
-          before do
-            allow(WorkItems::Description).to receive(:upsert).and_return(ActiveRecord::Result.new([], []))
-          end
-
-          it 'does not save the updates on the record and tracks the error' do
-            expect(Gitlab::AppLogger).to receive(:info).with(
-              hash_including(
-                issue_id: issue.id,
-                message: /^Failed to upsert work_item_description/i
-              )
-            )
-            expect(Gitlab::AppLogger).to receive(:info).and_call_original
-
-            expect { update_issue(opts) }.to not_change { issue.reload.description }
-              .and not_change { issue.state_id }
-          end
-        end
-      end
-
       context 'with lock_version' do
         let(:opts) do
           {
@@ -217,7 +158,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
         it 'updates issue milestone when passing `milestone` param' do
           expect { update_issue({ milestone_id: milestone.id }) }
-            .to change(issue, :milestone).to(milestone).from(nil)
+            .to change { issue.milestone }.to(milestone).from(nil)
         end
 
         it "triggers 'issuableMilestoneUpdated'" do
@@ -365,7 +306,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
           it 'creates system note about issue type' do
             update_issue(issue_type: 'incident')
 
-            note = find_note('changed type from issue to incident')
+            note = find_note('changed type to **Incident**')
 
             expect(note).not_to eq(nil)
           end
@@ -395,7 +336,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
           it 'changed from an incident to an issue type' do
             expect { update_issue(issue_type: 'issue') }
-              .to change(issue, :issue_type).from('incident').to('issue')
+              .to change { issue.issue_type }.from('incident').to('issue')
               .and(change { issue.work_item_type.base_type }.from('incident').to('issue'))
           end
 
@@ -422,8 +363,67 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
             let(:user) { guest }
 
             it 'does nothing to the labels' do
-              expect { update_issue(issue_type: 'issue') }.not_to change(issue.labels, :count)
+              expect { update_issue(issue_type: 'issue') }.not_to change { issue.labels.count }
               expect(issue.reload.labels).to eq([])
+            end
+          end
+        end
+
+        context 'when passing the new work_item_type param' do
+          let(:incident_type) { build(:work_item_system_defined_type, :incident) }
+          let(:task_type) { build(:work_item_system_defined_type, :task) }
+          let(:issue_type) { build(:work_item_system_defined_type, :issue) }
+
+          it 'changes the work item type using the provided type object' do
+            expect { update_issue(work_item_type: incident_type) }
+              .to change { issue.reload.work_item_type_id }.to(incident_type.id)
+
+            expect(issue.work_item_type.base_type).to eq('incident')
+          end
+
+          it 'creates a system note about the type change' do
+            update_issue(work_item_type: incident_type)
+
+            expect(find_note('changed type to **Incident**')).not_to be_nil
+          end
+
+          it 'creates an escalation status when changing to incident' do
+            expect { update_issue(work_item_type: incident_type) }
+              .to change { issue.reload.incident_management_issuable_escalation_status }
+              .from(nil)
+              .to(a_kind_of(IncidentManagement::IssuableEscalationStatus))
+          end
+
+          context 'when both work_item_type and issue_type are passed' do
+            it 'prefers work_item_type over issue_type' do
+              # `issue_type: 'task'` would resolve to the task type via the legacy lookup,
+              # but `work_item_type: incident_type` must win.
+              expect { update_issue(work_item_type: incident_type, issue_type: 'task') }
+                .to change { issue.reload.work_item_type_id }.to(incident_type.id)
+
+              expect(issue.work_item_type.base_type).to eq('incident')
+            end
+          end
+
+          context 'when work_item_type matches the current type' do
+            it 'does not change the work item type' do
+              expect { update_issue(work_item_type: issue_type) }
+                .not_to change { issue.reload.work_item_type_id }
+            end
+
+            it 'does not create a system note about the type change' do
+              update_issue(work_item_type: issue_type)
+
+              expect(find_note('changed type to')).to be_nil
+            end
+          end
+
+          context 'when user does not have permission for the new type' do
+            let(:user) { guest }
+
+            it 'does not change the work item type' do
+              expect { update_issue(work_item_type: task_type) }
+                .not_to change { issue.reload.work_item_type_id }
             end
           end
         end
@@ -504,7 +504,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
           it 'closes the issue' do
             expect { update_issue(opts) }
-              .to change(issue, :state).from('opened').to('closed')
+              .to change { issue.state }.from('opened').to('closed')
           end
 
           it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
@@ -521,7 +521,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
           it 'reopens the issue' do
             expect { update_issue(opts) }
-              .to change(issue, :state).from('closed').to('opened')
+              .to change { issue.state }.from('closed').to('opened')
           end
 
           it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
@@ -727,9 +727,9 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
       it 'creates system note about confidentiality change' do
         update_issue(confidential: true)
 
-        note = find_note('made the issue confidential')
+        note = find_note('made the item confidential')
 
-        expect(note.note).to eq 'made the issue confidential'
+        expect(note.note).to eq 'made the item confidential'
       end
 
       it 'executes confidential issue hooks' do
@@ -1058,24 +1058,6 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
           service.execute(issue)
         end
 
-        it_behaves_like 'syncs successfully to work_item_description' do
-          before do
-            update_issue(description: "- [x] Task 1\n- [X] Task 2")
-          end
-
-          let(:params) do
-            {
-              update_task: {
-                checked: false,
-                line_source: '- [x] Task 1',
-                line_sourcepos: '1:4-1:4'
-              }
-            }
-          end
-
-          subject { described_class.new(container: project, current_user: user, params: params).execute(issue) }
-        end
-
         # At the moment of writting old associations are not necessary for update_task
         # and doing this will prevent fetching associations from the DB and comparing old and new labels
         it 'does not pass old_associations to the after_update method' do
@@ -1266,7 +1248,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
       end
 
       context 'when assignee is a service account with composite_identity_enforced' do
-        let_it_be(:new_assignee) { create(:user, :service_account, composite_identity_enforced: true, developer_of: project) }
+        let_it_be(:new_assignee, freeze: false) { create(:user, :service_account, composite_identity_enforced: true, developer_of: project) }
 
         it 'assigns the user' do
           expect(::Gitlab::Auth::Identity).to receive(:link_from_scoped_user).and_call_original
@@ -1275,10 +1257,30 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
           expect(issue.reload.assignees).to eq([new_assignee])
         end
+
+        it 'attributes the system note to the human user, not the service account' do
+          update_issue(assignee_ids: [new_assignee.id])
+
+          system_note = issue.notes.last
+          expect(system_note.author).to eq(user)
+        end
+
+        context 'when the service account is acting via OAuth token (authentication context)' do
+          before do
+            ::Gitlab::Auth::Identity.link_from_scoped_user(new_assignee, user, context: :authentication)
+          end
+
+          it 'attributes the system note to the service account' do
+            update_issue(assignee_ids: [new_assignee.id])
+
+            system_note = issue.notes.last
+            expect(system_note.author).to eq(new_assignee)
+          end
+        end
       end
 
       context 'when assignee is a regular user account with composite_identity_enforced' do
-        let_it_be(:new_assignee) { create(:user, developer_of: project) }
+        let_it_be(:new_assignee, freeze: false) { create(:user, developer_of: project) }
 
         before do
           new_assignee.composite_identity_enforced!
@@ -1387,7 +1389,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
           expect(project).not_to receive(:execute_hooks)
           expect(project).not_to receive(:execute_integrations)
 
-          expect { update_issue(opts) }.not_to change(IssuableSeverity, :count)
+          expect { update_issue(opts) }.not_to change { IssuableSeverity.count }
         end
       end
 
@@ -1398,7 +1400,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
           it_behaves_like 'updates the severity', 'low'
 
           it 'creates a new record' do
-            expect { update_issue(opts) }.to change(IssuableSeverity, :count).by(1)
+            expect { update_issue(opts) }.to change { IssuableSeverity.count }.by(1)
           end
 
           context 'with unsupported severity value' do
@@ -1439,8 +1441,14 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
           it_behaves_like 'updates the severity', 'low'
 
+          context 'when using a quick action' do
+            let(:opts) { { description: "some description\n/severity low" } }
+
+            it_behaves_like 'updates the severity', 'low'
+          end
+
           it 'does not create a new record' do
-            expect { update_issue(opts) }.not_to change(IssuableSeverity, :count)
+            expect { update_issue(opts) }.not_to change { IssuableSeverity.count }
           end
 
           context 'with unsupported severity value' do
@@ -1529,7 +1537,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
         context 'without an escalation status record' do
           it 'creates a new record' do
-            expect { update_issue(opts) }.to change(::IncidentManagement::IssuableEscalationStatus, :count).by(1)
+            expect { update_issue(opts) }.to change { ::IncidentManagement::IssuableEscalationStatus.count }.by(1)
           end
 
           it_behaves_like 'updates the escalation status record', :acknowledged
@@ -1565,7 +1573,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
     context 'move issue to another project or group' do
       shared_examples 'move issue to another project' do
-        let_it_be(:target_project) { create(:project) }
+        let_it_be(:target_project, freeze: false) { create(:project) }
 
         context 'valid project' do
           before do
@@ -1589,7 +1597,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
       context 'when target container is a group' do
         context 'without access to the group' do
-          let_it_be(:target_container) { create(:group) }
+          let_it_be(:target_container, freeze: false) { create(:group) }
 
           it 'does not call any clone service' do
             expect(WorkItems::DataSync::MoveService).not_to receive(:new)
@@ -1603,7 +1611,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
     context 'clone an issue' do
       shared_examples 'clone an issue' do
         context 'clone' do
-          let_it_be(:target_project) { create(:project) }
+          let_it_be(:target_project, freeze: false) { create(:project) }
 
           before do
             target_project.add_maintainer(user)
@@ -1640,7 +1648,7 @@ RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category:
 
       context 'when target container is a group' do
         context 'without access to the group' do
-          let_it_be(:target_container) { create(:group) }
+          let_it_be(:target_container, freeze: false) { create(:group) }
 
           it 'does not call any clone service' do
             expect(WorkItems::DataSync::CloneService).not_to receive(:new)

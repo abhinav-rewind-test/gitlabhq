@@ -49,7 +49,7 @@ export default {
       return this.commitRef?.tag || this.pipeline?.type === 'tag';
     },
     commitUrl() {
-      return this.pipeline?.commit?.commit_path || this.pipeline?.commit?.webUrl;
+      return this.pipeline?.commit?.commit_path || this.pipeline?.commit?.webPath;
     },
     commitShortSha() {
       return this.pipeline?.commit?.short_id || this.pipeline?.commit?.shortId;
@@ -125,12 +125,12 @@ export default {
       return this.pipeline?.name || '';
     },
     pipelineSecondaryLink() {
-      const { pipeline_schedule: pipelineSchedule } = this.pipeline || {};
+      const pipelineSchedule = this.pipeline?.pipelineSchedule || this.pipeline?.pipeline_schedule;
 
       if (pipelineSchedule) {
         return {
           text: pipelineSchedule.description,
-          href: pipelineSchedule.path,
+          href: pipelineSchedule.editPath || pipelineSchedule.path,
         };
       }
 

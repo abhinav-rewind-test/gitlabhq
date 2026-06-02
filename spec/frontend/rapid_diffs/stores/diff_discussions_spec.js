@@ -1,5 +1,6 @@
 import { createTestingPinia } from '@pinia/testing';
 import { useDiffDiscussions } from '~/rapid_diffs/stores/diff_discussions';
+import { useDiscussions } from '~/notes/store/discussions';
 
 describe('diffDiscussions store', () => {
   beforeEach(() => {
@@ -7,252 +8,59 @@ describe('diffDiscussions store', () => {
     window.gon.current_user_id = 1;
   });
 
-  describe('setInitialDiscussions', () => {
-    it('sets transformed initial discussions', () => {
-      const discussions = [{ id: 'abc', notes: [{ id: 'bcd' }] }];
-      useDiffDiscussions().setInitialDiscussions(discussions);
-      expect(useDiffDiscussions().discussions[0].repliesExpanded).toBe(true);
-      expect(useDiffDiscussions().discussions[0].notes[0].isEditing).toBe(false);
-      expect(useDiffDiscussions().discussions[0].notes[0].editedNote).toBeNull();
-      expect(useDiffDiscussions().discussions[0].hidden).toBe(false);
-    });
-
-    it('does not overwrite existing properties', () => {
-      const discussions = [{ id: 'abc', notes: [{ id: 'bcd' }], hidden: true }];
-      useDiffDiscussions().setInitialDiscussions(discussions);
-      expect(useDiffDiscussions().discussions[0].hidden).toBe(true);
-    });
+  it.each([
+    'setInitialDiscussions',
+    'replaceDiscussion',
+    'toggleDiscussionReplies',
+    'expandDiscussionReplies',
+    'startReplying',
+    'stopReplying',
+    'addNote',
+    'updateNote',
+    'updateNoteTextById',
+    'editNote',
+    'deleteNote',
+    'addDiscussion',
+    'deleteDiscussion',
+    'setEditingMode',
+    'requestLastNoteEditing',
+    'toggleAward',
+    'updateDiscussion',
+    'collapseDiscussion',
+    'expandDiscussion',
+    'toggleAllDiffDiscussions',
+  ])('exposes %s from base store', (action) => {
+    expect(useDiffDiscussions()[action]).toEqual(expect.any(Function));
   });
 
-  describe('replaceDiscussion', () => {
-    it('replaces an old discussion with a new, transformed discussion', () => {
-      const oldDiscussion = { id: 'old' };
-      const newDiscussion = { id: 'new', notes: [{ id: 'note2' }] };
-      useDiffDiscussions().discussions = [oldDiscussion, { id: 'other' }];
-
-      useDiffDiscussions().replaceDiscussion(oldDiscussion, newDiscussion);
-
-      const store = useDiffDiscussions();
-      expect(store.discussions).toHaveLength(2);
-      expect(store.discussions[0].id).toBe('new');
-      expect(store.discussions[0].repliesExpanded).toBe(true);
-      expect(store.discussions[0].notes[0].isEditing).toBe(false);
-      expect(store.discussions[1].id).toBe('other');
-    });
-  });
-
-  describe('toggleDiscussionReplies', () => {
-    it('toggles', () => {
-      useDiffDiscussions().discussions = [{ id: 'abc', repliesExpanded: true }];
-      useDiffDiscussions().toggleDiscussionReplies(useDiffDiscussions().discussions[0]);
-      expect(useDiffDiscussions().discussions[0].repliesExpanded).toBe(false);
-    });
-  });
-
-  describe('expandDiscussionReplies', () => {
-    it('expands', () => {
-      useDiffDiscussions().discussions = [{ id: 'abc', repliesExpanded: false }];
-      useDiffDiscussions().expandDiscussionReplies(useDiffDiscussions().discussions[0]);
-      expect(useDiffDiscussions().discussions[0].repliesExpanded).toBe(true);
-    });
-  });
-
-  describe('startReplying', () => {
-    it('expands and sets isReplying to true', () => {
-      useDiffDiscussions().discussions = [{ id: 'abc', repliesExpanded: false, isReplying: false }];
-      useDiffDiscussions().startReplying(useDiffDiscussions().discussions[0]);
-      expect(useDiffDiscussions().discussions[0].repliesExpanded).toBe(true);
-      expect(useDiffDiscussions().discussions[0].isReplying).toBe(true);
-    });
-  });
-
-  describe('stopReplying', () => {
-    it('sets isReplying to false', () => {
-      useDiffDiscussions().discussions = [{ id: 'abc', isReplying: true }];
-      useDiffDiscussions().stopReplying(useDiffDiscussions().discussions[0]);
-      expect(useDiffDiscussions().discussions[0].isReplying).toBe(false);
-    });
-  });
-
-  describe('addNote', () => {
-    it('adds a note', () => {
-      const note = { id: 'bar', discussion_id: 'abc' };
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [{ id: 'foo', discussion_id: 'abc' }] },
-      ];
-      useDiffDiscussions().addNote(note);
-      expect(useDiffDiscussions().discussions[0].notes[1]).toStrictEqual(note);
-    });
-
-    it('does not add a note when it exists', () => {
-      const note = { id: 'foo', discussion_id: 'abc' };
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [{ id: 'foo', discussion_id: 'abc' }] },
-      ];
-      useDiffDiscussions().addNote(note);
-      expect(useDiffDiscussions().discussions[0].notes).toHaveLength(1);
-    });
-  });
-
-  describe('updateNote', () => {
-    it('updates existing note', () => {
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [{ id: 'foo', discussion_id: 'abc', note: 'Hello!' }] },
-      ];
-      useDiffDiscussions().updateNote({ id: 'foo', discussion_id: 'abc', note: 'Hello world!' });
-      expect(useDiffDiscussions().discussions[0].notes[0].note).toBe('Hello world!');
-    });
-  });
-
-  describe('updateNoteTextById', () => {
-    it('updates note text by id', () => {
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [{ id: 'foo', discussion_id: 'abc', note: 'Hello!' }] },
-      ];
-      useDiffDiscussions().updateNoteTextById('foo', 'Updated text');
-      expect(useDiffDiscussions().discussions[0].notes[0].note).toBe('Updated text');
-    });
-  });
-
-  describe('editNote', () => {
-    it('updates existing note', () => {
-      const value = 'edit';
-      const note = { id: 'foo', discussion_id: 'abc', note: 'Hello!' };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [note] }];
-      useDiffDiscussions().editNote({ note, value });
-      expect(useDiffDiscussions().discussions[0].notes[0].note).toBe('Hello!');
-      expect(useDiffDiscussions().discussions[0].notes[0].editedNote).toBe(value);
-    });
-  });
-
-  describe('deleteNote', () => {
-    it('deletes existing note', () => {
-      const note = { id: 'foo', discussion_id: 'abc', note: 'Hello!' };
-      const remainingNote = {};
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [note, remainingNote] }];
-      useDiffDiscussions().deleteNote(note);
-      expect(useDiffDiscussions().discussions[0].notes).toHaveLength(1);
-      expect(useDiffDiscussions().discussions[0].notes[0]).toStrictEqual(remainingNote);
-    });
-
-    it('deletes discussions when no notes left', () => {
-      const note = { id: 'foo', discussion_id: 'abc', note: 'Hello!' };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [note] }];
-      useDiffDiscussions().deleteNote(note);
-      expect(useDiffDiscussions().discussions).toHaveLength(0);
-    });
-  });
-
-  describe('deleteDiscussion', () => {
-    it('deletes existing discussion', () => {
-      const discussion = {
-        id: 'foo',
-        notes: [{ id: 'foo', discussion_id: 'abc', note: 'Hello!' }],
-      };
-      useDiffDiscussions().discussions = [discussion];
-      useDiffDiscussions().deleteDiscussion(discussion);
-      expect(useDiffDiscussions().discussions).toHaveLength(0);
-    });
-  });
-
-  describe('setEditingMode', () => {
-    it('sets editing mode to true', () => {
-      const note = { id: 'foo', isEditing: false };
-      const discussion = { id: 'efg', notes: [note] };
-      useDiffDiscussions().discussions = [discussion];
-      useDiffDiscussions().setEditingMode(useDiffDiscussions().discussions[0].notes[0], true);
-      expect(useDiffDiscussions().discussions[0].notes[0].isEditing).toBe(true);
-    });
-
-    it('clears editedNote when setting editing mode to false', () => {
-      const note = { id: 'foo', isEditing: true, editedNote: 'some text' };
-      const discussion = { id: 'efg', notes: [note] };
-      useDiffDiscussions().discussions = [discussion];
-      useDiffDiscussions().setEditingMode(useDiffDiscussions().discussions[0].notes[0], false);
-      expect(useDiffDiscussions().discussions[0].notes[0].isEditing).toBe(false);
-      expect(useDiffDiscussions().discussions[0].notes[0].editedNote).toBeUndefined();
-    });
-  });
-
-  describe('requestLastNoteEditing', () => {
-    const createOwnedNote = (canEdit = true) => ({
-      id: Math.random(),
-      author: { id: window.gon.current_user_id },
-      current_user: { can_edit: canEdit },
-      isEditing: false,
-    });
-    const createForeignNote = (canEdit = true) => ({
-      id: Math.random(),
-      author: { id: 100 },
-      current_user: { can_edit: canEdit },
-      isEditing: false,
-    });
-
-    beforeEach(() => {
-      window.gon.current_user_id = 1;
-    });
-
-    it('turns editing on for the last owned and editable note', () => {
-      const ownedEditableNote = createOwnedNote(true);
-      useDiffDiscussions().discussions = [
-        {
-          id: 'abc',
-          notes: [
-            createForeignNote(),
-            createOwnedNote(false),
-            ownedEditableNote,
-            createForeignNote(false),
-          ],
-        },
-      ];
-      expect(useDiffDiscussions().requestLastNoteEditing(useDiffDiscussions().discussions[0])).toBe(
-        true,
-      );
-      expect(useDiffDiscussions().discussions[0].notes.map((note) => note.isEditing)).toStrictEqual(
-        [false, false, true, false],
-      );
-    });
-
-    it('returns false when no notes are editable in a discussion', () => {
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [createOwnedNote(false), createForeignNote(false)] },
-      ];
-      expect(useDiffDiscussions().requestLastNoteEditing(useDiffDiscussions().discussions[0])).toBe(
-        false,
-      );
-      expect(useDiffDiscussions().discussions[0].notes.every((n) => !n.isEditing)).toBe(true);
-    });
-
-    it('returns false when no notes are owned in a discussion', () => {
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [createForeignNote()] }];
-      expect(useDiffDiscussions().requestLastNoteEditing(useDiffDiscussions().discussions[0])).toBe(
-        false,
-      );
-      expect(useDiffDiscussions().discussions[0].notes.every((n) => !n.isEditing)).toBe(true);
+  describe('discussionsWithForms', () => {
+    it('combines base discussions and discussion forms', () => {
+      useDiscussions().discussions = [{ id: 'd1' }];
+      useDiffDiscussions().discussionForms = [{ id: 'f1', isForm: true }];
+      expect(useDiffDiscussions().discussionsWithForms).toHaveLength(2);
+      expect(useDiffDiscussions().discussionsWithForms[0].id).toBe('d1');
+      expect(useDiffDiscussions().discussionsWithForms[1].id).toBe('f1');
     });
   });
 
   describe('addNewLineDiscussionForm', () => {
-    const defaultPosition = {
-      oldPath: 'old/file.js',
-      newPath: 'new/file.js',
-      oldLine: 10,
-      newLine: 20,
+    const lineRange = {
+      start: { old_line: 10, new_line: 20, type: null },
+      end: { old_line: 10, new_line: 20, type: null },
     };
+    const defaultPosition = { oldPath: 'old/file.js', newPath: 'new/file.js', lineRange };
     const formId = 'old/file.js-new/file.js-10-20';
 
     it('returns id if form already exists', () => {
-      useDiffDiscussions().discussions = [{ id: formId }];
+      useDiffDiscussions().discussionForms = [{ id: formId }];
       expect(useDiffDiscussions().addNewLineDiscussionForm(defaultPosition)).toBe(formId);
     });
 
     it('adds a new discussion form if none exists', () => {
-      useDiffDiscussions().discussions = [];
-
       const result = useDiffDiscussions().addNewLineDiscussionForm(defaultPosition);
 
-      const newDiscussion = useDiffDiscussions().discussions[0];
-      expect(useDiffDiscussions().discussions).toHaveLength(1);
+      const newDiscussion = useDiffDiscussions().discussionForms[0];
+      expect(useDiffDiscussions().discussionForms).toHaveLength(1);
       expect(newDiscussion.id).toBe(formId);
       expect(newDiscussion.diff_discussion).toBe(true);
       expect(newDiscussion.isForm).toBe(true);
@@ -261,76 +69,77 @@ describe('diffDiscussions store', () => {
       expect(newDiscussion.position).toStrictEqual({
         old_path: defaultPosition.oldPath,
         new_path: defaultPosition.newPath,
-        old_line: defaultPosition.oldLine,
-        new_line: defaultPosition.newLine,
+        old_line: 10,
+        new_line: 20,
+        position_type: 'text',
+        line_range: lineRange,
       });
       expect(result).toBe(undefined);
     });
 
-    it('shows hidden discussions', () => {
-      const existingDiscussion = {
-        id: 'existing-id',
-        diff_discussion: true,
-        isForm: false,
-        repliesExpanded: false,
-        isReplying: false,
-        hidden: true,
-        position: {
-          old_path: defaultPosition.oldPath,
-          new_path: defaultPosition.newPath,
-          old_line: defaultPosition.oldLine,
-          new_line: defaultPosition.newLine,
-        },
-        notes: [],
-      };
-      useDiffDiscussions().setInitialDiscussions([existingDiscussion]);
-      useDiffDiscussions().addNewLineDiscussionForm(defaultPosition);
-      expect(useDiffDiscussions().discussions[0].hidden).toBe(false);
+    it('stores lineChange and lineCode on the form', () => {
+      const lineChange = { change: 'added', position: 'new' };
+      const lineCode = 'abc_10_20';
+      useDiffDiscussions().addNewLineDiscussionForm({ ...defaultPosition, lineChange, lineCode });
+
+      const newDiscussion = useDiffDiscussions().discussionForms[0];
+      expect(newDiscussion.lineChange).toStrictEqual(lineChange);
+      expect(newDiscussion.lineCode).toBe(lineCode);
     });
-  });
 
-  describe('replyToLineDiscussion', () => {
-    const defaultPosition = {
-      oldPath: 'old/file.js',
-      newPath: 'new/file.js',
-      oldLine: 10,
-      newLine: 20,
-    };
+    it('spreads extraOptions onto the form', () => {
+      const lines = ['line one', 'line two'];
+      useDiffDiscussions().addNewLineDiscussionForm({
+        ...defaultPosition,
+        extraOptions: { lines, canSuggest: true },
+      });
+      const form = useDiffDiscussions().discussionForms[0];
+      expect(form.lines).toStrictEqual(lines);
+      expect(form.canSuggest).toBe(true);
+    });
 
-    it.each`
-      oldLine                    | newLine
-      ${null}                    | ${defaultPosition.newLine}
-      ${defaultPosition.oldLine} | ${null}
-    `(
-      `starts replying if an existing discussion is found at the $position position`,
-      ({ oldLine, newLine }) => {
-        const testPosition = { ...defaultPosition, oldLine, newLine };
-        const existingDiscussion = {
-          id: 'existing-id',
+    it('shows hidden discussions at the same position', () => {
+      useDiffDiscussions().setInitialDiscussions([
+        {
+          id: 'same-position',
           diff_discussion: true,
-          isForm: false,
-          repliesExpanded: false,
-          isReplying: false,
+          hidden: true,
           position: {
             old_path: defaultPosition.oldPath,
             new_path: defaultPosition.newPath,
-            old_line: oldLine,
-            new_line: newLine,
+            old_line: 10,
+            new_line: 20,
           },
-        };
-        useDiffDiscussions().discussions = [existingDiscussion];
+          notes: [],
+        },
+        {
+          id: 'other-position',
+          diff_discussion: true,
+          hidden: true,
+          position: {
+            old_path: defaultPosition.oldPath,
+            new_path: defaultPosition.newPath,
+            old_line: 99,
+            new_line: null,
+          },
+          notes: [],
+        },
+      ]);
+      useDiffDiscussions().addNewLineDiscussionForm(defaultPosition);
+      expect(useDiscussions().discussions[0].hidden).toBe(false);
+      expect(useDiscussions().discussions[1].hidden).toBe(true);
+    });
+  });
 
-        const result = useDiffDiscussions().replyToLineDiscussion(testPosition);
+  describe('replaceDiscussionForm', () => {
+    it('removes the form and adds the new discussion to the base store', () => {
+      const form = { id: 'form-1', isForm: true };
+      useDiffDiscussions().discussionForms = [form];
 
-        expect(useDiffDiscussions().discussions[0].repliesExpanded).toBe(true);
-        expect(useDiffDiscussions().discussions[0].isReplying).toBe(true);
-        expect(result).toBe(existingDiscussion.id);
-      },
-    );
+      useDiffDiscussions().replaceDiscussionForm(form, { id: 'new-disc', notes: [{ id: 'n1' }] });
 
-    it('adds new form if none exists', () => {
-      useDiffDiscussions().replyToLineDiscussion(defaultPosition);
-      expect(useDiffDiscussions().discussions[0].isForm).toBe(true);
+      expect(useDiffDiscussions().discussionForms).toHaveLength(0);
+      expect(useDiscussions().discussions[0].id).toBe('new-disc');
     });
   });
 
@@ -338,22 +147,21 @@ describe('diffDiscussions store', () => {
     it('removes the discussion form from the list', () => {
       const discussionToHide = { id: 'form-1', isForm: true };
       const otherDiscussion = { id: 'form-2', isForm: true };
-      useDiffDiscussions().discussions = [discussionToHide, otherDiscussion];
+      useDiffDiscussions().discussionForms = [discussionToHide, otherDiscussion];
 
       useDiffDiscussions().removeNewLineDiscussionForm(discussionToHide);
 
-      expect(useDiffDiscussions().discussions).toHaveLength(1);
-      expect(useDiffDiscussions().discussions[0].id).toBe('form-2');
+      expect(useDiffDiscussions().discussionForms).toHaveLength(1);
+      expect(useDiffDiscussions().discussionForms[0].id).toBe('form-2');
     });
   });
 
-  describe('setNewLineDiscussionFormText', () => {
+  describe('setDiscussionFormText', () => {
     it('sets the noteBody for the discussion form', () => {
       const discussion = { id: 'form-1', noteBody: 'old text' };
-      useDiffDiscussions().discussions = [discussion];
       const newText = 'new text';
 
-      useDiffDiscussions().setNewLineDiscussionFormText(discussion, newText);
+      useDiffDiscussions().setDiscussionFormText(discussion, newText);
 
       expect(discussion.noteBody).toBe(newText);
     });
@@ -362,106 +170,100 @@ describe('diffDiscussions store', () => {
   describe('setNewLineDiscussionFormAutofocus', () => {
     it('sets the shouldFocus property for the discussion form', () => {
       const discussion = { id: 'form-1', shouldFocus: true };
-      useDiffDiscussions().discussions = [discussion];
-
       useDiffDiscussions().setNewLineDiscussionFormAutofocus(discussion, false);
 
       expect(discussion.shouldFocus).toBe(false);
     });
   });
 
-  describe('getDiscussionById', () => {
-    it('returns discussion', () => {
-      const targetDiscussion = { id: 'efg' };
-      useDiffDiscussions().discussions = [{ id: 'abc' }, targetDiscussion];
-      expect(useDiffDiscussions().getDiscussionById(targetDiscussion.id)).toStrictEqual(
-        targetDiscussion,
-      );
+  describe('collapseDiscussion', () => {
+    it('sets hidden to true', () => {
+      const discussion = { id: '1', hidden: false };
+      useDiffDiscussions().collapseDiscussion(discussion);
+      expect(discussion.hidden).toBe(true);
     });
   });
 
-  describe('toggleAward', () => {
-    beforeEach(() => {
-      window.gon.current_user_id = 1;
-      window.gon.current_user_fullname = 'Test User';
-      window.gon.current_username = 'testuser';
+  describe('expandDiscussion', () => {
+    it('sets hidden to false', () => {
+      const discussion = { id: '1', hidden: true };
+      useDiffDiscussions().expandDiscussion(discussion);
+      expect(discussion.hidden).toBe(false);
+    });
+  });
+
+  describe('allDiffDiscussionsExpanded', () => {
+    it('is true when there are no diff discussions', () => {
+      useDiscussions().discussions = [];
+      expect(useDiffDiscussions().allDiffDiscussionsExpanded).toBe(true);
     });
 
-    it('adds award when it does not exist', () => {
-      const note = { id: 'foo', award_emoji: [] };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [{}, note] }];
-
-      useDiffDiscussions().toggleAward({ note, award: 'thumbsup' });
-
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji).toHaveLength(1);
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji[0]).toStrictEqual({
-        name: 'thumbsup',
-        user: {
-          id: 1,
-          name: 'Test User',
-          username: 'testuser',
-        },
-      });
+    it('is true when every diff discussion is not hidden', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: false },
+        { id: '2', diff_discussion: true, hidden: false },
+        { id: '3', diff_discussion: false, hidden: true },
+      ];
+      expect(useDiffDiscussions().allDiffDiscussionsExpanded).toBe(true);
     });
 
-    it('removes award when current user already awarded it', () => {
-      const note = {
-        id: 'foo',
-        award_emoji: [
-          {
-            name: 'thumbsup',
-            user: { id: 1, name: 'Test User', username: 'testuser' },
-          },
-        ],
-      };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [{}, note] }];
-
-      useDiffDiscussions().toggleAward({ note, award: 'thumbsup' });
-
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji).toHaveLength(0);
+    it('is false when any diff discussion is hidden', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: false },
+        { id: '2', diff_discussion: true, hidden: true },
+      ];
+      expect(useDiffDiscussions().allDiffDiscussionsExpanded).toBe(false);
     });
 
-    it('does not remove award from another user', () => {
-      const note = {
-        id: 'foo',
-        award_emoji: [
-          {
-            name: 'thumbsup',
-            user: { id: 2, name: 'Other User', username: 'otheruser' },
-          },
-        ],
-      };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [{}, note] }];
+    it('ignores non-diff discussions when computing expanded state', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: false },
+        { id: '2', diff_discussion: false, hidden: true },
+      ];
+      expect(useDiffDiscussions().allDiffDiscussionsExpanded).toBe(true);
+    });
+  });
 
-      useDiffDiscussions().toggleAward({ note, award: 'thumbsup' });
+  describe('toggleAllDiffDiscussions', () => {
+    it('hides every diff discussion when all are currently expanded', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: false },
+        { id: '2', diff_discussion: true, hidden: false },
+      ];
 
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji).toHaveLength(2);
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji[0].user.id).toBe(2);
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji[1].user.id).toBe(1);
+      useDiffDiscussions().toggleAllDiffDiscussions();
+
+      expect(useDiscussions().discussions[0].hidden).toBe(true);
+      expect(useDiscussions().discussions[1].hidden).toBe(true);
     });
 
-    it('handles multiple awards from same user', () => {
-      const note = {
-        id: 'foo',
-        award_emoji: [
-          {
-            name: 'thumbsup',
-            user: { id: 1, name: 'Test User', username: 'testuser' },
-          },
-        ],
-      };
-      useDiffDiscussions().discussions = [{ id: 'abc', notes: [{}, note] }];
+    it('shows every diff discussion when any is currently hidden', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: true },
+        { id: '2', diff_discussion: true, hidden: false },
+      ];
 
-      useDiffDiscussions().toggleAward({ note, award: 'heart' });
+      useDiffDiscussions().toggleAllDiffDiscussions();
 
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji).toHaveLength(2);
-      expect(useDiffDiscussions().discussions[0].notes[1].award_emoji[1].name).toBe('heart');
+      expect(useDiscussions().discussions[0].hidden).toBe(false);
+      expect(useDiscussions().discussions[1].hidden).toBe(false);
+    });
+
+    it('leaves non-diff discussions untouched', () => {
+      useDiscussions().discussions = [
+        { id: '1', diff_discussion: true, hidden: false },
+        { id: '2', diff_discussion: false, hidden: false },
+      ];
+
+      useDiffDiscussions().toggleAllDiffDiscussions();
+
+      expect(useDiscussions().discussions[1].hidden).toBe(false);
     });
   });
 
   describe('setFileDiscussionsHidden', () => {
     beforeEach(() => {
-      useDiffDiscussions().discussions = [
+      useDiscussions().discussions = [
         {
           id: '1',
           diff_discussion: true,
@@ -483,100 +285,69 @@ describe('diffDiscussions store', () => {
     it('hides all discussions for a file when newState is true', () => {
       useDiffDiscussions().setFileDiscussionsHidden('file1.js', 'file1.js', true);
 
-      expect(useDiffDiscussions().discussions[0].hidden).toBe(true);
-      expect(useDiffDiscussions().discussions[1].hidden).toBe(true);
+      expect(useDiscussions().discussions[0].hidden).toBe(true);
+      expect(useDiscussions().discussions[1].hidden).toBe(true);
     });
 
     it('shows all discussions for a file when newState is false', () => {
       useDiffDiscussions().setFileDiscussionsHidden('file1.js', 'file1.js', true);
       useDiffDiscussions().setFileDiscussionsHidden('file1.js', 'file1.js', false);
 
-      expect(useDiffDiscussions().discussions[0].hidden).toBe(false);
-      expect(useDiffDiscussions().discussions[1].hidden).toBe(false);
+      expect(useDiscussions().discussions[0].hidden).toBe(false);
+      expect(useDiscussions().discussions[1].hidden).toBe(false);
     });
   });
 
-  describe('allNotesById', () => {
-    it('returns all notes by id', () => {
-      const note1 = { id: 'foo' };
-      const note2 = { id: 'bar' };
-      useDiffDiscussions().discussions = [
-        { id: 'abc', notes: [note1] },
-        { id: 'bcd', notes: [note2] },
-      ];
-      expect(useDiffDiscussions().allNotesById).toStrictEqual({
-        [note1.id]: note1,
-        [note2.id]: note2,
-      });
-    });
-  });
-
-  describe('findDiscussionsForPosition', () => {
-    const position = {
-      oldPath: 'file1.js',
-      newPath: 'file2.js',
-      oldLine: 5,
-      newLine: 10,
-    };
-    const matchingDiscussion = {
-      id: 'match',
-      isForm: false,
-      diff_discussion: true,
-      position: {
-        old_path: position.oldPath,
-        new_path: position.newPath,
-        old_line: position.oldLine,
-        new_line: position.newLine,
-      },
-    };
-
-    it('returns matching discussions', () => {
-      useDiffDiscussions().discussions = [
-        matchingDiscussion,
-        { ...matchingDiscussion, id: 'match2' },
-        { ...matchingDiscussion, diff_discussion: false, id: 'notmatch2' },
+  describe('setPositionDiscussionsHidden', () => {
+    beforeEach(() => {
+      useDiscussions().discussions = [
         {
-          ...matchingDiscussion,
-          id: 'notmatch3',
-          position: { ...matchingDiscussion.position, old_path: 'other.js' },
+          id: '1',
+          diff_discussion: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js', old_line: 5, new_line: null },
         },
         {
-          ...matchingDiscussion,
-          id: 'notmatch4',
-          position: { ...matchingDiscussion.position, old_line: 6 },
+          id: '2',
+          diff_discussion: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js', old_line: 5, new_line: null },
+        },
+        {
+          id: '3',
+          diff_discussion: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js', old_line: 10, new_line: null },
         },
       ];
-
-      const found = useDiffDiscussions().findDiscussionsForPosition(position);
-
-      expect(found).toHaveLength(2);
-      expect(found.map((d) => d.id)).toEqual(['match', 'match2']);
     });
 
-    it('returns an empty array if no discussions match', () => {
-      useDiffDiscussions().discussions = [
-        { ...matchingDiscussion, diff_discussion: false, id: 'notmatch2' },
-      ];
+    it('hides discussions at a specific position', () => {
+      useDiffDiscussions().setPositionDiscussionsHidden(
+        { oldPath: 'file1.js', newPath: 'file1.js', oldLine: 5, newLine: null },
+        true,
+      );
 
-      const found = useDiffDiscussions().findDiscussionsForPosition(position);
-
-      expect(found).toHaveLength(0);
+      expect(useDiscussions().discussions[0].hidden).toBe(true);
+      expect(useDiscussions().discussions[1].hidden).toBe(true);
+      expect(useDiscussions().discussions[2].hidden).toBeUndefined();
     });
 
-    it('includes form discussions in results', () => {
-      const formDiscussion = { ...matchingDiscussion, isForm: true, id: 'form1' };
-      useDiffDiscussions().discussions = [matchingDiscussion, formDiscussion];
+    it('shows discussions at a specific position', () => {
+      useDiffDiscussions().setPositionDiscussionsHidden(
+        { oldPath: 'file1.js', newPath: 'file1.js', oldLine: 5, newLine: null },
+        true,
+      );
+      useDiffDiscussions().setPositionDiscussionsHidden(
+        { oldPath: 'file1.js', newPath: 'file1.js', oldLine: 5, newLine: null },
+        false,
+      );
 
-      const found = useDiffDiscussions().findDiscussionsForPosition(position);
-
-      expect(found).toHaveLength(2);
-      expect(found.map((d) => d.id)).toEqual(['match', 'form1']);
+      expect(useDiscussions().discussions[0].hidden).toBe(false);
+      expect(useDiscussions().discussions[1].hidden).toBe(false);
     });
   });
 
   describe('findDiscussionsForFile', () => {
     beforeEach(() => {
-      useDiffDiscussions().discussions = [
+      useDiscussions().discussions = [
         {
           id: '1',
           diff_discussion: true,
@@ -587,6 +358,8 @@ describe('diffDiscussions store', () => {
           diff_discussion: true,
           position: { old_path: 'file2.js', new_path: 'file2.js' },
         },
+      ];
+      useDiffDiscussions().discussionForms = [
         {
           id: '3',
           isForm: true,
@@ -625,15 +398,317 @@ describe('diffDiscussions store', () => {
     });
   });
 
-  describe('getImageDiscussions', () => {
+  describe('findAllDiscussionsForFile', () => {
+    beforeEach(() => {
+      useDiscussions().discussions = [
+        {
+          id: '1',
+          diff_discussion: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js' },
+        },
+        {
+          id: '2',
+          diff_discussion: true,
+          position: { old_path: 'file2.js', new_path: 'file2.js' },
+        },
+      ];
+      useDiffDiscussions().discussionForms = [
+        {
+          id: '3',
+          isForm: true,
+          diff_discussion: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js' },
+        },
+      ];
+    });
+
+    it('returns all discussions matching the file paths including forms', () => {
+      const discussions = useDiffDiscussions().findAllDiscussionsForFile({
+        oldPath: 'file1.js',
+        newPath: 'file1.js',
+      });
+
+      expect(discussions).toHaveLength(2);
+      expect(discussions.map((d) => d.id)).toEqual(['1', '3']);
+    });
+
+    it('returns empty array when no discussions match', () => {
+      const discussions = useDiffDiscussions().findAllDiscussionsForFile({
+        oldPath: 'nonexistent.js',
+        newPath: 'nonexistent.js',
+      });
+
+      expect(discussions).toHaveLength(0);
+    });
+  });
+
+  describe('findLinePositionsForFile', () => {
+    const filePaths = { oldPath: 'file1.js', newPath: 'file1.js' };
+
+    it('returns only line positions, excluding file and image discussions', () => {
+      useDiscussions().discussions = [
+        {
+          id: 'line',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'text',
+            old_line: 1,
+            new_line: 1,
+          },
+        },
+        {
+          id: 'file',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'file',
+          },
+        },
+        {
+          id: 'image',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'image',
+          },
+        },
+      ];
+
+      const positions = useDiffDiscussions().findLinePositionsForFile(filePaths);
+
+      expect(positions).toHaveLength(1);
+      expect(positions[0].old_line).toBe(1);
+      expect(positions[0].new_line).toBe(1);
+    });
+
+    it('includes positions from line discussion forms', () => {
+      useDiffDiscussions().addNewLineDiscussionForm({
+        oldPath: 'file1.js',
+        newPath: 'file1.js',
+        lineRange: { start: { old_line: 1, new_line: 1 }, end: { old_line: 1, new_line: 1 } },
+        lineChange: 'added',
+        lineCode: 'abc',
+      });
+
+      const positions = useDiffDiscussions().findLinePositionsForFile(filePaths);
+
+      expect(positions).toHaveLength(1);
+      expect(positions[0].old_line).toBe(1);
+    });
+
+    it('excludes file discussion forms', () => {
+      useDiffDiscussions().addNewFileDiscussionForm(filePaths);
+
+      const positions = useDiffDiscussions().findLinePositionsForFile(filePaths);
+
+      expect(positions).toHaveLength(0);
+    });
+  });
+
+  describe('findLineDiscussionsForPosition', () => {
+    const filePaths = { oldPath: 'file1.js', newPath: 'file1.js' };
+
+    it('returns discussions matching the given position', () => {
+      useDiscussions().discussions = [
+        {
+          id: 'match',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'text',
+            old_line: 1,
+            new_line: 1,
+          },
+        },
+        {
+          id: 'no-match',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'text',
+            old_line: 5,
+            new_line: 5,
+          },
+        },
+      ];
+
+      const discussions = useDiffDiscussions().findLineDiscussionsForPosition({
+        ...filePaths,
+        oldLine: 1,
+        newLine: 1,
+      });
+
+      expect(discussions).toHaveLength(1);
+      expect(discussions[0].id).toBe('match');
+    });
+
+    it('excludes file and image discussions', () => {
+      useDiscussions().discussions = [
+        {
+          id: 'file',
+          diff_discussion: true,
+          position: {
+            old_path: 'file1.js',
+            new_path: 'file1.js',
+            position_type: 'file',
+          },
+        },
+      ];
+
+      const discussions = useDiffDiscussions().findLineDiscussionsForPosition({
+        ...filePaths,
+        oldLine: null,
+        newLine: null,
+      });
+
+      expect(discussions).toHaveLength(0);
+    });
+  });
+
+  describe('findAllFileDiscussionsForFile', () => {
+    const filePaths = { oldPath: 'file1.js', newPath: 'file1.js' };
+
+    it('returns discussions with position_type file', () => {
+      useDiscussions().setInitialDiscussions([
+        {
+          id: '1',
+          diff_discussion: true,
+          notes: [],
+          position: { old_path: 'file1.js', new_path: 'file1.js', position_type: 'file' },
+        },
+        {
+          id: '2',
+          diff_discussion: true,
+          notes: [],
+          position: { old_path: 'file1.js', new_path: 'file1.js', old_line: 1, new_line: null },
+        },
+      ]);
+
+      const discussions = useDiffDiscussions().findAllFileDiscussionsForFile(filePaths);
+
+      expect(discussions).toHaveLength(1);
+      expect(discussions[0].id).toBe('1');
+    });
+
+    it('returns file discussion forms', () => {
+      useDiffDiscussions().addNewFileDiscussionForm(filePaths);
+
+      const discussions = useDiffDiscussions().findAllFileDiscussionsForFile(filePaths);
+
+      expect(discussions).toHaveLength(1);
+      expect(discussions[0].isForm).toBe(true);
+    });
+
+    it('includes hidden file discussions', () => {
+      useDiscussions().setInitialDiscussions([
+        {
+          id: '1',
+          diff_discussion: true,
+          notes: [],
+          hidden: true,
+          position: { old_path: 'file1.js', new_path: 'file1.js', position_type: 'file' },
+        },
+      ]);
+
+      expect(useDiffDiscussions().findAllFileDiscussionsForFile(filePaths)).toHaveLength(1);
+    });
+  });
+
+  describe('expandFileDiscussions', () => {
+    const oldPath = 'file1.js';
+    const newPath = 'file1.js';
+
+    beforeEach(() => {
+      useDiscussions().setInitialDiscussions([
+        {
+          id: 'file',
+          diff_discussion: true,
+          notes: [],
+          hidden: true,
+          position: { old_path: oldPath, new_path: newPath, position_type: 'file' },
+        },
+        {
+          id: 'line',
+          diff_discussion: true,
+          notes: [],
+          hidden: true,
+          position: { old_path: oldPath, new_path: newPath, old_line: 1, new_line: null },
+        },
+      ]);
+    });
+
+    it('sets hidden to false only for file-type discussions', () => {
+      useDiffDiscussions().expandFileDiscussions(oldPath, newPath);
+
+      const [fileDisc, lineDisc] = useDiscussions().discussions;
+      expect(fileDisc.hidden).toBe(false);
+      expect(lineDisc.hidden).toBe(true);
+    });
+  });
+
+  describe('addNewFileDiscussionForm', () => {
+    const filePaths = { oldPath: 'file1.js', newPath: 'file1.js' };
+    const formId = 'file1.js-file1.js-file';
+
+    it('returns id if form already exists', () => {
+      useDiffDiscussions().discussionForms = [{ id: formId }];
+      expect(useDiffDiscussions().addNewFileDiscussionForm(filePaths)).toBe(formId);
+    });
+
+    it('adds a new file discussion form if none exists', () => {
+      const result = useDiffDiscussions().addNewFileDiscussionForm(filePaths);
+
+      const newDiscussion = useDiffDiscussions().discussionForms[0];
+      expect(useDiffDiscussions().discussionForms).toHaveLength(1);
+      expect(newDiscussion.id).toBe(formId);
+      expect(newDiscussion.diff_discussion).toBe(true);
+      expect(newDiscussion.isForm).toBe(true);
+      expect(newDiscussion.noteBody).toBe('');
+      expect(newDiscussion.shouldFocus).toBe(true);
+      expect(newDiscussion.position).toStrictEqual({
+        position_type: 'file',
+        old_path: filePaths.oldPath,
+        new_path: filePaths.newPath,
+        old_line: null,
+        new_line: null,
+      });
+      expect(result).toBe(undefined);
+    });
+  });
+
+  describe('removeNewFileDiscussionForm', () => {
+    it('removes the file discussion form from the list', () => {
+      const fileForm = { id: 'file-form', isForm: true };
+      const otherForm = { id: 'other-form', isForm: true };
+      useDiffDiscussions().discussionForms = [fileForm, otherForm];
+
+      useDiffDiscussions().removeNewFileDiscussionForm(fileForm);
+
+      expect(useDiffDiscussions().discussionForms).toHaveLength(1);
+      expect(useDiffDiscussions().discussionForms[0].id).toBe('other-form');
+    });
+  });
+
+  describe('findAllImageDiscussionsForFile', () => {
     it('returns discussions with matching image position type', () => {
-      useDiffDiscussions().discussions = [
+      useDiscussions().discussions = [
         {
           id: 1,
           notes: [{ note: 'text note' }],
         },
         {
           id: 2,
+          position: {
+            position_type: 'image',
+            old_path: 'old.png',
+            new_path: 'new.png',
+          },
           notes: [
             {
               position: {
@@ -645,9 +720,9 @@ describe('diffDiscussions store', () => {
           ],
         },
       ];
-      expect(useDiffDiscussions().getImageDiscussions('old.png', 'new.png')).toMatchObject([
-        useDiffDiscussions().discussions[1],
-      ]);
+      expect(
+        useDiffDiscussions().findAllImageDiscussionsForFile('old.png', 'new.png'),
+      ).toMatchObject([useDiscussions().discussions[1]]);
     });
   });
 });

@@ -2,16 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe SearchHelper, feature_category: :global_search do
+RSpec.describe SearchHelper, :with_current_organization, feature_category: :global_search do
   include MarkupHelper
   include BadgesHelper
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-    stub_feature_flags(work_item_legacy_url: true)
+    stub_feature_flags(work_item_legacy_url: true, work_items_autocomplete: true)
     # create AI Setting singleton record to prevent N+1
     Ai::Setting.instance if Gitlab.ee?
   end
@@ -27,13 +23,13 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         allow(self).to receive(:current_user).and_return(nil)
       end
 
-      it "returns nil" do
-        expect(search_autocomplete_opts("q")).to be_nil
+      it "returns an empty array" do
+        expect(search_autocomplete_opts("q")).to eq([])
       end
     end
 
     context "with a standard user" do
-      let_it_be(:user) { create(:user) }
+      let_it_be(:user, freeze: false) { create(:user) }
 
       before do
         allow(self).to receive(:current_user).and_return(user)
@@ -71,9 +67,9 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       shared_examples 'for users' do
-        let_it_be(:another_user) { create(:user, name: 'Jane Doe') }
+        let_it_be(:another_user, freeze: false) { create(:user, name: 'Jane Doe') }
         let(:term) { 'jane' }
-        let_it_be(:project) { create(:project, developers: user) }
+        let_it_be(:project, freeze: false) { create(:project, developers: user) }
 
         it 'returns users matching the term' do
           project.add_developer(another_user)
@@ -102,9 +98,11 @@ RSpec.describe SearchHelper, feature_category: :global_search do
           let(:secondary_email) { create(:email, :confirmed, user: user_with_other_email, email: term) }
           let(:ids) { search_autocomplete_opts(term).pluck(:id) }
 
-          context 'when current_user is an admin' do
+          context 'when current_user is an admin', :enable_admin_mode do
+            let_it_be(:admin_user, freeze: false) { create(:admin) }
+
             before do
-              allow(current_user).to receive(:can_admin_all_resources?).and_return(true)
+              allow(self).to receive(:current_user).and_return(admin_user)
             end
 
             it 'includes users with matching public emails' do
@@ -137,10 +135,6 @@ RSpec.describe SearchHelper, feature_category: :global_search do
           end
 
           context 'when current_user is not an admin' do
-            before do
-              allow(current_user).to receive(:can_admin_all_resources?).and_return(false)
-            end
-
             it 'includes users with matching public emails' do
               public_email_user
               project.add_developer(public_email_user)
@@ -172,9 +166,9 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         end
 
         context 'with limiting' do
-          let_it_be(:users) { create_list(:user, 6, name: 'Jane Doe') }
+          let_it_be(:users, freeze: false) { create_list(:user, 6, name: 'Jane Doe') }
 
-          before do
+          before_all do
             users.each do |user|
               project.add_developer(user)
             end
@@ -205,79 +199,169 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
       context 'for recently reviewed items' do
         let(:search_term) { 'the search term' }
-        let(:recent_issues) { instance_double(::Gitlab::Search::RecentIssues) }
         let(:recent_merge_requests) { instance_double(::Gitlab::Search::RecentMergeRequests) }
+        let(:recent_wiki_pages) { instance_double(::Gitlab::Search::RecentWikiPages) }
 
-        let_it_be(:project1) { create(:project, namespace: user.namespace) }
-        let_it_be(:project2) { create(:project) }
+        let_it_be(:project1, freeze: false) { create(:project, namespace: user.namespace) }
+        let_it_be(:project2, freeze: false) { create(:project) }
 
-        it 'includes the users recently viewed issues and project with correct order', :aggregate_failures do
-          project = create(:project, :with_avatar, title: 'the search term')
-          project.add_developer(user)
+        shared_examples 'recently viewed work items or issues' do |ff_enabled|
+          let(:recent_items_class) { ff_enabled ? ::Gitlab::Search::RecentWorkItems : ::Gitlab::Search::RecentIssues }
+          let(:recent_items) { instance_double(recent_items_class) }
+          let(:category_name) { ff_enabled ? 'Recent work items' : 'Recent issues' }
 
-          issue1 = create(:issue, title: 'issue 1', project: project)
-          issue2 = create(:issue, title: 'issue 2', project: project2)
+          def item_path(item, ff_enabled)
+            if ff_enabled
+              work_item_path(item)
+            else
+              issue_path(item)
+            end
+          end
 
-          expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
-          expect(recent_issues).to receive(:search).with(search_term)
-            .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
+          before do
+            stub_feature_flags(work_items_autocomplete: ff_enabled)
+          end
 
-          results = search_autocomplete_opts(search_term)
+          it 'includes the users recently viewed items and project with correct order', :aggregate_failures do
+            project = create(:project, :with_avatar, title: 'the search term')
+            project.add_developer(user)
 
-          expect(results.count).to eq(3)
+            issue1 = create(:issue, title: 'issue 1', project: project)
+            issue2 = create(:issue, title: 'issue 2', project: project2)
 
-          expect(results[0]).to include({
-            category: 'Recent issues',
-            id: issue1.id,
-            label: 'issue 1',
-            url: ::Gitlab::UrlBuilder.instance.issue_path(issue1),
-            avatar_url: project.avatar_url
-          })
+            expect(recent_items_class).to receive(:new).with(user: user).and_return(recent_items)
+            expect(recent_items).to receive(:search).with(search_term)
+              .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
 
-          expect(results[1]).to include({
-            category: 'Recent issues',
-            id: issue2.id,
-            label: 'issue 2',
-            url: ::Gitlab::UrlBuilder.instance.issue_path(issue2),
-            avatar_url: '' # This project didn't have an avatar so set this to ''
-          })
+            results = search_autocomplete_opts(search_term)
 
-          expect(results[2]).to include({
-            category: 'Projects',
-            id: project.id,
-            label: project.full_name,
-            url: Gitlab::Routing.url_helpers.project_path(project)
-          })
+            expect(results.count).to eq(3)
+
+            expect(results[0]).to include({
+              category: category_name,
+              id: issue1.id,
+              label: 'issue 1',
+              url: item_path(issue1, ff_enabled),
+              avatar_url: project.avatar_url
+            })
+
+            expect(results[1]).to include({
+              category: category_name,
+              id: issue2.id,
+              label: 'issue 2',
+              url: item_path(issue2, ff_enabled),
+              avatar_url: ''
+            })
+
+            expect(results[2]).to include({
+              category: 'Projects',
+              id: project.id,
+              label: project.full_name,
+              url: Gitlab::Routing.url_helpers.project_path(project)
+            })
+          end
+
+          it 'includes the users recently viewed items with the exact same name', :aggregate_failures do
+            expect(recent_items_class).to receive(:new).with(user: user).and_return(recent_items)
+            project3 = create(:project, :with_avatar, namespace: user.namespace)
+            issue1 = create(:issue, title: 'issue same_name', project: project3)
+            issue2 = create(:issue, title: 'issue same_name', project: project2)
+
+            expect(recent_items).to receive(:search).with(search_term)
+              .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
+
+            results = search_autocomplete_opts(search_term)
+
+            expect(results.count).to eq(2)
+
+            expect(results[0]).to include({
+              category: category_name,
+              id: issue1.id,
+              label: 'issue same_name',
+              url: item_path(issue1, ff_enabled),
+              avatar_url: project3.avatar_url
+            })
+
+            expect(results[1]).to include({
+              category: category_name,
+              id: issue2.id,
+              label: 'issue same_name',
+              url: item_path(issue2, ff_enabled),
+              avatar_url: ''
+            })
+          end
+
+          it 'does not have an N+1 for recently viewed items', :request_store do
+            issue1 = create(:issue, title: 'issue 1', project: project1)
+            issue2 = create(:issue, title: 'issue 2', project: project2)
+            issue_ids = [issue1.id, issue2.id]
+
+            allow(recent_items_class).to receive(:new).with(user: user).and_return(recent_items)
+            search_result = Issue.id_in_ordered(issue_ids)
+            search_result = search_result.preload_namespace.preload_routables if ff_enabled
+            expect(recent_items).to receive(:search).with(search_term).and_return(search_result)
+
+            control = ActiveRecord::QueryRecorder.new(skip_cached: true) { search_autocomplete_opts(search_term) }
+
+            issue_ids += create_list(:issue, 3).map(&:id)
+            search_result = Issue.id_in_ordered(issue_ids)
+            search_result = search_result.preload_namespace.preload_routables if ff_enabled
+            expect(recent_items).to receive(:search).with(search_term).and_return(search_result)
+
+            # Threshold of 6 allows for 2 additional queries per new issue (3 new issues = 6 queries)
+            # These queries are needed for URL determination logic (work_item_type, namespace checks)
+            # introduced by the URL centralization in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213411
+            # and temporary until full migration to Work Items URLs
+            expect { search_autocomplete_opts(search_term) }.to issue_same_number_of_queries_as(control).with_threshold(6)
+          end
         end
 
-        it 'includes the users recently viewed issues with the exact same name', :aggregate_failures do
-          expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
-          project3 = create(:project, :with_avatar, namespace: user.namespace)
-          issue1 = create(:issue, title: 'issue same_name', project: project3)
-          issue2 = create(:issue, title: 'issue same_name', project: project2)
+        context 'when work_items_autocomplete is enabled' do
+          it_behaves_like 'recently viewed work items or issues', true
+        end
 
-          expect(recent_issues).to receive(:search).with(search_term)
-            .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
+        context 'when work_items_autocomplete is disabled' do
+          it_behaves_like 'recently viewed work items or issues', false
+        end
+
+        it 'builds URLs using work_item_path helper for issues', :aggregate_failures do
+          project = create(:project, :with_avatar)
+          project.add_developer(user)
+          issue = create(:issue, title: 'test work item', project: project)
+
+          recent_work_items = instance_double(::Gitlab::Search::RecentWorkItems)
+          expect(::Gitlab::Search::RecentWorkItems).to receive(:new).with(user: user).and_return(recent_work_items)
+          expect(recent_work_items).to receive(:search).with(search_term).and_return(Issue.id_in_ordered([issue.id]))
+
+          expected_url = work_item_path(issue)
 
           results = search_autocomplete_opts(search_term)
 
-          expect(results.count).to eq(2)
+          work_item_result = results.find { |r| r[:category] == 'Recent work items' }
+          expect(work_item_result).to be_present
+          expect(work_item_result[:url]).to eq(expected_url)
+          expect(work_item_result[:url]).to include(project.full_path)
+          expect(work_item_result[:url]).to match(%r{/-/(issues|work_items)/\d+})
+        end
 
-          expect(results[0]).to include({
-            category: 'Recent issues',
-            id: issue1.id,
-            label: 'issue same_name',
-            url: ::Gitlab::UrlBuilder.instance.issue_path(issue1),
-            avatar_url: project3.avatar_url
-          })
+        it 'builds URLs using work_item_path helper for work items', :aggregate_failures do
+          project = create(:project, :with_avatar)
+          project.add_developer(user)
+          work_item = create(:work_item, project: project, title: 'test work item')
 
-          expect(results[1]).to include({
-            category: 'Recent issues',
-            id: issue2.id,
-            label: 'issue same_name',
-            url: ::Gitlab::UrlBuilder.instance.issue_path(issue2),
-            avatar_url: '' # This project didn't have an avatar so set this to ''
-          })
+          recent_work_items = instance_double(::Gitlab::Search::RecentWorkItems)
+          expect(::Gitlab::Search::RecentWorkItems).to receive(:new).with(user: user).and_return(recent_work_items)
+          expect(recent_work_items).to receive(:search).with(search_term).and_return(Issue.id_in_ordered([work_item.id]))
+
+          expected_url = work_item_path(work_item)
+
+          results = search_autocomplete_opts(search_term)
+
+          work_item_result = results.find { |r| r[:category] == 'Recent work items' }
+          expect(work_item_result).to be_present
+          expect(work_item_result[:url]).to eq(expected_url)
+          expect(work_item_result[:url]).to include(project.full_path)
+          expect(work_item_result[:url]).to match(%r{/-/(issues|work_items)/\d+})
         end
 
         it 'includes the users recently viewed merge requests', :aggregate_failures do
@@ -313,24 +397,35 @@ RSpec.describe SearchHelper, feature_category: :global_search do
           })
         end
 
-        it 'does not have an N+1 for recently viewed issues' do
-          issue1 = create(:issue, title: 'issue 1', project: project1)
-          issue2 = create(:issue, title: 'issue 2', project: project2)
-          issue_ids = [issue1.id, issue2.id]
+        it 'includes the users recently viewed wiki pages', :aggregate_failures do
+          expect(::Gitlab::Search::RecentWikiPages).to receive(:new).with(user: user)
+            .and_return(recent_wiki_pages)
 
-          allow(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
-          expect(recent_issues).to receive(:search).with(search_term).and_return(Issue.id_in_ordered(issue_ids))
+          wiki_page_meta1 = create(:wiki_page_meta, title: 'Wiki page 1', project: project1,
+            canonical_slug: 'wiki-page-1')
+          wiki_page_meta2 = create(:wiki_page_meta, title: 'Wiki page 2', project: project2,
+            canonical_slug: 'wiki-page-2')
 
-          control = ActiveRecord::QueryRecorder.new(skip_cached: true) { search_autocomplete_opts(search_term) }
+          expect(recent_wiki_pages).to receive(:search).with(search_term)
+            .and_return(WikiPage::Meta.id_in_ordered([wiki_page_meta1.id, wiki_page_meta2.id]))
 
-          issue_ids += create_list(:issue, 3).map(&:id)
-          expect(recent_issues).to receive(:search).with(search_term).and_return(Issue.id_in_ordered(issue_ids))
+          results = search_autocomplete_opts(search_term)
 
-          # Threshold of 6 allows for 2 additional queries per new issue (3 new issues = 6 queries)
-          # These queries are needed for URL determination logic (work_item_type, namespace checks)
-          # introduced by the URL centralization in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213411
-          # and temparory until full migration to Work Items URLs
-          expect { search_autocomplete_opts(search_term) }.to issue_same_number_of_queries_as(control).with_threshold(6)
+          expect(results.count).to eq(2)
+
+          expect(results[0]).to include({
+            category: 'Recent wiki pages',
+            id: wiki_page_meta1.id,
+            label: 'Wiki page 1',
+            url: Gitlab::UrlBuilder.build(wiki_page_meta1)
+          })
+
+          expect(results[1]).to include({
+            category: 'Recent wiki pages',
+            id: wiki_page_meta2.id,
+            label: 'Wiki page 2',
+            url: Gitlab::UrlBuilder.build(wiki_page_meta2)
+          })
         end
 
         it 'does not have an N+1 for recently viewed merge_requests' do
@@ -361,11 +456,13 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       context "with a current project" do
+        let(:project) { create(:project, :repository) }
+
         before do
-          @project = create(:project, :repository)
+          @project = project
 
           allow(self).to receive(:can?).and_return(true)
-          allow(self).to receive(:can?).with(user, :read_feature_flag, @project).and_return(false)
+          allow(self).to receive(:can?).with(user, :read_feature_flag, project).and_return(false)
         end
 
         it 'returns repository related labels based on users abilities', :aggregate_failures do
@@ -374,12 +471,12 @@ RSpec.describe SearchHelper, feature_category: :global_search do
           expect(search_autocomplete_opts("Network").size).to eq(1)
           expect(search_autocomplete_opts("Graph").size).to eq(1)
 
-          allow(self).to receive(:can?).with(user, :read_code, @project).and_return(false)
+          allow(self).to receive(:can?).with(user, :read_code, project).and_return(false)
 
           expect(search_autocomplete_opts("Files").size).to eq(0)
           expect(search_autocomplete_opts("Commits").size).to eq(0)
 
-          allow(self).to receive(:can?).with(user, :read_repository_graphs, @project).and_return(false)
+          allow(self).to receive(:can?).with(user, :read_repository_graphs, project).and_return(false)
 
           expect(search_autocomplete_opts("Network").size).to eq(0)
           expect(search_autocomplete_opts("Graph").size).to eq(0)
@@ -387,7 +484,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
         context 'when user does not have access to project' do
           it 'does not include issues by iid' do
-            issue = build_stubbed(:issue, project: @project)
+            issue = build_stubbed(:issue, project: project)
             results = search_autocomplete_opts("\##{issue.iid}")
 
             expect(results.count).to eq(0)
@@ -395,13 +492,15 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         end
 
         context 'when user has project access' do
+          let(:project) { create(:project, :repository, namespace: user.namespace) }
+
           before do
-            @project = create(:project, :repository, namespace: user.namespace)
-            allow(self).to receive(:can?).with(user, :read_feature_flag, @project).and_return(true)
+            @project = project
+            allow(self).to receive(:can?).with(user, :read_feature_flag, project).and_return(true)
           end
 
           it 'includes issues by iid', :aggregate_failures do
-            issue = create(:issue, project: @project, title: 'test title')
+            issue = create(:issue, project: project, title: 'test title')
             results = search_autocomplete_opts("\##{issue.iid}")
 
             expect(results.count).to eq(1)
@@ -461,16 +560,19 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe 'resource_results' do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:user) { create(:user, name: 'User') }
-    let_it_be(:group) { create(:group, name: 'Group') }
-    let_it_be(:project) { create(:project, name: 'Project') }
-    let_it_be(:issue) { create(:issue, project: project) }
+    let_it_be(:user, freeze: false) { create(:user, name: 'User') }
+    let_it_be(:group, freeze: false) { create(:group, name: 'Group') }
+    let_it_be(:project, freeze: false) { create(:project, name: 'Project') }
+    let_it_be(:issue, freeze: false) { create(:issue, project: project) }
     let(:issue_iid) { "\##{issue.iid}" }
+
+    before_all do
+      group.add_owner(user)
+      project.add_owner(user)
+    end
 
     before do
       allow(self).to receive(:current_user).and_return(user)
-      group.add_owner(user)
-      project.add_owner(user)
       @project = project
     end
 
@@ -488,7 +590,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     with_them do
-      it 'returns results only if the term is more than or equal to Gitlab::Search::Params::MIN_TERM_LENGTH' do
+      it 'returns results only if the term is more than or equal to Search::Params::MIN_TERM_LENGTH' do
         results = resource_results(term)
 
         expect(results.size).to eq(size)
@@ -527,9 +629,9 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe 'scope_specific_results' do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:user) { create(:user, name: 'Searched') }
-    let_it_be(:project) { create(:project, name: 'Searched') }
-    let_it_be(:issue) { create(:issue, title: 'Searched', project: project) }
+    let_it_be(:user, freeze: false) { create(:user, name: 'Searched') }
+    let_it_be(:project, freeze: false) { create(:project, name: 'Searched') }
+    let_it_be(:issue, freeze: false) { create(:issue, title: 'Searched', project: project) }
 
     before_all do
       project.add_developer(user)
@@ -537,15 +639,15 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
     before do
       allow(self).to receive(:current_user).and_return(user)
-      allow_next_instance_of(Gitlab::Search::RecentIssues) do |recent_issues|
-        allow(recent_issues).to receive(:search).and_return(Issue.id_in(issue.id))
+      allow_next_instance_of(Gitlab::Search::RecentWorkItems) do |recent_work_items|
+        allow(recent_work_items).to receive(:search).and_return(WorkItem.id_in(issue.id))
       end
     end
 
     where(:scope, :category) do
       'users'    | 'Users'
       'projects' | 'Projects'
-      'issues'   | 'Recent issues'
+      'issues'   | 'Recent work items'
     end
 
     with_them do
@@ -576,9 +678,9 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'groups_autocomplete' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:group_1) { create(:group, name: 'test 1') }
-    let_it_be(:group_2) { create(:group, name: 'test 2') }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:group_1, freeze: false) { create(:group, name: 'test 1') }
+    let_it_be(:group_2, freeze: false) { create(:group, name: 'test 2') }
     let(:search_term) { 'test' }
 
     before do
@@ -592,7 +694,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'when the user has access to one group' do
-      before do
+      before_all do
         group_2.add_developer(user)
       end
 
@@ -600,7 +702,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         expect(groups_autocomplete(search_term).pluck(:id)).to eq([group_2.id])
       end
 
-      context 'when the search term is Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+      context 'when the search term is Search::Params::MIN_TERM_LENGTH characters long' do
         let(:search_term) { 'te' }
 
         it 'returns the group' do
@@ -611,13 +713,14 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'projects_autocomplete' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:project_1) { create(:project, name: 'test 1', star_count: 5) }
-    let_it_be(:project_2) { create(:project, name: 'test 2', star_count: 2) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:project_1, freeze: false) { create(:project, name: 'test 1', star_count: 5) }
+    let_it_be(:project_2, freeze: false) { create(:project, name: 'test 2', star_count: 2) }
     let(:search_term) { 'test' }
 
     before do
       allow(self).to receive(:current_user).and_return(user)
+      stub_feature_flags(search_projects_autocomplete_use_search_service: false)
     end
 
     context 'when the user does not have access to projects' do
@@ -646,7 +749,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         expect(projects_autocomplete(search_term).pluck(:id)).to eq([project_2.id, project_1.id])
       end
 
-      context 'when the search term is Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+      context 'when the search term is Search::Params::MIN_TERM_LENGTH characters long' do
         let(:search_term) { 'te' }
 
         it 'returns the project' do
@@ -655,16 +758,39 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       context 'when a project namespace matches the search term but the project does not' do
-        let_it_be(:group) { create(:group, name: 'test group') }
-        let_it_be(:project_3) { create(:project, name: 'nothing', namespace: group) }
+        let_it_be(:group, freeze: false) { create(:group, name: 'test group') }
+        let_it_be(:project_3, freeze: false) { create(:project, name: 'nothing', namespace: group) }
 
-        before do
+        before_all do
           group.add_owner(user)
         end
 
         it 'returns all projects matching the term' do
           expect(projects_autocomplete(search_term).pluck(:id)).to match_array([project_2.id, project_3.id])
         end
+      end
+    end
+
+    context 'when search_projects_autocomplete_use_search_service feature flag is enabled' do
+      before_all do
+        project_2.add_developer(user)
+      end
+
+      before do
+        stub_feature_flags(search_projects_autocomplete_use_search_service: user)
+      end
+
+      it 'delegates to search_using_search_service with projects scope' do
+        expect(self).to receive(:search_using_search_service).with(user, 'projects', search_term, 5).and_call_original
+
+        projects_autocomplete(search_term)
+      end
+
+      it 'returns results in the expected format' do
+        results = projects_autocomplete(search_term)
+
+        expect(results).to all(include(:category, :id, :value, :label, :url, :avatar_url))
+        expect(results.first[:category]).to eq('Projects')
       end
     end
   end
@@ -710,8 +836,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'search_entries_empty_message' do
-    let!(:group) { build(:group) }
-    let!(:project) { build(:project, group: group) }
+    let(:group) { build_stubbed(:group) }
+    let(:project) { build_stubbed(:project, group: group) }
 
     context 'for global search' do
       let(:message) { helper.search_entries_empty_message('projects', '<h1>foo</h1>', nil, nil) }
@@ -743,8 +869,10 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
   describe 'search_filter_input_options' do
     context 'for project' do
+      let(:project) { build_stubbed(:project) }
+
       before do
-        @project = create(:project, :repository)
+        @project = project
       end
 
       it 'includes id with type' do
@@ -752,13 +880,13 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       it 'includes project-id' do
-        expect(search_filter_input_options('')[:data]['project-id']).to eq(@project.id)
+        expect(search_filter_input_options('')[:data]['project-id']).to eq(project.id)
       end
 
       it 'includes project endpoints' do
-        expect(search_filter_input_options('')[:data]['labels-endpoint']).to eq(project_labels_path(@project))
-        expect(search_filter_input_options('')[:data]['milestones-endpoint']).to eq(project_milestones_path(@project))
-        expect(search_filter_input_options('')[:data]['releases-endpoint']).to eq(project_releases_path(@project))
+        expect(search_filter_input_options('')[:data]['labels-endpoint']).to eq(project_labels_path(project))
+        expect(search_filter_input_options('')[:data]['milestones-endpoint']).to eq(project_milestones_path(project))
+        expect(search_filter_input_options('')[:data]['releases-endpoint']).to eq(project_releases_path(project))
       end
 
       it 'includes autocomplete=off flag' do
@@ -767,8 +895,10 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'for group' do
+      let(:group) { build_stubbed(:group, name: 'group') }
+
       before do
-        @group = create(:group, name: 'group')
+        @group = group
       end
 
       it 'does not includes project-id' do
@@ -776,8 +906,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       it 'includes group endpoints' do
-        expect(search_filter_input_options('')[:data]['labels-endpoint']).to eq(group_labels_path(@group))
-        expect(search_filter_input_options('')[:data]['milestones-endpoint']).to eq(group_milestones_path(@group))
+        expect(search_filter_input_options('')[:data]['labels-endpoint']).to eq(group_labels_path(group))
+        expect(search_filter_input_options('')[:data]['milestones-endpoint']).to eq(group_milestones_path(group))
       end
     end
 
@@ -796,18 +926,26 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
   describe 'search_history_storage_prefix' do
     context 'for project' do
-      it 'returns project full_path' do
-        @project = create(:project, :repository)
+      let(:project) { build_stubbed(:project) }
 
-        expect(search_history_storage_prefix).to eq(@project.full_path)
+      before do
+        @project = project
+      end
+
+      it 'returns project full_path' do
+        expect(search_history_storage_prefix).to eq(project.full_path)
       end
     end
 
     context 'for group' do
-      it 'returns group full_path' do
-        @group = create(:group, :nested, name: 'group-name')
+      let(:group) { build_stubbed(:group, :nested, name: 'group-name') }
 
-        expect(search_history_storage_prefix).to eq(@group.full_path)
+      before do
+        @group = group
+      end
+
+      it 'returns group full_path' do
+        expect(search_history_storage_prefix).to eq(group.full_path)
       end
     end
 
@@ -819,13 +957,17 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'search_md_sanitize' do
-    it 'does not do extra sql queries for partial markdown rendering' do
-      @project = create(:project)
+    let(:project) { create(:project) }
 
+    before do
+      @project = project
+    end
+
+    it 'does not do extra sql queries for partial markdown rendering' do
       description = FFaker::Lorem.characters(210)
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) { search_md_sanitize(description) }
 
-      issues = create_list(:issue, 4, project: @project)
+      issues = create_list(:issue, 4, project: project)
 
       description_with_issues = "#{description} #{issues.map { |issue| "##{issue.iid}" }.join(' ')}"
       expect { search_md_sanitize(description_with_issues) }.not_to exceed_all_query_limit(control)
@@ -835,7 +977,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '#repository_ref' do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
     let(:default_branch) { project.default_branch }
     let(:params) { { repository_ref: ref, project_id: project_id } }
 
@@ -856,11 +998,11 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#highlight_and_truncate_issuable' do
-    let_it_be(:issue) { create(:issue) }
+    let(:issue) { build_stubbed(:issue) }
     let(:highlight_and_truncate) { highlight_and_truncate_issuable(issue, 'test', {}) }
 
     before do
-      allow(self).to receive(:current_user).and_return(build(:user))
+      allow(self).to receive(:current_user).and_return(build_stubbed(:user))
     end
 
     it 'calls simple_search_highlight_and_truncate' do
@@ -902,7 +1044,10 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     it 'instantiates a new SearchService with current_user and params' do
-      expect(::SearchService).to receive(:new).with(:the_current_user, { include_archived: true })
+      expect(::SearchService).to receive(:new).with(
+        :the_current_user,
+        hash_including(include_archived: true, organization_id: current_organization.id)
+      )
 
       search_service
     end
@@ -911,16 +1056,16 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '#issuable_state_to_badge_class' do
     context 'with merge request' do
       it 'returns correct badge based on status' do
-        expect(issuable_state_to_badge_class(build(:merge_request, :merged))).to eq(:info)
-        expect(issuable_state_to_badge_class(build(:merge_request, :closed))).to eq(:danger)
-        expect(issuable_state_to_badge_class(build(:merge_request, :opened))).to eq(:success)
+        expect(issuable_state_to_badge_class(build_stubbed(:merge_request, :merged))).to eq(:info)
+        expect(issuable_state_to_badge_class(build_stubbed(:merge_request, :closed))).to eq(:danger)
+        expect(issuable_state_to_badge_class(build_stubbed(:merge_request, :opened))).to eq(:success)
       end
     end
 
     context 'with an issue' do
       it 'returns correct badge based on status' do
-        expect(issuable_state_to_badge_class(build(:issue, :closed))).to eq(:info)
-        expect(issuable_state_to_badge_class(build(:issue, :opened))).to eq(:success)
+        expect(issuable_state_to_badge_class(build_stubbed(:issue, :closed))).to eq(:info)
+        expect(issuable_state_to_badge_class(build_stubbed(:issue, :opened))).to eq(:success)
       end
     end
   end
@@ -928,16 +1073,16 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '#issuable_state_text' do
     context 'with merge request' do
       it 'returns correct badge based on status' do
-        expect(issuable_state_text(build(:merge_request, :merged))).to eq(_('Merged'))
-        expect(issuable_state_text(build(:merge_request, :closed))).to eq(_('Closed'))
-        expect(issuable_state_text(build(:merge_request, :opened))).to eq(_('Open'))
+        expect(issuable_state_text(build_stubbed(:merge_request, :merged))).to eq(_('Merged'))
+        expect(issuable_state_text(build_stubbed(:merge_request, :closed))).to eq(_('Closed'))
+        expect(issuable_state_text(build_stubbed(:merge_request, :opened))).to eq(_('Open'))
       end
     end
 
     context 'with an issue' do
       it 'returns correct badge based on status' do
-        expect(issuable_state_text(build(:issue, :closed))).to eq(_('Closed'))
-        expect(issuable_state_text(build(:issue, :opened))).to eq(_('Open'))
+        expect(issuable_state_text(build_stubbed(:issue, :closed))).to eq(_('Closed'))
+        expect(issuable_state_text(build_stubbed(:issue, :opened))).to eq(_('Open'))
       end
     end
   end
@@ -976,8 +1121,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '#header_search_context' do
     let(:user) { build_stubbed(:user) }
     let(:can_download) { false }
-    let_it_be(:group) { nil }
-    let_it_be(:project) { nil }
+    let_it_be(:group, freeze: false) { nil }
+    let_it_be(:project, freeze: false) { nil }
     let(:scope) { nil }
     let(:ref) { nil }
     let(:snippet) { nil }
@@ -1007,7 +1152,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'when group data' do
-      let_it_be(:group) { create(:group) }
+      let(:group) { build_stubbed(:group) }
 
       let(:group_metadata) do
         {
@@ -1033,8 +1178,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'when project data' do
-      let_it_be(:project_group) { create(:group) }
-      let_it_be(:project) { create(:project, group: project_group) }
+      let(:project_group) { build_stubbed(:group) }
+      let(:project) { build_stubbed(:project, group: project_group) }
       let(:project_metadata) do
         {
           issues_path: project_issues_path(project),
@@ -1094,7 +1239,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'for ref data' do
-      let_it_be(:project) { create(:project) }
+      let(:project) { build_stubbed(:project) }
       let(:ref) { 'test-branch' }
 
       context 'when user can? download project data' do
@@ -1116,7 +1261,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
     context 'for snippet' do
       context 'when searching from snippets' do
-        let(:snippet) { create(:project_snippet) }
+        let(:snippet) { build_stubbed(:project_snippet) }
 
         it 'adds :for_snippets true correctly to hash' do
           expect(header_search_context[:for_snippets]).to be(true)
@@ -1159,7 +1304,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
       with_them do
         it 'renders data correctly' do
-          allow(self).to receive(:current_user).and_return(build(:user))
+          allow(self).to receive(:current_user).and_return(build_stubbed(:user))
           allow_next_instance_of(Search::Navigation) do |search_nav|
             allow(search_nav).to receive(:tabs).and_return(data)
           end
@@ -1171,7 +1316,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
     context 'when all options enabled' do
       before do
-        allow(self).to receive(:current_user).and_return(build(:user))
+        allow(self).to receive(:current_user).and_return(build_stubbed(:user))
         allow(search_service).to receive(:show_snippets?).and_return(true)
         allow_next_instance_of(Search::Navigation) do |search_nav|
           allow(search_nav).to receive_messages(tab_enabled_for_project?: true)
@@ -1181,8 +1326,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       it 'returns items in order' do
-        expect(Gitlab::Json.parse(search_navigation_json).keys)
-          .to eq(%w[projects blobs work_items issues merge_requests wiki_blobs commits notes milestones users snippet_titles])
+        expect(Gitlab::Json.safe_parse(search_navigation_json).keys)
+          .to eq(%w[projects blobs work_items merge_requests wiki_blobs commits notes milestones users snippet_titles])
       end
     end
   end
@@ -1200,13 +1345,14 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
       with_them do
         it 'converts correctly' do
+          search_results = double
           @timeout = false
           @scope = active_scope
-          @search_results = double
+          @search_results = search_results
           dummy_count = 1000
           allow(self).to receive(:search_path).with(any_args).and_return("link test")
 
-          allow(@search_results).to receive(:formatted_count).with(scope).and_return(dummy_count)
+          allow(search_results).to receive(:formatted_count).with(scope).and_return(dummy_count)
           allow(self).to receive(:search_count_path).with(any_args).and_return("test count link")
 
           current_scope = scope == active_scope
@@ -1229,7 +1375,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#wiki_blob_link' do
-    let_it_be(:project) { create :project, :wiki_repo }
+    let_it_be(:project, freeze: false) { create :project, :wiki_repo }
     let(:wiki_blob) do
       Gitlab::Search::FoundBlob.new(path: 'test', basename: 'test', ref: 'master',
         data: 'foo', startline: 2, project: project, project_id: project.id)
@@ -1251,31 +1397,41 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#formatted_count' do
-    context 'when @timeout is set' do
-      it 'returns "0"' do
-        @timeout = true
-        @scope = 'projects'
+    let(:scope) { 'projects' }
 
-        expect(formatted_count(@scope)).to eq("0")
+    context 'when @timeout is set' do
+      before do
+        @timeout = true
+        @scope = scope
+      end
+
+      it 'returns "0"' do
+        expect(formatted_count(scope)).to eq("0")
       end
     end
 
     context 'when @search_results is defined' do
+      let(:search_results) { double }
+
+      before do
+        @scope = scope
+        @search_results = search_results
+      end
+
       it 'delegates formatted_count to @search_results' do
-        @scope = 'projects'
-        @search_results = double
+        expect(search_results).to receive(:formatted_count).with(scope)
 
-        allow(@search_results).to receive(:formatted_count).with(@scope)
-        expect(@search_results).to receive(:formatted_count).with(@scope)
-
-        formatted_count(@scope)
+        formatted_count(scope)
       end
     end
 
     context 'when @search_results is not defined' do
+      before do
+        @scope = scope
+      end
+
       it 'returns "0"' do
-        @scope = 'projects'
-        expect(formatted_count(@scope)).to eq("0")
+        expect(formatted_count(scope)).to eq("0")
       end
     end
   end
@@ -1530,6 +1686,93 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         it 'returns nil' do
           expect(helper.search_scope).to be_nil
         end
+      end
+    end
+  end
+
+  describe '#work_item_types_for_filter' do
+    before do
+      allow(helper).to receive(:current_user).and_return(nil)
+    end
+
+    context 'without a container (global search)' do
+      it 'returns an empty array' do
+        expect(helper.work_item_types_for_filter).to eq([])
+      end
+    end
+
+    context 'with a project container' do
+      let_it_be(:project, freeze: false) { create(:project) }
+
+      before do
+        assign(:project, project)
+      end
+
+      it 'returns an array' do
+        expect(helper.work_item_types_for_filter).to be_an(Array)
+      end
+
+      it 'returns work item types with correct structure' do
+        types = helper.work_item_types_for_filter
+
+        expect(types).to all(have_key(:name))
+        expect(types).to all(have_key(:label))
+        expect(types).to all(have_key(:icon_name))
+      end
+
+      it 'includes work item types available to the project' do
+        types = helper.work_item_types_for_filter
+        type_names = types.pluck(:name)
+
+        # Should include FOSS types
+        expect(type_names).to include('issue')
+        expect(type_names).to include('incident')
+        expect(type_names).to include('task')
+        expect(type_names).to include('ticket')
+      end
+
+      it 'excludes epic type for projects in FOSS' do
+        types = helper.work_item_types_for_filter
+        type_names = types.pluck(:name)
+
+        # Epic should not be available for projects in FOSS (project_epics_enabled? is not defined)
+        expect(type_names).not_to include('epic')
+      end
+
+      it 'returns stringified type keys, human-readable labels, and icon names' do
+        types = helper.work_item_types_for_filter
+        issue_type = types.find { |t| t[:name] == 'issue' }
+
+        expect(issue_type[:name]).to eq('issue')
+        expect(issue_type[:label]).to eq('Issue')
+        expect(issue_type[:icon_name]).to eq('work-item-issue')
+      end
+    end
+
+    context 'with a group container' do
+      let_it_be(:group, freeze: false) { create(:group) }
+
+      before do
+        assign(:group, group)
+      end
+
+      it 'returns work item types available to the group' do
+        types = helper.work_item_types_for_filter
+
+        expect(types).to be_an(Array)
+        expect(types).to all(have_key(:name))
+        expect(types).to all(have_key(:label))
+        expect(types).to all(have_key(:icon_name))
+      end
+
+      it 'includes epic type for groups', if: Gitlab.ee? do
+        stub_licensed_features(epics: true)
+
+        types = helper.work_item_types_for_filter
+        type_names = types.pluck(:name)
+
+        # Epic should be available for groups
+        expect(type_names).to include('epic')
       end
     end
   end

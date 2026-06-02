@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Tenant Services
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Redis replication and failover with the Linux package
 ---
 
@@ -416,7 +416,7 @@ multiple machines with the Sentinel daemon.
    # sentinel['port'] = 26379
 
    ## Quorum must reflect the amount of voting sentinels it take to start a failover.
-   ## Value must NOT be greater then the amount of sentinels.
+   ## Value must NOT be greater than the amount of sentinels.
    ##
    ## The quorum can be used to tune Sentinel in two ways:
    ## 1. If a the quorum is set to a value smaller than the majority of Sentinels
@@ -506,7 +506,6 @@ it needs to access at least one of the listed.
 If you enable Monitoring, it must be enabled on **all** Redis servers.
 
 1. Make sure to collect [`CONSUL_SERVER_NODES`](../postgresql/replication_and_failover.md#consul-information), which are the IP addresses or DNS records of the Consul server nodes, for the next step. Note they are presented as `Y.Y.Y.Y consul1.gitlab.example.com Z.Z.Z.Z`
-
 1. Create/edit `/etc/gitlab/gitlab.rb` and add the following configuration:
 
    ```ruby
@@ -839,22 +838,15 @@ This setting can be used to prevent replication of a Redis node independently of
 
 ## Use Valkey instead of Redis
 
-{{< details >}}
-
-- Status: Beta
-
-{{< /details >}}
-
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/9113) in GitLab 18.9 as a [beta](../../policy/development_stages_support.md#beta).
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/585839) in GitLab 19.0.
 
 {{< /history >}}
 
 You can use [Valkey](https://valkey.io/) as a drop-in replacement for Redis in replication
 and failover setups. Valkey uses the same roles and configuration options as Redis.
-
-Using Valkey instead of Redis is a [beta](../../policy/development_stages_support.md#beta) feature.
 
 ### Configure Valkey primary and replica nodes
 
@@ -898,6 +890,16 @@ sentinel['quorum'] = 2
 
 All other Sentinel configuration options remain the same as documented in
 [Configuring the Redis Sentinel instances](#step-3-configuring-the-redis-sentinel-instances).
+
+### Known issues
+
+- Because of known [issue 589642](https://gitlab.com/gitlab-org/gitlab/-/issues/589642), the Admin Area reports the Valkey version incorrectly. This issue
+  doesn't affect the version of Valkey installed or how it functions.
+
+## Secure Redis and Sentinel with TLS
+
+For comprehensive information on securing Redis and Sentinel
+communication using TLS, see [securing Redis and Sentinel with TLS](tls.md).
 
 ## Troubleshooting
 

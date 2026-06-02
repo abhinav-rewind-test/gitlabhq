@@ -16,7 +16,7 @@ RSpec.describe Gitlab::Import::RefreshImportJidWorker, feature_category: :import
   end
 
   describe '#perform' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:import_state) { create(:import_state, project: project, jid: '123abc', status: :started) }
 
     context 'when the project does not exist' do
@@ -37,7 +37,7 @@ RSpec.describe Gitlab::Import::RefreshImportJidWorker, feature_category: :import
 
       before do
         allow(Gitlab::SidekiqStatus)
-          .to receive(:running?)
+          .to receive(:running_or_enqueued?)
           .with('123')
           .and_return(true)
       end
@@ -59,6 +59,43 @@ RSpec.describe Gitlab::Import::RefreshImportJidWorker, feature_category: :import
 
         worker.perform(*job_args)
       end
+
+      context 'when the project cannot be found' do
+        it 'does not refresh or reschedule' do
+          allow(Project).to receive(:find_by_id).with(project.id).and_return(nil)
+
+          expect(Gitlab::SidekiqStatus).not_to receive(:expire)
+          expect(Gitlab::SidekiqStatus).not_to receive(:set)
+          expect(worker.class).not_to receive(:perform_in_the_future)
+
+          worker.perform(*job_args)
+        end
+      end
+
+      context 'when the project is older than the reschedule cutoff' do
+        before do
+          stub_const("#{described_class.name}::RESCHEDULE_CUTOFF", 1.second)
+        end
+
+        it 'does not refresh or reschedule and logs' do
+          expect(import_state).to be_present
+
+          allow(project).to receive(:created_at).and_return(3.weeks.ago)
+          allow(Project).to receive(:find_by_id).with(project.id).and_return(project)
+
+          expect(::Import::Framework::Logger).to receive(:info).with(
+            message: 'Project created_at exceeds reschedule cutoff, stopping JID refresh',
+            project_id: project.id,
+            created_at: project.created_at
+          )
+
+          expect(Gitlab::SidekiqStatus).not_to receive(:expire)
+          expect(Gitlab::SidekiqStatus).not_to receive(:set)
+          expect(worker.class).not_to receive(:perform_in_the_future)
+
+          worker.perform(*job_args)
+        end
+      end
     end
 
     context 'when the job is no longer running' do
@@ -66,7 +103,7 @@ RSpec.describe Gitlab::Import::RefreshImportJidWorker, feature_category: :import
 
       before do
         allow(Gitlab::SidekiqStatus)
-          .to receive(:running?)
+          .to receive(:running_or_enqueued?)
           .with('123')
           .and_return(false)
       end

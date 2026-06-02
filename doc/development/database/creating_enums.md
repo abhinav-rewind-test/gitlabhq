@@ -1,9 +1,13 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Creating enums
 ---
+
+If the data is static, never changes at runtime, and must have consistent IDs
+across [Cells](../cells/_index.md), consider using a
+[fixed items model](../fixed_items_model.md) instead of a database-backed enum.
 
 When creating a new enum, it should use the database type `SMALLINT`.
 The `SMALLINT` type size is 2 bytes, which is sufficient for an enum.

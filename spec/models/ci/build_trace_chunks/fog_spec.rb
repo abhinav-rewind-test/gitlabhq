@@ -75,6 +75,47 @@ RSpec.describe Ci::BuildTraceChunks::Fog, feature_category: :continuous_integrat
         expect(data_store.data(model)).to eq new_data
       end
 
+      context 'when using an S3 provider' do
+        it 'creates a file with content_type application/octet-stream' do
+          expect_next_instance_of(Fog::AWS::Storage::Files) do |files|
+            expect(files).to receive(:create).with(
+              hash_including(
+                key: anything,
+                body: new_data,
+                content_type: 'application/octet-stream')
+            ).and_call_original
+          end
+
+          data_store.set_data(model, new_data)
+        end
+
+        context 'when fog_attributes already includes a content_type' do
+          it 'preserves the content_type from fog_attributes' do
+            config = instance_double(ObjectStorage::Config,
+              fog_attributes: { content_type: 'application/zip' },
+              aws?: true)
+            allow(data_store).to receive(:object_store_config).and_return(config)
+
+            attrs = data_store.send(:create_attributes, model, new_data)
+
+            expect(attrs[:content_type]).to eq('application/zip')
+          end
+        end
+      end
+
+      context 'when using a non-S3 provider' do
+        it 'does not set a default content_type' do
+          config = instance_double(ObjectStorage::Config,
+            fog_attributes: {},
+            aws?: false)
+          allow(data_store).to receive(:object_store_config).and_return(config)
+
+          attrs = data_store.send(:create_attributes, model, new_data)
+
+          expect(attrs).not_to have_key(:content_type)
+        end
+      end
+
       context 'when S3 server side encryption is enabled' do
         before do
           config = Gitlab.config.artifacts.object_store.to_h
@@ -88,6 +129,7 @@ RSpec.describe Ci::BuildTraceChunks::Fog, feature_category: :continuous_integrat
               hash_including(
                 key: anything,
                 body: new_data,
+                content_type: 'application/octet-stream',
                 'x-amz-server-side-encryption' => 'AES256')
             ).and_call_original
           end
@@ -192,33 +234,6 @@ RSpec.describe Ci::BuildTraceChunks::Fog, feature_category: :continuous_integrat
 
     it 'returns keys' do
       is_expected.to eq([[build.id, 0], [build.id, 1]])
-    end
-  end
-
-  describe '#delete_keys' do
-    subject { data_store.delete_keys(keys) }
-
-    let(:build) { create(:ci_build) }
-    let(:relation) { build.trace_chunks }
-    let(:keys) { data_store.keys(relation) }
-
-    before do
-      create(:ci_build_trace_chunk, :fog_with_data, chunk_index: 0, build: build)
-      create(:ci_build_trace_chunk, :fog_with_data, chunk_index: 1, build: build)
-    end
-
-    it 'deletes multiple data', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/456375' do
-      files = connection.directories.new(key: bucket).files
-
-      expect(files.count).to eq(2)
-      expect(files[0].body).to be_present
-      expect(files[1].body).to be_present
-
-      subject
-
-      files.reload
-
-      expect(files.count).to eq(0)
     end
   end
 end

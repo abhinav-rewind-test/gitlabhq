@@ -1,5 +1,5 @@
 <script>
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import { produce } from 'immer';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 
@@ -11,13 +11,9 @@ import { s__ } from '~/locale';
 import { defaultSortableOptions, DRAG_DELAY } from '~/sortable/constants';
 import { sortableStart, sortableEnd } from '~/sortable/utils';
 import Draggable from '~/lib/utils/vue3compat/draggable_compat.vue';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
-import {
-  optimisticUserPermissions,
-  WORK_ITEM_TYPE_NAME_OBJECTIVE,
-  WORK_ITEM_TYPE_NAME_EPIC,
-  WIDGET_TYPE_HIERARCHY,
-} from 'ee_else_ce/work_items/constants';
+import { optimisticUserPermissions, WIDGET_TYPE_HIERARCHY } from 'ee_else_ce/work_items/constants';
 import { findHierarchyWidget, findHierarchyWidgetChildren, getItems } from '../../utils';
 import { addHierarchyChild, removeHierarchyChild } from '../../graphql/cache_utils';
 import moveWorkItem from '../../graphql/move_work_item.mutation.graphql';
@@ -31,6 +27,7 @@ export default {
   components: {
     WorkItemLinkChild,
   },
+  mixins: [glFeatureFlagsMixin()],
   inject: ['getWorkItemTypeConfiguration'],
   props: {
     fullPath: {
@@ -55,15 +52,10 @@ export default {
       required: false,
       default: false,
     },
-    showLabels: {
-      type: Boolean,
+    hiddenMetadataKeys: {
+      type: Array,
       required: false,
-      default: true,
-    },
-    showClosed: {
-      type: Boolean,
-      required: false,
-      default: true,
+      default: () => [],
     },
     disableContent: {
       type: Boolean,
@@ -99,6 +91,11 @@ export default {
       required: false,
       default: null,
     },
+    activePanel: {
+      type: String,
+      required: false,
+      default: null,
+    },
     parentId: {
       type: String,
       required: false,
@@ -108,6 +105,11 @@ export default {
       type: Boolean,
       required: false,
       default: false,
+    },
+    showClosed: {
+      type: Boolean,
+      required: false,
+      default: true,
     },
   },
   data() {
@@ -160,6 +162,10 @@ export default {
   watch: {
     activeChildItemId(newVal) {
       if (!newVal && this.lastActiveElement) {
+        if (this.activePanel) {
+          this.lastActiveElement = null;
+          return;
+        }
         scrollToElement(this.lastActiveElement, { offset: -80, behavior: 'auto' });
         this.lastActiveElement = null;
       }
@@ -176,12 +182,7 @@ export default {
         ({ type }) => type === WIDGET_TYPE_HIERARCHY,
       );
 
-      // the work item config is not available right now and hence need fallback implementation
-
-      return (
-        hierarchyWidget?.autoExpandTreeOnMove ||
-        [WORK_ITEM_TYPE_NAME_EPIC, WORK_ITEM_TYPE_NAME_OBJECTIVE].includes(workItemTypeName)
-      );
+      return hierarchyWidget?.autoExpandTreeOnMove;
     },
     async removeChild(child) {
       try {
@@ -247,6 +248,7 @@ export default {
           variables: {
             fullPath: this.fullPath,
             iid,
+            useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
           },
           update(data) {
             return data.namespace?.workItem;
@@ -604,8 +606,8 @@ export default {
       :confidential="child.confidential"
       :work-item-type="child.workItemType.name"
       :has-indirect-children="hasIndirectChildren"
-      :show-labels="showLabels"
       :show-closed="showClosed"
+      :hidden-metadata-keys="hiddenMetadataKeys"
       :work-item-full-path="fullPath"
       :dragged-item-type="draggedItemType"
       :allowed-children-by-type="allowedChildrenByType"

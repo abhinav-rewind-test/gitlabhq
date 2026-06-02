@@ -10,7 +10,7 @@ import {
   GlTooltipDirective,
   GlSprintf,
 } from '@gitlab/ui';
-import { capitalize } from 'lodash';
+import { capitalize } from 'lodash-es';
 import { s__, __ } from '~/locale';
 import Tracking from '~/tracking';
 import {
@@ -36,6 +36,7 @@ export const i18n = {
 };
 
 export default {
+  name: 'AlertsIntegrationsList',
   i18n,
   typeSet,
   modal: {

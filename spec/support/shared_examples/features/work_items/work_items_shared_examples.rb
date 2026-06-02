@@ -215,7 +215,7 @@ RSpec.shared_examples 'work items labels' do |namespace_type|
         label_text = find('.gl-label:first-child').text
 
         within('.gl-label:first-child') do
-          find('button.gl-label-close[aria-label="Remove label"]').click
+          find('button.gl-label-close[aria-label^="Remove label"]').click
         end
 
         expect(page).not_to have_css '.gl-label', text: label_text
@@ -253,6 +253,7 @@ RSpec.shared_examples 'work items labels' do |namespace_type|
       click_button "Create #{namespace_type} label"
       send_keys 'Quintessence'
       click_button 'Create'
+      expect(page).to have_content('Quintessence')
       click_button 'Apply'
 
       expect(page).to have_css '.gl-label', text: 'Quintessence'
@@ -410,10 +411,12 @@ end
 
 RSpec.shared_examples 'authored work item guest user permissions' do
   it 'shows expected actions based on guest permissions on authored work item', :aggregate_failures do
+    skip unless Gitlab.ee? # Skip for CE, as key results are EE only types
+
     within_testid 'work-item-actions-dropdown' do
       click_button _('More actions')
 
-      expect(page).to have_button 'Close key result'
+      expect(page).to have_button 'Close Key Result'
       expect(page).to have_button 'New related item'
       expect(page).not_to have_button 'Promote to objective'
       expect(page).not_to have_button 'Change type'
@@ -421,7 +424,7 @@ RSpec.shared_examples 'authored work item guest user permissions' do
       expect(page).not_to have_button 'Turn on confidentiality'
       expect(page).to have_button 'Copy reference'
       expect(page).not_to have_button 'Report abuse'
-      expect(page).to have_button 'Delete key result'
+      expect(page).to have_button 'Delete Key Result'
     end
 
     page.within('.main-notes-list') do
@@ -481,6 +484,10 @@ RSpec.shared_examples 'work items lock discussion' do
 
     expect(page).to have_text "Discussion is locked. Only members can comment."
 
+    within_testid('work-item-actions-dropdown') do
+      expect(page).to have_no_testid('base-dropdown-menu')
+    end
+
     click_button _('More actions'), match: :first
     click_button 'Unlock discussion'
 
@@ -517,7 +524,7 @@ RSpec.shared_examples 'work items todos' do
 
     click_button s_('WorkItem|Add a to-do item')
 
-    expect(page).to have_button s_('WorkItem|Mark as done')
+    expect(page).to have_button s_('WorkItem|Mark to-do items done')
 
     within_testid 'todos-shortcut-button' do
       expect(page).to have_content '1'
@@ -526,7 +533,7 @@ RSpec.shared_examples 'work items todos' do
 
   it 'marks to-do item as done', :aggregate_failures do
     click_button s_('WorkItem|Add a to-do item')
-    click_button s_('WorkItem|Mark as done')
+    click_button s_('WorkItem|Mark to-do items done')
 
     expect(page).to have_button s_('WorkItem|Add a to-do item')
     within_testid 'todos-shortcut-button' do
@@ -538,6 +545,26 @@ end
 RSpec.shared_examples 'work items award emoji' do
   before do
     emoji_upvote
+  end
+
+  context 'with more than one page of emojis' do
+    # Add more than 100 (i.e > page_size) reactions to work item to
+    # ensure that page shows all emojis correctly
+    let(:total_emojis) { 120 }
+
+    before do
+      emoji_names = TanukiEmoji.index.all.map(&:name).excluding('thumbsup').first(total_emojis)
+      emoji_names.each do |emoji_name|
+        create(:award_emoji, name: emoji_name, awardable: work_item, user: user2)
+      end
+
+      stub_feature_flags(work_item_features_field: false)
+      visit work_items_path
+    end
+
+    it 'renders all award emojis across multiple pages', :aggregate_failures do
+      expect(page).to have_selector('[data-testid="award-button"]', minimum: total_emojis)
+    end
   end
 
   it 'adds and removes award and custom award', :aggregate_failures do
@@ -1119,12 +1146,12 @@ RSpec.shared_examples 'work items hierarchy' do |testid, type|
 
   it 'adds an existing child item', :aggregate_failures do
     within_testid testid do
-      click_button 'Add'
-      click_button "Existing #{type}"
+      find_by_testid('add-tree-child-button').click
+      click_button "Existing #{type.to_s.capitalize}"
       fill_in 'Search existing items', with: child_item.title
       click_button child_item.title
       send_keys :escape
-      click_button "Add #{type}"
+      click_button "Add #{type.to_s.capitalize}"
 
       expect(page).to have_link child_item.title
     end
@@ -1155,10 +1182,11 @@ RSpec.shared_examples 'work items hierarchy' do |testid, type|
   end
 
   def create_child(type, title)
-    click_button 'Add'
-    click_button "New #{type}"
+    find_by_testid('add-tree-child-button').click
+    click_button "New #{type.to_s.capitalize}"
     fill_in 'Add a title', with: title
-    click_button "Create #{type}"
+    click_button "Create #{type.to_s.capitalize}"
+    expect(page).to have_link title
   end
 end
 
@@ -1192,7 +1220,7 @@ RSpec.shared_examples 'work items linked items' do |is_group = false|
 
       expect(page).not_to have_selector('[data-testid="link-work-item-form"]')
 
-      click_button 'Add'
+      find('[data-testid="link-item-add-button"]').click
 
       expect(page).to have_selector('[data-testid="link-work-item-form"]')
 
@@ -1249,7 +1277,7 @@ RSpec.shared_examples 'work items linked items' do |is_group = false|
     within_testid('work-item-relationships') do
       expect(page).to be_axe_clean.within(selector).skipping :'link-in-text-block'
 
-      click_button 'Add'
+      find_by_testid('link-item-add-button').click
       fill_in 'Search existing items', with: linked_item.title
 
       expect(page).to be_axe_clean.within(selector).skipping :'aria-input-field-name',
@@ -1286,13 +1314,12 @@ RSpec.shared_examples 'work items change type' do |selected_type, expected_selec
     click_button _('More actions'), match: :first
     click_button s_('WorkItem|Change type')
 
-    expect(find('#work-item-change-type')).to have_content(s_('WorkItem|Change type'))
+    within('[role="dialog"]') do
+      expect(page).to have_css('h2', text: s_('WorkItem|Change type'))
+    end
 
-    find_by_testid('work-item-change-type-select').select(selected_type)
-
+    select selected_type, from: s_('WorkItem|Type')
     click_button s_('WorkItem|Change type')
-
-    wait_for_requests
 
     expect(page).to have_selector(expected_selector)
   end

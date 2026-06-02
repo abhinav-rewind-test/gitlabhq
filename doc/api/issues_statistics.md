@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Documentation for the REST API for issues statistics in GitLab.
 title: Issues statistics API
 ---
@@ -21,7 +21,7 @@ request on that project results in a `404` status code.
 
 ## Retrieve issues statistics for a user
 
-Retrieves statistics for issues accessible by the current user. By default, 
+Retrieves statistics for issues accessible by the current user. By default,
 it returns only issues created by the current user. To get all issues,
 set the `scope` attribute to `all`.
 
@@ -160,7 +160,7 @@ GET /projects/:id/issues_statistics?confidential=true
 | Attribute           | Type             | Required   | Description                                                                                                                   |
 | ------------------- | ---------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths)               |
-| `iids[]`            | integer array    | no         | Return only the milestone having the given `iid`                                                                              |
+| `iids[]`            | integer array    | no         | Return only the issues having the given `iid`                                                                              |
 | `labels`            | string           | no         | Comma-separated list of label names, issues must have all labels to be returned. `None` lists all issues with no labels. `Any` lists all issues with at least one label. |
 | `milestone`         | string           | no         | The milestone title. `None` lists all issues with no milestone. `Any` lists all issues that have an assigned milestone.       |
 | `scope`             | string           | no         | Return issues for the given scope: `created_by_me`, `assigned_to_me` or `all`. |

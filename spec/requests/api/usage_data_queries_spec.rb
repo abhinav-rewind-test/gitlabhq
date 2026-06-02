@@ -47,6 +47,14 @@ RSpec.describe API::UsageDataQueries, :aggregate_failures, feature_category: :se
             expect(response).to have_gitlab_http_status(:ok)
             expect(json_response).to eq({})
           end
+
+          it_behaves_like 'authorizing granular token permissions', :read_usage_data_query do
+            let(:boundary_object) { :instance }
+            let(:user) { admin }
+            let(:request) do
+              get api(endpoint, personal_access_token: pat)
+            end
+          end
         end
       end
 
@@ -87,16 +95,12 @@ RSpec.describe API::UsageDataQueries, :aggregate_failures, feature_category: :se
       end
     end
 
-    context 'when querying sql metrics' do
-      include RakeHelpers
-
+    context 'when querying sql metrics', type: :task do
       let(:file) { Rails.root.join('tmp', 'test', 'sql_metrics_queries.json') }
       let(:time) { Time.utc(2021, 1, 1) }
 
       before do
-        Rake.application.rake_require 'tasks/gitlab/helpers'
         Rake.application.rake_require 'tasks/gitlab/usage_data'
-        Rake::Task.define_task(:environment)
 
         run_rake_task('gitlab:usage_data:generate_sql_metrics_queries')
       end

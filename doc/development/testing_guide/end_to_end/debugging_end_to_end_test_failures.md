@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 description: Guidelines for investigating end-to-end test pipeline failures
 title: Debugging Failing Tests and Test Pipelines
 ---
@@ -29,7 +29,7 @@ Note the diagram has been updated as part of increasing rollback availability by
 
 ### Staging Ref
 
-[Staging Ref](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/staging-ref/) is a Sandbox environment used for pre-production testing of the latest Staging Canary code. It is a shared
+[Staging Ref](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/environments/staging-ref/) is a Sandbox environment used for pre-production testing of the latest Staging Canary code. It is a shared
 environment with wide access permissions and as a result of engineers testing their code, the environment may become unstable and may need to be rebuilt.
 
 The full or smoke E2E test suite can be triggered on an as-needed basis from the `staging-ref` project's [pipeline schedules](https://ops.gitlab.net/gitlab-org/quality/staging-ref/-/pipeline_schedules).
@@ -39,7 +39,7 @@ on Staging Ref but not on Staging Canary, it may indicate that the failure is en
 
 ### Preprod
 
-[Preprod](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/#pre) is used to perform validation of release candidates. Every month around the [release date](https://handbook.gitlab.com/handbook/engineering/releases/), and the few days before, it is essential that there are no unexpected failures in the pipeline that will delay the release. There is a pipeline scheduled to run prior to deployment of the release candidate, to give us a chance to identify and resolve any issues with tests or the test environment. This scheduled pipeline should be given equal priority with `Production` and `Staging` pipelines because of the potential impact failures can have on a release.
+[Preprod](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/environments/#pre) is used to perform validation of release candidates. Every month around the [release date](https://handbook.gitlab.com/handbook/engineering/releases/), and the few days before, it is essential that there are no unexpected failures in the pipeline that will delay the release. There is a pipeline scheduled to run prior to deployment of the release candidate, to give us a chance to identify and resolve any issues with tests or the test environment. This scheduled pipeline should be given equal priority with `Production` and `Staging` pipelines because of the potential impact failures can have on a release.
 
 Tests pipelines are also triggered by the [Kubernetes Workload configuration project](https://gitlab.com/gitlab-com/gl-infra/k8s-workloads/gitlab-com) to ensure that any configuration changes are valid.
 
@@ -80,12 +80,12 @@ To find out the version, revision, branch and package deployed in GitLab.com, st
 run this in the #chat-ops-test Slack channel:
 
 ```shell
-/chatops run auto_deploy status
+/chatops gitlab run auto_deploy status
 ```
 
 ![ChatOps auto deploy status output.](img/ChatopsAutoDeployStatus_v18_0.png)
 
-You will [need access to the https://ops.gitlab.net/gitlab-com/chatops](../../chatops_on_gitlabcom.md#requesting-access) project to run `/chatops` commands.
+You will [need access to the `https://ops.gitlab.net/gitlab-com/chatops`](../../chatops_on_gitlabcom.md#requesting-access) project to run `/chatops` commands.
 Ask to be added to this project in the #development Slack channel.
 
 ### Determine if a change has been deployed to an environment using revision SHA
@@ -99,7 +99,7 @@ git show c46489109e4:qa/qa/specs/features/ee/browser_ui/1_manage/group/restrict_
 ```
 
 You can determine the revision SHA deployed on a GitLab instance by either navigating to <https://www.example.com/help>,
-by calling the `https://www.example.com/api/v4/version` API or by running `/chatops run auto_deploy status` in a Slack
+by calling the `https://www.example.com/api/v4/version` API or by running `/chatops gitlab run auto_deploy status` in a Slack
 channel such as #chat-ops-test.
 
 You can also determine if your commit has been deployed on a GitLab environment using [ChatOps](../../../ci/chatops/_index.md).
@@ -107,7 +107,7 @@ For example, if your commit ref is `347e530c5b3dec60c0ce2870bc79ca4c8273604d` yo
 channel such as #chat-ops-test:
 
 ```shell
-/chatops run auto_deploy status 347e530c5b3dec60c0ce2870bc79ca4c8273604d
+/chatops gitlab run auto_deploy status 347e530c5b3dec60c0ce2870bc79ca4c8273604d
 ```
 
 ### Determine the commit SHA of a nightly image
@@ -126,7 +126,7 @@ gitlab/gitlab-ee:nightly
 ```
 
 The commit SHA can be determined by visiting the <http://localhost/help> page after sign-in
-or by calling the [`/api/v4/version` API](../../../api/version.md) where it is displayed as a value of the `revision` attribute.
+or by calling the [`/api/v4/version` API](../../../api/metadata.md) where it is displayed as a value of the `revision` attribute.
 
 #### By inspecting the pipeline that created the nightly image
 

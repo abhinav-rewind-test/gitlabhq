@@ -45,6 +45,8 @@ module Gitlab
           find_user_for_graphql_api_request
         when :api, :git, :rss, :ics, :blob, :download, :archive, nil
           find_user_from_any_authentication_method(request_format)
+        when :editor_extension
+          find_user_from_access_token
         else
           raise ArgumentError, "Unknown request format"
         end
@@ -53,6 +55,8 @@ module Gitlab
       end
 
       def can_sign_in_bot?(user)
+        return false if user&.blocked?
+
         # Allow bots and service accounts to access both API and archive endpoints
         (user&.project_bot? || user&.service_account?) && (api_request? || archive_request?)
       end
@@ -69,6 +73,10 @@ module Gitlab
 
       def current_token_scopes
         access_token&.scopes.to_a
+      end
+
+      def granular_access_token?
+        access_token&.try(:granular?) || false
       end
 
       private

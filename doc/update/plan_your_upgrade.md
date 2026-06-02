@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Before you upgrade
 description: Steps to take before you upgrade.
 ---
@@ -32,11 +32,15 @@ When planning the upgrade:
    - Create an upgrade and rollback plan for each Geo site (primary and each secondary).
 1. Determine the appropriate [upgrade path](upgrade_paths.md) for your instance, including any required upgrade stops.
    Upgrade stops might require you to perform multiple upgrades.
+1. Run [upgrade health checks](#run-upgrade-health-checks) to find and resolve potential issues early.
 1. Create an upgrade plan that documents:
    - The steps to take to upgrade your instance including, if possible and required, a
      [zero-downtime upgrade](zero_downtime.md).
    - The steps to take if the upgrade doesn't go smoothly including how to
      [roll back GitLab if necessary](#create-a-rollback-plan-and-backup).
+1. Test your upgrade plan in a clone of your production environment.
+   This helps reduce the risk of unplanned outages
+   and helps you measure the duration of [potentially long-running migrations](background_migrations.md#execute-a-migration).
 
 With all pre-upgrade information gathered, you can move on to performing pre-upgrade steps.
 
@@ -80,8 +84,7 @@ If restoring from a snapshot, you must already know how to do this. **This proce
 
 Shortly before you perform the upgrade:
 
-1. Test your upgrade in a test environment first to reduce the risk of unplanned outages and extended downtime.
-1. Run [upgrade health checks](#run-upgrade-health-checks).
+1. Rerun [upgrade health checks](#run-upgrade-health-checks).
 1. Perform [upgrades for any optional features](#upgrades-for-optional-features) that you use.
 
 ### Run upgrade health checks
@@ -122,6 +125,7 @@ working:
    ```
 
 1. If using Elasticsearch, verify that searches are successful.
+1. Optional. [Pre-download a package from the official repository](package/_index.md#pre-download-a-package-from-the-official-repository) to test package availability and reduce install time.
 
 If something goes wrong, [get support](#get-support).
 
@@ -139,7 +143,7 @@ upgrading GitLab:
    by [checking for pending migrations](background_migrations.md#check-for-pending-advanced-search-migrations).
 
    After upgrading GitLab, you might have to upgrade
-   [Elasticsearch if the new version breaks compatibility](../integration/advanced_search/elasticsearch.md#version-requirements).
+   [Elasticsearch if the new version breaks compatibility](../integration/advanced_search/elasticsearch.md#version-compatibility).
    Updating Elasticsearch is **out of scope for GitLab Support**.
 
 ## Pause CI/CD pipelines and jobs
@@ -202,6 +206,6 @@ If something goes wrong during your upgrade:
 For support:
 
 - [Contact GitLab Support](https://support.gitlab.com/hc/en-us) and your Customer Success Manager, if you have one.
-- If [the situation qualifies](https://about.gitlab.com/support/#definitions-of-support-impact) and
-  [your plan includes emergency support](https://about.gitlab.com/support/#priority-support),
+- If [the situation qualifies](https://support.gitlab.com/hc/en-us/articles/11626416629660-Definitions#definitions-of-support-impact) and
+  [your plan includes emergency support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#priority-support),
   create an emergency ticket.

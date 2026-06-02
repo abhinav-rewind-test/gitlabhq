@@ -1,25 +1,28 @@
 <script>
 import { GlAlert } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { visitUrl } from '~/lib/utils/url_utility';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import Tracking from '~/tracking';
 import { __ } from '~/locale';
 import { clearDraft } from '~/lib/utils/autosave';
+import { suppressShortcutsUntilInputFocus } from '~/lib/mousetrap';
 import DiscussionReplyPlaceholder from '~/notes/components/discussion_reply_placeholder.vue';
-import ResolveDiscussionButton from '~/notes/components/discussion_resolve_button.vue';
+import ResolveDiscussionButton from '~/notes/components/resolve_discussion_button.vue';
 import { ASC, DESC } from '~/notes/constants';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { updateCacheAfterCreatingNote } from '../../graphql/cache_utils';
 import createNoteMutation from '../../graphql/notes/create_work_item_note.mutation.graphql';
 import workItemNotesByIidQuery from '../../graphql/notes/work_item_notes_by_iid.query.graphql';
 import workItemByIidQuery from '../../graphql/work_item_by_iid.query.graphql';
-import { TRACKING_CATEGORY_SHOW, i18n } from '../../constants';
+import { TRACKING_CATEGORY_SHOW, VIEW_CONTEXT, i18n } from '../../constants';
 import { findEmailParticipantsWidget } from '../../utils';
 import WorkItemNoteSignedOut from './work_item_note_signed_out.vue';
 import WorkItemCommentLocked from './work_item_comment_locked.vue';
 import WorkItemCommentForm from './work_item_comment_form.vue';
 
 export default {
+  name: 'WorkItemAddNote',
   constantOptions: {
     avatarUrl: window.gon.current_user_avatar_url,
   },
@@ -31,7 +34,10 @@ export default {
     WorkItemCommentForm,
     ResolveDiscussionButton,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [Tracking.mixin(), glFeatureFlagsMixin()],
+  inject: {
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
+  },
   props: {
     fullPath: {
       type: String,
@@ -155,6 +161,7 @@ export default {
         return {
           fullPath: this.fullPath,
           iid: this.workItemIid,
+          useWorkItemFeatures: Boolean(this.glFeatures.workItemFeaturesField),
         };
       },
       update(data) {
@@ -190,6 +197,7 @@ export default {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_comment',
         property: `type_${this.workItemType}`,
+        extra: { viewContext: this.viewContext },
       };
     },
     timelineEntryInnerClass() {
@@ -287,12 +295,36 @@ export default {
         clearDraft(this.autosaveKeyInternalNote);
         this.cancelEditing();
         this.doFullPageReloadIfUnsupportedTypeChange(commentText);
+        this.refetchTimeTrackingIfQuickActionApplied(commentText, {
+          errorMessages,
+          messages,
+        });
       } catch (error) {
         this.$emit('error', error.message);
         Sentry.captureException(error);
       } finally {
         this.isSubmitting = false;
       }
+    },
+    // The time tracking widget is loaded via its own dedicated query and isn't part of
+    // the main work item query. When a time-tracking-related quick action runs successfully,
+    // refetch the dedicated query so the widget reflects the latest values.
+    refetchTimeTrackingIfQuickActionApplied(commentText, { errorMessages, messages }) {
+      const timeTrackingQuickActionRegex =
+        /\/(spend|spent|estimate|remove_estimate|remove_time_spent)(?!\S)/im;
+      const quickActionRanSuccessfully =
+        (!errorMessages || errorMessages.length === 0) && messages?.length > 0;
+
+      if (!quickActionRanSuccessfully || !timeTrackingQuickActionRegex.test(commentText)) {
+        return;
+      }
+
+      this.$apollo
+        .getClient()
+        .refetchQueries({
+          include: ['workItemTimeTracking'],
+        })
+        .catch((error) => Sentry.captureException(error));
     },
     // Until incidents and Service Desk issues are fully migrated to work items
     // we need to browse to the detail page again
@@ -313,6 +345,7 @@ export default {
       this.$emit('cancel-editing');
     },
     showReplyForm() {
+      suppressShortcutsUntilInputFocus();
       this.isEditing = true;
       this.$emit('start-replying');
     },
@@ -372,7 +405,7 @@ export default {
 <template>
   <li :class="timelineEntryClass">
     <work-item-note-signed-out v-if="!signedIn" />
-    <work-item-comment-locked v-else-if="showLockedBanner" :work-item-type="workItemType" />
+    <work-item-comment-locked v-else-if="showLockedBanner" />
     <div v-else-if="!isProjectArchived" :class="timelineEntryInnerClass">
       <div :class="timelineContentClass">
         <gl-alert

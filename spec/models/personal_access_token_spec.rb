@@ -124,7 +124,9 @@ RSpec.describe PersonalAccessToken, feature_category: :system_access do
   end
 
   describe 'associations' do
-    subject(:project_access_token) { create(:personal_access_token) }
+    let_it_be(:project_access_token) { create(:personal_access_token) }
+
+    subject { project_access_token }
 
     it { is_expected.to belong_to(:previous_personal_access_token).class_name('PersonalAccessToken') }
     it { is_expected.to belong_to(:organization).class_name('Organizations::Organization') }
@@ -259,9 +261,9 @@ RSpec.describe PersonalAccessToken, feature_category: :system_access do
     end
 
     describe 'expires scopes', :time_freeze do
-      let!(:expires_last_month_token) { create(:personal_access_token, expires_at: 1.month.ago) }
-      let!(:expires_next_month_token) { create(:personal_access_token, expires_at: 1.month.from_now) }
-      let!(:expires_two_months_token) { create(:personal_access_token, expires_at: 2.months.from_now) }
+      let_it_be(:expires_last_month_token) { create(:personal_access_token, expires_at: 1.month.ago) }
+      let_it_be(:expires_next_month_token) { create(:personal_access_token, expires_at: 1.month.from_now) }
+      let_it_be(:expires_two_months_token) { create(:personal_access_token, expires_at: 2.months.from_now) }
 
       describe '.expires_before' do
         it 'finds tokens that expire before or on date' do
@@ -361,42 +363,81 @@ RSpec.describe PersonalAccessToken, feature_category: :system_access do
         )
       end
     end
+
+    describe '.preload_granular_scopes' do
+      let_it_be(:user) { create(:user) }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:boundary) { Authz::Boundary.for(project) }
+      let_it_be(:granular_pat) { create(:granular_pat, user: user, boundary: boundary, permissions: :read_member_role) }
+
+      subject(:preload_granular_scopes) { described_class.preload_granular_scopes }
+
+      it 'eagerly loads granular_scopes and their namespaces' do
+        token = preload_granular_scopes.find { |token| token.id == granular_pat.id }
+
+        expect(token.association(:granular_scopes)).to be_loaded
+        expect(token.granular_scopes.first.association(:namespace)).to be_loaded
+      end
+    end
   end
 
   describe 'PolicyActor methods' do
     let_it_be(:user) { create(:user) }
     let_it_be(:project) { create(:project, developers: user) }
     let_it_be(:boundary) { Authz::Boundary.for(project) }
-    let_it_be(:pat) { create(:granular_pat, user: user, boundary: boundary, permissions: :create_issue) }
+    let_it_be(:granular_pat) { create(:granular_pat, user: user, boundary: boundary, permissions: :create_work_item) }
 
     let(:methods) { PolicyActor.instance_methods }
 
     it 'responds to all PolicyActor methods' do
       methods.each do |method|
-        expect(pat.respond_to?(method)).to be true
+        expect(granular_pat.respond_to?(method)).to be true
       end
     end
 
     describe '#can?' do
-      it { expect(pat.can?(:create_issue, boundary)).to be true }
+      it { expect(granular_pat.can?(:create_issue, boundary)).to be true }
     end
   end
 
   describe '#active?' do
-    let(:active_personal_access_token) { build(:personal_access_token) }
-    let(:revoked_personal_access_token) { build(:personal_access_token, :revoked) }
-    let(:expired_personal_access_token) { build(:personal_access_token, :expired) }
+    let(:personal_access_token) { build(:personal_access_token) }
 
-    it "returns false if the personal_access_token is revoked" do
-      expect(revoked_personal_access_token).not_to be_active
+    subject(:active) { personal_access_token.active? }
+
+    it { is_expected.to be true }
+
+    context 'when token is revoked' do
+      let(:personal_access_token) { build(:personal_access_token, :revoked) }
+
+      it { is_expected.to be false }
     end
 
-    it "returns false if the personal_access_token is expired" do
-      expect(expired_personal_access_token).not_to be_active
+    context 'when token is expired' do
+      let(:personal_access_token) { build(:personal_access_token, :expired) }
+
+      it { is_expected.to be false }
     end
 
-    it "returns true if the personal_access_token is not revoked and not expired" do
-      expect(active_personal_access_token).to be_active
+    context 'with a granular personal access token' do
+      let_it_be(:user) { create(:user) }
+      let_it_be(:personal_access_token) { create(:granular_pat, user: user) }
+
+      context 'when the granular_personal_access_tokens feature flag is enabled for the token owner' do
+        before do
+          stub_feature_flags(granular_personal_access_tokens: user)
+        end
+
+        it { is_expected.to be true }
+      end
+
+      context 'when the granular_personal_access_tokens feature flag is disabled' do
+        before do
+          stub_feature_flags(granular_personal_access_tokens: false)
+        end
+
+        it { is_expected.to be false }
+      end
     end
   end
 
@@ -678,7 +719,7 @@ RSpec.describe PersonalAccessToken, feature_category: :system_access do
       let_it_be(:revoked_token) { create(:personal_access_token, revoked: true) }
       let_it_be(:valid_token_and_notified) { create(:personal_access_token, expires_at: 2.days.from_now, expire_notification_delivered: true) }
       let_it_be(:valid_token_and_7d_notified) { create(:personal_access_token, expires_at: 2.days.from_now, seven_days_notification_sent_at: Time.current) }
-      let_it_be(:valid_token) { create(:personal_access_token, expires_at: 2.days.from_now) }
+      let_it_be(:valid_token, freeze: false) { create(:personal_access_token, expires_at: 2.days.from_now) }
       let_it_be(:long_expiry_token) { create(:personal_access_token, expires_at: described_class::MAX_PERSONAL_ACCESS_TOKEN_LIFETIME_IN_DAYS.days.from_now) }
 
       context 'in one day' do
@@ -700,7 +741,7 @@ RSpec.describe PersonalAccessToken, feature_category: :system_access do
       let_it_be(:impersonation_token) { create(:personal_access_token, :impersonation) }
       let_it_be(:valid_token_and_notified) { create(:personal_access_token, expires_at: 2.days.from_now, expire_notification_delivered: true) }
       let_it_be(:valid_token_and_7d_notified) { create(:personal_access_token, expires_at: 2.days.from_now, seven_days_notification_sent_at: Time.current) }
-      let_it_be(:valid_token) { create(:personal_access_token, expires_at: 2.days.from_now, impersonation: false) }
+      let_it_be(:valid_token, freeze: false) { create(:personal_access_token, expires_at: 2.days.from_now, impersonation: false) }
       let_it_be(:thirty_days_token) { create(:personal_access_token, expires_at: 28.days.from_now) }
       let_it_be(:sixty_days_token) { create(:personal_access_token, expires_at: 55.days.from_now) }
       let_it_be(:long_expiry_token) { create(:personal_access_token, expires_at: described_class::MAX_PERSONAL_ACCESS_TOKEN_LIFETIME_IN_DAYS.days.from_now) }

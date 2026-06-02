@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting job artifacts
 ---
 
@@ -142,12 +142,12 @@ This issue occurs after an upgrade.
 The workaround is to enable the `ci_unlock_pipelines_extra_low` feature flag.
 To toggle feature flags, you must be an administrator.
 
-On GitLab SaaS:
+On GitLab.com:
 
 - Run the following [ChatOps](../chatops/_index.md) command:
 
   ```ruby
-  /chatops run feature set ci_unlock_pipelines_extra_low true
+  /chatops gitlab run feature set ci_unlock_pipelines_extra_low true
   ```
 
 On GitLab Self-Managed:

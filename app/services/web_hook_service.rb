@@ -37,7 +37,7 @@ class WebHookService
   RESPONSE_HEADERS_COUNT_LIMIT = 50
   RESPONSE_HEADERS_SIZE_LIMIT = 1.kilobyte
 
-  CUSTOM_TEMPLATE_INTERPOLATION_REGEX = /{{(.+?)}}/
+  CUSTOM_TEMPLATE_INTERPOLATION_REGEX = WebHooks::Hook::CUSTOM_TEMPLATE_INTERPOLATION_REGEX
 
   attr_accessor :hook, :data, :hook_name, :request_options
   attr_reader :uniqueness_token, :idempotency_key
@@ -94,19 +94,27 @@ class WebHookService
     )
 
     ServiceResponse.success(message: response.body, payload: { http_status: response.code })
-  rescue *Gitlab::HTTP::HTTP_ERRORS, CustomWebHookTemplateError, Zlib::DataError,
-    Gitlab::Json::LimitedEncoder::LimitExceeded, URI::InvalidURIError => e
+  rescue CustomWebHookTemplateError,
+    Gitlab::Json::LimitedEncoder::NumberLimitExceeded => e
+    log_execution(
+      response: InternalErrorResponse.new,
+      execution_duration: 0,
+      error_message: e.to_s,
+      request_data: {}
+    )
+
+    ServiceResponse.error(message: e.to_s)
+  rescue *Gitlab::HTTP::HTTP_ERRORS, Zlib::DataError,
+    Gitlab::Json::LimitedEncoder::LimitExceeded,
+    URI::InvalidURIError => e
     execution_duration = ::Gitlab::Metrics::System.monotonic_time - start_time
     error_message = e.to_s
-
-    # An exception raised while rendering the custom template prevents us from calling `#request_payload`
-    request_data = e.instance_of?(CustomWebHookTemplateError) ? {} : request_payload
 
     log_execution(
       response: InternalErrorResponse.new,
       execution_duration: execution_duration,
       error_message: error_message,
-      request_data: request_data
+      request_data: request_payload
     )
 
     Gitlab::AppLogger.error("WebHook Error after #{execution_duration.to_i.seconds}s => #{e}")
@@ -125,7 +133,8 @@ class WebHookService
         "idempotency_key" => idempotency_key
       }.compact
 
-      WebHookWorker.perform_async(hook.id, data.deep_stringify_keys, hook_name.to_s, params)
+      normalized_data = Gitlab::WebHooks.normalize_dates(data.deep_stringify_keys)
+      WebHookWorker.perform_async(hook.id, normalized_data, hook_name.to_s, params)
     end
   end
 
@@ -145,7 +154,7 @@ class WebHookService
 
   def make_request(url, basic_auth = false)
     Gitlab::HTTP.post(url,
-      body: Gitlab::Json::LimitedEncoder.encode(request_payload, limit: REQUEST_BODY_SIZE_LIMIT),
+      body: encoded_request_body,
       headers: build_custom_headers.merge(build_headers),
       verify: hook.enable_ssl_verification,
       basic_auth: basic_auth,
@@ -210,18 +219,34 @@ class WebHookService
 
   def build_headers
     @headers ||= begin
+      timestamp = Time.current.to_i.to_s
+
       headers = {
         'Content-Type' => 'application/json',
         'User-Agent' => "GitLab/#{Gitlab::VERSION}",
         'Idempotency-Key' => idempotency_key,
         Gitlab::WebHooks::GITLAB_EVENT_HEADER => self.class.hook_to_event(hook_name, hook),
         Gitlab::WebHooks::GITLAB_UUID_HEADER => SecureRandom.uuid,
-        Gitlab::WebHooks::GITLAB_INSTANCE_HEADER => Gitlab.config.gitlab.base_url
+        Gitlab::WebHooks::GITLAB_INSTANCE_HEADER => Gitlab.config.gitlab.base_url,
+        Gitlab::WebHooks::WEBHOOK_TIMESTAMP_HEADER => timestamp,
+        Gitlab::WebHooks::WEBHOOK_ID_HEADER => idempotency_key
       }
 
       headers['X-Gitlab-Token'] = Gitlab::Utils.remove_line_breaks(hook.token) if hook.token.present?
+
+      if hook.signing_token.present?
+        headers[Gitlab::WebHooks::WEBHOOK_SIGNATURE_HEADER] = build_signature(timestamp, idempotency_key)
+      end
+
       headers.merge!(Gitlab::WebHooks::RecursionDetection.header(hook))
     end
+  end
+
+  def build_signature(timestamp, message_id)
+    raw_key = Base64.strict_decode64(hook.signing_token.delete_prefix(WebHooks::Hook::SIGNING_TOKEN_PREFIX))
+    data = "#{message_id}.#{timestamp}.#{encoded_request_body}"
+    digest = OpenSSL::Digest.new('SHA256')
+    "v1,#{Base64.strict_encode64(OpenSSL::HMAC.digest(digest, raw_key, data))}"
   end
 
   def build_custom_headers(values_redacted: false)
@@ -294,7 +319,8 @@ class WebHookService
     return data unless hook.custom_webhook_template.present?
 
     start_time = Gitlab::Metrics::System.monotonic_time
-    rendered_template = render_custom_template(hook.custom_webhook_template, data.deep_stringify_keys)
+    stringified = Gitlab::WebHooks.normalize_dates(data.deep_stringify_keys)
+    rendered_template = render_custom_template(hook.custom_webhook_template, stringified)
     duration = Gitlab::Metrics::System.monotonic_time - start_time
 
     Gitlab::AppLogger.info(
@@ -302,7 +328,8 @@ class WebHookService
       hook_id: hook.id,
       duration_s: duration
     )
-    Gitlab::Json.parse(rendered_template)
+    Gitlab::Json.safe_parse(rendered_template,
+      parse_limits: WebHooks::Hook::TEMPLATE_PARSE_LIMITS) || raise_custom_webhook_template_error!('Invalid JSON')
   rescue JSON::ParserError => e
     raise_custom_webhook_template_error!(e.message)
   rescue TypeError
@@ -310,15 +337,16 @@ class WebHookService
   end
   strong_memoize_attr :request_payload
 
+  def encoded_request_body
+    Gitlab::Json::LimitedEncoder.encode(request_payload, limit: REQUEST_BODY_SIZE_LIMIT)
+  end
+  strong_memoize_attr :encoded_request_body
+
   def render_custom_template(template, params)
-    if Feature.enabled?(:custom_webhook_template_serialization, hook.parent, type: :beta)
-      template.gsub(CUSTOM_TEMPLATE_INTERPOLATION_REGEX) do
-        value = params.dig(*Regexp.last_match(1).split('.'))
-        value_json = value.to_json
-        value.is_a?(String) ? value_json[1..-2] : value_json
-      end
-    else
-      template.gsub(CUSTOM_TEMPLATE_INTERPOLATION_REGEX) { params.dig(*Regexp.last_match(1).split('.')) }
+    CUSTOM_TEMPLATE_INTERPOLATION_REGEX.replace_gsub(template) do |match|
+      value = params.dig(*match[:field].split('.'))
+      value_json = value.to_json
+      value.is_a?(String) ? value_json[1..-2] : value_json
     end
   end
 

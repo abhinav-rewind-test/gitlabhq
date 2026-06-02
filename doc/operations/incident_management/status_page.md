@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Static status page websites for communicating incident information to users.
 title: Status Page
 ---
@@ -51,7 +51,7 @@ Prerequisites:
 To provide GitLab with the AWS account information needed to push content to your Status Page:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Monitor**.
+1. In the left sidebar, select **Settings** > **Monitor**.
 1. Expand **Status page**.
 1. Select the **Active** checkbox.
 1. In the **Status Page URL** box, provide the URL for your external status page.
@@ -102,7 +102,7 @@ After creating the CI/CD variables, configure the Project you want to use for
 Incidents:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Monitor**.
+1. In the left sidebar, select **Settings** > **Monitor**.
 1. Expand **Status page**.
 1. Fill in your cloud provider's credentials and make sure to select the **Active** checkbox.
 1. Select **Save changes**.

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Remote Development
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use the Web IDE to edit multiple files in the GitLab UI, stage commits, and create merge requests.
 title: Web IDE
 ---
@@ -32,24 +32,24 @@ You can access the Web IDE through several methods.
 
 ### With a keyboard shortcut
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Use the <kbd>.</kbd> keyboard shortcut.
 
 ### From a directory
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Go to your directory.
 1. Select **Code** > **Open in Web IDE**.
 
 ### From a file
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Go to your file.
 1. Select **Edit** > **Open in Web IDE**.
 
 ### From a merge request
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Go to your merge request.
 1. In the upper right, select **Code** > **Open in Web IDE**.
 
@@ -203,7 +203,7 @@ To create a [merge request](../merge_requests/_index.md) in the Web IDE:
 1. [Commit the changes](#commit-changes).
 1. In the notification that appears in the lower right, select **Create MR**.
 
-For more information, see [View missed notifications](#view-missed-notifications).
+For more information, see [view missed notifications](#view-missed-notifications).
 
 ## Customize the Web IDE
 
@@ -220,7 +220,7 @@ To open the Command Palette and run a command in the Web IDE:
 
 ### Edit settings
 
-You can use the settings editor to view and edit your user and workspace settings.
+You can use the settings editor to view and edit your user and Web IDE workspace settings.
 To open the settings editor in the Web IDE:
 
 - On the top menu bar, select **File** > **Preferences** > **Settings**,
@@ -357,7 +357,7 @@ The [AsciiDoc](https://open-vsx.org/extension/asciidoctor/asciidoctor-vscode) ex
 
 ## Related topics
 
-- [GitLab Duo Chat (Classic) in the Web IDE](../../gitlab_duo_chat/_index.md#use-gitlab-duo-chat-in-the-web-ide)
+- [GitLab Duo Non-Agentic Chat in the Web IDE](../../gitlab_duo_chat/_index.md#use-gitlab-duo-chat-in-the-web-ide)
 
 ## Troubleshooting
 
@@ -404,7 +404,7 @@ Prerequisites:
 To update the OAuth callback URL:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Applications**.
+1. In the left sidebar, select **Applications**.
 1. For **GitLab Web IDE**, select **Edit**.
 1. Enter the OAuth callback URL.
    You can enter multiple URLs separated by newlines.
@@ -456,7 +456,7 @@ GitLab API endpoints (`/api/*`) must include the following HTTP response headers
 | `Access-Control-Allow-Headers` | `Authorization` | Permits the Authorization header in cross-origin requests. |
 | `Access-Control-Allow-Methods` | `GET, POST, PUT, DELETE, OPTIONS` | Specifies allowed HTTP methods (recommended). |
 | `Access-Control-Allow-Credentials` | `false` | The Web IDE does not need to include credentials controlled by this [header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Credentials) in HTTP requests. |
-| `Access-Control-Expose-Headers` | `Link, X-Total, X-Total-Pages, X-Per-Page, X-Page, X-Next-Page, X-Prev-Page, X-Gitlab-Blob-Id, X-Gitlab-Commit-Id, X-Gitlab-Content-Sha256, X-Gitlab-Encoding, X-Gitlab-File-Name, X-Gitlab-File-Path, X-Gitlab-Last-Commit-Id X-Gitlab-Ref, X-Gitlab-Size, X-Request-Id, ETag` | Headers used by GitLab Rest and GraphQL APIs. |
+| `Access-Control-Expose-Headers` | `Link, X-Total, X-Total-Pages, X-Per-Page, X-Page, X-Next-Page, X-Prev-Page, X-Gitlab-Blob-Id, X-Gitlab-Commit-Id, X-Gitlab-Content-Sha256, X-Gitlab-Encoding, X-Gitlab-File-Name, X-Gitlab-File-Path, X-Gitlab-Last-Commit-Id X-Gitlab-Ref, X-Gitlab-Size, X-Request-Id, ETag, X-Streaming-Format` | Headers used by GitLab Rest and GraphQL APIs. |
 | `Vary` | `Origin` | Ensures proper caching behavior for CORS responses. |
 
 The Web IDE dynamically generates the subdomain portion of the extension host domain. Ensure that
@@ -485,4 +485,4 @@ with the following information:
 - How often the problem occurs
 - Steps to reproduce the problem
 
-If you're on a paid tier, you can also [contact Support](https://about.gitlab.com/support/#contact-support) for help.
+If you're on a paid tier, you can also [contact Support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#contact-support) for help.

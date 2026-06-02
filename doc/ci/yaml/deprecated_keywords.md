@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Deprecated keywords
 ---
 
@@ -40,7 +40,7 @@ default:
 You can use `only` and `except` to control when to add jobs to pipelines.
 
 - Use `only` to define when a job runs.
-- Use `except` to define when a job **does not** run.
+- Use `except` to define when a job does not run.
 
 ### `only:refs` / `except:refs`
 

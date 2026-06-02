@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Configure SSH key restrictions
 ---
@@ -33,7 +33,7 @@ Prerequisites:
 To configure SSH key restrictions:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General** .
+1. In the left sidebar, select **Settings** > **General** .
 1. Expand **Visibility and access controls** and set your desired values for each key type:
    - **RSA SSH keys**.
    - **DSA SSH keys**.

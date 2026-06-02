@@ -2,7 +2,6 @@
 
 query getIncidents(
   $projectPath: ID!
-  $issueTypes: [IssueType!]
   $sort: IssueSort
   $status: IssuableState
   $firstPageSize: Int
@@ -12,12 +11,12 @@ query getIncidents(
   $searchTerm: String = ""
   $authorUsername: String = ""
   $assigneeUsername: String = ""
+  $workItemTypeIds: [WorkItemsTypeID!]
 ) {
   project(fullPath: $projectPath) {
     id
     issues(
       search: $searchTerm
-      types: $issueTypes
       sort: $sort
       state: $status
       authorUsername: $authorUsername
@@ -26,6 +25,7 @@ query getIncidents(
       last: $lastPageSize
       after: $nextPageCursor
       before: $prevPageCursor
+      workItemTypeIds: $workItemTypeIds
     ) {
       nodes {
         id

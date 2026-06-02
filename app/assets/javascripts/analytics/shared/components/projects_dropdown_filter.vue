@@ -1,17 +1,15 @@
 <script>
 import { GlButton, GlIcon, GlAvatar, GlCollapsibleListbox, GlTruncate } from '@gitlab/ui';
-import { debounce, unionBy } from 'lodash';
-import { filterBySearchTerm } from '~/analytics/shared/utils';
+import { debounce, unionBy } from 'lodash-es';
+import { filterBySearchTerm, mapItemToListboxFormat } from '~/analytics/shared/utils';
+import { MIN_SEARCH_CHARS } from '~/analytics/shared/constants';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { AVATAR_SHAPE_OPTION_RECT } from '~/vue_shared/constants';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
-import { n__, __ } from '~/locale';
+import { sprintf, s__, __ } from '~/locale';
 import getProjects from '../graphql/projects.query.graphql';
 
-const MIN_SEARCH_CHARS = 3;
-
 const sortByProjectName = (projects = []) => projects.sort((a, b) => a.name.localeCompare(b.name));
-const mapItemToListboxFormat = (item) => ({ ...item, value: item.id, text: item.name });
 
 export default {
   name: 'ProjectsDropdownFilter',
@@ -52,7 +50,13 @@ export default {
       required: false,
       default: '',
     },
+    disabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
+  emits: ['selected'],
   data() {
     return {
       loading: true,
@@ -68,11 +72,9 @@ export default {
         return this.selectedProjects[0].name;
       }
       if (this.selectedProjects.length > 1) {
-        return n__(
-          'CycleAnalytics|Project selected',
-          'CycleAnalytics|%d projects selected',
-          this.selectedProjects.length,
-        );
+        return sprintf(s__('CycleAnalytics|%{count} projects selected'), {
+          count: this.selectedProjects.length,
+        });
       }
 
       return this.selectedProjectsPlaceholder;
@@ -131,9 +133,12 @@ export default {
     defaultProjects(projects) {
       this.selectedProjects = [...projects];
     },
+    disabled(isDisabled) {
+      if (!isDisabled) this.search();
+    },
   },
   mounted() {
-    this.search();
+    if (!this.disabled) this.search();
   },
   methods: {
     handleUpdatedSelectedProjects() {
@@ -239,6 +244,7 @@ export default {
     :no-results-text="__('No matching results')"
     :selected="selectedListBoxItems"
     :searching="loading"
+    :disabled="disabled"
     searchable
     @hidden="onHide"
     @reset="onClearAll"
@@ -248,6 +254,7 @@ export default {
     <template #toggle>
       <gl-button
         :loading="loadingDefaultProjects"
+        :disabled="disabled"
         button-text-classes="gl-w-full gl-justify-between gl-flex gl-shadow-none gl-mb-0"
         :class="['dropdown-projects', toggleClasses]"
       >
@@ -258,7 +265,7 @@ export default {
           :entity-name="selectedProjects[0].name"
           :size="16"
           :shape="$options.AVATAR_SHAPE_OPTION_RECT"
-          :alt="selectedProjects[0].name"
+          :alt="''"
           class="gl-mr-2 gl-inline-flex gl-shrink-0 gl-align-middle"
         />
         <gl-truncate :text="selectedProjectsLabel" class="gl-min-w-0 gl-grow" />

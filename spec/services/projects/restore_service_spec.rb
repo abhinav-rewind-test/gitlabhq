@@ -3,8 +3,6 @@
 require 'spec_helper'
 
 RSpec.describe Projects::RestoreService, feature_category: :groups_and_projects do
-  include Namespaces::StatefulHelpers
-
   let_it_be(:user) { create(:user, :with_namespace) }
 
   subject(:execute) { described_class.new(project, user).execute }
@@ -18,19 +16,17 @@ RSpec.describe Projects::RestoreService, feature_category: :groups_and_projects 
           :aimed_for_deletion,
           path: "project-1-#{suffix}-177483",
           name: "Project1 Name-#{suffix}-177483",
-          namespace: user.namespace,
-          archived: true
+          namespace: user.namespace
         )
       end
 
-      it 'marks project as unarchived and not marked for deletion' do
+      it 'marks project as not marked for deletion' do
         expect(Namespaces::ScheduleAggregationWorker).to receive(:perform_async)
           .with(project.namespace.id).and_call_original
 
         execute
 
         expect(Project.unscoped.all).to include(project)
-        expect(project.archived).to be(false)
         expect(project).not_to be_self_deletion_scheduled
         expect(project.self_deletion_scheduled_deletion_created_on).to be_nil
         expect(project.deleting_user).to be_nil
@@ -86,8 +82,7 @@ RSpec.describe Projects::RestoreService, feature_category: :groups_and_projects 
             :repository,
             namespace: user.namespace,
             marked_for_deletion_at: 1.day.ago,
-            deleting_user: user,
-            archived: true
+            deleting_user: user
           )
         end
 
@@ -102,13 +97,13 @@ RSpec.describe Projects::RestoreService, feature_category: :groups_and_projects 
 
       context 'when project_namespace state is deletion_scheduled' do
         before do
-          set_state(project.project_namespace, :deletion_scheduled)
+          project.project_namespace.update!(state: :deletion_scheduled)
         end
 
         it 'changes the state of the project' do
           expect { execute }.to change { project.project_namespace.state }
-            .from(Namespaces::Stateful::STATES[:deletion_scheduled])
-            .to(Namespaces::Stateful::STATES[:ancestor_inherited])
+            .from('deletion_scheduled')
+            .to('ancestor_inherited')
         end
       end
 
@@ -156,8 +151,7 @@ RSpec.describe Projects::RestoreService, feature_category: :groups_and_projects 
         :repository,
         :aimed_for_deletion,
         path: "project-1-deletion_scheduled-177483",
-        name: "Project1 Name-deletion_scheduled-177483",
-        archived: true
+        name: "Project1 Name-deletion_scheduled-177483"
       )
     end
 

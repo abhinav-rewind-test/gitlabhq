@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Control the job concurrency in GitLab CI/CD
 title: Resource group
 ---
@@ -337,4 +337,4 @@ To get job information from the GraphQL API:
 - How often the problem occurs.
 - Steps to reproduce the problem.
 
-  You can also [contact support](https://about.gitlab.com/support/#contact-support) for further assistance, or to get in touch with the development team.
+  You can also [contact support](https://support.gitlab.com/hc/en-us/articles/11626483177756-GitLab-Support#contact-support) for further assistance, or to get in touch with the development team.

@@ -14,11 +14,15 @@ module QA
 
       it(
         'can delete a page',
+        quarantine: {
+          issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/work_items/41029',
+          type: :stale,
+          only: { subdomain: :staging }
+        },
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347815') do
         initial_wiki.visit!
 
-        Page::Project::Wiki::Show.perform(&:click_edit)
-        Page::Project::Wiki::Edit.perform(&:delete_page)
+        Page::Project::Wiki::Show.perform(&:delete_page)
 
         Page::Project::Wiki::Show.perform do |wiki|
           expect(wiki).to have_no_page
@@ -27,6 +31,10 @@ module QA
 
       it(
         'can delete a page with spaces in the path',
+        quarantine: {
+          issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/work_items/41030',
+          type: :stale
+        },
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/442389') do
         Resource::Repository::WikiPush.fabricate! do |push|
           push.file_name = "#{new_wiki_page_with_spaces_in_the_path}.md"
@@ -36,10 +44,10 @@ module QA
           push.new_branch = false
         end.visit!
 
-        Page::Project::Wiki::Show.perform(&:click_edit)
-        Page::Project::Wiki::Edit.perform(&:delete_page)
+        Page::Project::Wiki::Show.perform(&:delete_page)
 
         Page::Project::Wiki::Show.perform do |wiki|
+          expect(wiki).to have_title("Home")
           wiki.expand_sidebar_if_collapsed
           expect(wiki).to have_page_listed("Home")
           expect(wiki).not_to have_page_listed(new_wiki_page_with_spaces_in_the_path)

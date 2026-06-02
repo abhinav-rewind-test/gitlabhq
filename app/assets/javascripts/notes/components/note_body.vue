@@ -1,5 +1,5 @@
 <script>
-import { escape } from 'lodash';
+import { escape } from 'lodash-es';
 import { mapState, mapActions } from 'pinia';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { __, sprintf } from '~/locale';
@@ -71,6 +71,7 @@ export default {
       default: false,
     },
   },
+  emits: ['cancelForm', 'handleFormUpdate'],
   computed: {
     ...mapState(useLegacyDiffs, ['suggestionCommitMessage']),
     ...mapState(useMrNotes, ['failedToLoadMetadata']),
@@ -230,6 +231,7 @@ export default {
     <div v-else v-safe-html:[$options.safeHtmlConfig]="note.note_html" class="note-text md"></div>
     <duo-code-review-feedback
       v-if="isDuoFirstReviewComment && !isDiffNote"
+      :duo-session-url="note.duo_session_url"
       class="gl-mt-3"
       data-testid="code-review-feedback"
     />

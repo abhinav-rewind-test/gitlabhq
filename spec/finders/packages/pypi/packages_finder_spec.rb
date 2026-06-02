@@ -6,7 +6,7 @@ RSpec.describe Packages::Pypi::PackagesFinder, feature_category: :package_regist
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, group: group) }
-  let_it_be(:project2) { create(:project, group: group) }
+  let_it_be(:project2, freeze: false) { create(:project, group: group) }
   let_it_be(:package1) { create(:pypi_package, project: project) }
   let_it_be(:package2) { create(:pypi_package, project: project) }
   let_it_be(:package3) { create(:pypi_package, name: package2.name, project: project) }
@@ -49,7 +49,7 @@ RSpec.describe Packages::Pypi::PackagesFinder, feature_category: :package_regist
         it { expect(subject).to be_empty }
 
         context 'user with access to only one project' do
-          before do
+          before_all do
             project2.add_developer(user)
           end
 
@@ -59,7 +59,7 @@ RSpec.describe Packages::Pypi::PackagesFinder, feature_category: :package_regist
           it_behaves_like 'when package_name param is a non-normalized name'
 
           context 'user with access to multiple projects' do
-            before do
+            before_all do
               project.add_developer(user)
             end
 
@@ -86,14 +86,14 @@ RSpec.describe Packages::Pypi::PackagesFinder, feature_category: :package_regist
         let(:scope) { group }
 
         context 'user with access to only one project' do
-          before do
+          before_all do
             project2.add_developer(user)
           end
 
           it { is_expected.to contain_exactly(package4) }
 
           context 'user with access to multiple projects' do
-            before do
+            before_all do
               project.add_developer(user)
             end
 

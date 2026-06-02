@@ -1,8 +1,9 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting a GitLab installation
+description: Troubleshooting a GitLab installation.
 ---
 
 {{< details >}}
@@ -40,7 +41,7 @@ The GitLab Support Team has collected a lot of information about troubleshooting
 The following documents are used by the Support Team or by customers
 with direct guidance from a Support Team member. GitLab administrators may find the
 information useful for troubleshooting. However, if you are experiencing trouble with your
-GitLab instance, you should check your [support options](https://about.gitlab.com/support/)
+GitLab instance, you should check your [support options](https://support.gitlab.com/)
 before referring to these documents.
 
 > [!warning]

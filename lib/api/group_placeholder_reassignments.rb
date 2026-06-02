@@ -10,7 +10,6 @@ module API
 
     before do
       authenticate!
-      forbidden! unless can?(current_user, :owner_access, user_group)
     end
 
     feature_category :importers
@@ -20,11 +19,15 @@ module API
     end
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'Download the list of pending placeholder assignments for a group' do
-        detail 'This feature was added in GitLab 17.10'
+        detail 'Downloads a CSV file of pending placeholder assignments for a group.
+          This feature was added in GitLab 17.10'
         success code: 200
+        tags ['groups']
       end
       route_setting :authorization, permissions: :read_placeholder_reassignment, boundary_type: :group
       get ':id/placeholder_reassignments' do
+        authorize! :read_placeholder_reassignment, user_group
+
         csv_response = Import::SourceUsers::GenerateCsvService.new(user_group, current_user: current_user).execute
 
         if csv_response.success?
@@ -41,10 +44,14 @@ module API
       end
 
       desc 'Workhorse authorization for the reassignment CSV file' do
-        detail 'This feature was introduced in GitLab 17.10'
+        detail 'Authorizes Workhorse to handle CSV file uploads for placeholder reassignments.
+          This feature was introduced in GitLab 17.10'
+        tags ['groups']
       end
-      route_setting :authorization, permissions: :authorize_placeholder_reassignment, boundary_type: :group
+      route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
       post ':id/placeholder_reassignments/authorize' do
+        authorize! :create_placeholder_reassignment, user_group
+
         require_gitlab_workhorse!
 
         status 200
@@ -56,6 +63,10 @@ module API
         )
       end
 
+      desc 'Upload placeholder reassignments CSV file' do
+        detail 'Uploads a CSV file containing placeholder reassignments for a group'
+        tags ['groups']
+      end
       params do
         requires :file,
           type: ::API::Validations::Types::WorkhorseFile,
@@ -64,6 +75,8 @@ module API
       end
       route_setting :authorization, permissions: :create_placeholder_reassignment, boundary_type: :group
       post ':id/placeholder_reassignments' do
+        authorize! :create_placeholder_reassignment, user_group
+
         require_gitlab_workhorse!
 
         unless csv_upload_params[:file].original_filename.ends_with?('.csv')

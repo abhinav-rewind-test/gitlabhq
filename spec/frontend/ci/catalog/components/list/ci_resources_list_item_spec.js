@@ -1,4 +1,4 @@
-import { update, cloneDeep } from 'lodash';
+import { update, cloneDeep } from 'lodash-es';
 import { GlAvatar, GlBadge, GlSprintf, GlTruncate } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createRouter } from '~/ci/catalog/router/index';
@@ -25,7 +25,7 @@ describe('CiResourcesListItem', () => {
 
   const resource = catalogSinglePageResponse.data.ciCatalogResources.nodes[0];
   const release = {
-    author: { id: 'author-id', name: 'author', username: 'author-username', webUrl: '/user/1' },
+    author: { id: 'author-id', name: 'author', username: 'author-username', webPath: '/user/1' },
     createdAt: Date.now(),
     name: '1.0.0',
   };
@@ -274,7 +274,7 @@ describe('CiResourcesListItem', () => {
 
       it('renders the user link', () => {
         expect(findUserLink().exists()).toBe(true);
-        expect(findUserLink().attributes('href')).toBe(release.author.webUrl);
+        expect(findUserLink().attributes('href')).toBe(release.author.webPath);
       });
 
       it('the user link has the correct attributes', () => {
@@ -282,7 +282,7 @@ describe('CiResourcesListItem', () => {
           'data-name': release.author.name,
           'data-username': release.author.username,
           'data-testid': 'user-link',
-          href: release.author.webUrl,
+          href: release.author.webPath,
           class: 'js-user-link',
         });
       });

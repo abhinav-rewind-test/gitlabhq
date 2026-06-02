@@ -19,7 +19,10 @@ module API
             authorize_by_unleash_instance_id!
           end
 
-          route_setting :authorization, skip_granular_token_authorization: true
+          route_setting :authorization, skip_granular_token_authorization: :unleash_token_auth
+          desc 'Get Unleash features' do
+            tags unleash_tags
+          end
           get do
             # not supported yet
             status :ok
@@ -31,7 +34,7 @@ module API
             tags unleash_tags
             deprecated true
           end
-          route_setting :authorization, skip_granular_token_authorization: true
+          route_setting :authorization, skip_granular_token_authorization: :unleash_token_auth
           get 'features', urgency: :low do
             present_feature_flags
           end
@@ -40,18 +43,24 @@ module API
             is_array true
             tags unleash_tags
           end
-          route_setting :authorization, skip_granular_token_authorization: true
+          route_setting :authorization, skip_granular_token_authorization: :unleash_token_auth
           get 'client/features', urgency: :medium do
             present_feature_flags
           end
 
-          route_setting :authorization, skip_granular_token_authorization: true
+          desc 'Register Unleash client' do
+            tags unleash_tags
+          end
+          route_setting :authorization, skip_granular_token_authorization: :unleash_token_auth
           post 'client/register' do
             # not supported yet
             status :ok
           end
 
-          route_setting :authorization, skip_granular_token_authorization: true
+          desc 'Report Unleash client metrics' do
+            tags unleash_tags
+          end
+          route_setting :authorization, skip_granular_token_authorization: :unleash_token_auth
           post 'client/metrics', urgency: :low do
             # not supported yet
             status :ok

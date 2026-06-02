@@ -12,13 +12,13 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
   let_it_be(:group_organization) { current_organization }
   let_it_be_with_refind(:group) { create_default(:group, :public, organization: group_organization) }
   let_it_be_with_refind(:project) { create(:project, namespace: group) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:admin_with_admin_mode) { create(:admin) }
   let_it_be(:admin_without_admin_mode) { create(:admin) }
-  let_it_be(:group_member) { create(:group_member, group: group, user: user) }
-  let_it_be(:owner) { group.add_owner(create(:user)).user }
+  let_it_be(:group_member, freeze: false) { create(:group_member, group: group, user: user) }
+  let_it_be(:owner, freeze: false) { group.add_owner(create(:user)).user }
   let_it_be(:maintainer) { group.add_maintainer(create(:user)).user }
-  let_it_be(:developer) { group.add_developer(create(:user)).user }
+  let_it_be(:developer, freeze: false) { group.add_developer(create(:user)).user }
   let_it_be(:guest) { group.add_guest(create(:user)).user }
 
   before_all do
@@ -181,8 +181,6 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
     let(:format) { :html }
 
     subject { get :details, params: { id: group.to_param }, format: format }
-
-    it { is_expected.to redirect_to(group_path(group)) }
 
     it_behaves_like 'details view as atom'
   end
@@ -464,26 +462,19 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
         sign_in(user)
       end
 
-      context 'when user has ability to write update_default_branch_protection' do
-        before do
-          allow(Ability).to receive(:allowed?).and_call_original
-          allow(Ability).to receive(:allowed?).with(user, :update_default_branch_protection, an_instance_of(Group)).and_return(true)
+      context 'for users who have the ability to create a group with `default_branch_protection_defaults`' do
+        it 'creates group with the specified default branch protection level' do
+          post :create, params: { group: { name: 'new_group', path: 'new_group', default_branch_protected: "true", default_branch_protection_defaults: protection_defaults } }, as: :json
+
+          expect(response).to have_gitlab_http_status(:found)
+          expect(Group.last.default_branch_protection_defaults).to eq(::Gitlab::Access::BranchProtection.protected_against_developer_pushes.stringify_keys)
         end
 
-        context 'for users who have the ability to create a group with `default_branch_protection_defaults`' do
-          it 'creates group with the specified default branch protection level' do
-            post :create, params: { group: { name: 'new_group', path: 'new_group', default_branch_protected: "true", default_branch_protection_defaults: protection_defaults } }, as: :json
+        it 'ignores default_branch_protection_defaults if default_branch_protected is set to false' do
+          post :create, params: { group: { name: 'new_group', path: 'new_group', default_branch_protected: "false", default_branch_protection_defaults: protection_defaults } }, as: :json
 
-            expect(response).to have_gitlab_http_status(:found)
-            expect(Group.last.default_branch_protection_defaults).to eq(::Gitlab::Access::BranchProtection.protected_against_developer_pushes.stringify_keys)
-          end
-
-          it 'ignores default_branch_protection_defaults if default_branch_protected is set to false' do
-            post :create, params: { group: { name: 'new_group', path: 'new_group', default_branch_protected: "false", default_branch_protection_defaults: protection_defaults } }, as: :json
-
-            expect(response).to have_gitlab_http_status(:found)
-            expect(Group.last.default_branch_protection_defaults).to eq(::Gitlab::Access::BranchProtection.protection_none.stringify_keys)
-          end
+          expect(response).to have_gitlab_http_status(:found)
+          expect(Group.last.default_branch_protection_defaults).to eq(::Gitlab::Access::BranchProtection.protection_none.stringify_keys)
         end
       end
 
@@ -540,31 +531,16 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
       expect(user.reload.user_preference.issues_sort).to eq('priority')
     end
 
-    context 'when work_item_planning_view feature flag is enabled' do
-      it 'redirects to work items path without type filter in FOSS' do
-        get :issues, params: { id: group.to_param }
+    it 'redirects to work items path without type filter in FOSS' do
+      get :issues, params: { id: group.to_param }
 
-        expect(response).to redirect_to(group_work_items_path(group))
-      end
-
-      it 'preserves query parameters except type when redirecting' do
-        get :issues, params: { id: group.to_param, search: 'bug', sort: 'created_desc', type: 'old_type' }
-
-        expect(response).to redirect_to(group_work_items_path(group, params: { search: 'bug', sort: 'created_desc' }))
-      end
+      expect(response).to redirect_to(group_work_items_path(group))
     end
 
-    context 'when work_item_planning_view feature flag is disabled' do
-      before do
-        stub_feature_flags(work_item_planning_view: false)
-      end
+    it 'preserves query parameters except type when redirecting' do
+      get :issues, params: { id: group.to_param, search: 'bug', sort: 'created_desc', type: 'old_type' }
 
-      it 'renders the issues page' do
-        get :issues, params: { id: group.to_param }
-
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(response).to render_template 'groups/issues'
-      end
+      expect(response).to redirect_to(group_work_items_path(group, params: { search: 'bug', sort: 'created_desc' }))
     end
   end
 
@@ -594,7 +570,7 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
     subject { delete :destroy, format: format, params: { id: group.to_param, **params } }
 
     context 'when authenticated user can admin the group' do
-      let_it_be(:user) { owner }
+      let_it_be(:user, freeze: false) { owner }
 
       before do
         sign_in(user)
@@ -612,10 +588,10 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
         end
 
         context 'for a html request' do
-          it 'redirects to group path' do
+          it 'redirects to groups dashboard' do
             subject
 
-            expect(response).to redirect_to(group_path(group.reload))
+            expect(response).to redirect_to(dashboard_groups_path)
           end
         end
 
@@ -670,40 +646,13 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
         context 'when permanently_remove param is set' do
           let(:params) { { permanently_remove: true } }
 
-          describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
-            before do
-              stub_application_setting(allow_immediate_namespaces_deletion: false)
-            end
-
-            it 'returns error' do
-              Sidekiq::Testing.fake! do
-                expect { subject }.not_to change { GroupDestroyWorker.jobs.size }
-              end
-
-              expect(response).to have_gitlab_http_status(:not_found)
-            end
-          end
-
-          context 'when current user is an admin' do
-            let_it_be(:user) { admin_with_admin_mode }
-
-            it 'deletes the group immediately and redirects to root path' do
-              expect(GroupDestroyWorker).to receive(:perform_async)
-
-              subject
-
-              expect(response).to redirect_to(root_path)
-              expect(flash[:toast]).to include "#{group.name} is being deleted."
-            end
-          end
-
           context 'for a html request' do
-            it 'deletes the group immediately and redirects to root path' do
+            it 'deletes the group immediately and redirects to groups dashboard' do
               expect(GroupDestroyWorker).to receive(:perform_async)
 
               subject
 
-              expect(response).to redirect_to(root_path)
+              expect(response).to redirect_to(dashboard_groups_path)
               expect(flash[:toast]).to include "#{group.name} is being deleted."
             end
           end
@@ -754,11 +703,7 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
   end
 
   describe 'POST #restore' do
-    let_it_be(:group) do
-      create(:group_with_deletion_schedule,
-        marked_for_deletion_on: 1.day.ago,
-        deleting_user: user)
-    end
+    let_it_be(:group, freeze: false) { create(:group, :deletion_scheduled) }
 
     subject { post :restore, params: { group_id: group.to_param } }
 
@@ -1002,6 +947,50 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
     end
   end
 
+  describe 'updating :enforce_granular_tokens and :granular_tokens_enforced_after' do
+    let(:settings) { group.namespace_settings }
+
+    subject(:update_group) do
+      put :update, params: {
+        id: group.to_param,
+        group: {
+          enforce_granular_tokens: true,
+          granular_tokens_enforced_after: Date.current.to_s
+        }
+      }
+    end
+
+    before do
+      sign_in(user)
+    end
+
+    context 'when user is a group owner' do
+      before do
+        group.add_owner(user)
+      end
+
+      it 'updates the attributes' do
+        update_group
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(settings.reload.enforce_granular_tokens).to be(true)
+        expect(settings.granular_tokens_enforced_after).to eq(Date.current)
+      end
+    end
+
+    context 'when not a group owner' do
+      before do
+        group.add_maintainer(user)
+      end
+
+      it 'does not update the attributes' do
+        expect { update_group }.not_to change { settings.reload.enforce_granular_tokens }
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+  end
+
   describe '#ensure_canonical_path' do
     before do
       sign_in(user)
@@ -1202,6 +1191,7 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
   describe 'PUT transfer' do
     before do
       sign_in(user)
+      stub_feature_flags(groups_and_projects_async_transfer: false)
     end
 
     context 'when transferring to a subgroup goes right' do
@@ -1249,7 +1239,14 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
       let!(:new_parent_group_member) { create(:group_member, :owner, group: new_parent_group, user: user) }
 
       before do
-        allow_any_instance_of(::Groups::TransferService).to receive(:proceed_to_transfer).and_raise(Gitlab::UpdatePathError, 'namespace directory cannot be moved')
+        # `proceed_to_transfer` is overridden in the prepended EE module
+        # (EE::Groups::TransferService), so `allow_any_instance_of` can't
+        # see it on the base class. Use `expect_next_instance_of` which
+        # walks the prepended chain correctly.
+        expect_next_instance_of(::Groups::TransferService) do |svc|
+          allow(svc).to receive(:proceed_to_transfer)
+            .and_raise(Gitlab::UpdatePathError, 'namespace directory cannot be moved')
+        end
 
         put :transfer,
           params: {
@@ -1325,6 +1322,133 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
       it 'does not allow the group to be transferred' do
         expect(controller).to set_flash[:alert].to match(/Docker images in their container registry/)
         expect(response).to redirect_to(edit_group_path(group))
+      end
+    end
+
+    context 'when groups_and_projects_async_transfer feature flag is enabled' do
+      let(:group) { create(:group, :public) }
+      let(:new_parent_group) { create(:group, :public) }
+
+      before do
+        stub_feature_flags(groups_and_projects_async_transfer: true)
+        group.add_owner(user)
+        new_parent_group.add_owner(user)
+      end
+
+      context 'when transferring to a new parent group' do
+        it 'enqueues the async transfer worker and redirects' do
+          expect(Namespaces::Groups::TransferWorker).to receive(:perform_async).with(
+            group.id,
+            new_parent_group.id,
+            user.id
+          )
+
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: new_parent_group.id
+            }
+
+          expect(response).to redirect_to(group_path(group))
+        end
+
+        it 'transitions the group to transfer_scheduled state' do
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: new_parent_group.id
+            }
+
+          expect(group.reload.state).to eq('transfer_scheduled')
+        end
+
+        it 'stores transfer metadata in state_metadata' do
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: new_parent_group.id
+            }
+
+          metadata = group.reload.state_metadata
+          expect(metadata['transfer_target_parent_id']).to eq(new_parent_group.id)
+          expect(metadata['transfer_scheduled_by_user_id']).to eq(user.id)
+          expect(metadata['transfer_scheduled_at']).to be_present
+        end
+      end
+
+      context 'when transferring to root (no parent group)' do
+        let(:group) { create(:group, :public, :nested) }
+
+        before do
+          group.add_owner(user)
+        end
+
+        it 'enqueues the worker with nil parent group id' do
+          expect(Namespaces::Groups::TransferWorker).to receive(:perform_async).with(
+            group.id,
+            nil,
+            user.id
+          )
+
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: ''
+            }
+
+          expect(response).to redirect_to(group_path(group))
+        end
+
+        it 'stores nil transfer_target_parent_id in state_metadata' do
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: ''
+            }
+
+          expect(group.reload.state_metadata['transfer_target_parent_id']).to be_nil
+        end
+      end
+
+      context 'when the state transition fails' do
+        before do
+          group.update_column(:state, Group.states[:creation_in_progress])
+        end
+
+        it 'does not enqueue the worker and shows an error with last_error fallback' do
+          expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: new_parent_group.id
+            }
+
+          expect(flash[:alert]).to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
+          expect(response).to redirect_to(edit_group_path(group))
+        end
+      end
+
+      context 'when the group is already in transfer_scheduled state with an active worker' do
+        before do
+          group.schedule_transfer!(transition_user: user)
+          Gitlab::ExclusiveLease.new(
+            Namespaces::Groups::TransferWorker.lease_key(group.id), timeout: 30.minutes
+          ).try_obtain
+        end
+
+        it 'does not enqueue the worker and shows an error' do
+          expect(Namespaces::Groups::TransferWorker).not_to receive(:perform_async)
+
+          put :transfer,
+            params: {
+              id: group.to_param,
+              new_parent_group_id: new_parent_group.id
+            }
+
+          expect(flash[:alert]).to eq('Unable to initiate transfer. The group may already have a transfer in progress.')
+          expect(response).to redirect_to(edit_group_path(group))
+        end
       end
     end
   end
@@ -1605,10 +1729,6 @@ RSpec.describe GroupsController, factory_default: :keep, feature_category: :code
     end
 
     describe 'GET #issues' do
-      before do
-        stub_feature_flags(work_item_planning_view: false)
-      end
-
       subject { get :issues, params: { id: group.to_param } }
 
       it_behaves_like 'disabled when using an external authorization service'

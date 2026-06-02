@@ -9,15 +9,15 @@ import {
   GlLink,
   GlMultiStepFormTemplate,
 } from '@gitlab/ui';
-import axios from '~/lib/utils/axios_utils';
 import csrf from '~/lib/utils/csrf';
 import { visitUrl, isReasonableGitUrl } from '~/lib/utils/url_utility';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { s__, sprintf } from '~/locale';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import SharedProjectCreationFields from './shared_project_creation_fields.vue';
+import { checkRepositoryConnection } from './utils';
 
 export default {
+  name: 'ImportByUrlForm',
   components: {
     SharedProjectCreationFields,
     GlButton,
@@ -29,7 +29,6 @@ export default {
     GlLink,
     GlMultiStepFormTemplate,
   },
-  mixins: [glFeatureFlagsMixin()],
   inject: {
     importByUrlValidatePath: {
       default: null,
@@ -47,8 +46,7 @@ export default {
   props: {
     namespace: {
       type: Object,
-      required: false,
-      default: () => ({}),
+      required: true,
     },
   },
 
@@ -57,54 +55,52 @@ export default {
       repositoryUrl: '',
       repositoryUsername: '',
       repositoryPassword: '',
-      isRepositoryUrlValid: null,
       repositoryMirror: false,
       isCheckingConnection: false,
+      urlValidationState: null,
+      isProjectPathValid: false,
     };
   },
   computed: {
-    isImportByUrlNewPage() {
-      return this.glFeatures.importByUrlNewPage;
-    },
-    currentStep() {
-      return this.isImportByUrlNewPage ? null : 3;
+    isSubmitDisabled() {
+      return this.urlValidationState !== true || !this.isProjectPathValid;
     },
   },
   methods: {
     async checkConnection() {
-      this.isRepositoryUrlValid = isReasonableGitUrl(this.repositoryUrl);
-      if (!this.isRepositoryUrlValid) return;
-
       this.isCheckingConnection = true;
-      try {
-        const { data } = await axios.post(this.importByUrlValidatePath, {
-          url: this.repositoryUrl,
-          user: this.repositoryUsername,
-          password: this.repositoryPassword,
-        });
 
-        if (data.success) {
-          this.$toast.show(s__('ProjectImportByURL|Connection successful.'));
-        } else {
-          this.$toast.show(
-            sprintf(s__('ProjectImportByURL|Connection failed: %{error}'), { error: data.message }),
-          );
-        }
-      } catch (error) {
-        this.$toast.show(sprintf(s__('ProjectImportByURL|Connection failed: %{error}'), { error }));
-      } finally {
+      const result = await checkRepositoryConnection(this.importByUrlValidatePath, {
+        url: this.repositoryUrl,
+        user: this.repositoryUsername,
+        password: this.repositoryPassword,
+      });
+
+      if (!result.isValid) {
         this.isCheckingConnection = false;
+        this.urlValidationState = false;
+        return;
       }
-    },
-    onSelectNamespace(newNamespace) {
-      this.$emit('onSelectNamespace', newNamespace);
+
+      const message = result.success
+        ? s__('ProjectImportByURL|Connection successful.')
+        : sprintf(s__('ProjectImportByURL|Connection failed: %{error}'), { error: result.message });
+
+      this.$toast.show(message);
+      this.isCheckingConnection = false;
     },
     onBack() {
-      if (this.isImportByUrlNewPage) {
-        visitUrl(this.newProjectPath);
-      } else {
-        this.$emit('back');
-      }
+      visitUrl(this.newProjectPath);
+    },
+    onBlur() {
+      this.urlValidationState =
+        this.repositoryUrl === '' ? null : isReasonableGitUrl(this.repositoryUrl);
+    },
+    onInput() {
+      this.urlValidationState = null;
+    },
+    onProjectFieldsValidate(val) {
+      this.isProjectPathValid = val;
     },
   },
   csrf,
@@ -118,16 +114,13 @@ export default {
 <template>
   <gl-form method="post" :action="newProjectFormPath">
     <input :value="$options.csrf.token" type="hidden" name="authenticity_token" />
-    <gl-multi-step-form-template
-      :title="s__('ProjectImportByURL|Import repository by URL')"
-      :current-step="currentStep"
-    >
+    <gl-multi-step-form-template :title="s__('ProjectImportByURL|Import repository by URL')">
       <template #default>
         <gl-form-group
           :label="__('Git repository URL')"
           label-for="repository-url"
           :invalid-feedback="s__('ProjectImportByURL|Enter a valid URL')"
-          :state="isRepositoryUrlValid"
+          :state="urlValidationState"
           data-testid="repository-url-form-group"
           :label-description="
             s__(
@@ -138,14 +131,16 @@ export default {
           <gl-form-input-group>
             <gl-form-input
               id="repository-url"
-              v-model="repositoryUrl"
+              v-model.trim="repositoryUrl"
               name="project[import_url]"
               autocomplete="off"
               data-testid="repository-url"
               type="url"
               required
-              :state="isRepositoryUrlValid"
+              :state="urlValidationState"
               :placeholder="$options.repositoryUrlPlaceholder"
+              @blur="onBlur"
+              @input="onInput"
             />
             <template #append>
               <gl-button
@@ -203,28 +198,19 @@ export default {
 
         <shared-project-creation-fields
           :namespace="namespace"
-          @onSelectNamespace="onSelectNamespace"
+          @on-validate-project-fields="onProjectFieldsValidate"
         />
       </template>
 
       <template #next>
         <gl-button
-          v-if="isImportByUrlNewPage"
           type="submit"
           category="primary"
           variant="confirm"
-          data-testid="import-project-by-url-next-button"
+          :disabled="isSubmitDisabled"
+          data-testid="import-project-by-url-button"
         >
           {{ __('Create project') }}
-        </gl-button>
-        <gl-button
-          v-else
-          category="primary"
-          variant="confirm"
-          :disabled="true"
-          data-testid="import-project-by-url-next-button"
-        >
-          {{ __('Next step') }}
         </gl-button>
       </template>
       <template #back>

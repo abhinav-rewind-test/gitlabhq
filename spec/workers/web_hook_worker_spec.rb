@@ -5,10 +5,11 @@ require 'spec_helper'
 RSpec.describe WebHookWorker, feature_category: :integrations do
   include AfterNextHelpers
 
-  let_it_be(:project_hook) { create(:project_hook) }
-  let_it_be(:data) { { foo: 'bar' } }
-  let_it_be(:hook_name) { 'push_hooks' }
-  let_it_be(:response) { ServiceResponse.success }
+  let_it_be(:project, freeze: false) { create(:project) }
+  let_it_be(:project_hook, freeze: false) { create(:project_hook, project: project) }
+  let_it_be(:data, freeze: false) { { foo: 'bar' } }
+  let_it_be(:hook_name, freeze: false) { 'push_hooks' }
+  let_it_be(:response, freeze: false) { ServiceResponse.success }
 
   describe '#perform' do
     it 'delegates to WebHookService' do
@@ -17,8 +18,24 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
         .to receive(:execute).and_return(response)
       expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
       expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+      expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
       subject.perform(project_hook.id, data, hook_name)
+    end
+
+    context 'when the hook has a signing token' do
+      let_it_be(:project_hook, freeze: false) { create(:project_hook, :signing_token, project: project) }
+
+      it 'logs signing_token_present as true' do
+        expect_next(WebHookService, project_hook, data.with_indifferent_access, hook_name, anything,
+          idempotency_key: anything)
+          .to receive(:execute).and_return(response)
+        expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
+        expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+        expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, true)
+
+        subject.perform(project_hook.id, data, hook_name)
+      end
     end
 
     it 'does not error when the WebHook record cannot be found' do
@@ -34,6 +51,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
         .to receive(:execute).and_return(response)
       expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
       expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+      expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
       expect { subject.perform(project_hook.id, data, hook_name, params) }
         .to change { Gitlab::WebHooks::RecursionDetection::UUID.instance.request_uuid }.to(uuid)
@@ -42,10 +60,10 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
     it_behaves_like 'worker with data consistency', described_class, data_consistency: :delayed
 
     context 'when object is wiki_page' do
-      let_it_be(:container) { create(:project) }
-      let_it_be(:wiki) { container.wiki }
-      let_it_be(:content) { 'test content' }
-      let_it_be(:wiki_page) { create(:wiki_page, container: container, content: content) }
+      let_it_be(:container, freeze: false) { project }
+      let_it_be(:wiki, freeze: false) { container.wiki }
+      let_it_be(:content, freeze: false) { 'test content' }
+      let_it_be(:wiki_page, freeze: false) { create(:wiki_page, container: container, content: content) }
 
       let(:object_kind) { 'wiki_page' }
       let(:slug) { wiki_page.slug }
@@ -73,6 +91,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
           .to receive(:execute).and_return(response)
         expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
         expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+        expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
         subject.perform(project_hook.id, args, hook_name)
       end
@@ -88,6 +107,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
             .to receive(:execute).and_return(response)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+          expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
           subject.perform(project_hook.id, args, hook_name)
         end
@@ -104,6 +124,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
             .to receive(:execute).and_return(response)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+          expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
           subject.perform(project_hook.id, args, hook_name)
         end
@@ -119,6 +140,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
             .to receive(:execute).and_return(response)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+          expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
           subject.perform(project_hook.id, args, hook_name)
         end
@@ -135,6 +157,7 @@ RSpec.describe WebHookWorker, feature_category: :integrations do
             .to receive(:execute).and_return(response)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:response_status, response.status)
           expect(subject).to receive(:log_extra_metadata_on_done).with(:http_status, response[:http_status])
+          expect(subject).to receive(:log_extra_metadata_on_done).with(:signing_token_present, false)
 
           subject.perform(project_hook.id, args, hook_name)
         end

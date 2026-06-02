@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: External controls API
 ---
 
@@ -24,7 +24,8 @@ You can configure external controls with periodic ping functionality. When ping 
 
 {{< /history >}}
 
-For a single external control, use the API to inform GitLab that a control has passed or failed a check by an external service.
+Sets the status of a specified external control. Use this operation to inform GitLab that a
+control has passed or failed a check by an external service.
 
 Prerequisites
 

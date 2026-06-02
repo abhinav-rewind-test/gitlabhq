@@ -6,7 +6,7 @@ RSpec.describe Terraform::State, feature_category: :infrastructure_as_code do
   subject { create(:terraform_state, :with_version) }
 
   it { is_expected.to belong_to(:project) }
-  it { is_expected.to belong_to(:locked_by_user).class_name('User') }
+  it { is_expected.to belong_to(:locked_by_user).class_name('User').optional }
 
   it { is_expected.to validate_presence_of(:name) }
   it { is_expected.to validate_length_of(:name).is_at_most(255) }
@@ -130,7 +130,6 @@ RSpec.describe Terraform::State, feature_category: :infrastructure_as_code do
       let(:terraform_state) { create(:terraform_state) }
 
       before do
-        stub_feature_flags(skip_encrypting_terraform_state_file: true)
         allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
         stub_application_setting(terraform_state_encryption_enabled: false)
       end

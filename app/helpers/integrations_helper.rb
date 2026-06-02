@@ -209,6 +209,7 @@ module IntegrationsHelper
       milestone_events: s_('Webhooks|Milestone events'),
       repository_update_events: _('Repository update events'),
       resource_access_token_events: s_('Webhooks|Project or group access token events'),
+      resource_deploy_token_events: s_('Webhooks|Project deploy token events'),
       subgroup_events: s_('Webhooks|Subgroup events'),
       tag_push_events: s_('Webhooks|Tag push events'),
       wiki_page_events: s_('Webhooks|Wiki page events'),
@@ -219,8 +220,10 @@ module IntegrationsHelper
   end
 
   def add_to_slack_link(parent, slack_app_id)
+    duo_enabled = Feature.enabled?(:slack_duo_agent, current_user)
+
     query = {
-      scope: SlackIntegration::SCOPES.join(','),
+      scope: SlackIntegration.scopes_for(duo_enabled: duo_enabled).join(','),
       client_id: slack_app_id,
       redirect_uri: add_to_slack_link_redirect_url(parent),
       state: form_authenticity_token
@@ -315,11 +318,11 @@ module IntegrationsHelper
     when "note", "note_events"
       s_("ProjectService|Trigger event for new comments.")
     when "confidential_note", "confidential_note_events"
-      s_("ProjectService|Trigger event for new comments on confidential issues.")
+      s_("ProjectService|Trigger event for new comments on confidential work items.")
     when "issue", "issue_events", "issues_events"
-      s_("ProjectService|Trigger event when an issue is created, updated, or closed.")
+      s_("ProjectService|Trigger event when a work item is created, updated, or closed.")
     when "confidential_issue", "confidential_issue_events", "confidential_issues_events"
-      s_("ProjectService|Trigger event when a confidential issue is created, updated, or closed.")
+      s_("ProjectService|Trigger event when a confidential work item is created, updated, or closed.")
     when "merge_request", "merge_request_events", "merge_requests_events"
       s_("ProjectService|Trigger event when a merge request is created, updated, or merged.")
     when "pipeline", "pipeline_events"
@@ -337,7 +340,7 @@ module IntegrationsHelper
     when "build_events"
       s_("ProjectService|Trigger event when a build is created.")
     when "archive_trace_events"
-      s_('When enabled, job logs are collected by Datadog and displayed along with pipeline execution traces.')
+      _('When enabled, job logs are collected by Datadog and displayed along with pipeline execution traces.')
     end
   end
   # rubocop:enable Metrics/CyclomaticComplexity

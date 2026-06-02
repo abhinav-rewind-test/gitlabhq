@@ -23,6 +23,17 @@
 # - During reassignment, the placeholder user's approval cannot be transferred
 #   to the reassignee as it would create a duplicate approval
 # - In this case, the placeholder user's approval is deleted
+#
+# == Updating the MODEL_LIST
+#
+# The MODEL_LIST should be updated when a new relation that references a user
+# is added to the import_export.yml configuration.
+#
+# After updating the MODEL_LIST, ensure the reassignment process continue
+# to work as expected for the new model and attributes.
+#
+# See https://docs.gitlab.com/user/import/mapping/reassignment/ for more
+# information about the reassignment process.
 
 module Import
   class DirectReassignService

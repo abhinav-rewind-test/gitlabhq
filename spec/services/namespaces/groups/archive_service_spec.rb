@@ -33,7 +33,7 @@ RSpec.describe Namespaces::Groups::ArchiveService, '#execute', feature_category:
   end
 
   context 'when ancestor group is already archived' do
-    let_it_be(:parent) { create(:group) }
+    let_it_be(:parent, freeze: false) { create(:group) }
     let_it_be(:group) { create(:group, parent: parent) }
     let_it_be(:user) { create(:user) }
 
@@ -50,11 +50,11 @@ RSpec.describe Namespaces::Groups::ArchiveService, '#execute', feature_category:
   end
 
   context 'when the group is not archived' do
-    let_it_be_with_reload(:subgroup) { create(:group, :archived, parent: group) }
-    let_it_be_with_reload(:sub_subgroup) { create(:group, :archived, parent: subgroup) }
+    let_it_be_with_reload(:subgroup) { create(:group, archived: true, parent: group) }
+    let_it_be_with_reload(:sub_subgroup) { create(:group, archived: true, parent: subgroup) }
 
-    let_it_be_with_reload(:archived_project) { create(:project, :archived, group: group) }
-    let_it_be_with_reload(:archived_subgroup_project) { create(:project, :archived, group: subgroup) }
+    let_it_be_with_reload(:archived_project) { create(:project, archived: true, group: group) }
+    let_it_be_with_reload(:archived_subgroup_project) { create(:project, archived: true, group: subgroup) }
 
     before do
       group.namespace_settings.update!(archived: false)
@@ -85,6 +85,41 @@ RSpec.describe Namespaces::Groups::ArchiveService, '#execute', feature_category:
       end
     end
 
+    context 'when group state is archived but archived attribute is false' do
+      before do
+        group.update!(state: :archived)
+      end
+
+      it 'allows archiving and skips state transition' do
+        result = service_response
+
+        expect(result).to be_success
+        expect(group.reload.namespace_settings.archived).to be(true)
+        expect(group.state).to eq('archived')
+      end
+    end
+
+    context 'when subgroup was archived before parent group was archived' do
+      let(:subgroup) { create(:group, parent: group) }
+
+      it 'allows re-archiving subgroup after parent group archive and unarchive cycle' do
+        result = described_class.new(subgroup, user).execute
+        expect(result).to be_success
+        expect(subgroup.reload.namespace_settings.archived).to be(true)
+
+        result = described_class.new(group.reload, user).execute
+        expect(result).to be_success
+
+        result = Namespaces::Groups::UnarchiveService.new(group.reload, user).execute
+        expect(result).to be_success
+
+        result = described_class.new(subgroup.reload, user).execute
+        expect(result).to be_success
+        expect(subgroup.reload.namespace_settings.archived).to be(true)
+        expect(subgroup.state).to eq('archived')
+      end
+    end
+
     context 'when archiving succeeds' do
       it 'archives the group' do
         service_response
@@ -95,7 +130,7 @@ RSpec.describe Namespaces::Groups::ArchiveService, '#execute', feature_category:
       it 'updates the namespace state' do
         service_response
 
-        expect(group.state).to be(Namespaces::Stateful::STATES[:archived])
+        expect(group.state).to eq('archived')
       end
 
       it 'unarchives all descendant groups', :aggregate_failures do
@@ -129,26 +164,6 @@ RSpec.describe Namespaces::Groups::ArchiveService, '#execute', feature_category:
           .to receive(:perform_async).with(group.id, user.id)
 
         service_response
-      end
-
-      context 'when `cascade_unarchive_group` flag is disabled' do
-        before do
-          stub_feature_flags(cascade_unarchive_group: false)
-        end
-
-        it 'archives the group' do
-          service_response
-
-          expect(group.namespace_settings.reload.archived).to be(true)
-        end
-
-        it 'does not modify descendant and projects archived state' do
-          expect { service_response }
-            .to not_change { subgroup.namespace_settings.reload.archived }
-              .and not_change { sub_subgroup.namespace_settings.reload.archived }
-                .and not_change { archived_project.reload.archived }
-                  .and not_change { archived_subgroup_project.reload.archived }
-        end
       end
     end
 

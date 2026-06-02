@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Audit event streaming for instances
 ---
 
@@ -63,7 +63,7 @@ Prerequisites:
 To add a streaming destination for an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **HTTP endpoint** to show the section for adding destinations.
 1. In the **Name** and **Destination URL** fields, add a destination name and URL.
@@ -79,19 +79,19 @@ Prerequisites:
 
 - Administrator access on the instance.
 
-To update a instance streaming destination's name:
+To update an instance streaming destination's name:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. In the **Name** fields, add a destination name to update.
 1. Select **Save** to update the streaming destination.
 
-To update a instance streaming destination's custom HTTP headers:
+To update an instance streaming destination's custom HTTP headers:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Custom HTTP headers** table.
@@ -124,7 +124,7 @@ Prerequisites:
 To list streaming destinations for an instance and see the verification tokens:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. View the verification token on the right side of each item.
 
@@ -144,7 +144,7 @@ A streaming destination that has an event type filter set has a **filtered** ({{
 To update a streaming destination's event filters:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Locate the **Filter by audit event type** dropdown list.
@@ -190,7 +190,7 @@ Prerequisites:
 To add Google Cloud Logging streaming destinations to an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **Google Cloud Logging** to show the section for adding destinations.
 1. Enter a random string to use as a name for the new destination.
@@ -211,7 +211,7 @@ Prerequisites:
 To update Google Cloud Logging streaming destinations to an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the Google Cloud Logging stream to expand.
 1. Enter a random string to use as a name for the destination.
@@ -248,7 +248,7 @@ Prerequisites:
 To add AWS S3 streaming destinations to an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select **Add streaming destination** and select **AWS S3** to show the section for adding destinations.
 1. Enter a random string to use as a name for the new destination.
@@ -265,7 +265,7 @@ Prerequisites:
 To update an AWS S3 streaming destination to an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the AWS S3 stream to expand.
 1. Enter a random string to use as a name for the destination.
@@ -283,7 +283,7 @@ Prerequisites:
 To list the streaming destinations for an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 
@@ -311,7 +311,7 @@ Prerequisites:
 To deactivate a streaming destination:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Clear the **Active** checkbox.
@@ -324,13 +324,85 @@ The destination stops receiving audit events.
 To reactivate a previously deactivated streaming destination:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Select the **Active** checkbox.
 1. Select **Save**.
 
 The destination resumes receiving audit events immediately.
+
+## AI audit event streaming
+
+{{< details >}}
+
+- Tier: Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+- Status: Beta
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/591588) in GitLab 19.1 as a beta.
+
+{{< /history >}}
+
+> [!warning]
+> Enabling AI audit event streaming may impact instance performance. Enable this
+> setting only after evaluating the load on your instance.
+
+GitLab Duo Agent Platform records AI audit events for activity such as:
+
+- Agent sessions.
+- LLM requests.
+- Tool invocations.
+- User inputs.
+
+GitLab always saves these events to the database.
+
+You can also use a separate setting to control whether GitLab streams AI audit events
+to external destinations. This setting is off by default.
+
+When AI audit event streaming:
+
+- Is turned on, GitLab streams AI audit events to all active instance streaming
+  destinations. Event type filters, custom HTTP headers, and verification tokens
+  apply to AI audit events the same way they apply to other audit events.
+- Is turned off, GitLab still saves AI audit events to the database but does not send them to
+  any external destination. Other audit event types continue to stream according to each
+  destination's configuration.
+
+### Turn on AI audit event streaming
+
+Prerequisites:
+
+- Administrator access on the instance.
+
+To turn on AI audit event streaming:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **GitLab Duo**.
+1. Select **Change configuration**.
+1. Select the **Enable AI audit event streaming** checkbox.
+1. Select **Save changes**.
+
+### Turn off AI audit event streaming
+
+Prerequisites:
+
+- Administrator access on the instance.
+
+To turn off AI audit event streaming:
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **GitLab Duo**.
+1. Select **Change configuration**.
+1. Clear the **Enable AI audit event streaming** checkbox.
+1. Select **Save changes**.
+
+AI audit events stop streaming immediately. GitLab continues to save them to the
+database.
 
 ## Delete streaming destinations
 
@@ -344,7 +416,7 @@ Prerequisites:
 To delete streaming destinations on an instance:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. Select the stream to expand.
 1. Select **Delete destination**.
@@ -359,7 +431,7 @@ Prerequisites:
 To delete only the custom HTTP headers for a streaming destination:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Monitoring** > **Audit events**.
+1. In the left sidebar, select **Monitoring** > **Audit events**.
 1. On the main area, select the **Streams** tab.
 1. To the right of the item, select **Edit** ({{< icon name="pencil" >}}).
 1. Locate the **Custom HTTP headers** table.

@@ -15,6 +15,7 @@ module Banzai
           Filter::JsonTableFilter,
           Filter::PlantumlFilter,
           Filter::SpacedLinkFilter,
+          Filter::IframeToImgFilter,
           # ======== Sanitization boundary ========
           # Items above this point must not be moved below this point, as they depend
           # on running before SanitizationFilter and SanitizeLinkFilter for safety.
@@ -24,14 +25,14 @@ module Banzai
           Filter::KrokiFilter,
           Filter::GollumTagsFilter,
           Filter::WikiLinkGollumFilter,
+          Filter::AttributesFilter,
+          Filter::IframeLinkFilter, # keep before <img> handling filters
           Filter::AssetProxyFilter,
           Filter::MathFilter,
           Filter::ColorFilter,
           Filter::MermaidFilter,
-          Filter::AttributesFilter,
           Filter::VideoLinkFilter,
           Filter::AudioLinkFilter,
-          Filter::IframeLinkFilter,
           Filter::HeadingAccessibilityFilter,
           Filter::TableOfContentsTagFilter,
           Filter::AutolinkFilter,
@@ -60,6 +61,7 @@ module Banzai
           Filter::References::ExternalIssueReferenceFilter,
           Filter::References::MergeRequestReferenceFilter,
           Filter::References::SnippetReferenceFilter,
+          Filter::References::PersonalSnippetReferenceFilter,
           Filter::References::CommitRangeReferenceFilter,
           Filter::References::LabelReferenceFilter,
           Filter::References::MilestoneReferenceFilter,

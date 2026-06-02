@@ -1,8 +1,7 @@
 import produce from 'immer';
 import VueApollo from 'vue-apollo';
-import { unionBy } from 'lodash';
+import { unionBy } from 'lodash-es';
 import { concatPagination } from '@apollo/client/utilities';
-import { makeVar } from '@apollo/client/core';
 import errorQuery from '~/boards/graphql/client/error.query.graphql';
 import isShowingLabelsQuery from '~/graphql_shared/client/is_showing_labels.query.graphql';
 import getIssueStateQuery from '~/issues/show/queries/get_issue_state.query.graphql';
@@ -14,6 +13,7 @@ import {
   WIDGET_TYPE_HIERARCHY,
   WIDGET_TYPE_LINKED_ITEMS,
   WIDGET_TYPE_ASSIGNEES,
+  WIDGET_TYPE_LABELS,
   WIDGET_TYPE_VULNERABILITIES,
   WIDGET_TYPE_STATUS,
 } from '~/work_items/constants';
@@ -22,11 +22,15 @@ import isExpandedHierarchyTreeChildQuery from '~/work_items/graphql/client/is_ex
 import activeBoardItemQuery from 'ee_else_ce/boards/graphql/client/active_board_item.query.graphql';
 import activeDiscussionQuery from '~/work_items/components/design_management/graphql/client/active_design_discussion.query.graphql';
 import { updateNewWorkItemCache, workItemBulkEdit } from '~/work_items/graphql/resolvers';
+import { workItemsRestResolver } from 'ee_else_ce/work_items/list/graphql/rest/work_items_rest_resolver';
 import { preserveDetailsState } from '~/work_items/utils';
-
-export const linkedItems = makeVar({});
-export const currentAssignees = makeVar({});
-export const availableStatuses = makeVar({});
+import {
+  linkedItems,
+  currentAssignees,
+  appliedLabels,
+  availableStatuses,
+  supportedConversionTypes,
+} from './issuable_client_state';
 
 export const config = {
   typeDefs,
@@ -47,6 +51,12 @@ export const config = {
           },
           isExpandedHierarchyTreeChild: (_, { variables, toReference }) =>
             toReference({ __typename: 'LocalWorkItemChildIsExpanded', id: variables.id }),
+          namespace: {
+            keyArgs: ['fullPath'],
+            merge(existing, incoming) {
+              return incoming ?? existing;
+            },
+          },
         },
       },
       MergeRequestConnection: {
@@ -72,6 +82,19 @@ export const config = {
               return { ...existing, ...incoming };
             },
           },
+          savedViews: {
+            keyArgs: ['subscribedOnly', 'sort', 'search', 'id'],
+            merge(existing, incoming, context) {
+              if (!context.variables.after || context.variables.id) {
+                return incoming;
+              }
+
+              return {
+                ...incoming,
+                nodes: [...existing.nodes, ...incoming.nodes],
+              };
+            },
+          },
         },
       },
       WorkItemPermissions: {
@@ -85,6 +108,16 @@ export const config = {
       },
       ProjectNamespaceMarkdownPaths: {
         merge: true,
+      },
+      GroupNamespaceMarkdownPaths: {
+        merge: true,
+      },
+      Discussion: {
+        fields: {
+          userPermissions: {
+            merge: true,
+          },
+        },
       },
       WorkItemWidgetDescription: {
         fields: {
@@ -107,6 +140,17 @@ export const config = {
           // kills any possibility to handle it on the widget level without hardcoding a string.
           discussions: {
             keyArgs: false,
+            // we want to concat next page of discussions to the existing ones
+            // handled here so it applies `features.notes.discussions`
+            merge(existing, incoming, { variables }) {
+              if (existing && incoming && variables.after) {
+                return {
+                  ...incoming,
+                  nodes: [...existing.nodes, ...incoming.nodes],
+                };
+              }
+              return incoming;
+            },
           },
         },
       },
@@ -116,6 +160,16 @@ export const config = {
           // kills any possibility to handle it on the widget level without hardcoding a string.
           awardEmoji: {
             keyArgs: false,
+            // we want to concat next page of awardEmoji to the existing ones
+            merge(existing, incoming, { variables }) {
+              if (existing && incoming && variables.after) {
+                return {
+                  ...incoming,
+                  nodes: [...existing.nodes, ...incoming.nodes],
+                };
+              }
+              return incoming;
+            },
           },
         },
       },
@@ -140,6 +194,7 @@ export const config = {
         },
       },
       WorkItemWidgetHierarchy: {
+        merge: true,
         fields: {
           // If we add any key args, the children field becomes children({"first":10}) and
           // kills any possibility to handle it on the widget level without hardcoding a string.
@@ -147,6 +202,12 @@ export const config = {
             keyArgs: false,
           },
         },
+      },
+      WorkItemWidgetLinkedItems: {
+        merge: true,
+      },
+      WorkItemWidgetNotifications: {
+        merge: true,
       },
       WorkItemWidgetVulnerabilities: {
         fields: {
@@ -166,7 +227,20 @@ export const config = {
           features: {
             keyArgs: false,
             merge(existing = {}, incoming = {}) {
-              return { ...existing, ...incoming };
+              const merged = { ...existing, ...incoming };
+
+              // preserve existing awardEmoji connection when incoming only has summary data
+              // (e.g. upvotes/downvotes from main query or subscription)
+              if (
+                incoming.awardEmoji &&
+                existing.awardEmoji &&
+                !incoming.awardEmoji.awardEmoji &&
+                existing.awardEmoji.awardEmoji
+              ) {
+                merged.awardEmoji = { ...existing.awardEmoji, ...incoming.awardEmoji };
+              }
+
+              return merged;
             },
           },
           // widgets policy because otherwise the subscriptions invalidate the cache
@@ -200,6 +274,8 @@ export const config = {
                 }
 
                 // we want to concat next page of discussions to the existing ones
+                // kept for the legacy `widgets[]` path; `features.notes.discussions` is handled
+                // by the field-level merge on `WorkItemWidgetNotes.discussions` above.
                 if (incomingWidget?.type === WIDGET_TYPE_NOTES && context.variables.after) {
                   // concatPagination won't work because we were placing new widget here so we have to do this manually
                   return {
@@ -264,7 +340,11 @@ export const config = {
                     return { ...existingNode, ...incomingNode };
                   });
 
-                  // we only set up linked items when the widget is present and has `workItem` property
+                  // We only set up linked items when the widget is present and has `workItem` property
+                  //
+                  // The added null checks and .filter call is to address a situation where a work item
+                  // that's still hasn't loaded remains undefined during extraction, causing the linked
+                  // items widget to fail, see https://gitlab.com/gitlab-org/gitlab/-/work_items/595004
                   if (context.variables.iid) {
                     const items = resultNodes
                       .filter((node) => node.workItem)
@@ -272,9 +352,11 @@ export const config = {
                       .map((node) => {
                         /* eslint-disable no-underscore-dangle */
                         const itemRef = context.cache.extract()[node.workItem.__ref];
+                        if (!itemRef?.workItemType?.__ref) return null;
                         const { __typename, id, name, iconName } =
                           context.cache.extract()[itemRef.workItemType.__ref];
                         /* eslint-enable no-underscore-dangle */
+                        if (!__typename) return null;
 
                         const workItem = {
                           ...itemRef,
@@ -287,7 +369,8 @@ export const config = {
                         };
 
                         return workItem;
-                      });
+                      })
+                      .filter(Boolean);
 
                     // Ensure that any existing linked items are retained
                     const existingLinkedItems = linkedItems();
@@ -307,12 +390,23 @@ export const config = {
                   };
                 }
 
-                if (existingWidget?.type === WIDGET_TYPE_ASSIGNEES && context.variables.id) {
-                  const workItemAssignees = existingWidget.assignees?.nodes || [];
-                  const users = workItemAssignees.map(
+                const mergedWidget = { ...existingWidget, ...incomingWidget };
+
+                if (mergedWidget?.type === WIDGET_TYPE_ASSIGNEES && context.variables.id) {
+                  const workItemAssignees = mergedWidget.assignees?.nodes || [];
+                  const users = workItemAssignees.map((user) => {
                     // eslint-disable-next-line no-underscore-dangle
-                    (user) => context.cache.extract()[user.__ref],
-                  );
+                    const userRef = context.cache.extract()[user.__ref];
+
+                    // We're copying `avatarUrl` into `avatar_url` because both
+                    // Quick action autocompletion setups;
+                    // 1. `gfm_auto_complete.js` - Plain Text Editor
+                    // 2. `content_editor/components/suggestions_dropdown.vue` - RTE
+                    // expect user avatars to be present in `avatar_url` and
+                    // adding `avatar_url || avatarUrl` there requires unnecessary
+                    // repetition.
+                    return { ...userRef, avatar_url: userRef.avatarUrl };
+                  });
 
                   const existingAssignees = currentAssignees();
                   currentAssignees({
@@ -321,7 +415,22 @@ export const config = {
                   });
                 }
 
-                return { ...existingWidget, ...incomingWidget };
+                // Extract currently applied labels into `appliedLabels` reactive prop
+                if (mergedWidget?.type === WIDGET_TYPE_LABELS && context.variables.id) {
+                  const workItemLabels = mergedWidget.labels?.nodes || [];
+                  const labels = workItemLabels.map(
+                    // eslint-disable-next-line no-underscore-dangle
+                    (label) => context.cache.extract()[label.__ref],
+                  );
+
+                  const existingAppliedLabels = appliedLabels();
+                  appliedLabels({
+                    ...existingAppliedLabels,
+                    [`${context.variables.id}`]: labels,
+                  });
+                }
+
+                return mergedWidget;
               });
             },
           },
@@ -359,7 +468,38 @@ export const config = {
         // this prevents child and parent work item types from overriding each other
         fields: {
           supportedConversionTypes: {
-            merge(__, incoming) {
+            merge(existing, incoming, context) {
+              if (context.variables.fullPath) {
+                const existingSupportedConversionTypes = supportedConversionTypes();
+                const cacheNodes = context.cache.extract();
+
+                // Get available work item types for the namespace
+                const workItemTypes = Object.keys(cacheNodes).filter((cacheKey) =>
+                  cacheKey.includes('WorkItemType:'),
+                );
+
+                // Collect available supportedConversionTypes per work item type
+                const conversionTypes = workItemTypes.reduce((acc, currentType) => {
+                  const supportedConversionTypesForThisType =
+                    cacheNodes[currentType].supportedConversionTypes;
+                  if (supportedConversionTypesForThisType) {
+                    // Normalize type ID key name
+                    acc[currentType.split('WorkItemType:').pop()] =
+                      supportedConversionTypesForThisType.map(
+                        // eslint-disable-next-line no-underscore-dangle
+                        (type) => cacheNodes[type.__ref],
+                      );
+                  }
+                  return acc;
+                }, {});
+
+                // Set type-to-supportedConversionTypes map for this namespace in reactive prop
+                supportedConversionTypes({
+                  ...existingSupportedConversionTypes,
+                  [context.variables.fullPath]: conversionTypes,
+                });
+              }
+
               return incoming;
             },
           },
@@ -419,7 +559,13 @@ export const config = {
   },
 };
 
+const namespaceResolvers =
+  window.gon?.features?.workItemRestApiFrontendUsers && window.gon?.features?.workItemRestApi
+    ? { Namespace: { workItems: workItemsRestResolver } }
+    : {};
+
 export const resolvers = {
+  ...namespaceResolvers,
   Mutation: {
     updateIssueState: (_, { issueType = undefined, isDirty = false }, { cache }) => {
       const sourceData = cache.readQuery({ query: getIssueStateQuery });

@@ -6,7 +6,6 @@ import vue2 from '@vitejs/plugin-vue2';
 // eslint-disable-next-line import/no-unresolved -- False positive: eslint doesn't read `exports` and reports `unresolved`. See https://github.com/import-js/eslint-plugin-import/issues/1810
 import vue3 from '@vitejs/plugin-vue';
 import graphql from '@rollup/plugin-graphql';
-import glob from 'glob';
 import webpackConfig from './config/webpack.config';
 import {
   IS_EE,
@@ -27,22 +26,27 @@ import { IconsPlugin } from './config/helpers/vite_plugin_icons.mjs';
 import { ImagesPlugin } from './config/helpers/vite_plugin_images.mjs';
 import { CrossOriginWorkerPlugin } from './config/helpers/vite_plugin_cross_origin_worker';
 import { PrebuildDuoNext } from './config/helpers/vite_plugin_prebuild_duo_next';
-import vue3migrationCompiler from './config/vue3migration/compiler';
+import { Vue3InfectionPlugin } from './config/helpers/vite_plugin_vue3_infection.mjs';
+import * as vue3SfcCompiler from './config/vue3migration/vue3_sfc_compiler.mjs';
+import vue2Compiler from './config/vue3migration/vue2_compiler';
 
-const { VUE_VERSION: EXPLICIT_VUE_VERSION } = process.env;
-if (![undefined, '2', '3'].includes(EXPLICIT_VUE_VERSION)) {
+const { VUE_VERSION = '2', VUE_COMPILER_VERSION = '2' } = process.env;
+
+if (!['2', '3'].includes(VUE_VERSION)) {
+  throw new Error(`Invalid VUE_VERSION value: ${VUE_VERSION}. Only '2' or '3' are supported`);
+}
+if (!['2', '3'].includes(VUE_COMPILER_VERSION)) {
   throw new Error(
-    `Invalid VUE_VERSION value: ${EXPLICIT_VUE_VERSION}. Only '2' and '3' are supported`,
+    `Invalid VUE_COMPILER_VERSION value: ${VUE_COMPILER_VERSION}. Only '2' or '3' are supported`,
   );
 }
-const USE_VUE3 = EXPLICIT_VUE_VERSION === '3';
 
-if (USE_VUE3) {
-  console.log('[V] Using Vue.js 3');
-} else {
-  console.log('[V] Using Vue.js 2');
-}
-const vue = USE_VUE3 ? vue3 : vue2;
+const USE_VUE3 = VUE_VERSION === '3';
+const USE_VUE3_COMPILER = USE_VUE3 && VUE_COMPILER_VERSION === '3';
+
+console.log(`[V] Using Vue.js ${VUE_VERSION} (compiler ${VUE_COMPILER_VERSION})`);
+
+const vue = USE_VUE3_COMPILER ? vue3 : vue2;
 
 let viteGDKConfig;
 try {
@@ -60,7 +64,6 @@ const aliasArr = Object.entries(webpackConfig.resolve.alias).map(([find, replace
 }));
 
 const assetsPath = path.resolve(__dirname, 'app/assets');
-const nodeModulesPath = path.resolve(__dirname, 'node_modules');
 const javascriptsPath = path.resolve(assetsPath, 'javascripts');
 
 const emptyComponent = path.resolve(javascriptsPath, 'vue_shared/components/empty_component.js');
@@ -95,7 +98,10 @@ const JH_ELSE_EE_ALIAS_FALLBACK = [
 ];
 
 export default defineConfig({
-  cacheDir: path.resolve(__dirname, 'tmp/cache/vite'),
+  cacheDir: path.resolve(
+    __dirname,
+    `tmp/cache/vite/vue${VUE_VERSION}-compiler${VUE_COMPILER_VERSION}`,
+  ),
   resolve: {
     alias: [
       ...aliasArr,
@@ -105,6 +111,13 @@ export default defineConfig({
       {
         find: '~katex',
         replacement: 'katex',
+      },
+      {
+        // Mermaid v10's mindmap chunk imports cytoscape's UMD build directly, but
+        // that subpath only has a "require" export condition. Redirect to the ESM
+        // build so Vite's dep optimizer can pre-bundle it.
+        find: 'cytoscape/dist/cytoscape.umd.js',
+        replacement: 'cytoscape/dist/cytoscape.esm.mjs',
       },
       /*
        Alias for GitLab Fonts
@@ -119,6 +132,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    ...(!USE_VUE3 ? [Vue3InfectionPlugin()] : []),
     PageEntrypointsPlugin(),
     IconsPlugin(),
     ImagesPlugin(),
@@ -131,8 +145,9 @@ export default defineConfig({
     viteGDKConfig.enabled ? AutoStopPlugin() : null,
     FixedRubyPlugin(),
     vue({
+      ...(USE_VUE3_COMPILER ? { compiler: vue3SfcCompiler } : {}),
       template: {
-        compiler: USE_VUE3 ? vue3migrationCompiler : undefined,
+        ...(!USE_VUE3_COMPILER ? { compiler: vue2Compiler } : {}),
         compilerOptions: vueRule.options.compilerOptions,
       },
     }),
@@ -204,25 +219,40 @@ export default defineConfig({
         __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
       },
     },
-    exclude: ['@gitlab/ui'],
-    include: [
-      // When building @gitlab/ui from source, lodash imports fail in vite because lodash publishes commonjs modules.
-      // Vite supports glob expansions in `optimizeDeps.include` that solves this, but it adds a `.js` extension in the
-      // resulting `includes` entries so lodash imports do not get re-included correctly. Make our own glob expansion
-      // that expands to:
-      //   [ '@gitlab/ui > lodash/add', '@gitlab/ui > lodash/after', '@gitlab/ui > lodash/array', ... ]
-      ...glob
-        .sync('lodash/**/[a-zA-Z]*.js', { cwd: nodeModulesPath })
-        .map((m) => m.replace('.js', ''))
-        .map((m) => `@gitlab/ui > ${m}`),
+    exclude: [
+      '@gitlab/ui',
+      ...(!USE_VUE3
+        ? [
+            '@vue/compat',
+            '@gitlab/vuex-vue3',
+            '@gitlab/vue-router-vue3',
+            '@vue/apollo-option',
+            'pinia',
+            'vue-demi',
+            '@gitlab/vuedraggable-vue3',
+          ]
+        : []),
     ],
   },
+  css: {
+    lightningcss: {
+      errorRecovery: true,
+    },
+  },
   build: {
-    // speed up build in CI by disabling sourcemaps and compression
-    // TODO: allow sourcemaps and compression when we are ready for Vite in production
-    sourcemap: false,
-    minify: false,
-    cssMinify: false,
-    reportCompressedSize: false,
+    sourcemap: true,
+    minify: true,
+    cssMinify: true,
+    reportCompressedSize: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'shared', test: /^((?!node_modules).)*$/, maxSize: 120000, minShareCount: 50 },
+          ],
+        },
+        strictExecutionOrder: true,
+      },
+    },
   },
 });

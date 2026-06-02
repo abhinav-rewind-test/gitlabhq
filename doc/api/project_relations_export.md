@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project relations export API
 description: "Export project relations with the REST API."
 ---
@@ -13,15 +13,22 @@ description: "Export project relations with the REST API."
 
 {{< /details >}}
 
-Use this API to migrate a project structure. Each top-level
-relation (for example, milestones, boards, and labels) is stored as a separate file.
+This API is used by the destination instance during [group migration by direct transfer](../user/group/import/_index.md)
+to migrate a project structure. You don't usually need to use this API yourself.
 
-This API is primarily used during [group migration by direct transfer](../user/group/import/_index.md).
-You cannot use this API with the [project import and export API](project_import_export.md).
+In this context, a {{< glossary-tooltip text="relation" >}} is an exportable item such as a merge request. When
+exported, the relation includes any items related to the relation such as a label.
 
-## Schedule new export
+If you want to use this API, your GitLab instance must meet certain
+[prerequisites](../user/group/import/direct_transfer_migrations.md#prerequisites).
 
-Start a new project relations export:
+> [!note]
+> This API can't be used with the [group import and export API](group_import_export.md), which is for file-based
+> migration.
+
+## Schedule a new export for a project
+
+Schedules a relations export for a specified project.
 
 ```plaintext
 POST /projects/:id/export_relations
@@ -44,9 +51,9 @@ curl --request POST \
 }
 ```
 
-## Export status
+## Retrieve the status of an export
 
-View the status of the relations export:
+Retrieve the status of a relations export.
 
 ```plaintext
 GET /projects/:id/export_relations/status
@@ -99,9 +106,9 @@ The status can be one of the following:
 ]
 ```
 
-## Export download
+## Download an export
 
-Download the finished relations export:
+Download the finished relations export.
 
 ```plaintext
 GET /projects/:id/export_relations/download

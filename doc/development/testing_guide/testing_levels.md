@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Testing levels
 ---
 
@@ -245,6 +245,8 @@ They're useful, for example, to test permissions, redirections, API endpoints, w
 Integration tests cover the interaction between all components on a single page.
 Their abstraction level is comparable to how a user would interact with the UI.
 
+For more details on MSW jest integration test and how to use them, see [the MSW integration tests page](frontend_testing.md#msw-integration-tests)
+
 ```mermaid
 %%{init: { "fontFamily": "GitLab Sans" }}%%
 graph RL
@@ -437,16 +439,12 @@ scenario 'successfully', :js do
 end
 ```
 
-The steps of each test are written using ([capybara methods](https://www.rubydoc.info/gems/capybara)).
-
-XHR (XMLHttpRequest) calls might require you to use `wait_for_requests` in between steps, such as:
+The steps of each test are written using ([capybara methods](https://www.rubydoc.info/gems/capybara)), such as:
 
 ```ruby
 find('.form-control').native.send_keys(:enter)
 
-wait_for_requests
-
-expect(page).not_to have_selector('.card')
+expect(page).to have_selector('.card')
 ```
 
 ### Consider **not** writing a system test

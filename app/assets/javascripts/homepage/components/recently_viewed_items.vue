@@ -2,15 +2,21 @@
 import { GlIcon, GlSkeletonLoader } from '@gitlab/ui';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { InternalEvents } from '~/tracking';
-import { __ } from '~/locale';
 import TooltipOnTruncate from '~/vue_shared/components/tooltip_on_truncate/tooltip_on_truncate.vue';
 import RecentlyViewedItemsQuery from 'ee_else_ce/homepage/graphql/queries/recently_viewed_items.query.graphql';
+import { WIKI_ICON } from '~/wikis/constants';
 import {
   EVENT_USER_FOLLOWS_LINK_ON_HOMEPAGE,
   TRACKING_LABEL_RECENTLY_VIEWED,
 } from '../tracking_constants';
 
 const MAX_ITEMS = 10;
+const ICON_MAP = {
+  Issue: 'work-item-issue',
+  MergeRequest: 'merge-request',
+  Epic: 'work-item-epic',
+  WikiPage: WIKI_ICON,
+};
 
 export default {
   name: 'RecentlyViewedItems',
@@ -31,13 +37,20 @@ export default {
       query: RecentlyViewedItemsQuery,
       update({ currentUser: { recentlyViewedItems = [] } = {} }) {
         return recentlyViewedItems
-          .map((entry) => ({
-            ...entry.item,
-            viewedAt: entry.viewedAt,
-            itemType: entry.itemType,
+          .map((entry) => {
             // eslint-disable-next-line no-underscore-dangle
-            icon: this.getIconForItemType(entry.item.__typename),
-          }))
+            const typename = entry.item.__typename;
+            // For WorkItems, use workItemType.name (Issue, Epic, Task, etc.)
+            // For other types (MergeRequest, WikiPage), use __typename
+            const itemType = typename === 'WorkItem' ? entry.item.workItemType?.name : typename;
+
+            return {
+              ...entry.item,
+              viewedAt: entry.viewedAt,
+              itemType,
+              icon: ICON_MAP[itemType] || 'question',
+            };
+          })
           .slice(0, MAX_ITEMS);
       },
       error(error) {
@@ -50,28 +63,16 @@ export default {
     isLoading() {
       return this.$apollo.queries.items.loading;
     },
-    emptyStateMessage() {
-      return __('Issues and merge requests you visit will appear here.');
-    },
   },
   methods: {
     reload() {
       this.error = null;
       this.$apollo.queries.items.refetch();
     },
-    getIconForItemType(itemType) {
-      const iconMap = {
-        Issue: 'work-item-issue',
-        MergeRequest: 'merge-request',
-        Epic: 'work-item-epic',
-      };
-      return iconMap[itemType] || 'question';
-    },
     handleItemClick(item) {
       this.trackEvent(EVENT_USER_FOLLOWS_LINK_ON_HOMEPAGE, {
         label: TRACKING_LABEL_RECENTLY_VIEWED,
-        // eslint-disable-next-line no-underscore-dangle
-        property: item.__typename,
+        property: item.itemType,
       });
     },
   },
@@ -101,7 +102,11 @@ export default {
     </template>
 
     <p v-else-if="!items.length" class="gl-my-0 gl-mb-3">
-      {{ emptyStateMessage }}
+      {{
+        s__(
+          'HomePageRecentlyViewedWidget|Work items, merge requests, and wiki pages you visit will appear here.',
+        )
+      }}
     </p>
     <ul v-else class="gl-m-0 gl-list-none gl-p-0">
       <li v-for="item in items" :key="item.id">

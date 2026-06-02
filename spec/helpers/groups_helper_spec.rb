@@ -83,7 +83,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#push_group_breadcrumbs' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:nested_group) { create(:group, parent: group) }
     let_it_be(:deep_nested_group) { create(:group, parent: nested_group) }
     let_it_be(:very_deep_nested_group) { create(:group, parent: deep_nested_group) }
@@ -111,7 +111,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#group_title_link' do
-    let_it_be(:group) { create(:group, :with_avatar) }
+    let_it_be(:group, freeze: false) { create(:group, :with_avatar) }
 
     let(:raw_link) { group_title_link(group, show_avatar: true) }
     let(:document) { Nokogiri::HTML.parse(raw_link) }
@@ -249,7 +249,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#can_disable_group_emails?' do
     let_it_be(:current_user) { create(:user) }
-    let_it_be(:group) { create(:group, name: 'group') }
+    let_it_be(:group, freeze: false) { create(:group, name: 'group') }
     let_it_be(:subgroup) { create(:group, name: 'subgroup', parent: group) }
 
     before do
@@ -288,7 +288,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#can_set_group_diff_preview_in_email?' do
-    let_it_be(:group) { create(:group, name: 'group') }
+    let_it_be(:group, freeze: false) { create(:group, name: 'group') }
     let_it_be(:subgroup) { create(:group, name: 'subgroup', parent: group) }
 
     let_it_be(:current_user) { create(:user) }
@@ -339,7 +339,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#can_update_default_branch_protection?' do
     let_it_be(:current_user) { create(:user) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     subject { helper.can_update_default_branch_protection?(group) }
 
@@ -395,7 +395,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   describe '#render_setting_to_allow_project_access_token_creation?' do
     let_it_be(:current_user) { create(:user) }
     let_it_be(:parent) { create(:group) }
-    let_it_be(:group) { create(:group, parent: parent) }
+    let_it_be(:group, freeze: false) { create(:group, parent: parent) }
 
     before do
       allow(helper).to receive(:current_user) { current_user }
@@ -413,8 +413,8 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#can_admin_group_member?' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     before do
       allow(helper).to receive(:current_user) { user }
@@ -432,8 +432,8 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#can_invite_group_member?' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     before do
       allow(helper).to receive(:current_user) { user }
@@ -458,8 +458,8 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#subgroup_creation_data' do
     let_it_be(:name) { 'parent group' }
-    let_it_be(:user) { build(:user) }
-    let_it_be(:group) { build(:group, name: name) }
+    let_it_be(:user, freeze: false) { build(:user) }
+    let_it_be(:group, freeze: false) { build(:group, name: name) }
     let_it_be(:subgroup) { build(:group, parent: group) }
 
     before do
@@ -506,8 +506,8 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#groups_show_app_data' do
-    let_it_be(:group) { create(:group) }
-    let_it_be(:user) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group) }
+    let_it_be(:user, freeze: false) { create(:user) }
     let_it_be(:initial_sort) { 'created_asc' }
 
     before do
@@ -567,7 +567,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#group_archive_settings_app_data' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     subject { helper.group_archive_settings_app_data(group) }
 
@@ -581,7 +581,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
 
     context 'when group is marked for deletion' do
-      let_it_be(:group) { create(:group_with_deletion_schedule) }
+      let_it_be(:group, freeze: false) { create(:group, :deletion_scheduled) }
 
       it { is_expected.to match(hash_including(marked_for_deletion: 'true')) }
     end
@@ -589,7 +589,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#group_unarchive_settings_app_data' do
     let_it_be_with_reload(:ancestor) { create(:group) }
-    let_it_be(:group) { create(:group, parent: ancestor) }
+    let_it_be(:group, freeze: false) { create(:group, parent: ancestor) }
 
     subject { helper.group_unarchive_settings_app_data(group) }
 
@@ -655,7 +655,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   describe '#new_custom_emoji_path' do
     subject { helper.new_custom_emoji_path(group) }
 
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     context 'with nil group' do
       let(:group) { nil }
@@ -683,7 +683,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   end
 
   describe '#show_prevent_inviting_groups_outside_hierarchy_setting?' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
 
     it 'returns true for a root group' do
       expect(helper.show_prevent_inviting_groups_outside_hierarchy_setting?(group)).to eq(true)
@@ -698,21 +698,28 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#groups_list_with_filtered_search_app_data' do
     let_it_be(:endpoint) { '/groups' }
+    let_it_be(:user, freeze: false) { create(:user) }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(user)
+      allow(user).to receive(:can_create_group?).and_return(true)
+    end
 
     it 'returns expected json' do
       expect(Gitlab::Json.parse(helper.groups_list_with_filtered_search_app_data(endpoint))).to eq(
         {
           'endpoint' => endpoint,
           'initial_sort' => 'created_desc',
-          'base_path' => '/dashboard/groups'
+          'base_path' => '/dashboard/groups',
+          'can_create_group' => true
         }
       )
     end
   end
 
   describe '#group_merge_requests' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:project) { create(:project, namespace: group) }
     let_it_be(:merge_request) { create(:merge_request, :simple, source_project: project, target_project: project) }
 
@@ -730,41 +737,18 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   describe '#step_up_auth_provider_options_for_select' do
     using RSpec::Parameterized::TableSyntax
 
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:current_user) { create(:user, owner_of: group) }
 
     let(:omniauth_provider_oidc) do
-      GitlabSettings::Options.new(
-        name: "openid_connect",
-        step_up_auth: {
-          namespace: {
-            id_token: {
-              required: {
-                acr: 'gold'
-              }
-            }
-          }
-        }
-      )
+      build(:omniauth_provider_config, :with_namespace_scope)
     end
 
     let(:omniauth_provider_oidc_only_namespace) do
-      GitlabSettings::Options.new(
-        name: "openid_connect_only_namespace",
-        label: "OpenID Connect (Only namespace)",
-        args: {
-          strategy_class: 'OmniAuth::Strategies::OpenIDConnect'
-        },
-        step_up_auth: {
-          namespace: {
-            id_token: {
-              required: {
-                acr: 'gold'
-              }
-            }
-          }
-        }
-      )
+      build(:omniauth_provider_config, :with_namespace_scope,
+        provider_name: 'openid_connect_only_namespace',
+        label: 'OpenID Connect (Only namespace)',
+        args: { strategy_class: 'OmniAuth::Strategies::OpenIDConnect' })
     end
 
     subject { helper.step_up_auth_provider_options_for_select }
@@ -783,6 +767,60 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
     with_them do
       it { is_expected.to match_array(expected_options) }
+    end
+  end
+
+  describe '#group_more_action_data' do
+    let_it_be(:user, freeze: false) { create(:user) }
+    let_it_be_with_reload(:group) { create(:group, :public) }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(user)
+    end
+
+    subject(:result) { helper.group_more_action_data(group) }
+
+    it 'returns expected values' do
+      serialized_group = GroupChildSerializer.new(current_user: user).represent(group).to_json
+
+      expect(result).to include({
+        group: serialized_group,
+        dashboard_path: '/dashboard/groups'
+      })
+    end
+
+    context 'when user has no access request' do
+      context 'when user can request access' do
+        specify { expect(result[:can_request_access]).to eq('true') }
+      end
+
+      context 'when user cannot request access' do
+        before do
+          group.update!(request_access_enabled: false)
+        end
+
+        specify { expect(result[:can_request_access]).to eq('false') }
+      end
+    end
+
+    context 'when user has existing access request' do
+      let_it_be(:access_request, freeze: false) { create(:group_member, :guest, :access_request, group: group, user: user) }
+
+      specify { expect(result[:can_request_access]).to eq('false') }
+
+      context 'when user can withdraw access request' do
+        specify { expect(result[:can_withdraw_access_request]).to eq('true') }
+      end
+
+      context 'when user cannot withdraw access request' do
+        before do
+          allow(Ability).to receive(:allowed?).and_call_original
+          allow(Ability).to receive(:allowed?).with(user, :withdraw_member_access_request, access_request)
+            .and_return(false)
+        end
+
+        specify { expect(result[:can_withdraw_access_request]).to eq('false') }
+      end
     end
   end
 end

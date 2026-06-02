@@ -84,7 +84,25 @@ RSpec.describe 'Groups > Members > Manage members', :js, feature_category: :grou
         page.within role_dropdown_selector do
           wait_for_requests
           toggle_listbox
-          expect_listbox_items(Gitlab::Access.all_keys)
+          expect_listbox_role_names(Gitlab::Access.all_keys)
+        end
+      end
+    end
+
+    it 'shows descriptions for each role in the dropdown' do
+      group.add_owner(user1)
+
+      visit group_group_members_path(group)
+
+      click_on 'Invite members'
+
+      page.within invite_modal_selector do
+        page.within role_dropdown_selector do
+          wait_for_requests
+          toggle_listbox
+          expect_listbox_role_description('Guest', 'No code access. View and comment on issues and epics.')
+          expect_listbox_role_description('Developer', 'Push code to non-protected branches.')
+          expect_listbox_role_description('Owner', 'Full control of project settings.')
         end
       end
     end
@@ -136,7 +154,7 @@ RSpec.describe 'Groups > Members > Manage members', :js, feature_category: :grou
 
       wait_for_requests
 
-      expect(page).to have_content('No matches found')
+      expect(page).to have_content('To invite someone new to GitLab, enter their email.')
 
       find(member_dropdown_selector).set('undisclosed_email@gitlab.com')
       wait_for_requests
@@ -160,13 +178,16 @@ RSpec.describe 'Groups > Members > Manage members', :js, feature_category: :grou
       click_on 'Invite members'
 
       page.within invite_modal_selector do
-        field = find(member_dropdown_selector)
-        field.native.send_keys :tab
-        field.click
+        find(member_dropdown_selector).set(user1.name[0..2])
 
         wait_for_requests
 
         expect(page).to have_content(user1.name)
+
+        find(member_dropdown_selector).set(user2.name[0..2])
+
+        wait_for_requests
+
         expect(page).to have_content(user2.name)
         expect(page).not_to have_content(internal_project_bot.name)
         expect(page).not_to have_content(external_project_bot.name)

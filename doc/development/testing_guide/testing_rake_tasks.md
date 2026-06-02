@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Testing Rake tasks
 ---
 
@@ -15,7 +15,8 @@ method to make executing tasks possible.
 
 See `spec/support/helpers/rake_helpers.rb` for all available methods.
 
-`$stdout` can be redirected by adding `:silence_stdout`.
+`$stdout` can be redirected by adding `:silence_stdout`. To silence both `$stdout`
+and `$stderr`, use `:silence_output` instead.
 
 Example:
 

@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline, feature_category: :importers do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group, path: 'group') }
-  let_it_be(:parent) { create(:group, name: 'Imported Group', path: 'imported-group') }
-  let_it_be(:parent_entity) { create(:bulk_import_entity, destination_namespace: parent.full_path, group: parent) }
-  let_it_be(:tracker) { create(:bulk_import_tracker, entity: parent_entity) }
-  let_it_be(:context) { BulkImports::Pipeline::Context.new(tracker) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:group, freeze: false) { create(:group, path: 'group') }
+  let_it_be(:parent, freeze: false) { create(:group, name: 'Imported Group', path: 'imported-group') }
+  let_it_be(:parent_entity, freeze: false) { create(:bulk_import_entity, destination_namespace: parent.full_path, group: parent) }
+  let_it_be(:tracker, freeze: false) { create(:bulk_import_tracker, entity: parent_entity) }
+  let_it_be(:context, freeze: false) { BulkImports::Pipeline::Context.new(tracker) }
 
   let(:extracted_data) do
     BulkImports::Pipeline::ExtractedData.new(data: {
@@ -31,7 +31,7 @@ RSpec.describe BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline, feature
     end
 
     it 'creates entities for the subgroups' do
-      expect { subject.run }.to change(BulkImports::Entity, :count).by(1)
+      expect { subject.run }.to change { BulkImports::Entity.count }.by(1)
 
       subgroup_entity = BulkImports::Entity.last
 
@@ -42,8 +42,8 @@ RSpec.describe BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline, feature
     end
 
     it 'does not create duplicate entities on rerun' do
-      expect { subject.run }.to change(BulkImports::Entity, :count).by(1)
-      expect { subject.run }.not_to change(BulkImports::Entity, :count)
+      expect { subject.run }.to change { BulkImports::Entity.count }.by(1)
+      expect { subject.run }.not_to change { BulkImports::Entity.count }
     end
   end
 
@@ -59,7 +59,7 @@ RSpec.describe BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline, feature
         destination_namespace: parent_entity.group.full_path,
         parent_id: parent_entity.id
       }
-      expect { subject.load(context, data) }.to change(BulkImports::Entity, :count).by(1)
+      expect { subject.load(context, data) }.to change { BulkImports::Entity.count }.by(1)
       subgroup_entity = BulkImports::Entity.last
 
       expect(subgroup_entity.source_full_path).to eq 'parent/subgroup'

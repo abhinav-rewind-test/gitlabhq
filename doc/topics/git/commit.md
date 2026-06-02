@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Common commands and workflows.
 title: Stage, commit, and push changes
 ---
@@ -27,7 +27,6 @@ To stage and commit your changes:
 1. From your repository, for each file or directory you want to add, run `git add <file name or path>`.
 
    To stage all files in the current working directory, run `git add .`.
-
 1. Confirm that the files have been added to staging:
 
    ```shell
@@ -35,7 +34,6 @@ To stage and commit your changes:
    ```
 
    The files are displayed in green.
-
 1. To commit the staged files:
 
    ```shell
@@ -134,6 +132,7 @@ You can use push options to skip a CI/CD pipeline, or pass CI/CD variables.
 |--------------------------------|-------------|---------|
 | `ci.input=<name>=<value>`      | Passes input parameters to the pipeline. | `git push -o ci.input='stage=test' -o ci.input='security_scan=false'`. Array input: `git push -o ci.input='my_array=["string", "double", "quotes"]'` |
 | `ci.skip`                      | Skips the pipeline for this push. Only affects branch pipelines, not [merge request pipelines](../../ci/pipelines/merge_request_pipelines.md). Does not skip CI/CD integrations like Jenkins. | `git push -o ci.skip` |
+| `ci.no_pipeline`               | Prevents creating any pipeline for the latest push.   | `git push -o ci.no_pipeline` |
 | `ci.variable="<name>=<value>"` | Sets [CI/CD variables](../../ci/variables/_index.md) for the pipeline. Only affects branch pipelines, not [merge request pipelines](../../ci/pipelines/merge_request_pipelines.md). | `git push -o ci.variable="MAX_RETRIES=10" -o ci.variable="MAX_TIME=600"` |
 
 ### Push options for Integrations
@@ -163,7 +162,7 @@ Git push options can perform actions for merge requests while pushing changes:
 | `merge_request.milestone="<milestone>"`      | Set the milestone of the merge request. For example: `git push -o merge_request.milestone="3.0"`. |
 | `merge_request.label="<label>"`              | Add labels to the merge request. If the label does not exist, it is created. For example, for two labels: `git push -o merge_request.label="label1" -o merge_request.label="label2"`. |
 | `merge_request.unlabel="<label>"`            | Remove labels from the merge request. For example, for two labels: `git push -o merge_request.unlabel="label1" -o merge_request.unlabel="label2"`. |
-| `merge_request.assign="<user>"`              | Assign users to the merge request. Accepts username or user ID. For example, for two users: `git push -o merge_request.assign="user1" -o merge_request.assign="user2"`.|
+| `merge_request.assign="<user>"`              | Assign users to the merge request. Accepts username or user ID. For example, for two users: `git push -o merge_request.assign="user1" -o merge_request.assign="user2"`. |
 | `merge_request.unassign="<user>"`            | Remove assigned users from the merge request. Accepts username or user ID. For example, for two users: `git push -o merge_request.unassign="user1" -o merge_request.unassign="user2"`. |
 
 ### Push options for secret push protection

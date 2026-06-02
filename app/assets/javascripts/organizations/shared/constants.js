@@ -6,6 +6,9 @@ import {
   SORT_LABEL_UPDATED,
 } from '~/groups_projects/constants';
 
+export const DEFAULT_ORGANIZATION_ID = 1;
+export const DEFAULT_ORGANIZATION_NAME = __('GitLab');
+
 export const RESOURCE_TYPE_GROUPS = 'groups';
 export const RESOURCE_TYPE_PROJECTS = 'projects';
 
@@ -46,6 +49,8 @@ export const FORM_FIELD_DESCRIPTION_VALIDATORS = [
     (val) => val.length <= MAX_DESCRIPTION_COUNT,
   ),
 ];
+
+export const ORGANIZATION_STATE_UNCONFIRMED = 'UNCONFIRMED';
 
 export const SORT_DIRECTION_ASC = 'asc';
 export const SORT_DIRECTION_DESC = 'desc';

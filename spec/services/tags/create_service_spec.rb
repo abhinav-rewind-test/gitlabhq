@@ -47,13 +47,13 @@ RSpec.describe Tags::CreateService, feature_category: :source_code_management do
       end
     end
 
-    context 'when tag format is incorrect' do
+    context 'when tag name contains invalid characters' do
       it 'returns an error' do
         response = service.execute("\x7f", 'master', 'Foo')
 
         expect(response[:status]).to eq(:error)
         expect(response[:http_status]).to eq(400)
-        expect(response[:message]).to eq("Failed to create a tag: \u007F")
+        expect(response[:message]).to eq('Tag name invalid')
       end
     end
 

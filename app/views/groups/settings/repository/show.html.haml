@@ -1,6 +1,5 @@
 - breadcrumb_title s_('Navigation|Repository settings')
 - page_title _('Repository')
-- @force_desktop_expanded_sidebar = true
 
 - if can?(current_user, :admin_group, @group)
   = render_if_exists "groups/settings/repository/general", group: @group
@@ -14,4 +13,4 @@
   = render_if_exists "protected_branches/protected_branches", protected_branch_entity: @group
 
 - if can?(current_user, :change_push_rules, @group)
-  = render "push_rules"
+  = render_if_exists "groups/settings/repository/push_rules"

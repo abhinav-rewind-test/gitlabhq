@@ -3,76 +3,102 @@
 module Authn
   module IamService
     class JwksClient
-      include Gitlab::Utils::StrongMemoize
-
       JwksFetchFailedError = Class.new(StandardError)
       ConfigurationError = Class.new(StandardError)
+      KeyNotFoundError = Class.new(StandardError)
 
       JWKS_PATH = '/.well-known/jwks.json'
+      MIN_CACHE_TTL = 5.minutes
+      MAX_CACHE_TTL = 24.hours
       DEFAULT_CACHE_TTL = 1.hour
+      RACE_CONDITION_TTL = 5.seconds
+      HTTP_TIMEOUT_SECONDS = 5
 
-      def fetch_keys
-        Rails.cache.fetch(cache_key) { fetch_and_cache_keys }
+      def verification_key_for(kid)
+        raise ArgumentError, "kid cannot be blank" if kid.blank?
+
+        key = extract_verification_key(kid)
+        return key if key
+
+        Gitlab::AuthLogger.error(
+          message: 'JWKS key not found',
+          iam_jwks_kid: kid,
+          iam_jwks_service_url: service_url
+        )
+        raise KeyNotFoundError, "Signing key not found in JWKS"
       end
 
-      # This is used during JWT verification retry when signature verification fails,
-      # which typically indicates the IAM service has rotated its signing keys.
-      def refresh_keys
-        clear_cache
-        fetch_keys
-      end
-
-      def clear_cache
-        Rails.cache.delete(cache_key)
+      def keyset
+        Rails.cache.fetch(cache_key, race_condition_ttl: RACE_CONDITION_TTL) do |_, options|
+          response = fetch_keyset
+          options.expires_in = cache_ttl(response)
+          parse_keyset(response)
+        end
       end
 
       private
 
-      def fetch_and_cache_keys
-        response = Gitlab::HTTP.get(endpoint, timeout: 5)
-
-        unless response.success?
-          raise JwksFetchFailedError,
-            "Failed to fetch JWKS from IAM service"
-        end
-
-        begin
-          keys = JWT::JWK::Set.new(response.parsed_response)
-        rescue JWT::JWKError, ArgumentError
-          raise JwksFetchFailedError, "Invalid JWKS format: malformed key data"
-        end
-
-        # Store with TTL from response
-        ttl = parse_cache_ttl(response) || DEFAULT_CACHE_TTL
-        Rails.cache.write(cache_key, keys, expires_in: ttl)
-
-        keys
-      rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout => e
-        Gitlab::ErrorTracking.track_exception(e)
-        raise JwksFetchFailedError, "Cannot connect to IAM service"
+      def service_url
+        Authn::IamAuthService.url
+      rescue Authn::IamAuthService::ConfigurationError => e
+        raise ConfigurationError, e.message
       end
 
-      def parse_cache_ttl(response)
-        cache_control = response.headers['cache-control'] || response.headers['Cache-Control']
-        return unless cache_control
+      def fetch_keyset
+        response = Gitlab::HTTP.get(endpoint, timeout: HTTP_TIMEOUT_SECONDS)
 
-        match = cache_control.match(/max-age=(\d+)/i)
-        match[1].to_i.seconds if match
+        unless response.success?
+          raise JwksFetchFailedError, "Failed to fetch keyset from IAM service: HTTP #{response.code}"
+        end
+
+        response
+      rescue *Gitlab::HTTP_V2::HTTP_ERRORS => e
+        Gitlab::ErrorTracking.track_exception(e)
+        raise JwksFetchFailedError, "Failed to connect to IAM service"
+      end
+
+      def parse_keyset(response)
+        parsed_keyset = JWT::JWK::Set.new(response.parsed_response)
+
+        kids = parsed_keyset.map(&:kid)
+        Gitlab::AuthLogger.debug(
+          message: 'JWKS fetched successfully',
+          iam_jwks_kids: kids,
+          iam_jwks_kid_count: kids.size,
+          iam_jwks_service_url: service_url
+        )
+
+        parsed_keyset
+      rescue JWT::JWKError => e
+        Gitlab::ErrorTracking.track_exception(e)
+        raise JwksFetchFailedError, "Failed to parse keyset: invalid JWKS format"
+      end
+
+      def extract_verification_key(kid)
+        jwk = keyset.find { |key| key[:kid] == kid }
+
+        # verify_key returns the public key (OpenSSL::PKey::RSA) for signature verification
+        jwk&.verify_key
       end
 
       def endpoint
         URI.join(service_url, JWKS_PATH).to_s
+      rescue URI::InvalidURIError => e
+        raise ConfigurationError, "Invalid IAM service URL: #{e.message}"
       end
 
       def cache_key
         "iam:jwks:#{service_url}"
       end
 
-      def service_url
-        url = Gitlab.config.authn.iam_service.url
-        raise ConfigurationError, 'IAM service URL is not configured' if url.nil?
+      def cache_ttl(response)
+        cache_control_header = response.headers['cache-control'] || response.headers['Cache-Control']
+        return DEFAULT_CACHE_TTL unless cache_control_header
 
-        url
+        match = cache_control_header.match(/max-age=(\d+)/i)
+        ttl = match.present? ? match[1].to_i.seconds : 0
+
+        ttl >= MIN_CACHE_TTL && ttl <= MAX_CACHE_TTL ? ttl : DEFAULT_CACHE_TTL
       end
     end
   end

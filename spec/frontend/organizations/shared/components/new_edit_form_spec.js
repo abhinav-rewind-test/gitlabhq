@@ -23,9 +23,9 @@ describe('NewEditForm', () => {
   let wrapper;
 
   const defaultProvide = {
-    organizationsPath: '/-/organizations',
-    rootUrl: 'http://127.0.0.1:3000/',
-    previewMarkdownPath: '/-/organizations/preview_markdown',
+    organizationsPath: '/o',
+    organizationsUrl: 'http://127.0.0.1:3000/o/',
+    previewMarkdownPath: '/o/-/preview_markdown',
   };
 
   const defaultPropsData = {
@@ -46,7 +46,7 @@ describe('NewEditForm', () => {
   const findNameField = () => wrapper.findByLabelText('Organization name');
   const findIdField = () => wrapper.findByLabelText('Organization ID');
   const findUrlField = () => wrapper.findComponent(OrganizationUrlField);
-  const findDescriptionField = () => wrapper.findByLabelText('Organization description (optional)');
+  const findDescriptionField = () => wrapper.find('textarea.note-textarea');
   const findDescriptionCharacterCounter = () =>
     wrapper.findByTestId('description-character-counter');
   const findAvatarField = () => wrapper.findComponent(AvatarUploadDropzone);

@@ -14,12 +14,15 @@ import {
   TOKEN_TYPE_MY_REACTION,
   TOKEN_TYPE_ORGANIZATION,
   TOKEN_TYPE_RELEASE,
+  TOKEN_TYPE_SEARCH_WITHIN,
   TOKEN_TYPE_TYPE,
   TOKEN_TYPE_WEIGHT,
   TOKEN_TYPE_HEALTH,
   TOKEN_TYPE_PARENT,
 } from '~/vue_shared/components/filtered_search_bar/constants';
 import { EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN } from '~/emoji/constants';
+import { CREATED_DESC, SAVED_VIEW_SEARCH_DELIMITER } from '~/work_items/list/constants';
+import { singleSavedView } from '../mock_data';
 
 export const setSortPreferenceMutationResponse = {
   data: {
@@ -321,7 +324,7 @@ export const savedViewFiltersObject = {
   state: 'opened',
   confidential: true,
   subscribed: 'explicitly_subscribed',
-  in: ['title', 'description'],
+  in: ['title'],
   search: 'ABC',
   myReactionEmoji: 'smile',
   closedBefore: '2025-01-01T00:00:00.000+00:00',
@@ -356,6 +359,7 @@ export const savedViewFiltersObject = {
   authorUsername: 'root',
   milestoneTitle: ['v0.0'],
   hierarchyFilters: {
+    parentIds: ['gid://gitlab/WorkItem/456'],
     includeDescendantWorkItems: false,
   },
   fullPath: 'flightjs/Flight',
@@ -370,6 +374,10 @@ export const savedViewFiltersObject = {
 export const savedViewFilterTokens = [
   { type: 'confidential', value: { data: 'yes', operator: '=' } },
   { type: 'subscribed', value: { data: 'EXPLICITLY_SUBSCRIBED', operator: '=' } },
+  {
+    type: TOKEN_TYPE_SEARCH_WITHIN,
+    value: { data: 'TITLE', operator: OPERATOR_IS },
+  },
   { type: 'filtered-search-term', value: { data: 'ABC', operator: undefined } },
   { type: 'my-reaction', value: { data: 'smile', operator: '=' } },
   {
@@ -443,6 +451,7 @@ export const savedViewFilterTokens = [
   { type: 'author', value: { data: ['root'], operator: '||' } },
   { type: 'author', value: { data: 'root', operator: '=' } },
   { type: 'milestone', value: { data: 'v0.0', operator: '=' } },
+  { type: TOKEN_TYPE_PARENT, value: { data: '456', operator: '=' } },
   { type: 'group', value: { data: 'flightjs/Flight', operator: '=' } },
   { type: 'iteration', value: { data: '1', operator: '=' } },
   {
@@ -478,7 +487,55 @@ export const saveSavedViewResponse = {
         sort: 'CREATED_DESC',
         displaySettings: { groupBy: 'assignee' },
         subscribed: true,
-        userPermissions: { updateSavedView: true, deleteSavedView: true },
+        updatedAt: '2025-12-04T10:00:00Z',
+        author: { name: 'Tim Ridgewater' },
+        lastUpdatedBy: { name: 'Nicole Evans' },
+        userPermissions: {
+          updateSavedView: true,
+          deleteSavedView: true,
+          updateSavedViewVisibility: true,
+          __typename: 'SavedViewPermissions',
+        },
+      },
+    },
+  },
+};
+
+export const saveSavedViewWithSearchParams = {
+  isEdit: false,
+  isForm: false,
+  namespacePath: 'my-group',
+  name: 'My View',
+  description: 'A test view',
+  isPrivate: false,
+  filters: { in: 'TITLE', search: ['work', 'items'] },
+  sort: 'CREATED_DESC',
+  displaySettings: { groupBy: 'assignee' },
+  mutationKey: 'workItemSavedViewCreate',
+};
+
+export const saveSavedViewWithSearchResponse = {
+  data: {
+    workItemSavedViewCreate: {
+      errors: [],
+      savedView: {
+        id: 'gid://gitlab/SavedView/1',
+        name: 'My View',
+        description: 'A test view',
+        isPrivate: false,
+        filters: { in: 'TITLE' },
+        sort: 'CREATED_DESC',
+        displaySettings: { groupBy: 'assignee', search: 'work__SV__items' },
+        subscribed: true,
+        updatedAt: '2025-12-04T10:00:00Z',
+        author: { name: 'Tim Ridgewater' },
+        lastUpdatedBy: { name: 'Nicole Evans' },
+        userPermissions: {
+          updateSavedView: true,
+          deleteSavedView: true,
+          updateSavedViewVisibility: true,
+          __typename: 'SavedViewPermissions',
+        },
       },
     },
   },
@@ -494,7 +551,12 @@ export const editSavedViewParams = {
   filters: { state: 'closed' },
   sort: 'UPDATED_DESC',
   displaySettings: { groupBy: 'status' },
-  userPermissions: { updateSavedView: true, deleteSavedView: true },
+  userPermissions: {
+    updateSavedView: true,
+    deleteSavedView: true,
+    updateSavedViewVisibility: true,
+    __typename: 'SavedViewPermissions',
+  },
   subscribed: true,
   mutationKey: 'workItemSavedViewUpdate',
 };
@@ -511,7 +573,15 @@ export const editSavedViewResponse = {
         filters: { state: 'closed' },
         sort: 'UPDATED_DESC',
         displaySettings: { groupBy: 'status' },
-        userPermissions: { updateSavedView: true, deleteSavedView: true },
+        updatedAt: '2025-12-04T10:00:00Z',
+        author: { name: 'Tim Ridgewater' },
+        lastUpdatedBy: { name: 'Nicole Evans' },
+        userPermissions: {
+          updateSavedView: true,
+          deleteSavedView: true,
+          updateSavedViewVisibility: true,
+          __typename: 'SavedViewPermissions',
+        },
         subscribed: true,
       },
     },
@@ -528,7 +598,12 @@ export const editSavedViewFormOnlyParams = {
   filters: { state: 'closed' },
   sort: 'UPDATED_DESC',
   displaySettings: { groupBy: 'status' },
-  userPermissions: { updateSavedView: true, deleteSavedView: true },
+  userPermissions: {
+    updateSavedView: true,
+    deleteSavedView: true,
+    updateSavedViewVisibility: true,
+    __typename: 'SavedViewPermissions',
+  },
   subscribed: true,
   mutationKey: 'workItemSavedViewUpdate',
 };
@@ -542,9 +617,228 @@ export const editSavedViewFormOnlyResponse = {
         name: 'Updated View',
         description: 'Updated description',
         isPrivate: false,
-        userPermissions: { updateSavedView: true, deleteSavedView: true },
+        userPermissions: {
+          updateSavedView: true,
+          deleteSavedView: true,
+          updateSavedViewVisibility: true,
+          __typename: 'SavedViewPermissions',
+        },
         subscribed: true,
       },
     },
   },
 };
+
+export const mockSavedViewsData = [
+  {
+    __typename: 'WorkItemSavedViewType',
+    id: 'gid://gitlab/WorkItems::SavedViews::SavedView/1',
+    name: 'My Private View',
+    description: 'Only I can see this',
+    isPrivate: true,
+    subscribed: true,
+    filters: {},
+    displaySettings: {},
+    sort: CREATED_DESC,
+    updatedAt: '2026-04-08T09:50:54Z',
+    author: {
+      id: 'gid://gitlab/User/1',
+      avatarUrl: '/uploads/-/system/user/avatar/1/avatar.png',
+      name: 'Administrator',
+      username: 'root',
+      webUrl: 'http://127.0.0.1:3000/root',
+      webPath: '/root',
+      __typename: 'UserCore',
+    },
+    lastUpdatedBy: {
+      id: 'gid://gitlab/User/1',
+      avatarUrl: '/uploads/-/system/user/avatar/1/avatar.png',
+      name: 'Administrator',
+      username: 'root',
+      webUrl: 'http://127.0.0.1:3000/root',
+      webPath: '/root',
+      __typename: 'UserCore',
+    },
+    userPermissions: {
+      updateSavedView: true,
+      deleteSavedView: true,
+      updateSavedViewVisibility: true,
+      __typename: 'SavedViewPermissions',
+    },
+  },
+];
+
+export const exampleSavedViewResponse = {
+  data: {
+    namespace: {
+      __typename: 'Namespace',
+      id: 'namespace',
+      currentSavedViews: {
+        nodes: mockSavedViewsData,
+      },
+      subscribedSavedViewLimit: 100,
+      savedViews: {
+        __typename: 'SavedViewConnection',
+        nodes: singleSavedView,
+      },
+    },
+  },
+};
+
+export const unsubscribedSavedView = [
+  {
+    __typename: 'WorkItemSavedViewType',
+    name: 'Current sprint 3',
+    description: 'The things I am focused on for the sprint',
+    subscribed: false,
+    isPrivate: true,
+    id: 'gid://gitlab/WorkItems::SavedViews::SavedView/3',
+    displaySettings: {
+      assignee: true,
+      blocked: true,
+      blocking: true,
+      dates: true,
+      health: true,
+      labels: true,
+      milestone: true,
+      popularity: true,
+      weight: true,
+      comments: true,
+      iteration: true,
+      status: true,
+    },
+    filters: {
+      state: 'opened',
+      assigneeUsernames: 'root',
+      labelName: 'Broffe',
+    },
+    sort: 'UPDATED_DESC',
+    userPermissions: {
+      updateSavedView: true,
+      deleteSavedView: true,
+      updateSavedViewVisibility: true,
+      __typename: 'SavedViewPermissions',
+    },
+    updatedAt: '2026-04-08T09:50:54Z',
+    author: {
+      id: 'gid://gitlab/User/1',
+      avatarUrl: '/uploads/-/system/user/avatar/1/avatar.png',
+      name: 'Administrator',
+      username: 'root',
+      webUrl: 'http://127.0.0.1:3000/root',
+      webPath: '/root',
+      __typename: 'UserCore',
+    },
+    lastUpdatedBy: {
+      id: 'gid://gitlab/User/1',
+      avatarUrl: '/uploads/-/system/user/avatar/1/avatar.png',
+      name: 'Administrator',
+      username: 'root',
+      webUrl: 'http://127.0.0.1:3000/root',
+      webPath: '/root',
+      __typename: 'UserCore',
+    },
+  },
+];
+
+export const unsubscribedSavedViewResponse = {
+  data: {
+    namespace: {
+      __typename: 'Namespace',
+      id: 'namespace',
+      currentSavedViews: {
+        nodes: mockSavedViewsData,
+      },
+      subscribedSavedViewLimit: 100,
+      savedViews: {
+        __typename: 'SavedViewConnection',
+        nodes: unsubscribedSavedView,
+      },
+    },
+  },
+};
+
+export const savedViewResponseFactory = ({ limit, subscribed, savedViews = null }) => {
+  return {
+    data: {
+      namespace: {
+        __typename: 'Namespace',
+        id: 'namespace',
+        currentSavedViews: {
+          nodes: mockSavedViewsData,
+        },
+        subscribedSavedViewLimit: limit || 100,
+        savedViews: {
+          __typename: 'SavedViewConnection',
+          nodes: savedViews ?? (subscribed ? singleSavedView : unsubscribedSavedView),
+          pageInfo: {
+            __typename: 'PageInfo',
+            hasNextPage: false,
+            hasPreviousPage: false,
+            startCursor: null,
+            endCursor: null,
+          },
+        },
+      },
+    },
+  };
+};
+
+export const savedViewFiltersWithWildcards = {
+  milestoneWildcardId: 'none',
+  assigneeWildcardId: 'any',
+  iterationWildcardId: 'current',
+};
+
+export const savedViewFilterTokensWithWildcards = [
+  { type: TOKEN_TYPE_MILESTONE, value: { data: 'None', operator: OPERATOR_IS } },
+  { type: TOKEN_TYPE_ASSIGNEE, value: { data: 'Any', operator: OPERATOR_IS } },
+  { type: TOKEN_TYPE_ITERATION, value: { data: 'Current', operator: OPERATOR_IS } },
+];
+
+export const savedViewFiltersWithNotParent = {
+  not: {
+    parentIds: ['gid://gitlab/WorkItem/789'],
+  },
+};
+
+export const savedViewFilterTokensWithNotParent = [
+  { type: TOKEN_TYPE_PARENT, value: { data: '789', operator: OPERATOR_NOT } },
+];
+
+export const savedViewFiltersWithSingleIn = {
+  in: ['title'],
+};
+
+export const savedViewFilterTokensWithSingleIn = [
+  { type: TOKEN_TYPE_SEARCH_WITHIN, value: { data: 'TITLE', operator: OPERATOR_IS } },
+];
+
+export const savedViewFiltersWithHierarchyParent = {
+  hierarchyFilters: {
+    parentIds: ['gid://gitlab/WorkItem/123'],
+  },
+};
+
+export const savedViewFilterTokensWithHierarchyParent = [
+  { type: TOKEN_TYPE_PARENT, value: { data: '123', operator: OPERATOR_IS } },
+];
+
+export const savedViewFiltersWithHierarchyParentWildcard = {
+  hierarchyFilters: {
+    parentWildcardId: 'none',
+  },
+};
+
+export const savedViewFilterTokensWithHierarchyParentWildcard = [
+  { type: TOKEN_TYPE_PARENT, value: { data: 'None', operator: OPERATOR_IS } },
+];
+
+export const savedViewFiltersWithMultipleSearchTokens = {
+  search: `Work${SAVED_VIEW_SEARCH_DELIMITER}Items`,
+};
+
+export const savedViewFilterTokensWithMultipleSearchTokens = [
+  { type: FILTERED_SEARCH_TERM, value: { data: 'Work', operator: undefined } },
+  { type: FILTERED_SEARCH_TERM, value: { data: 'Items', operator: undefined } },
+];

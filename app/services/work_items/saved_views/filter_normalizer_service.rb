@@ -5,6 +5,8 @@ module WorkItems
     class FilterNormalizerService < FilterBaseService
       include ::API::Concerns::Milestones::GroupProjectParams
 
+      LABEL_WILDCARDS = %w[Any None].freeze
+
       attr_reader :normalized_filters
 
       def initialize(filter_data:, container:, current_user:)
@@ -21,6 +23,7 @@ module WorkItems
         normalize_usernames(:assignee_usernames, :assignee_ids)
         normalize_author_username
         normalize_label_names
+        normalize_work_item_type_ids
         normalize_attribute(:milestone_title, :milestone_ids, method: :find_milestone_ids)
         normalize_attribute(:release_tag, :release_ids, method: :find_release_ids,
           condition: -> { container.is_a?(Project) })
@@ -181,10 +184,18 @@ module WorkItems
       end
 
       def normalize_label_names
-        # Label is passed differently in the GQL depending on the context (negated / unioned)
+        if filters[:label_name]
+          label_names = Array.wrap(filters[:label_name])
+          idx = label_names.find_index { |name| label_wildcard?(name) }
+
+          if idx
+            normalized_filters[:label_wildcard_id] = label_names.delete_at(idx).to_s
+            filters.delete(:label_name) if label_names.empty?
+          end
+        end
+
         normalize_with_context(:label_name, :label_ids) do |label_name_or_names|
-          label_names = Array.wrap(label_name_or_names)
-          find_label_ids(label_names)
+          find_label_ids(Array.wrap(label_name_or_names))
         end
 
         return unless filters.dig(:or, :label_names)
@@ -198,6 +209,22 @@ module WorkItems
 
         normalized_filters[:not] ||= {}
         normalized_filters[:not][:parent_ids] = filters[:not][:parent_ids]
+      end
+
+      def normalize_work_item_type_ids
+        if filters[:work_item_type_ids]
+          normalized_filters[:work_item_type_ids] = filters[:work_item_type_ids].map(&:to_i)
+        end
+
+        negated_type_ids = filters.dig(:not, :work_item_type_ids)
+        return unless negated_type_ids
+
+        normalized_filters[:not] ||= {}
+        normalized_filters[:not][:work_item_type_ids] = negated_type_ids.map(&:to_i)
+      end
+
+      def label_wildcard?(value)
+        LABEL_WILDCARDS.include?(value.to_s)
       end
     end
   end

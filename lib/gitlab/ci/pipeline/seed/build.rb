@@ -73,8 +73,8 @@ module Gitlab
               .deep_merge(@cache.cache_attributes)
               .deep_merge(inputs_attributes)
               .deep_merge(runner_tags)
-              .deep_merge(build_execution_config_attribute)
               .deep_merge(scoped_user_id_attribute)
+              .deep_merge(suspend_options_attributes)
               .then { |attrs| add_execution_config(attrs) }
               .except(:stage)
           end
@@ -89,9 +89,9 @@ module Gitlab
           def to_resource
             logger.instrument(:pipeline_seed_build_to_resource) do
               if bridge?
-                ::Ci::Bridge.fabricate(attributes)
+                ::Ci::Bridge.fabricate(**attributes)
               else
-                ::Ci::Build.fabricate(attributes)
+                ::Ci::Build.fabricate(**attributes)
               end
             end
           end
@@ -100,13 +100,6 @@ module Gitlab
           private
 
           delegate :logger, to: :@context
-
-          def build_execution_config_attribute
-            return {} unless @execution_config_attribute
-
-            execution_config = @context.find_or_build_execution_config(@execution_config_attribute)
-            { execution_config: execution_config }
-          end
 
           def all_of_only?
             @only.all? { |spec| spec.satisfied_by?(@pipeline, evaluate_context) }
@@ -232,6 +225,12 @@ module Gitlab
             {
               options: { inputs: @inputs }
             }
+          end
+
+          def suspend_options_attributes
+            return {} unless @context.suspend_options.present?
+
+            { options: { suspend_options: @context.suspend_options } }
           end
 
           def calculate_yaml_variables!

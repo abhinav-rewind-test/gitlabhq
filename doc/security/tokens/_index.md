@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab token overview
 description: Understand different authentication tokens and their security implications.
 ---
@@ -25,8 +25,7 @@ To keep your tokens secure:
   - If separate processes require different scopes (for example, `read` and `write`), consider using separate tokens for each scope.
     If one token leaks, it provides less access than a single token with a wide scope like full API access.
 - When creating a token:
-  - Choose a name that describes the token. For example, `GITLAB_API_TOKEN-application1` or `GITLAB_READ_API_TOKEN-application2`.
-  - Avoid generic names like `GITLAB_API_TOKEN`, `API_TOKEN` or `default`.
+  - Choose a name following the [token naming guidance](#token-naming-guidance) below.
   - Consider setting a token that expires when your task is complete.
     For example, if you need to perform a one-time import, set the token to expire after a few hours.
   - Add a description that provides further context including any relevant URLs.
@@ -47,6 +46,41 @@ Do not:
 - Include tokens when pasting code, console commands, or log outputs into an issue, MR description, comment, or any other free text inputs.
 - Log credentials in the console logs or artifacts. Consider [protecting](../../ci/variables/_index.md#protect-a-cicd-variable) and
   [masking](../../ci/variables/_index.md#mask-a-cicd-variable) your credentials.
+
+### Token naming guidance
+
+A consistent naming convention makes it easier to audit access tokens, understand their purpose,
+and assess the impact of rotating or revoking each token.
+
+Naming conventions vary by team, but a useful convention answers these questions:
+
+- What action does the token perform? For example, `ci-deploy` or `api-read`.
+- What resource or service does the token act on? For example, `gitlab` or `terraform`.
+- Which environment or owner is the token associated with? For example, `production` or `auth-team`.
+
+For example:
+
+| Token name | Purpose |
+| --- | --- |
+| `ci-deploy-gitlab-production` | CI/CD deployment job for the GitLab project in production |
+| `api-read-reporting-dashboard` | Read-only API access for a reporting dashboard |
+| `automation-sync-vulnmapper-staging` | Automation script syncing data in staging |
+
+- Be specific. Avoid generic names like `test`, `mytoken`, `token1`, `GITLAB_API_TOKEN`, `API_TOKEN` or `default`.
+  These make it impossible to identify a token's purpose during an audit.
+- Include the consuming system or tool. If a token is used by a specific application,
+  script, or integration, include its name. For example: `terraform-state-backend` or
+  `grafana-metrics-reader`.
+- Include the environment. Where applicable, indicate whether the token targets
+  `production`, `staging`, or `development`. This prevents accidental use of a
+  production token in a lower environment.
+- Avoid embedding sensitive information. Do not include usernames, email addresses,
+  or any other personally identifiable information (PII) in token names, as token names
+  are visible in audit logs and the UI.
+- Set standardized capitalization and punctuation rules. Using consistent capitalization and separators makes
+  it easier to read and search for tokens. For example, using hyphens (-) over underscores (_).
+- Use the description field. The token description field allows you to add additional details such as links
+  to related issues or names of team that uses the token.
 
 ### Tokens in CI/CD
 
@@ -304,7 +338,7 @@ Prerequisites:
 - You must be an administrator.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility and access controls**.
 1. Under **Feed token**, select the **Disable feed token** checkbox, then select **Save changes**.
 

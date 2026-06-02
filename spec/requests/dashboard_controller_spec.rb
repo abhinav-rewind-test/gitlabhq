@@ -4,18 +4,42 @@ require 'spec_helper'
 
 RSpec.describe DashboardController, feature_category: :system_access do
   context 'token authentication' do
-    it_behaves_like 'authenticates sessionless user for the request spec', 'issues atom', public_resource: false do
-      let(:url) { issues_dashboard_url(:atom, assignee_username: user.username) }
+    context 'for issues atom' do
+      let(:user) { create(:user) }
+      let(:token) { create(:personal_access_token, user: user) }
+
+      it 'redirects to work items dashboard' do
+        get issues_dashboard_url(:atom, assignee_username: user.username),
+          params: { private_token: token.token }
+
+        expect(response).to have_gitlab_http_status(:moved_permanently)
+      end
     end
 
-    it_behaves_like 'authenticates sessionless user for the request spec', 'issues_calendar ics', public_resource: false do
-      let(:url) { issues_dashboard_url(:ics, assignee_username: user.username) }
+    context 'for issues_calendar ics' do
+      let(:user) { create(:user) }
+      let(:token) { create(:personal_access_token, user: user) }
+
+      it 'redirects to work items dashboard' do
+        get issues_dashboard_url(:ics, assignee_username: user.username),
+          params: { private_token: token.token }
+
+        expect(response).to have_gitlab_http_status(:moved_permanently)
+      end
+    end
+
+    it_behaves_like 'authenticates sessionless user for the request spec', 'work_items atom', public_resource: false do
+      let(:url) { work_items_dashboard_url(:atom, assignee_username: user.username) }
+    end
+
+    it_behaves_like 'authenticates sessionless user for the request spec', 'work_items_calendar ics', public_resource: false do
+      let(:url) { work_items_dashboard_url(:ics, assignee_username: user.username) }
     end
   end
 
   context 'issues dashboard' do
     it_behaves_like 'rate limited endpoint', rate_limit_key: :search_rate_limit do
-      let_it_be(:current_user) { create(:user) }
+      let_it_be(:current_user, freeze: false) { create(:user) }
 
       before do
         sign_in current_user
@@ -32,7 +56,7 @@ RSpec.describe DashboardController, feature_category: :system_access do
   end
 
   context 'merge requests dashboard' do
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
 
     before do
       sign_in current_user
@@ -57,7 +81,7 @@ RSpec.describe DashboardController, feature_category: :system_access do
 
   context 'search merge requests dashboard' do
     it_behaves_like 'rate limited endpoint', rate_limit_key: :search_rate_limit do
-      let_it_be(:current_user) { create(:user) }
+      let_it_be(:current_user, freeze: false) { create(:user) }
 
       before do
         sign_in current_user
@@ -74,7 +98,7 @@ RSpec.describe DashboardController, feature_category: :system_access do
   end
 
   shared_examples 'load project events' do
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
     let_it_be(:user1) { create(:user) }
     let_it_be(:project) { create(:project, :public) }
     let_it_be(:events) { create_list(:event, 25, author: user1, project: project) } # rubocop:disable FactoryBot/ExcessiveCreateList -- We need more than 20 events to demonstrate how the controller limits the amount of returned objects
@@ -152,7 +176,7 @@ RSpec.describe DashboardController, feature_category: :system_access do
   end
 
   context "when fetching all user activity" do
-    let_it_be(:current_user) { create(:user) }
+    let_it_be(:current_user, freeze: false) { create(:user) }
     let_it_be(:recent_project) { create(:project, :public, title: "Recent Project") }
     let_it_be(:old_project) { create(:project, :public, title: "Old Project") }
     let_it_be(:oldest_event) { create(:event, author: current_user, project: old_project, created_at: 2.days.ago.beginning_of_day) }

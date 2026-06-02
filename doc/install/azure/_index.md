@@ -1,7 +1,7 @@
 ---
 stage: Systems
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Install GitLab from Azure Marketplace.
 title: Install GitLab on Microsoft Azure
 ---
@@ -236,7 +236,7 @@ The credentials are:
 
 - Username: `root`
 - Password: the password is automatically created, and there are
-  [two ways to find it](https://docs.bitnami.com/azure/faq/get-started/find-credentials/).
+  [two ways to find it](https://docs.bitnami.com/virtual-machine/faq/get-started/find-credentials/).
 
 After signing in, be sure to immediately [change the password](../../user/profile/user_passwords.md#change-your-password).
 
@@ -251,7 +251,7 @@ in this section whenever you need to update GitLab.
 To determine the version of GitLab you're currently running:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Dashboard**.
+1. In the left sidebar, select **Overview** > **Dashboard**.
 1. Find the version under the **Components** table.
 
 If there's a newer available version of GitLab that contains one or more

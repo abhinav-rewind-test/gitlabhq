@@ -2,15 +2,15 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Dashboard Issues filtering', :js, feature_category: :team_planning do
+RSpec.describe 'Dashboard Issues filtering', :js, feature_category: :portfolio_management do
   include Features::SortingHelpers
   include FilteredSearchHelpers
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:project, freeze: false) { create(:project) }
   let_it_be(:milestone) { create(:milestone, project: project) }
 
-  let_it_be(:issue) { create(:issue, project: project, author: user, assignees: [user]) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project, author: user, assignees: [user]) }
   let_it_be(:issue2) { create(:issue, project: project, author: user, assignees: [user], milestone: milestone) }
   let_it_be(:label) { create(:label, project: project, title: 'bug') }
   let_it_be(:label_link) { create(:label_link, label: label, target: issue) }
@@ -19,11 +19,6 @@ RSpec.describe 'Dashboard Issues filtering', :js, feature_category: :team_planni
   let_it_be(:label2) { create(:label, title: 'bug') }
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-
     project.labels << label
     project2.labels << label2
     project.add_maintainer(user)
@@ -103,26 +98,17 @@ RSpec.describe 'Dashboard Issues filtering', :js, feature_category: :team_planni
 
   context 'sorting' do
     before do
+      create(:user_preference, user: user)
       visit issues_dashboard_path(assignee_username: user.username)
     end
 
-    it 'remembers last sorting value',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9338' do
-      click_button 'Created date'
-      click_button 'Updated date'
+    it 'remembers last sorting value' do
+      pajamas_sort_by 'Updated date', from: 'Created date'
+      wait_for_requests
 
       visit issues_dashboard_path(assignee_username: user.username)
 
       expect(page).to have_button('Updated date')
-    end
-
-    it 'keeps sorting issues after visiting Projects Issues page',
-      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16770' do
-      pajamas_sort_by 'Due date', from: 'Created date'
-
-      visit project_issues_path(project)
-
-      expect(page).to have_button('Due date')
     end
   end
 end

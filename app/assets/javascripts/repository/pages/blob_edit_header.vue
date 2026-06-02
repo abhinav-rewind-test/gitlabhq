@@ -1,6 +1,6 @@
 <script>
 import { GlButton } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import axios from '~/lib/utils/axios_utils';
 import { __, sprintf } from '~/locale';
 import PageHeading from '~/vue_shared/components/page_heading.vue';
@@ -15,6 +15,7 @@ import {
   prepareDataForApiEdit,
 } from '../utils/edit_form_data_utils';
 import {
+  getUrlToExistingMergeRequest,
   redirectToExistingMergeRequest,
   redirectToCreateMergeRequest,
   redirectToForkMergeRequest,
@@ -61,6 +62,17 @@ export default {
     };
   },
   computed: {
+    cancelEditBlobUrl() {
+      if (this.shouldRedirectToExistingMR(this.originalBranch)) {
+        return getUrlToExistingMergeRequest({
+          url: window.location.href,
+          projectPath: this.projectPath,
+          fromMergeRequestIid: this.fromMergeRequestIid,
+        });
+      }
+
+      return this.cancelPath;
+    },
     updateModalId() {
       return uniqueId('update-modal');
     },
@@ -259,18 +271,31 @@ export default {
         originalBranch,
         newMergeRequestPath,
       } = this;
+      const shouldCreateNewMR = this.shouldCreateNewMR(formData, isNewBranch);
 
       if (this.shouldRedirectToExistingMR(resultingBranch)) {
         redirectToExistingMergeRequest({ url, projectPath, fromMergeRequestIid });
       } else if (!this.canPushToBranch) {
-        redirectToForkMergeRequest({
-          url,
-          forkProjectPath: targetProjectPath,
-          sourceBranch: resultingBranch,
-          upstreamProjectId: projectId,
-          targetBranch: originalBranch,
-        });
-      } else if (this.shouldCreateNewMR(formData, isNewBranch)) {
+        if (shouldCreateNewMR) {
+          redirectToForkMergeRequest({
+            url,
+            forkProjectPath: targetProjectPath,
+            sourceBranch: resultingBranch,
+            upstreamProjectId: projectId,
+            targetBranch: originalBranch,
+          });
+        } else {
+          redirectToBlobWithAlert({
+            url,
+            resultingBranch,
+            responseData,
+            formData,
+            isNewBranch: true,
+            targetProjectPath,
+            successMessageFn: this.successMessageForAlert,
+          });
+        }
+      } else if (shouldCreateNewMR) {
         redirectToCreateMergeRequest({ newMergeRequestPath, sourceBranch: resultingBranch });
       } else {
         redirectToBlobWithAlert({
@@ -322,7 +347,7 @@ export default {
       <template #actions>
         <gl-button
           :data-confirm="$options.i18n.confirmationMessage"
-          :href="cancelPath"
+          :href="cancelEditBlobUrl"
           data-confirm-btn-variant="danger"
           data-testid="blob-edit-header-cancel-button"
           @click="handleCancelButtonClick"

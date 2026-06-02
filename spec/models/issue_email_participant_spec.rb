@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe IssueEmailParticipant, feature_category: :service_desk do
   describe "Associations" do
     it { is_expected.to belong_to(:issue) }
+    it { is_expected.to belong_to(:namespace) }
   end
 
   describe 'Modules' do
@@ -38,6 +39,26 @@ RSpec.describe IssueEmailParticipant, feature_category: :service_desk do
         expect(described_class.with_emails([participant.email, participant1.email])).to match_array(
           [participant, participant1]
         )
+      end
+    end
+
+    describe '.with_issue_and_project_ordered' do
+      let_it_be(:participant1) { create(:issue_email_participant) }
+      let_it_be(:participant2) { create(:issue_email_participant) }
+      let_it_be(:participant3) { create(:issue_email_participant) }
+
+      it 'returns participants ordered by id ascending' do
+        expect(described_class.with_issue_and_project_ordered).to eq([participant1, participant2, participant3])
+      end
+
+      it 'preloads issue and project associations' do
+        baseline = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+          described_class.with_issue_and_project_ordered
+        end
+
+        create(:issue_email_participant)
+
+        expect { described_class.with_issue_and_project_ordered }.to issue_same_number_of_queries_as(baseline)
       end
     end
   end

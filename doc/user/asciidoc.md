@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use AsciiDoc files in your GitLab project, and understand AsciiDoc syntax.
 title: AsciiDoc
 ---
@@ -14,7 +14,7 @@ title: AsciiDoc
 {{< /details >}}
 
 GitLab uses the [Asciidoctor](https://asciidoctor.org) gem to convert AsciiDoc content to HTML5.
-Consult the [Asciidoctor User Manual](https://asciidoctor.org/docs/user-manual/) for a complete Asciidoctor reference.
+For a complete reference, see the [Asciidoctor user manual](https://asciidoctor.org/docs/user-manual/).
 
 You can use AsciiDoc in the following areas:
 

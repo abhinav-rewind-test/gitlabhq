@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Set timeouts, protect sensitive information, control behavior with tags and variables, and configure artifact and cache settings of your GitLab Runner.
 title: Configuring runners
 ---
@@ -39,7 +39,7 @@ On GitLab.com, you cannot override the job timeout for GitLab hosted instance ru
 To set the maximum job timeout:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **CI/CD** > **Runners**.
+1. In the left sidebar, select **CI/CD** > **Runners**.
 1. To the right of the runner, you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. In the **Maximum job timeout** field, enter a value in seconds. The minimum value is 600 seconds (10 minutes).
 1. Select **Save changes**.
@@ -53,7 +53,7 @@ Prerequisites:
 To set the maximum job timeout:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Build** > **Runners**.
+1. In the left sidebar, select **Build** > **Runners**.
 1. To the right of the runner you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. In the **Maximum job timeout** field, enter a value in seconds. The minimum value is 600 seconds (10 minutes).
 1. Select **Save changes**.
@@ -67,7 +67,7 @@ Prerequisites:
 To set the maximum job timeout:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Runners**.
 1. To the right of the runner you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. In the **Maximum job timeout** field, enter a value in seconds. The minimum value is 600 seconds (10 minutes). If not defined, the [job timeout for the project](../pipelines/settings.md#set-a-limit-for-how-long-jobs-can-run) is used instead.
@@ -209,7 +209,7 @@ That new runner may then be used to obtain the values of secret variables or to 
 To reset the registration token:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Runners**.
 1. To the right of **New project runner**, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}).
 1. Select **Reset registration token**.
@@ -273,7 +273,7 @@ Prerequisites:
 To automatically rotate runner authentication tokens:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Continuous Integration and Deployment**.
 1. Set a **Runners expiration** time for runners, leave empty for no expiration.
 1. Select **Save changes**.
@@ -297,7 +297,7 @@ Prerequisites:
 - You must be an administrator.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **CI/CD** > **Runners**.
+1. In the left sidebar, select **CI/CD** > **Runners**.
 1. To the right of the runner you want to protect, select **Edit** ({{< icon name="pencil" >}}).
 1. Select the **Protected** checkbox.
 1. Select **Save changes**.
@@ -309,7 +309,7 @@ Prerequisites:
 - You must have the Owner role for the group.
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Build** > **Runners**.
+1. In the left sidebar, select **Build** > **Runners**.
 1. To the right of the runner you want to protect, select **Edit** ({{< icon name="pencil" >}}).
 1. Select the **Protected** checkbox.
 1. Select **Save changes**.
@@ -321,7 +321,7 @@ Prerequisites:
 - You must have the Owner role for the project.
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Runners**.
 1. To the right of the runner you want to protect, select **Edit** ({{< icon name="pencil" >}}).
 1. Select the **Protected** checkbox.
@@ -345,7 +345,7 @@ Prerequisites:
 To control the jobs that an instance runner can run:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **CI/CD** > **Runners**.
+1. In the left sidebar, select **CI/CD** > **Runners**.
 1. To the right of the runner you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. Set the runner to run tagged or untagged jobs:
    - To run tagged jobs, in the **Tags** field, enter the job tags separated with a comma. For example, `macos`, `rails`.
@@ -361,7 +361,7 @@ Prerequisites:
 To control the jobs that a group runner can run:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Build** > **Runners**.
+1. In the left sidebar, select **Build** > **Runners**.
 1. To the right of the runner you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. Set the runner to run tagged or untagged jobs:
    - To run tagged jobs, in the **Tags** field, enter the job tags separated with a comma. For example, `macos`, `ruby`.
@@ -377,7 +377,7 @@ Prerequisites:
 To control the jobs that a project runner can run:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Runners**.
 1. To the right of the runner you want to edit, select **Edit** ({{< icon name="pencil" >}}).
 1. Set the runner to run tagged or untagged jobs:
@@ -791,7 +791,7 @@ git submodule update --init --depth 20 --recursive --remote --jobs 4
 > reproducibility of your builds when using the `--remote` flag. In most cases,
 > it is better to explicitly track submodule commits as designed, and update them
 > using an auto-remediation/dependency bot.
-> 
+>
 > The `--remote` flag is not required to check out submodules at their committed
 > revisions. Use this flag only when you want to automatically update submodules
 > to their latest remote versions.
@@ -1053,6 +1053,27 @@ variables:
 | `CACHE_COMPRESSION_LEVEL`    | To adjust compression ratio, set to `fastest`, `fast`, `default`, `slow`, or `slowest`. This setting works with the Fastzip archiver only, so the GitLab Runner feature flag [`FF_USE_FASTZIP`](https://docs.gitlab.com/runner/configuration/feature-flags/#available-feature-flags) must also be enabled. |
 | `CACHE_REQUEST_TIMEOUT`      | Configure the maximum duration of cache upload and download operations for a single job in minutes. Default is `10` minutes. |
 
+### Tune TCP settings for high-latency connections
+
+If significant network latency exists between the runner and the GitLab instance,
+the default TCP window size might limit throughput. On the runner host,
+increase the TCP window size to allow more data in flight.
+
+For example, on Linux, increase the maximum TCP buffer sizes:
+
+```shell
+sudo sysctl -w net.core.rmem_max=16777216
+sudo sysctl -w net.core.wmem_max=16777216
+sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216"
+sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216"
+```
+
+To make these changes persistent across reboots, add them to `/etc/sysctl.conf`.
+
+> [!note]
+> TCP tuning is a host-level change that affects all network connections on the
+> runner machine. Test changes in a non-production environment first.
+
 ## Artifact provenance metadata
 
 {{< history >}}
@@ -1110,7 +1131,7 @@ These fields are populated by default:
 | `predicate.buildDefinition.internalParameters.job`                | The ID of the CI/CD job that triggered the build. |
 | `predicate.buildDefinition.resolvedDependencies[0].uri`           | The URL of the project. |
 | `predicate.buildDefinition.resolvedDependencies[0].digest.sha256` | The commit revision of the project. |
-| `predicate.runDetails.metadata.invocationID`                      | The ID of the CI/CD job that triggered the build. |
+| `predicate.runDetails.metadata.invocationId`                      | The ID of the CI/CD job that triggered the build. |
 | `predicate.runDetails.metadata.startedOn`                         | The time when the build was started. This field is `RFC3339` formatted. |
 | `predicate.runDetails.metadata.finishedOn`                        | The time when the build ended. Because metadata generation happens during the build, this time is slightly earlier than the one reported in GitLab. This field is `RFC3339` formatted. |
 
@@ -1173,7 +1194,7 @@ A provenance statement should look similar to this example:
     }
    },
    "metadata": {
-    "invocationID": "10340684631",
+    "invocationId": "10340684631",
     "startedOn": "2025-06-13T07:25:13Z",
     "finishedOn": "2025-06-13T07:25:40Z"
    }

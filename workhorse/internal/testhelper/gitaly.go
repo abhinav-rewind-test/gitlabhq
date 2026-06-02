@@ -50,6 +50,19 @@ var (
 
 	// GitalyGetSnapshotResponseMock represents mock data for Gitaly's GetSnapshotResponse.
 	GitalyGetSnapshotResponseMock = strings.Repeat("Mock Gitaly GetSnapshotResponse data", 100000)
+	// GitalyFindChangedPathsResponseMock represents mock changed paths for Gitaly's FindChangedPathsResponse.
+	GitalyFindChangedPathsResponseMock = []*gitalypb.ChangedPaths{
+		{Path: []byte("file1.txt"), Status: gitalypb.ChangedPaths_ADDED, OldMode: 0, NewMode: 0o100644},
+		{Path: []byte("dir/file2.txt"), Status: gitalypb.ChangedPaths_MODIFIED, OldMode: 0o100644, NewMode: 0o100644},
+		{Path: []byte("deleted.txt"), Status: gitalypb.ChangedPaths_DELETED, OldMode: 0o100644, NewMode: 0},
+	}
+	// GitalyListBlobsResponseMock represents mock blobs for Gitaly's ListBlobsResponse.
+	GitalyListBlobsResponseMock = &gitalypb.ListBlobsResponse{
+		Blobs: []*gitalypb.ListBlobsResponse_Blob{
+			{Oid: "abc123", Size: 5, Data: []byte("hello"), Path: []byte("file1.txt")},
+			{Oid: "def456", Size: 5, Data: []byte("world"), Path: []byte("file2.txt")},
+		},
+	}
 
 	// GitalyReceivePackResponseMock represents mock data for Gitaly's ReceivePackResponse.
 	GitalyReceivePackResponseMock []byte
@@ -274,86 +287,32 @@ func (s *GitalyTestServer) GetBlob(in *gitalypb.GetBlobRequest, stream gitalypb.
 	return s.finalError()
 }
 
+// GetArchive is a method on GitalyTestServer that handles the GetArchive RPC call.
 func (s *GitalyTestServer) GetArchive(in *gitalypb.GetArchiveRequest, stream gitalypb.RepositoryService_GetArchiveServer) error {
-	s.Add(1)
-	defer s.Done()
-
-	if err := validateRepository(in.GetRepository()); err != nil {
-		return err
-	}
-
-	nSends, err := sendBytes([]byte(GitalyGetArchiveResponseMock), func(p []byte) error {
+	return s.sendStreamResponse(in.GetRepository(), []byte(GitalyGetArchiveResponseMock), func(p []byte) error {
 		return stream.Send(&gitalypb.GetArchiveResponse{Data: p})
 	})
-	if err != nil {
-		return err
-	}
-	if nSends <= 1 {
-		panic("should have sent more than one message")
-	}
-
-	return s.finalError()
 }
 
 // RawDiff is a method on GitalyTestServer that handles the RawDiff RPC call.
-func (s *GitalyTestServer) RawDiff(_ *gitalypb.RawDiffRequest, stream gitalypb.DiffService_RawDiffServer) error {
-	nSends, err := sendBytes([]byte(GitalyGetDiffResponseMock), func(p []byte) error {
-		return stream.Send(&gitalypb.RawDiffResponse{
-			Data: p,
-		})
+func (s *GitalyTestServer) RawDiff(in *gitalypb.RawDiffRequest, stream gitalypb.DiffService_RawDiffServer) error {
+	return s.sendStreamResponse(in.GetRepository(), []byte(GitalyGetDiffResponseMock), func(p []byte) error {
+		return stream.Send(&gitalypb.RawDiffResponse{Data: p})
 	})
-	if err != nil {
-		return err
-	}
-	if nSends <= 1 {
-		panic("should have sent more than one message")
-	}
-
-	return s.finalError()
 }
 
+// RawPatch is a method on GitalyTestServer that handles the RawPatch RPC call.
 func (s *GitalyTestServer) RawPatch(in *gitalypb.RawPatchRequest, stream gitalypb.DiffService_RawPatchServer) error {
-	s.Add(1)
-	defer s.Done()
-
-	if err := validateRepository(in.GetRepository()); err != nil {
-		return err
-	}
-
-	nSends, err := sendBytes([]byte(GitalyGetPatchResponseMock), func(p []byte) error {
-		return stream.Send(&gitalypb.RawPatchResponse{
-			Data: p,
-		})
+	return s.sendStreamResponse(in.GetRepository(), []byte(GitalyGetPatchResponseMock), func(p []byte) error {
+		return stream.Send(&gitalypb.RawPatchResponse{Data: p})
 	})
-	if err != nil {
-		return err
-	}
-	if nSends <= 1 {
-		panic("should have sent more than one message")
-	}
-
-	return s.finalError()
 }
 
+// GetSnapshot is a method on GitalyTestServer that handles the GetSnapshot RPC call.
 func (s *GitalyTestServer) GetSnapshot(in *gitalypb.GetSnapshotRequest, stream gitalypb.RepositoryService_GetSnapshotServer) error {
-	s.Add(1)
-	defer s.Done()
-
-	if err := validateRepository(in.GetRepository()); err != nil {
-		return err
-	}
-
-	nSends, err := sendBytes([]byte(GitalyGetSnapshotResponseMock), func(p []byte) error {
+	return s.sendStreamResponse(in.GetRepository(), []byte(GitalyGetSnapshotResponseMock), func(p []byte) error {
 		return stream.Send(&gitalypb.GetSnapshotResponse{Data: p})
 	})
-	if err != nil {
-		return err
-	}
-	if nSends <= 1 {
-		panic("should have sent more than one message")
-	}
-
-	return s.finalError()
 }
 
 // sendBytes returns the number of times the 'sender' function was called and an error.
@@ -380,6 +339,59 @@ func (s *GitalyTestServer) finalError() error {
 	}
 
 	return nil
+}
+
+func (s *GitalyTestServer) sendStreamResponse(repo *gitalypb.Repository, mockData []byte, sender func([]byte) error) error {
+	s.Add(1)
+	defer s.Done()
+
+	if err := validateRepository(repo); err != nil {
+		return err
+	}
+
+	nSends, err := sendBytes(mockData, sender)
+	if err != nil {
+		return err
+	}
+	if nSends <= 1 {
+		panic("should have sent more than one message")
+	}
+
+	return s.finalError()
+}
+
+// FindChangedPaths is a method on GitalyTestServer that handles the FindChangedPaths RPC call.
+func (s *GitalyTestServer) FindChangedPaths(in *gitalypb.FindChangedPathsRequest, stream gitalypb.DiffService_FindChangedPathsServer) error {
+	s.Add(1)
+	defer s.Done()
+
+	if err := validateRepository(in.GetRepository()); err != nil {
+		return err
+	}
+
+	if err := stream.Send(&gitalypb.FindChangedPathsResponse{
+		Paths: GitalyFindChangedPathsResponseMock,
+	}); err != nil {
+		return err
+	}
+
+	return s.finalError()
+}
+
+// ListBlobs is a method on GitalyTestServer that handles the ListBlobs RPC call.
+func (s *GitalyTestServer) ListBlobs(in *gitalypb.ListBlobsRequest, stream gitalypb.BlobService_ListBlobsServer) error {
+	s.Add(1)
+	defer s.Done()
+
+	if err := validateRepository(in.GetRepository()); err != nil {
+		return err
+	}
+
+	if err := stream.Send(GitalyListBlobsResponseMock); err != nil {
+		return err
+	}
+
+	return s.finalError()
 }
 
 func validateRepository(repo *gitalypb.Repository) error {

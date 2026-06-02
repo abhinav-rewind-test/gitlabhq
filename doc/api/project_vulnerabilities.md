@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Project vulnerabilities API
 description: Project Vulnerabilities API for listing and creating project vulnerabilities. Requires authentication and appropriate permissions.
 ---
@@ -111,11 +111,11 @@ Example response:
 ]
 ```
 
-## New vulnerability
+## Create a vulnerability
 
 Creates a new vulnerability.
 
-If an authenticated user does not have a permission to
+If an authenticated user does not have permission to
 [create a new vulnerability](../user/permissions.md#project-permissions),
 this request results in a `403` status code.
 

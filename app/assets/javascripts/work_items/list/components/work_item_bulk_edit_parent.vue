@@ -1,16 +1,11 @@
 <script>
 import { GlCollapsibleListbox, GlFormGroup } from '@gitlab/ui';
-import { debounce, unionBy, uniqueId } from 'lodash';
+import { debounce, unionBy, uniqueId } from 'lodash-es';
 import { createAlert } from '~/alert';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
 import { __, s__ } from '~/locale';
 import { isValidURL } from '~/lib/utils/url_utility';
-import {
-  BULK_EDIT_NO_VALUE,
-  NAME_TO_ENUM_MAP,
-  WORK_ITEM_TYPE_ENUM_EPIC,
-  WORK_ITEMS_NO_PARENT_LIST,
-} from '~/work_items/constants';
+import { BULK_EDIT_NO_VALUE } from '~/work_items/constants';
 import groupWorkItemsQuery from '~/work_items/graphql/group_work_items.query.graphql';
 import projectWorkItemsQuery from '~/work_items/graphql/project_work_items.query.graphql';
 import workItemsByReferencesQuery from '~/work_items/graphql/work_items_by_references.query.graphql';
@@ -23,6 +18,7 @@ export default {
     GlCollapsibleListbox,
     GlFormGroup,
   },
+  inject: ['workItemTypesConfiguration'],
   props: {
     fullPath: {
       type: String,
@@ -56,14 +52,14 @@ export default {
       searchStarted: false,
       searchTerm: '',
       selectedId: this.value,
-      workspaceWorkItems: [],
+      namespaceWorkItems: [],
       workItemsCache: [],
       workItemsByReference: [],
       allowedParentTypesMap: {},
     };
   },
   apollo: {
-    workspaceWorkItems: {
+    namespaceWorkItems: {
       query() {
         // The logic to fetch the Parent seems to be different than other pages
         // Below issue targets to have a common logic across work items app
@@ -77,9 +73,7 @@ export default {
           in: this.searchTerm ? 'TITLE' : undefined,
           includeAncestors: true,
           includeDescendants: this.shouldSearchAcrossGroups,
-          types: this.selectedItemParentTypes.filter(
-            (type) => !WORK_ITEMS_NO_PARENT_LIST.includes(type),
-          ),
+          workItemTypeIds: this.selectedItemParentTypes.map((type) => type.id),
         };
       },
       skip() {
@@ -136,11 +130,7 @@ export default {
 
           // If there are allowed parent types map the ids and names
           if (hierarchyWidget?.allowedParentTypes?.nodes?.length > 0) {
-            const parentNames = hierarchyWidget.allowedParentTypes?.nodes.map((parent) => {
-              // Used enums because the workspaceWorkItems does not support gids in the types fields
-              return { id: parent.id, name: NAME_TO_ENUM_MAP[parent.name] };
-            });
-            typesParentsMap[type.id] = parentNames;
+            typesParentsMap[type.id] = hierarchyWidget.allowedParentTypes?.nodes;
           }
         }
 
@@ -157,12 +147,12 @@ export default {
     },
     isLoading() {
       return (
-        this.$apollo.queries.workspaceWorkItems.loading ||
+        this.$apollo.queries.namespaceWorkItems.loading ||
         this.$apollo.queries.workItemsByReference.loading
       );
     },
     availableWorkItems() {
-      return this.isSearchingByReference ? this.workItemsByReference : this.workspaceWorkItems;
+      return this.isSearchingByReference ? this.workItemsByReference : this.namespaceWorkItems;
     },
     listboxItems() {
       if (!this.shouldLoadParents) {
@@ -224,14 +214,14 @@ export default {
     selectedItemParentTypes() {
       return [
         ...new Set(
-          this.selectedWorkItemTypesIds?.flatMap(
-            (id) => this.allowedParentTypesMap?.[id]?.map((type) => type.name) || [],
-          ),
+          this.selectedWorkItemTypesIds?.flatMap((id) => this.allowedParentTypesMap?.[id] || []),
         ),
       ];
     },
     canHaveEpicParent() {
-      return this.selectedItemParentTypes?.includes(WORK_ITEM_TYPE_ENUM_EPIC);
+      return this.selectedItemParentTypes?.some(({ id }) => {
+        return this.workItemTypesConfiguration.find((type) => type.id === id)?.isGroupWorkItemType;
+      });
     },
     shouldSearchAcrossGroups() {
       // Determines if we need to search across groups.
@@ -249,11 +239,11 @@ export default {
     },
   },
   watch: {
-    workspaceWorkItems(workspaceWorkItems) {
-      this.updateWorkItemsCache(workspaceWorkItems);
+    namespaceWorkItems(namespaceWorkItems) {
+      this.updateWorkItemsCache(namespaceWorkItems);
     },
-    workItemsByReference(workspaceWorkItems) {
-      this.updateWorkItemsCache(workspaceWorkItems);
+    workItemsByReference(workItemsByReference) {
+      this.updateWorkItemsCache(workItemsByReference);
     },
   },
   created() {
@@ -280,10 +270,10 @@ export default {
     setSearchTerm(searchTerm) {
       this.searchTerm = searchTerm;
     },
-    updateWorkItemsCache(workspaceWorkItems) {
-      // Need to store all workspaceWorkItems we encounter so we can show "Selected" workspaceWorkItems
-      // even if they're not found in the apollo `workspaceWorkItems` list
-      this.workItemsCache = unionBy(this.workItemsCache, workspaceWorkItems, 'id');
+    updateWorkItemsCache(namespaceWorkItems) {
+      // Need to store all namespaceWorkItems we encounter so we can show "Selected"
+      // namespaceWorkItems even if they're not found in the apollo `namespaceWorkItems` list
+      this.workItemsCache = unionBy(this.workItemsCache, namespaceWorkItems, 'id');
     },
   },
 };

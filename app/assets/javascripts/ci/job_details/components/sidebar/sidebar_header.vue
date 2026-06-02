@@ -45,10 +45,11 @@ export default {
         };
       },
       update(data) {
-        const { name, manualJob } = data?.project?.job || {};
+        const { name, manualJob, inputsSpec } = data?.project?.job || {};
         return {
           name,
           manualJob,
+          inputsSpec,
         };
       },
       error() {
@@ -86,10 +87,13 @@ export default {
       return this.restJob.status.action.confirmation_message;
     },
     isManualJob() {
-      return this.job?.manualJob;
+      return Boolean(this.job?.manualJob);
     },
-    retryButtonCategory() {
-      return this.restJob.status && this.restJob.recoverable ? 'primary' : 'secondary';
+    hasInputs() {
+      return this.job?.inputsSpec?.length > 0;
+    },
+    retryButtonVariant() {
+      return this.restJob.status && this.restJob.recoverable ? 'confirm' : 'default';
     },
     jobHasPath() {
       return Boolean(
@@ -131,8 +135,6 @@ export default {
             :href="restJob.new_issue_path"
             :title="$options.i18n.newIssue"
             :aria-label="$options.i18n.newIssue"
-            category="secondary"
-            variant="confirm"
             data-testid="job-new-issue"
             icon="work-item-new"
           />
@@ -151,12 +153,12 @@ export default {
             v-gl-tooltip.bottom
             :retry-button-title="buttonTitle"
             :is-manual-job="isManualJob"
-            :category="retryButtonCategory"
+            :has-inputs="hasInputs"
             :href="restJob.retry_path"
             :confirmation-message="jobConfirmationMessage"
             :job-name="restJob.name"
             :modal-id="$options.forwardDeploymentFailureModalId"
-            variant="confirm"
+            :variant="retryButtonVariant"
             data-testid="retry-button"
             @update-variables-clicked="$emit('update-variables')"
           />

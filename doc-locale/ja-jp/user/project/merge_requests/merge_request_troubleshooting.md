@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: マージリクエストのトラブルシューティングのヘルプ。
 title: マージリクエストのトラブルシューティング
 ---
@@ -42,13 +42,10 @@ SidekiqがCIの状態変更を十分に速く処理しませんでした。数�
 
 {{< /details >}}
 
-`/rebase` [クイックアクション](../quick_actions.md#issues-merge-requests-and-epics)に加えて、[Railsコンソール](../../../administration/operations/rails_console.md)へのアクセス権を持つユーザーは、Railsコンソールからマージリクエストをリベースできます。`<username>`、`<namespace/project>`、`<iid>`を適切な値に置き換えます:
+[`/rebase`クイックアクション](../quick_actions.md#ready)に加えて、[Railsコンソール](../../../administration/operations/rails_console.md)にアクセスできるユーザーは、Railsコンソールからマージリクエストをリベースできます。`<username>`、`<namespace/project>`、`<iid>`を適切な値に置き換えます:
 
-{{< alert type="warning" >}}
-
-データを直接変更するコマンドは、正しく実行されなかった場合、または適切な条件下で実行されなかった場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
-
-{{< /alert >}}
+> [!warning]
+> データを直接変更するコマンドは、正しく実行されない場合や適切な条件下で実行されない場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
 
 ```ruby
 u = User.find_by_username('<username>')
@@ -68,11 +65,8 @@ MergeRequests::RebaseService.new(project: m.target_project, current_user: u).exe
 
 変更がマージされた後もマージリクエストが**オープン**のままの場合、[Railsコンソール](../../../administration/operations/rails_console.md)へのアクセス権を持つユーザーは、マージリクエストの状態を修正できます。`<username>`、`<namespace/project>`、`<iid>`を適切な値に置き換えます:
 
-{{< alert type="warning" >}}
-
-データを直接変更するコマンドは、正しく実行されなかった場合、または適切な条件下で実行されなかった場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
-
-{{< /alert >}}
+> [!warning]
+> データを直接変更するコマンドは、正しく実行されない場合や適切な条件下で実行されない場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
 
 ```ruby
 u = User.find_by_username('<username>')
@@ -94,11 +88,8 @@ MergeRequests::PostMergeService.new(project: p, current_user: u).execute(m)
 
 UIまたはAPIでマージリクエストを閉じることができない場合は、[Railsコンソールセッション](../../../administration/operations/rails_console.md#starting-a-rails-console-session)で閉じてみてください:
 
-{{< alert type="warning" >}}
-
-データを変更するコマンドは、正しく実行されなかった場合、または適切な条件下で実行されなかった場合、損害を与える可能性があります。最初にテスト環境でコマンドを実行し、復元できるバックアップインスタンスを準備してください。
-
-{{< /alert >}}
+> [!warning]
+> データを変更するコマンドは、正しく実行されない場合、または適切な条件下で実行されない場合に、損傷を引き起こす可能性があります。最初にテスト環境でコマンドを実行し、復元できるバックアップインスタンスを準備してください。
 
 ```ruby
 u = User.find_by_username('<username>')
@@ -118,11 +109,8 @@ MergeRequests::CloseService.new(project: p, current_user: u).execute(m)
 
 UIまたはAPIでマージリクエストを削除できない場合は、[Railsコンソールセッション](../../../administration/operations/rails_console.md#starting-a-rails-console-session)で削除してみてください:
 
-{{< alert type="warning" >}}
-
-データを直接変更するコマンドは、正しく実行されなかった場合、または適切な条件下で実行されなかった場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
-
-{{< /alert >}}
+> [!warning]
+> データを直接変更するコマンドは、正しく実行されない場合や適切な条件下で実行されない場合、損害を与える可能性があります。念のため、インスタンスのバックアップを復元できるように準備し、Test環境で実行することを強くお勧めします。
 
 ```ruby
 u = User.find_by_username('<username>')
@@ -254,11 +242,11 @@ git checkout origin/merge-requests/1
 
 これらのコマンドは、[`git-mr`](https://gitlab.com/glensc/git-mr)スクリプトでも実行できます。
 
-## ブランチが存在する場合のエラー: 「ソースブランチ`<branch_name>`が存在しません。」 {#error-source-branch-branch_name-does-not-exist-when-the-branch-exists}
+## エラー: `source branch <branch_name> does not exist.`ブランチが存在する場合 {#error-source-branch-branch_name-does-not-exist-when-the-branch-exists}
 
 このエラーは、GitLabのキャッシュがGitリポジトリの実際の状態を反映していない場合に発生する可能性があります。これは、Gitデータフォルダーが`noexec`フラグを指定してマウントされている場合に発生する可能性があります。
 
-前提要件:
+前提条件: 
 
 - 管理者である必要があります。
 
@@ -290,15 +278,15 @@ git checkout origin/merge-requests/1
 
 ## オートメーションがマージリクエストを承認すると、承認がリセットされる {#approvals-reset-when-automation-approves-a-merge-request}
 
-マージリクエストの作成、またはマージリクエストへのプッシュを自動化する場合、それらのマージリクエストの自動承認を作成することを検討してください。GitLab PremiumとUltimateでは、デフォルトで、[コミットがソースブランチに追加されると](approvals/settings.md#remove-all-approvals-when-commits-are-added-to-the-source-branch)、すべての承認が削除されます。この問題を回避するには、マージリクエストを[承認する前にコミットが処理](../../../api/merge_request_approvals.md#approvals-for-automated-merge-requests)されるようにするロジックをオートメーションに追加します。
+マージリクエストの作成、またはマージリクエストへのプッシュを自動化する場合、それらのマージリクエストの自動承認を作成することを検討してください。GitLab PremiumとUltimateでは、デフォルトで、[コミットがソースブランチに追加されると](approvals/settings.md#remove-all-approvals-when-commits-are-added-to-the-source-branch)、すべての承認が削除されます。この問題を回避するには、マージリクエストを[承認する前にコミットが処理](../../../api/merge_request_approvals.md#prevent-approval-resets-in-automated-merge-requests)されるようにするロジックをオートメーションに追加します。
 
 ## マージリクエスト`merged manually` {#merge-request-merged-manually}
 
-マージされたマージリクエストに`merged manually`システムノートが含まれている場合、そのマージリクエストは、GitLab UIの外部でマージされたか、別のマージリクエストの一部としてマージされたコミットが含まれています。次に例を示します: 
+マージされたマージリクエストに`merged manually`システムノートが含まれる場合、それはGitLab UIの外部でマージされたか、別のマージリクエストの一部としてコミットがマージされたかのいずれかです。例: 
 
-- マージリクエスト1は、`single-fix`ブランチ用であり、コミット`cd87d6`があります。
-- マージリクエスト2は、`several-fixes`ブランチ用です。これには、コミット`cd87d6`とその他いくつか含まれています。
+- マージリクエスト1はブランチ`single-fix`のもので、コミット`cd87d6`を持っています。
+- マージリクエスト2はブランチ`several-fixes`のものです。これにはコミット`cd87d6`とその他いくつかのコミットが含まれています。
 
-`several-fixes`ブランチをマージすると、コミット`cd87d6`を含む、そのブランチ上のすべてのコミットがマージされます。ブランチ`single-fix`でアクションが実行されていなくても、コミット`cd87d6`が`several-fixes`の一部としてマージされたため、`single-fix`はマージ済みとして表示されるようになりました。
+`several-fixes`ブランチをマージすると、コミット`cd87d6`を含むそのブランチ上のすべてのコミットがマージされます。ブランチ`single-fix`に対してアクションが実行されていない場合でも、コミット`cd87d6`は`several-fixes`の一部としてマージされたため、`single-fix`がマージ済みとして表示されます。
 
-詳細については、[同じコミットを含む複数のブランチ](../repository/branches/_index.md#multiple-branches-containing-the-same-commit)を参照してください。
+詳細については、[multiple branches containing the same commit](../repository/branches/_index.md#multiple-branches-containing-the-same-commit)を参照してください。

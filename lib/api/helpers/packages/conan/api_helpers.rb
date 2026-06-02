@@ -47,13 +47,13 @@ module API
           end
 
           def recipe_upload_urls
-            { upload_urls: file_names.select(&method(:recipe_file?)).index_with do |file_name|
+            { upload_urls: file_names.select { |file_name| recipe_file?(file_name) }.index_with do |file_name|
                              build_recipe_file_upload_url(file_name)
                            end }
           end
 
           def package_upload_urls
-            { upload_urls: file_names.select(&method(:package_file?)).index_with do |file_name|
+            { upload_urls: file_names.select { |file_name| package_file?(file_name) }.index_with do |file_name|
                              build_package_file_upload_url(file_name)
                            end }
           end
@@ -164,15 +164,7 @@ module API
 
             not_found!('Package') unless package
 
-            package_file = ::Packages::Conan::PackageFileFinder
-              .new(
-                package,
-                file_name: params[:file_name].to_s,
-                conan_file_type: file_type,
-                conan_package_reference: declared(params)[:conan_package_reference],
-                recipe_revision: params[:recipe_revision],
-                package_revision: declared(params)[:package_revision]
-              ).execute!
+            package_file = package_file_finder(file_type).execute!
 
             track_package_event('pull_package', :conan, category: 'API::ConanPackages', project: project, namespace: project.namespace) if params[:file_name] == ::Packages::Conan::FileMetadatum::PACKAGE_BINARY
 
@@ -237,6 +229,11 @@ module API
             bad_request!('File is too large') if project.actual_limits.exceeded?(:conan_max_file_size, params['file.size'].to_i)
 
             current_package = find_or_create_package
+
+            # Deduplicate: if the exact file already exists for given parameters, return it
+            # instead of creating a duplicate. This handles `conan upload --force` gracefully.
+            package_file = package_file_finder(file_type, current_package).execute
+            return package_file if package_file
 
             track_push_package_event unless params[:file].empty_size?
 
@@ -342,6 +339,18 @@ module API
 
           def search_project
             project
+          end
+
+          def package_file_finder(file_type, target_package = package)
+            ::Packages::Conan::PackageFileFinder.new(
+              target_package,
+              file_name: declared(params)[:file_name].to_s,
+              conan_file_type: file_type,
+              conan_package_reference: declared(params)[:conan_package_reference],
+              recipe_revision: declared(params)[:recipe_revision],
+              package_revision: declared(params)[:package_revision],
+              file_sha1: request.headers['X-Checksum-Sha1']
+            )
           end
         end
       end

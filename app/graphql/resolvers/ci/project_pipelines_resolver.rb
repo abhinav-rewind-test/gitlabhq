@@ -23,7 +23,12 @@ module Resolvers
           upstream: [:triggered_by_pipeline],
           downstream: [:triggered_pipelines],
           has_manual_actions: [:manual_actions],
-          has_scheduled_actions: [:scheduled_actions]
+          has_scheduled_actions: [:scheduled_actions],
+          pipeline_schedule: [],
+          type: [:merge_request],
+          merge_request: [:merge_request],
+          merge_request_event_type: [:merge_request],
+          ref_path: [:merge_request]
         }
       end
     end

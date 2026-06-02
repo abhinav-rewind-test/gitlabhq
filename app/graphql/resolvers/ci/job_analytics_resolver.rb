@@ -3,6 +3,8 @@
 module Resolvers
   module Ci
     class JobAnalyticsResolver < BaseResolver
+      MAX_LOOKBACK = 180.days
+
       type ::Types::Ci::JobAnalyticsType.connection_type, null: true
 
       authorizes_object!
@@ -31,7 +33,15 @@ module Resolvers
       argument :from_time, Types::TimeType,
         required: false,
         description:
-          'Start of the requested time (in UTC). Defaults to the pipelines started in the past week.'
+          "Start of the requested time (in UTC). Defaults to the pipelines started in the past week. " \
+          "Cannot be earlier than #{MAX_LOOKBACK.inspect} ago.",
+        prepare: ->(from_time, _ctx) {
+          # Boundary is anchored to UTC midnight to absorb client/server clock drift.
+          next from_time if from_time.nil? || from_time >= MAX_LOOKBACK.ago.utc.beginning_of_day
+
+          raise Gitlab::Graphql::Errors::ArgumentError,
+            "`fromTime` cannot be earlier than #{MAX_LOOKBACK.inspect} ago."
+        }
 
       argument :to_time, Types::TimeType,
         required: false,
@@ -45,7 +55,7 @@ module Resolvers
           project: project,
           current_user: current_user,
           options: args.merge(
-            select_fields: detect_select_fields(nodes),
+            select_fields: detect_select_fields(nodes, args[:sort]),
             aggregations: detect_aggregations(nodes, args[:sort])
           )
         ).execute
@@ -65,14 +75,15 @@ module Resolvers
       # Always includes `:name` as the minimum selection because it serves as the
       # primary grouping key for job analytics aggregations in ClickHouse.
       # Without a grouping key, aggregations would collapse all jobs into a single row.
-      def detect_select_fields(nodes)
-        fields = nodes.selections.map(&:name) & ClickHouse::Finders::Ci::FinishedBuildsFinder::ALLOWED_TO_SELECT
+      def detect_select_fields(nodes, sort = nil)
+        fields = (nodes.selections.map(&:name) &
+          ClickHouse::Finders::Ci::FinishedBuildsFinder::ALLOWED_TO_SELECT).presence || [:name]
 
-        fields.empty? ? [:name] : fields
+        fields | extract_sort_field(sort, select_field: true)
       end
 
       def detect_aggregations(nodes, sort = nil)
-        aggregations = extract_sort_aggregations(sort)
+        aggregations = extract_sort_field(sort, select_field: false)
 
         return aggregations unless nodes.selects?(:statistics)
 
@@ -105,12 +116,17 @@ module Resolvers
         end
       end
 
-      # Sorting by an aggregation field requires that field to be included in the aggregations.
-      # The 'name' field is always selected by default, so sorting by name needs no additional aggregation.
-      def extract_sort_aggregations(sort)
-        return [] if sort.nil? || sort.start_with?('name_')
+      # Extracts the sort field and returns it as a single-element array when it matches the requested type.
+      # Select fields (e.g. name, stage_name) need to be added to select/group-by,
+      # while aggregation fields need to be added to aggregations.
+      def extract_sort_field(sort, select_field:)
+        return [] unless sort
 
-        [sort.to_s.sub(/_(?:asc|desc)$/, '').to_sym]
+        field = sort.to_s.sub(/_(?:asc|desc)$/, '').to_sym
+        can_select = ClickHouse::Finders::Ci::FinishedBuildsFinder::ALLOWED_TO_SELECT.include?(field)
+        return [] unless can_select == select_field
+
+        [field]
       end
 
       def node_selection(lookahead)

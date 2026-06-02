@@ -1,15 +1,16 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Frontend testing standards and style guidelines
 ---
 
 There are two types of test suites encountered while developing frontend code
-at GitLab. We use Jest for JavaScript unit and integration testing,
-and RSpec feature tests with Capybara for e2e (end-to-end) integration testing.
+at GitLab. We use Jest for JavaScript unit and [integration testing](#msw-integration-tests),
+and Capybara feature tests for e2e (end-to-end) integration testing.
 
 Unit and feature tests need to be written for all new features.
+
 Most of the time, you should use [RSpec](https://github.com/rspec/rspec-rails#feature-specs) for your feature tests. For more information on how to get started with feature tests, see [get started with feature tests](#get-started-with-feature-tests)
 
 Regression tests should be written for bug fixes to prevent them from recurring
@@ -1049,13 +1050,13 @@ The `scripts/frontend/download_fixtures.sh` script is meant to download and extr
 # package registry by looking at the commits on a local branch.
 #
 # The package is downloaded and extracted if it exists
-$ scripts/frontend/download_fixtures.sh
+scripts/frontend/download_fixtures.sh
 
 # Same as above, but only looks at the last 10 commits of the currently checked-out branch
-$ scripts/frontend/download_fixtures.sh --max-commits=10
+scripts/frontend/download_fixtures.sh --max-commits=10
 
 # Looks at the commits on the local master branch instead of the currently checked-out branch
-$ scripts/frontend/download_fixtures.sh --branch master
+scripts/frontend/download_fixtures.sh --branch master
 ```
 
 #### Creating new fixtures
@@ -1247,14 +1248,395 @@ Main information on frontend testing levels can be found in the [Testing Levels 
 
 Tests relevant for frontend development can be found at the following places:
 
-- `spec/frontend/`, for Jest tests
-- `spec/features/`, for RSpec tests
+- `spec/frontend/`, for Jest unit, component, and integration tests
+- `spec/frontend/msw_integration/`, for MSW integration tests
+- `spec/features/`, for Capybara feature tests
 
-RSpec runs complete [feature tests](testing_levels.md#frontend-feature-tests), while the Jest directories contain [frontend unit tests](testing_levels.md#frontend-unit-tests), [frontend component tests](testing_levels.md#frontend-component-tests), and [frontend integration tests](testing_levels.md#frontend-integration-tests).
+`spec/frontend/` contains [frontend unit tests](testing_levels.md#frontend-unit-tests), [frontend component tests](testing_levels.md#frontend-component-tests), and [frontend integration tests](testing_levels.md#frontend-integration-tests). Capybara runs [frontend feature tests](testing_levels.md#frontend-feature-tests) in `spec/features/`.
 
 Before May 2018, `features/` also contained feature tests run by Spinach. These tests were removed from the codebase in May 2018 ([#23036](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/23036)).
 
 See also [Notes on testing Vue components](../fe_guide/vue.md#testing-vue-components).
+
+## MSW integration tests
+
+MSW integration tests bridge the gap between unit tests and Capybara
+feature tests. They mount full Vue applications in jsdom (no browser
+needed) and use [MSW (Mock Service Worker)](https://github.com/mswjs/msw)
+to intercept API requests and respond with fixture data. This provides
+realistic UI interaction testing at a fraction of the cost of Capybara.
+
+### Directory structure
+
+MSW integration tests live in `spec/frontend/msw_integration/`. The structure is:
+
+```plaintext
+spec/frontend/msw_integration/
+├── constants.js            # Shared constants (for example, base metadata)
+├── fixture_utils.js        # Helpers for building dynamic mutation responses
+├── handlers.js             # GraphQL router: composes feature handlers
+├── handlers/
+│   └── work_items.js       # Work item resolver and operation overrides
+├── server.js               # MSW server setup (imported by test_setup.js)
+├── setup_utils.js          # Router and lifecycle helpers used by test_setup.js
+├── test_helpers.js         # Test utilities: assignRouter, fullMount, waitForElement, getText
+├── test_setup.js           # Global setup: polyfills, server lifecycle, router reset
+├── polyfills.js            # TextEncoder/TextDecoder polyfills for jsdom
+└── work_items/
+    └── work_item_spec.js   # Integration test file
+```
+
+The shared files (`handlers.js`, `server.js`, `test_setup.js`,
+`polyfills.js`, `test_helpers.js`) are configured automatically through
+`jest.config.msw_integration.js`. Test files import fixture data
+directly from the relevant feature handler file
+(for example, `handlers/work_items.js`).
+
+All test helper utilities exported from `test_helpers.js` are
+auto-imported globally through `test_setup.js` using
+`Object.assign(global, testHelpers)`, so you do not need to import
+them explicitly in your test files. To add a new helper, export it
+from `test_helpers.js` and it becomes available globally in all MSW
+integration tests.
+
+### Handler architecture
+
+Because MSW v1 matches the first `rest.post` handler that applies,
+a single GraphQL endpoint cannot be split across multiple MSW handlers.
+Instead, `handlers.js` acts as a thin GraphQL router. It registers one
+`rest.post` handler for `http://test.host/api/graphql` and delegates to
+feature-specific resolver functions in order:
+
+```javascript
+import { rest } from 'msw';
+import { handleWorkItemOperation } from './handlers/work_items';
+
+// Thin router: Import feature handlers here
+const graphqlFeatureHandlers = [handleWorkItemOperation];
+
+// Collect all REST endpoints from feature handlers
+const restEndpoints = [...workItemRestEndpoints];
+
+const restEndpointsHandlers = restEndpoints.map((endpoint) =>
+  rest[endpoint.method](endpoint.path, (req, res, ctx) => {
+    return res(ctx.json(endpoint.response));
+  }),
+);
+
+export const handlers = [
+  // Single GraphQL endpoint that routes to feature handlers
+  rest.post('http://test.host/api/graphql', (req, res, ctx) => {
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const { operationName, variables } = body;
+
+    // Try each feature handler until one returns a result
+    for (const handler of graphqlFeatureHandlers) {
+      const result = handler({ operationName, variables, res, ctx });
+      if (result) return result;
+    }
+
+    console.log(`No handler for operationName: ${operationName}`);
+    return res(ctx.status(400));
+  }),
+  ...restEndpointsHandlers,
+];
+```
+
+Each resolver receives `{ operationName, variables, res, ctx }` and
+returns an MSW response if it handles the operation, or `null` to pass
+to the next resolver. Unhandled operations fall through to a catch-all
+that returns a 400 status. This intentional failure surfaces missing
+handlers early. Every GraphQL operation that fires during a test must
+have a corresponding handler. If a test fails with
+`ServerParseError: Unexpected end of JSON input`, add the missing
+operation to the relevant feature handler file.
+
+### Add a new feature domain
+
+To add MSW handlers for a new feature area (for example, merge
+requests):
+
+1. Create a resolver file in `handlers/` that uses `loadFixturesMap`
+   to auto-load fixtures and build the handler. For details on
+   auto-loading and building handlers, see
+   [Write feature handlers](#write-feature-handlers).
+
+1. Register the resolver in `handlers.js`:
+
+   ```javascript
+   import { handleMergeRequestOperation } from './handlers/merge_requests';
+
+   // Thin router: Import feature handlers here
+   const graphqlFeatureHandlers = [
+     handleWorkItemOperation,
+     handleMergeRequestOperation,
+   ];
+   ```
+
+1. Generate the fixtures by adding an RSpec spec in
+   `ee/spec/frontend/fixtures/` and running it. For more information,
+   see [Generate fixtures](#generate-fixtures).
+
+### Generate fixtures
+
+Fixtures are generated from real GraphQL queries run against the test
+database. Each fixture generator is an RSpec spec in
+`ee/spec/frontend/fixtures/`. For example:
+
+```shell
+bundle exec rspec ee/spec/frontend/fixtures/work_items_integration.rb
+```
+
+This writes JSON files to `tmp/tests/frontend/fixtures-ee/graphql/`.
+These fixtures are then auto-loaded by `loadFixturesMap` in the
+feature handler files and served by MSW.
+
+To add a new fixture, add a new `it` block to the fixture generator
+spec. The test name determines the output file path:
+
+```ruby
+it "graphql/work_items/integration/my_query.query.graphql.json" do
+  query = get_graphql_query_as_string('work_items/graphql/my_query.query.graphql')
+  post_graphql(query, current_user: user, variables: { fullPath: project.full_path })
+  expect_graphql_errors_to_be_empty
+end
+```
+
+#### Fixture naming convention for auto-loading
+
+For fixture filenames to map correctly to GraphQL operation names,
+follow the naming convention described in
+[Auto-load fixtures with `loadFixturesMap`](#auto-load-fixtures-with-loadfixturesmap).
+
+### Write feature handlers
+
+Each feature handler file in `handlers/` owns the operation-to-fixture
+map and mutation logic for its feature area.
+
+#### Auto-load fixtures with `loadFixturesMap`
+
+Use `loadFixturesMap` from `fixture_utils.js` to automatically load
+all JSON fixtures from a directory and map them to operation names.
+The function reads every `.json` file in the given path, strips the
+`.query.graphql.json` or `.mutation.graphql.json` suffix, converts
+the remaining filename to `camelCase`, and uses the result as the
+operation name key.
+
+For example, a file named `get_work_items_full.query.graphql.json`
+maps to the key `getWorkItemsFull`.
+
+The fixture filename must match the GraphQL operation name after
+this `camelCase` conversion. For example, if your GraphQL operation
+is named `getWorkItemStateCounts`, name the fixture file
+`get_work_item_state_counts.query.graphql.json`. The loader converts
+this to `getWorkItemStateCounts`, which matches the operation name
+sent by the Apollo client.
+
+If an operation name does not match the derived filename (for example,
+EE-suffixed operations like `getWorkItemsFullEE`), add an entry to
+`OPERATION_NAME_OVERRIDES` in the handler file:
+
+```javascript
+const OPERATION_NAME_OVERRIDES = {
+  getWorkItemsFullEE: fixtures.getWorkItemsFull,
+};
+```
+
+```javascript
+import { join } from 'node:path';
+import { loadFixturesMap } from '../fixture_utils';
+
+const FIXTURES_PATH = join('tmp/tests/frontend/fixtures-ee/graphql/my_feature/integration/');
+const fixtures = loadFixturesMap(FIXTURES_PATH);
+```
+
+With this approach, you do not need to manually import each fixture
+file. The `fixtures` object contains every fixture keyed by its
+derived `camelCase` operation name.
+
+#### Build the handler from the fixtures map
+
+Spread the auto-loaded `fixtures` into `FIXTURE_RESPONSES`, along
+with any `OPERATION_NAME_OVERRIDES` needed for mismatched names
+(see [above](#auto-load-fixtures-with-loadfixturesmap)):
+
+```javascript
+const FIXTURE_RESPONSES = {
+  ...fixtures,
+  ...OPERATION_NAME_OVERRIDES,
+};
+```
+
+Static operations (queries) are turned into handlers automatically.
+For mutations that need dynamic responses based on input variables,
+add an entry to `MUTATION_OPERATION_HANDLERS`:
+
+```javascript
+const MUTATION_OPERATION_HANDLERS = {
+  myMutation: ({ variables }) => buildMyResponse(variables),
+};
+```
+
+Combine both into a single `OPERATION_HANDLERS` map and look up the
+operation in the resolver:
+
+```javascript
+const STATIC_OPERATION_HANDLERS = Object.fromEntries(
+  Object.entries(FIXTURE_RESPONSES).map(([op, fixture]) => [
+    op,
+    () => ({ data: fixture.data }),
+  ]),
+);
+
+const OPERATION_HANDLERS = {
+  ...STATIC_OPERATION_HANDLERS,
+  ...MUTATION_OPERATION_HANDLERS,
+};
+
+export function handleMyFeatureOperation({ operationName, variables, res, ctx }) {
+  const handler = OPERATION_HANDLERS[operationName];
+  if (!handler) return null;
+  return res(ctx.json(handler({ operationName, variables })));
+}
+```
+
+### Write a test file
+
+Test files live under `spec/frontend/msw_integration/` in a subdirectory that
+mirrors the feature area. Each file should:
+
+1. Create a router with `assignRouter` from `test_helpers.js` instead of
+   calling the router factory directly. This registers the router globally
+   so `test_setup.js` can reset it between tests.
+1. Mount the root component with `fullMount` from `test_helpers.js` and the
+   real `apolloProvider`. `fullMount` wraps `mount` from `@vue/test-utils`
+   and automatically attaches to `document.body`.
+1. Use `waitFor` from `@testing-library/dom` after actions that trigger
+   API calls.
+1. Interact with the UI through native DOM APIs (`.click()`,
+   `.dispatchEvent()`, `.querySelector()`).
+1. Assert on the DOM, not on Vue component state.
+
+#### Prefer DOM assertions over Vue Test Utils wrappers
+
+Use `fullMount` from `test_helpers.js` only to create the component. After mount,
+interact with and assert on the DOM directly. This keeps the tests
+Vue-version agnostic and makes future Vue 3 migration straightforward.
+
+Avoid these Vue-coupled patterns:
+
+- `wrapper.find()`, `wrapper.findComponent()`, `wrapper.trigger()`,
+  `wrapper.text()`, `wrapper.attributes()`, `wrapper.exists()`.
+- Accessing `vm.$emit()`, `vm.$data`, or any component instance property.
+- Using `el.__vue__` or `createWrapper()` to obtain a VTU wrapper from a
+  DOM element.
+
+Use native DOM equivalents instead:
+
+| Vue Test Utils | DOM equivalent |
+|---|---|
+| `.find(selector)` | `.querySelector(selector)` |
+| `.trigger('click')` | `.click()` |
+| `.trigger('submit')` | `.dispatchEvent(new Event('submit', { bubbles: true }))` |
+| `.text()` | `getText(el)` from `test_helpers.js` |
+| `.attributes('name')` | `.getAttribute('name')` or `.dataset` |
+| `.exists()` | `!== null` |
+| `.setValue(val)` | `el.value = val; el.dispatchEvent(new Event('input', { bubbles: true }))` |
+
+Here is a minimal example:
+
+```javascript
+import Vue from 'vue';
+import VueApollo from 'vue-apollo';
+import { waitFor } from '@testing-library/dom';
+import { apolloProvider } from '~/graphql_shared/issuable_client';
+import { createRouter } from '~/my_feature/router';
+import MyApp from '~/my_feature/components/app.vue';
+import { assignRouter, fullMount, waitForElement, getText } from '../test_helpers';
+
+Vue.use(VueApollo);
+
+describe('My feature test', () => {
+  const router = assignRouter(createRouter, {
+    fullPath: 'gitlab-org/gitlab',
+    routerPath: 'my_feature',
+  });
+
+  const findResult = () =>
+    document.querySelector('[data-testid="result"]');
+
+  const createComponent = () => {
+    fullMount(MyApp, {
+      router,
+      apolloProvider,
+      provide: {
+        fullPath: 'gitlab-org/gitlab',
+      },
+    });
+  };
+
+  beforeEach(async () => {
+    await apolloProvider.defaultClient.cache.reset();
+  });
+
+  it('renders the page and responds to user interaction', async () => {
+    createComponent();
+
+    const el = await waitForElement(
+      () => document.querySelector('[data-testid="my-element"]'),
+    );
+    expect(el).not.toBe(null);
+
+    document.querySelector('[data-testid="my-button"]').click();
+
+    await waitFor(() => {
+      expect(getText(findResult())).toContain('Updated');
+    });
+  });
+});
+```
+
+Key differences from unit tests:
+
+- Use the real `apolloProvider` instead of `createMockApollo`. MSW
+  intercepts the actual network requests.
+- Use `fullMount` from `test_helpers.js` (not `shallowMountExtended`
+  or `mountExtended`). The full component tree must render for
+  realistic interaction testing. `fullMount` wraps `mount` and
+  attaches to `document.body` automatically.
+- Use `assignRouter` from `test_helpers.js` to create a router.
+  This registers the router globally so `test_setup.js` can reset
+  it between tests. Do not call router factory functions directly
+  or push routes manually.
+- After mounting, use native DOM APIs for all interactions and
+  assertions. This avoids coupling to Vue internals and ensures Vue 3
+  compatibility.
+- Do not mock child components. The goal is to test how they work
+  together.
+- Reset the Apollo cache in `beforeEach` to prevent state from
+  leaking between tests.
+- Do not add `afterEach` cleanup for wrapper destruction or Apollo
+  client teardown. The global `test_setup.js` handles router resets,
+  wrapper destroy and metadata cleanup.
+- Server lifecycle (`server.listen`, `server.resetHandlers`,
+  `server.close`) is handled globally by `test_setup.js`. Do not add
+  these calls in individual test files.
+
+### Run MSW integration tests
+
+Run all MSW integration tests:
+
+```shell
+yarn jest:msw-integration
+```
+
+Run a single file:
+
+```shell
+yarn jest:msw-integration spec/frontend/msw_integration/work_items/work_item_spec.js
+```
+
+In CI, these tests run in the `jest-msw-integration` job (tier-2+ pipelines).
 
 ## Test helpers
 
@@ -1391,7 +1773,7 @@ A snapshot is purely a stringified version of what you ask to be tested on the l
 
 Should the outcome of your spec be different from what is in the generated snapshot file, you'll be notified about it by a failing test in your test suite.
 
-Find all the details in Jests official documentation [https://jestjs.io/docs/snapshot-testing](https://jestjs.io/docs/snapshot-testing)
+Find all the details in Jests official documentation <https://jestjs.io/docs/snapshot-testing>
 
 ### Pros and Cons
 
@@ -1580,41 +1962,67 @@ The above test will create two snapshots. It's important to decide which of the 
 
 ## Get started with feature tests
 
-### What is a feature test
+Feature tests verify the entire flow of a feature by performing
+meaningful actions in the actual UI.
 
-A [feature test](testing_levels.md#white-box-tests-at-the-system-level-formerly-known-as-system--feature-tests), also known as `white-box testing`, is a test that spawns a browser and has Capybara helpers. This means the test can:
+### When to use feature tests
+
+Use a feature test when the test:
+
+- Spans multiple components that interact together on a page.
+- Requires a user to navigate across pages.
+- Submits a form and observes results elsewhere.
+- Would result in excessive mocking and stubbing if done as a unit test.
+
+Feature tests are especially useful when you want to test:
+
+- That multiple components work together successfully.
+- Complex API interactions that are difficult to replicate with unit test mocks. They are slower but do not need any level of mocking.
+
+### When not to use feature tests
+
+Use `jest` and `vue-test-utils` unit tests instead of a feature test if
+you can get the same test results from these methods. Feature tests are
+more expensive to run than unit tests.
+
+Use a unit test if:
+
+- The behavior is all in one component.
+- You can simulate other components' behavior to trigger the desired effect.
+- You can select UI elements in the virtual DOM to trigger the desired effects.
+
+### Choose the right feature test type
+
+Once you decide a feature test is appropriate, there are two types at
+GitLab. Default to MSW integration tests because they are
+**significantly** faster.
+
+Use an **MSW integration test** (`spec/frontend/msw_integration/`) when:
+
+- The test covers multi-component interaction on a single page (for example, list + drawer).
+- The backend responses can be represented with auto-generated fixtures.
+- You do not need to verify database state, authorization, server-side validations, or real-time updates.
+
+Use a **Capybara feature test** (`spec/features/`) when:
+
+- The test requires a real backend (database writes, authorization checks, server-side validations).
+- The test requires navigation across multiple server-rendered pages.
+- You need to verify behavior that depends on backend state not representable with fixtures.
+- You need to test a behavior that depends on multiple Vue applications on the same page
+
+### Capybara feature tests
+
+A [Capybara feature test](testing_levels.md#white-box-tests-at-the-system-level-formerly-known-as-system--feature-tests), also known as `white-box testing`, is a test that spawns a browser and has Capybara helpers. This means the test can:
 
 - Locate an element in the browser.
 - Click that element.
 - Call the API.
 
-Feature tests are expensive to run. You should make sure that you **really want** this type of test before running one.
+Capybara feature tests are expensive to run. Make sure you cannot achieve
+the same coverage with an [MSW integration test](#msw-integration-tests)
+before writing one.
 
-All of our feature tests are written in `Ruby` but often end up being written by `JavaScript` engineers, as they implement the user-facing feature. So, the following section assumes no prior knowledge of `Ruby` or `Capybara`, and provide a clear guideline on when and how to use these tests.
-
-### When to use feature tests
-
-You should use a feature test when the test:
-
-- Is across multiple components.
-- Requires that a user navigate across pages.
-- Is submitting a form and observing results elsewhere.
-- Would result in a huge number of mocking and stubbing with fake data and components if done as a unit test.
-
-Feature tests are especially useful when you want to test:
-
-- That multiple components are working together successfully.
-- Complex API interactions. Feature tests interact with the API, so they are slower but do not need any level of mocking or fixtures.
-
-### When not to use feature tests
-
-You should use `jest` and `vue-test-utils` unit tests instead of a feature test if you can get the same test results from these methods. Feature tests are quite expensive to run.
-
-You should use a unit test if:
-
-- The behavior you are implementing is all in one component.
-- You can simulate other components' behavior to trigger the desired effect.
-- You can already select UI elements in the virtual DOM to trigger the desired effects.
+All Capybara feature tests are written in `Ruby` but often end up being written by `JavaScript` engineers, as they implement the user-facing feature. The following section assumes no prior knowledge of `Ruby` or `Capybara`, and provides a clear guideline on when and how to use these tests.
 
 Also, if a behavior in your new code needs multiple components to work together, you should consider testing your behavior higher in the component tree. For example, consider a component called `ParentComponent` with the code:
 
@@ -1692,7 +2100,6 @@ To use Firefox, instead of Chrome, prefix the command with `WEBDRIVER=firefox`.
    ```
 
    This is in every `Ruby` file and makes all string literals unchangeable. There are also some performance benefits, but this is beyond the scope of this section.
-
 1. Import dependencies.
 
    You should import the modules you need. You will most likely always need to require `spec_helper`:
@@ -1702,7 +2109,6 @@ To use Firefox, instead of Chrome, prefix the command with `WEBDRIVER=firefox`.
    ```
 
    Import any other relevant module.
-
 1. Create a global scope for RSpec to define our tests, just like what we do in jest with the initial describe block.
 
 Then, you need to create the very first `RSpec` scope.
@@ -1782,8 +2188,6 @@ You can go to a page by using the `visit` method and passing the path as an argu
   visit project_pipeline_path(project, pipeline)
 ```
 
-Before executing any page interaction when navigating or making asynchronous call through the UI, make sure to use `wait_for_requests` before proceeding with further instructions.
-
 #### Elements interaction
 
 There are a lot of different ways to find and interact with elements.
@@ -1843,11 +2247,6 @@ To assert anything in a page, you can always access `page` variable, which is au
 ```
 
 ```ruby
-  # You can combine any of these selectors with `not_to` instead
-  expect(page).not_to have_button('Submit review')
-```
-
-```ruby
   # When a test case has back to back expectations,
   # it is recommended to group them using `:aggregate_failures`
   it 'shows the issue description and design references', :aggregate_failures do
@@ -1870,6 +2269,17 @@ You can also create a sub-block to look into, to:
 ```
 
 You can find a more comprehensive list of matchers in the [feature tests matchers](best_practices.md#matchers) documentation.
+
+Before asserting on any backend attributes, assert on a visible element first to confirm the operation has completed. Avoid using `wait_for_requests`, as race conditions can occur when the wait is called before the request is made.
+
+```ruby
+  click_button 'Leave project'
+
+  # This ensures that the request to leave the project has completed
+  expect(page).to have_text 'You left the project.'
+
+  expect(project.reload.users.exists?(user.id)).to be(false)
+```
 
 #### Feature flags
 

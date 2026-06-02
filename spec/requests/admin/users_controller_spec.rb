@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Admin::UsersController, :enable_admin_mode, feature_category: :user_management do
-  let_it_be(:admin) { create(:admin) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:admin, freeze: false) { create(:admin) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   before do
     sign_in(admin)
@@ -22,6 +22,39 @@ RSpec.describe Admin::UsersController, :enable_admin_mode, feature_category: :us
 
   describe 'PATCH #update' do
     let(:user) { create(:user) }
+
+    context 'with passwords' do
+      it 'sanitizes malicious password inputs' do
+        original_password = user.encrypted_password
+
+        patch admin_user_path(user),
+          params: { user: { password: %w[malicious array], password_confirmation: %w[malicious array] } }
+
+        expect(user.reload.encrypted_password).to eq(original_password)
+      end
+
+      it 'sets `:password_expires_at` when admin changes a user`s password', :freeze_time do
+        new_password = 'newpassword123'
+
+        expect do
+          patch admin_user_path(user), params: { user: { password: new_password } }
+        end.to change { user.reload.password_expires_at }.from(nil).to(Time.current)
+
+        expect(user.reload.valid_password?(new_password)).to be_truthy
+        expect(response).to redirect_to(admin_user_path(user))
+      end
+
+      it 'allows the admin to change their own password without setting `:password_expires_at`' do
+        new_password = 'newpassword123'
+
+        expect do
+          patch admin_user_path(admin), params: { user: { password: new_password } }
+        end.to not_change { admin.reload.password_expires_at }
+
+        expect(admin.reload.valid_password?(new_password)).to be_truthy
+        expect(response).to redirect_to(admin_user_path(admin))
+      end
+    end
 
     context "when admin changes user email" do
       let(:new_email) { 'new-email@example.com' }
@@ -160,7 +193,7 @@ RSpec.describe Admin::UsersController, :enable_admin_mode, feature_category: :us
         request
 
         expect(response).to redirect_to(admin_user_path(user))
-        expect(flash[:alert]).to eq(s_('Error occurred. User was not updated'))
+        expect(flash[:alert]).to eq(_('Error occurred. User was not updated'))
       end
     end
   end
@@ -187,7 +220,7 @@ RSpec.describe Admin::UsersController, :enable_admin_mode, feature_category: :us
         request
 
         expect(response).to redirect_to(admin_user_path(user))
-        expect(flash[:alert]).to eq(s_('Error occurred. User was not updated'))
+        expect(flash[:alert]).to eq(_('Error occurred. User was not updated'))
       end
     end
   end

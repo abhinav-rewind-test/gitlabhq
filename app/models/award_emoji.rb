@@ -33,6 +33,7 @@ class AwardEmoji < ApplicationRecord
   scope :named, ->(names) { where(name: names) }
   scope :awarded_by, ->(users) { where(user: users) }
   scope :by_awardable, ->(type, ids) { where(awardable_type: type, awardable_id: ids) }
+  scope :with_awardable_and_author, -> { includes(awardable: :author) }
 
   before_validation :ensure_sharding_key
   after_destroy :expire_cache
@@ -112,7 +113,7 @@ class AwardEmoji < ApplicationRecord
                           awardable.namespace_id
                         when MergeRequest
                           awardable.project.project_namespace_id
-                        when Note
+                        when Note, WikiPage::Meta
                           awardable.project&.project_namespace_id || awardable.namespace_id
                         when ProjectSnippet
                           awardable.project&.project_namespace_id

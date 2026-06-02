@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use merged results pipelines to test code from source and target branches combined before merging.
 title: Merged results pipelines
 ---
@@ -35,7 +35,7 @@ Prerequisites:
 To enable merged results pipelines in a project:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. Under **Merge options**, select **Enable merged results pipelines**.
 1. Select **Save changes**.
 

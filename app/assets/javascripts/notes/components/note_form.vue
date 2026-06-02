@@ -2,6 +2,8 @@
 import { GlButton, GlSprintf, GlLink, GlFormCheckbox } from '@gitlab/ui';
 import { mapState, mapActions } from 'pinia';
 import { mergeUrlParams } from '~/lib/utils/url_utility';
+import { getRawPath } from '~/diffs/utils/diff_file';
+import { diffLineToString } from '~/diffs/utils/diff_line';
 import { __ } from '~/locale';
 import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
 import MarkdownEditor from '~/vue_shared/components/markdown/markdown_editor.vue';
@@ -113,6 +115,12 @@ export default {
       default: false,
     },
   },
+  emits: [
+    'cancelForm',
+    'handleFormUpdate',
+    'handleFormUpdateAddToReview',
+    'handleSuggestDismissed',
+  ],
   data() {
     return {
       updatedNoteBody: this.noteBody,
@@ -218,8 +226,10 @@ export default {
       return this.discussion.confidential;
     },
     canSuggest() {
-      return (
-        this.getNoteableData.can_receive_suggestion && this.line && this.line.can_receive_suggestion
+      return Boolean(
+        this.getNoteableData.can_receive_suggestion &&
+          this.line &&
+          this.line.can_receive_suggestion,
       );
     },
     changedCommentText() {
@@ -231,12 +241,20 @@ export default {
       };
     },
     codeSuggestionsConfig() {
+      const { line, lines, diffFile } = this;
+      const selectedLines = lines.length ? lines : [line].filter(Boolean);
       return {
         canSuggest: this.canSuggest,
-        line: this.line,
-        lines: this.lines,
+        lines: selectedLines.map(diffLineToString),
+        lineType: line?.type ?? '',
         showPopover: this.showSuggestPopover,
-        diffFile: this.diffFile,
+        blobRawPath: diffFile?.view_path ? getRawPath(diffFile) : null,
+        lineRange: selectedLines.length
+          ? {
+              start: selectedLines[0].new_line,
+              end: selectedLines[selectedLines.length - 1].new_line,
+            }
+          : null,
       };
     },
     shouldDisableField() {
@@ -462,8 +480,6 @@ export default {
             </gl-button>
             <gl-button
               :disabled="isDisabled"
-              category="secondary"
-              variant="confirm"
               data-testid="comment-now-button"
               class="js-comment-button gl-mb-3 @sm/panel:gl-mr-3"
               @click="handleUpdate()"

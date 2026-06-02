@@ -100,11 +100,14 @@ module WorkItemsHelpers
   end
 
   def click_bulk_edit
+    find_button('Bulk edit')
     click_button 'Bulk edit'
   end
 
   def click_update_selected
     click_button 'Update selected'
+    expect(page).to have_no_button('Update selected')
+    expect(page).to have_button('Bulk edit')
   end
 
   def check_work_items(items = [])
@@ -127,7 +130,7 @@ module WorkItemsHelpers
 
   # drawer helpers
   def close_drawer
-    find('[data-testid="work-item-drawer"] .gl-drawer-close-button').click
+    find('[data-testid="work-item-detail-panel"] .gl-detail-panel-close-button').click
     wait_for_all_requests
   end
 
@@ -147,5 +150,21 @@ module WorkItemsHelpers
       fill_in 'Summary', with: summary
       click_button 'Save'
     end
+  end
+
+  def open_new_view_modal_from_dropdown
+    find_by_testid('add-saved-view-toggle').click
+    wait_for_requests
+    click_button 'New view'
+    wait_for_requests
+  end
+
+  def open_edit_modal_from_saved_view_tab(view_name, click_view_button: false)
+    click_button view_name if click_view_button
+    wait_for_requests
+    click_button view_name
+
+    find_by_testid('edit-action').click
+    wait_for_requests
   end
 end

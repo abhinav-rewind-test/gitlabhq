@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Localization
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Internationalization for GitLab
 ---
 
@@ -30,7 +30,6 @@ The following tools are used:
   - `rake gettext:compile`: reads the contents of the PO files and generates JS files which
     contain all the available translations for the Frontend.
   - `rake gettext:lint`: [validate PO files](#validating-po-files)
-
 - [`gettext_i18n_rails`](https://github.com/grosser/gettext_i18n_rails):
   this gem allows us to translate content from models, views, and controllers.
   It uses [`fast_gettext`](https://github.com/grosser/fast_gettext) under the hood.
@@ -42,7 +41,6 @@ The following tools are used:
     marked for translation. It then updates the PO files with this content.
   - `rake gettext:pack`: processes the PO files and generates the binary MO files that the
     application uses.
-
 - PO editor: there are multiple applications that can help us work with PO files.
   A good option is [Poedit](https://poedit.net/download),
   which is available for macOS, GNU/Linux, and Windows.
@@ -144,13 +142,13 @@ You can mark that content for translation with:
 
 Given the following content in ERB:
 
-```erb
+```html
 <h1>Hello world!</h1>
 ```
 
 You can mark that content for translation with:
 
-```erb
+```html
 <h1><%= _("Hello world!") %></h1>
 ```
 
@@ -389,10 +387,10 @@ use `%{created_at}` in Ruby but `%{createdAt}` in JavaScript. Make sure to
   If you need to use markup within the translation, use `sprintf` and stop it
   from escaping placeholder values by passing `false` as its third argument.
   You must escape any interpolated dynamic values yourself, for instance
-  using `escape` from `lodash`.
+  using `escape` from `lodash-es`.
 
   ```javascript
-  import { escape } from 'lodash';
+  import { escape } from 'lodash-es';
   import { __, sprintf } from '~/locale';
 
   let someDynamicValue = '<script>alert("evil")</script>';
@@ -412,138 +410,8 @@ use `%{created_at}` in Ruby but `%{createdAt}` in JavaScript. Make sure to
 
 ### Plurals
 
-- In Ruby/HAML:
-
-  ```ruby
-  n_('Apple', 'Apples', 3)
-  # => 'Apples'
-  ```
-
-  Using interpolation:
-
-  ```ruby
-  n_("There is a mouse.", "There are %d mice.", size) % size
-  # => When size == 1: 'There is a mouse.'
-  # => When size == 2: 'There are 2 mice.'
-  ```
-
-  Avoid using `%d` or count variables in singular strings. This allows more natural translation in
-  some languages.
-
-- In JavaScript:
-
-  ```javascript
-  n__('Apple', 'Apples', 3)
-  // => 'Apples'
-  ```
-
-  Using interpolation:
-
-  ```javascript
-  n__('Last day', 'Last %d days', x)
-  // => When x == 1: 'Last day'
-  // => When x == 2: 'Last 2 days'
-  ```
-
-- In Vue:
-
-  One of [the recommended ways to organize translated strings for Vue files](#vue-files) is to extract them into a `constants.js` file.
-  That can be difficult to do when there are pluralized strings because the `count` variable won't be known inside the constants file.
-  To overcome this, we recommend creating a function which takes a `count` argument:
-
-  ```javascript
-  // .../feature/constants.js
-  import { n__ } from '~/locale';
-
-  export const I18N = {
-    // Strings that are only singular don't need to be a function
-    someDaysRemain: __('Some days remain'),
-    daysRemaining(count) { return n__('%d day remaining', '%d days remaining', count); },
-  };
-  ```
-
-  Then within a Vue component the function can be used to retrieve the correct pluralization form of the string:
-
-  ```javascript
-  // .../feature/components/days_remaining.vue
-  import { sprintf } from '~/locale';
-  import { I18N } from '../constants';
-
-  <script>
-    export default {
-      props: {
-        days: {
-          type: Number,
-          required: true,
-        },
-      },
-      i18n: I18N,
-    };
-  </script>
-
-  <template>
-    <div>
-      <span>
-        A singular string:
-        {{ $options.i18n.someDaysRemain }}
-      </span>
-      <span>
-        A plural string:
-        {{ $options.i18n.daysRemaining(days) }}
-      </span>
-    </div>
-  </template>
-  ```
-
-The `n_` and `n__` methods should only be used to fetch pluralized translations of the same
-string, not to control the logic of showing different strings for different
-quantities. For similar strings, pluralize the entire sentence to provide the most context
-when translating. Some languages have different quantities of target plural forms.
-For example, Chinese (simplified) has only one target plural form in our
-translation tool. This means the translator has to choose to translate only one
-of the strings, and the translation doesn't behave as intended in the other case.
-
-Below are some examples:
-
-Example 1: For different strings
-
-Use this:
-
-```ruby
-if selected_projects.one?
-  selected_projects.first.name
-else
-  n_("Project selected", "%d projects selected", selected_projects.count)
-end
-```
-
-Instead of this:
-
-```ruby
-# incorrect usage example
-format(n_("%{project_name}", "%d projects selected", count), project_name: 'GitLab')
-```
-
-Example 2: For similar strings
-
-Use this:
-
-```ruby
-n__('Last day', 'Last %d days', days.length)
-```
-
-Instead of this:
-
-```ruby
-# incorrect usage example
-const pluralize = n__('day', 'days', days.length)
-
-if (days.length === 1 ) {
-  return sprintf(s__('Last %{pluralize}', pluralize)
-}
-
-return sprintf(s__('Last %{dayNumber} %{pluralize}'), { dayNumber: days.length, pluralize })
-```
+GitLab uses GNU gettext for pluralization. For guidance on `n_()` and `n__()` syntax,
+[CLDR](https://cldr.unicode.org/) plural categories, and common anti-patterns, see [pluralization](pluralization.md).
 
 ### Namespaces
 
@@ -585,7 +453,6 @@ This approach helps translators understand:
 - The specific UI context where the string appears.
 - The intended action or purpose.
 - How the string relates to other similar strings in the same feature area.
-
 - In Ruby/HAML:
 
   ```ruby
@@ -593,7 +460,6 @@ This approach helps translators understand:
   ```
 
   If the translation isn't found, `Opened` is returned.
-
 - In JavaScript:
 
   ```javascript
@@ -926,22 +792,43 @@ When in doubt, try to follow the best practices described in this [Mozilla Devel
 The `tooling/bin/gettext_extractor locale/gitlab.pot` script parses the codebase and extracts all the strings from the
 [translation helpers](#preparing-a-page-for-translation) ready to be translated.
 
-The script cannot resolve the strings if they are passed as variables or function calls. Therefore,
+The script cannot resolve the strings if they are passed as variables, function calls, or string interpolations. Therefore,
 make sure to always pass string literals to the helpers.
 
-```javascript
-// Good
-__('Some label');
-s__('Namespace', 'Label');
-s__('Namespace|Label');
-n__('%d apple', '%d apples', appleCount);
+- In Ruby/HAML:
 
-// Bad
-__(LABEL);
-s__(getLabel());
-s__(NAMESPACE, LABEL);
-n__(LABEL_SINGULAR, LABEL_PLURAL, appleCount);
-```
+  ```ruby
+  # Good
+  _('Some label');
+  _("Some label");
+  _('Hi %{name}') % { name: 'Luki' }
+  s_('Namespace|Label');
+  n_('%d apple', '%d apples', appleCount);
+
+  # Bad
+  _(LABEL);
+  _('Hi %{name}' % { name: 'Luki' })
+  _("Step: #{count}");
+  s_(get_label());
+  n_(label_singular, label_plural, appleCount);
+  ```
+
+- In JavaScript:
+
+  ```javascript
+  // Good
+  __('Some label');
+  s__('Namespace', 'Label');
+  s__('Namespace|Label');
+  n__('%d apple', '%d apples', appleCount);
+
+  // Bad
+  __(LABEL);
+  __(`Step: ${count}`);
+  s__(getLabel());
+  s__(NAMESPACE, LABEL);
+  n__(LABEL_SINGULAR, LABEL_PLURAL, appleCount);
+  ```
 
 ### Using variables to insert text dynamically
 
@@ -952,9 +839,7 @@ When text values are used in translatable strings as variables, special care mus
 When using variables to add text into translatable strings, several localization challenges can arise:
 
 - Gender agreement: Languages with grammatical gender may require different forms of articles, adjectives or pronouns depending on the gender of the inserted noun. For example, in French, articles, adjectives and some past participles must agree with the noun's gender and position in the sentence.
-
 - Case and declension: In languages with cases (like German), the inserted text may need different forms depending on its grammatical role in the sentence.
-
 - Word order: Different languages have different word order requirements, and inserted text may need to appear in different positions in the sentence for natural-sounding translations.
 
 #### Best practices
@@ -1112,7 +997,6 @@ Suppose you want to add translations for a new language, for example, French:
 
 1. Adding the language also creates a new directory at the path `locale/fr/`. You can now start
    using your PO editor to edit the PO file located at `locale/fr/gitlab.edit.po`.
-
 1. After updating the translations, you must process the PO files to generate the binary MO files,
    and update the JSON files containing the translations:
 
@@ -1122,7 +1006,6 @@ Suppose you want to add translations for a new language, for example, French:
 
 1. To see the translated content, you must change your preferred language. You can find this under
    the user's **Settings** (`/profile`).
-
 1. After checking that the changes are ok, commit the new files. For example:
 
    ```shell

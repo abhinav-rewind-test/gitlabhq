@@ -50,7 +50,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
 
       it 'updates the finished_at' do
         freeze_time do
-          expect { batched_migration.finish! }.to change(batched_migration, :finished_at).from(nil).to(Time.current)
+          expect { batched_migration.finish! }.to change { batched_migration.finished_at }.from(nil).to(Time.current)
         end
       end
     end
@@ -61,7 +61,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       let!(:batched_migration) { create(:batched_background_migration) }
 
       it 'updates the started_at' do
-        expect { batched_migration.execute! }.to change(batched_migration, :started_at).from(nil).to(Time)
+        expect { batched_migration.execute! }.to change { batched_migration.started_at }.from(nil).to(Time)
       end
     end
   end
@@ -920,6 +920,14 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       end
     end
 
+    context 'when total_tuple_count is nil' do
+      let(:batched_migration) { create(:batched_background_migration, :active, total_tuple_count: nil, interval: 120) }
+
+      it 'returns nil' do
+        expect(batched_migration.compute_estimated_seconds_remaining).to be_nil
+      end
+    end
+
     context 'when no tuples have been migrated' do
       it 'returns nil' do
         expect(batched_migration.compute_estimated_seconds_remaining).to be_nil
@@ -1038,6 +1046,25 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
 
       it 'returns human-readable duration string' do
         expect(batched_migration.estimated_time_remaining).to eq('1 minute')
+      end
+    end
+  end
+
+  describe '#succeeded_job_stats' do
+    let(:batched_migration) { create(:batched_background_migration, :active, total_tuple_count: 100) }
+
+    context 'when query times out' do
+      before do
+        allow(batched_migration.batched_jobs).to receive(:with_status).and_raise(ActiveRecord::ConnectionTimeoutError)
+      end
+
+      it 'tracks exception and returns nil' do
+        expect(Gitlab::ErrorTracking).to receive(:track_exception).with(
+          instance_of(ActiveRecord::ConnectionTimeoutError),
+          hash_including(migration_id: batched_migration.id)
+        )
+
+        expect(batched_migration.send(:succeeded_job_stats)).to be_nil
       end
     end
   end

@@ -42,13 +42,13 @@ export default {
       result({ data }) {
         const agentsData = data?.project?.clusterAgents || data?.group?.clusterAgents;
         this.agentsCount = agentsData?.count;
-        this.$emit('onAgentsLoad', this.agentsCount);
+        this.$emit('on-agents-load', this.agentsCount);
       },
       error(error) {
         this.queryErrored = true;
 
         if (error?.message?.indexOf(KAS_DISABLED_ERROR) >= 0) {
-          this.$emit('kasDisabled', true);
+          this.$emit('kas-disabled', true);
         }
       },
     },
@@ -175,7 +175,8 @@ export default {
         !this.queryErrored &&
         !this.agentList.length &&
         !this.sharedAgentsQueryErrored &&
-        !this.sharedAgentsList.length
+        !this.sharedAgentsList.length &&
+        !this.availableConfigs.length
       );
     },
     showFeedbackBanner() {
@@ -298,7 +299,7 @@ export default {
         <agent-configs-table
           :configs="availableConfigs"
           :max-configs="limit"
-          @registerAgent="$emit('registerAgent', $event)"
+          @register-agent="$emit('register-agent', $event)"
         />
       </gl-tab>
     </gl-tabs>

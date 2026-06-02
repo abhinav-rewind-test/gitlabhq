@@ -2,19 +2,19 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_projects do
+RSpec.describe API::Topics, :aggregate_failures, :with_current_organization, feature_category: :groups_and_projects do
   include WorkhorseHelpers
 
   let_it_be(:file) { fixture_file_upload('spec/fixtures/dk.png') }
 
-  let_it_be(:current_organization, reload: true) { create(:organization, :public, name: 'Current Public Organization') }
-  let_it_be(:namespace) { create(:namespace, organization: current_organization) }
+  let_it_be_with_reload(:current_organization) { create(:organization, :public, name: 'Current Public Organization') }
+  let_it_be(:namespace, freeze: false) { create(:namespace, organization: current_organization) }
 
   let_it_be(:topic_1) { create(:topic, name: 'Git', total_projects_count: 1, non_private_projects_count: 1, avatar: file, organization: current_organization) }
   let_it_be(:topic_2) { create(:topic, name: 'GitLab', total_projects_count: 2, non_private_projects_count: 2, organization: current_organization) }
   let_it_be(:topic_3) { create(:topic, name: 'other-topic', total_projects_count: 3, non_private_projects_count: 3, organization: current_organization) }
 
-  let_it_be(:admin) { create(:user, :admin, namespace: namespace) }
+  let_it_be(:admin, freeze: false) { create(:user, :admin, namespace: namespace) }
   let_it_be(:user) { create(:user, namespace: namespace) }
 
   let(:path) { '/topics' }
@@ -151,6 +151,14 @@ RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_p
         expect(Projects::Topic.find(json_response['id']).name).to eq('my-topic')
       end
 
+      it_behaves_like 'authorizing granular token permissions', :create_topic do
+        let(:boundary_object) { :instance }
+        let(:user) { admin }
+        let(:request) do
+          post api('/topics/', personal_access_token: pat), params: { name: 'test-topic', title: 'Test Topic' }
+        end
+      end
+
       it 'creates a topic with avatar and description' do
         workhorse_form_with_file(
           api('/topics/', admin, admin_mode: true),
@@ -170,7 +178,7 @@ RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_p
         expect(json_response['error']).to eql('name is missing')
       end
 
-      it 'returns 400 if name is not unique (case insensitive)' do
+      it 'returns 400 if name is not unique (case insensitive)', :with_current_organization do
         post api('/topics/', admin, admin_mode: true), params: { name: topic_1.name.downcase, title: 'My Topic' }
 
         expect(response).to have_gitlab_http_status(:bad_request)
@@ -216,6 +224,14 @@ RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_p
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response['name']).to eq('my-topic')
         expect(topic_3.reload.name).to eq('my-topic')
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :update_topic do
+        let(:boundary_object) { :instance }
+        let(:user) { admin }
+        let(:request) do
+          put api("/topics/#{topic_3.id}", personal_access_token: pat), params: { name: 'updated-topic' }
+        end
       end
 
       it 'updates a topic with avatar and description' do
@@ -306,6 +322,14 @@ RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_p
         expect(response).to have_gitlab_http_status(:no_content)
       end
 
+      it_behaves_like 'authorizing granular token permissions', :delete_topic do
+        let(:boundary_object) { :instance }
+        let(:user) { admin }
+        let(:request) do
+          delete api("/topics/#{topic_3.id}", personal_access_token: pat)
+        end
+      end
+
       it 'deletes a topic without admin mode' do
         delete api("/topics/#{topic_3.id}", admin, admin_mode: false), params: params
 
@@ -363,6 +387,16 @@ RSpec.describe API::Topics, :aggregate_failures, feature_category: :groups_and_p
         expect { topic_3.reload }.to raise_error(ActiveRecord::RecordNotFound)
         expect(json_response['id']).to eq(topic_2.id)
         expect(json_response['total_projects_count']).to eq(topic_2.total_projects_count)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :merge_topic do
+        let(:boundary_object) { :instance }
+        let(:user) { admin }
+        let(:request) do
+          post api('/topics/merge', personal_access_token: pat), params: {
+            source_topic_id: topic_3.id, target_topic_id: topic_2.id
+          }
+        end
       end
 
       it 'returns 400 for topics belonging to different organizations' do

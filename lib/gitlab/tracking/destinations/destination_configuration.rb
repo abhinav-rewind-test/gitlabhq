@@ -6,7 +6,7 @@ module Gitlab
       class DestinationConfiguration
         PRODUCT_USAGE_EVENT_COLLECT_ENDPOINT = 'https://events.gitlab.net'
         PRODUCT_USAGE_EVENT_COLLECT_ENDPOINT_STG = 'https://events-stg.gitlab.net'
-        SNOWPLOW_MICRO_DEFAULT_URI = 'http://localhost:9090'
+        SNOWPLOW_MICRO_DEFAULT_URI = 'http://localhost:9091'
 
         class << self
           def snowplow_configuration
@@ -28,8 +28,7 @@ module Gitlab
 
           def snowplow_micro_uri
             url = Gitlab.config.snowplow_micro.address
-            scheme = Gitlab.config.gitlab.https ? 'https' : 'http'
-            URI("#{scheme}://#{url}")
+            URI("http://#{url}")
           rescue GitlabSettings::MissingSetting
             URI(SNOWPLOW_MICRO_DEFAULT_URI)
           end

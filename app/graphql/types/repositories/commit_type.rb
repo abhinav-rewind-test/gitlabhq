@@ -6,6 +6,7 @@ module Types
       graphql_name 'Commit'
 
       authorize :read_code
+      authorize_granular_token permissions: :read_code, boundary: :project, boundary_type: :project
 
       present_using CommitPresenter
 
@@ -34,6 +35,10 @@ module Types
 
       field :message, type: GraphQL::Types::String, null: true,
         description: 'Raw commit message.'
+
+      field :has_agent_session, type: GraphQL::Types::Boolean, null: false,
+        method: :has_agent_session?,
+        description: 'Indicates the commit was authored during a GitLab Duo Agent Platform flow.'
 
       field :authored_date, type: Types::TimeType, null: true,
         description: 'Timestamp of when the commit was authored.'
@@ -68,6 +73,10 @@ module Types
       field :committer_name, type: GraphQL::Types::String, null: true,
         description: "Name of the committer."
 
+      field :tags, [GraphQL::Types::String], null: true,
+        description: 'Tag names pointing to the commit.',
+        method: :tags_for_display
+
       # models/commit lazy loads the author by email
       field :author, type: Types::UserType, null: true,
         description: 'Author of the commit.'
@@ -85,8 +94,8 @@ module Types
         description: 'Pipelines of the commit ordered latest first.',
         resolver: Resolvers::CommitPipelinesResolver
 
-      markdown_field :title_html, null: true
-      markdown_field :full_title_html, null: true
+      markdown_field :title_html, null: true, description: "HTML rendering of `title`"
+      markdown_field :full_title_html, null: true, description: "HTML rendering of `full_title`"
       markdown_field :description_html, null: true
 
       def diffs

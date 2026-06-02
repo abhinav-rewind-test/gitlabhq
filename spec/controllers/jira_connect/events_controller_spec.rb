@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
+RSpec.describe JiraConnect::EventsController, :with_current_organization, feature_category: :integrations do
   shared_examples 'verifies asymmetric JWT token' do
     context 'when token is valid' do
       include_context 'valid JWT token'
@@ -21,6 +21,36 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
         send_request
 
         expect(response).to have_gitlab_http_status(:unauthorized)
+      end
+
+      context 'when JWT token is nil' do
+        let(:jwt_token) { nil }
+
+        it 'renders unauthorized' do
+          send_request
+
+          expect(response).to have_gitlab_http_status(:unauthorized)
+        end
+      end
+
+      context 'when JWT token is empty' do
+        let(:jwt_token) { '' }
+
+        it 'renders unauthorized' do
+          send_request
+
+          expect(response).to have_gitlab_http_status(:unauthorized)
+        end
+      end
+
+      context 'when JWT token exceeds size limit' do
+        let(:jwt_token) { 'x' * 9.kilobytes }
+
+        it 'renders unauthorized' do
+          send_request
+
+          expect(response).to have_gitlab_http_status(:unauthorized)
+        end
       end
     end
   end
@@ -47,13 +77,15 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
     let_it_be(:shared_secret) { 'secret' }
     let_it_be(:base_url) { 'https://test.atlassian.net' }
     let_it_be(:display_url) { 'https://custom.example.com' }
+    let(:jwt_token) { Atlassian::Jwt.encode({ iss: client_key, qsh: 'test' }, shared_secret) }
 
     let(:params) do
       {
         clientKey: client_key,
         sharedSecret: shared_secret,
         baseUrl: base_url,
-        displayUrl: display_url
+        displayUrl: display_url,
+        jwt: jwt_token
       }
     end
 
@@ -74,24 +106,37 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
     it 'saves the correct values' do
       subject
 
-      installation = JiraConnectInstallation.find_by_client_key(client_key)
+      installation = JiraConnectInstallation.find_by_client_key_and_organization_id(client_key, current_organization.id)
 
       expect(installation.shared_secret).to eq(shared_secret)
       expect(installation.base_url).to eq('https://test.atlassian.net')
-      expect(installation.organization_id).to eq(Current.organization.id)
+      expect(installation.organization_id).to eq(current_organization.id)
       expect(installation.display_url).to eq('https://custom.example.com')
     end
 
     context 'when the shared_secret param is missing' do
+      let(:jwt_token) { Atlassian::Jwt.encode({ iss: client_key, qsh: 'test' }, 'some_secret') }
+
       let(:params) do
         {
           clientKey: client_key,
           baseUrl: base_url,
-          displayUrl: display_url
+          displayUrl: display_url,
+          jwt: jwt_token
         }
       end
 
-      it 'returns 422' do
+      it 'returns 422 and logs the validation errors', :aggregate_failures do
+        expect(Gitlab::IntegrationsLogger).to receive(:info).with(
+          hash_including(
+            integration: 'JiraConnect',
+            message: 'JiraConnect lifecycle event rejected',
+            jira_event_action: :create,
+            jira_client_key: client_key,
+            jira_errors: array_including(/Shared secret/)
+          )
+        )
+
         subject
 
         expect(response).to have_gitlab_http_status(:unprocessable_entity)
@@ -99,7 +144,16 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
     end
 
     context 'when an installation already exists' do
-      let_it_be(:installation) { create(:jira_connect_installation, base_url: base_url, client_key: client_key, shared_secret: shared_secret, display_url: display_url) }
+      let_it_be(:installation) do
+        create(
+          :jira_connect_installation,
+          base_url: base_url,
+          client_key: client_key,
+          shared_secret: shared_secret,
+          display_url: display_url,
+          organization: current_organization
+        )
+      end
 
       it 'validates the JWT token in authorization header and returns 200 without creating a new installation', :aggregate_failures do
         expect { subject }.not_to change { JiraConnectInstallation.count }
@@ -107,7 +161,9 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
       end
 
       it 'uses the JiraConnectInstallations::UpdateService' do
-        expect_next_instance_of(JiraConnectInstallations::UpdateService, installation, anything) do |update_service|
+        expect_next_instance_of(
+          JiraConnectInstallations::UpdateService, installation, nil, anything, skip_jira_admin_check: true
+        ) do |update_service|
           expect(update_service).to receive(:execute).and_call_original
         end
 
@@ -119,9 +175,11 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
           .to receive(:execute)
           .with(
             installation,
+            nil,
             ActionController::Parameters
               .new(shared_secret: shared_secret, organization_id: current_organization.id, base_url: base_url, display_url: display_url)
-              .permit(:shared_secret, :base_url, :organization_id, :display_url))
+              .permit(:shared_secret, :base_url, :organization_id, :display_url),
+            skip_jira_admin_check: true)
           .and_call_original
 
         subject
@@ -147,7 +205,17 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
       context 'when the new base_url is invalid' do
         let(:base_url) { 'invalid' }
 
-        it 'renders 422', :aggregate_failures do
+        it 'renders 422 and logs the service error', :aggregate_failures do
+          expect(Gitlab::IntegrationsLogger).to receive(:info).with(
+            hash_including(
+              integration: 'JiraConnect',
+              message: 'JiraConnect lifecycle event rejected',
+              jira_event_action: :update,
+              jira_client_key: client_key,
+              jira_errors: array_including(/Base url/)
+            )
+          )
+
           expect { subject }.not_to change { installation.reload.base_url }
           expect(response).to have_gitlab_http_status(:unprocessable_entity)
         end
@@ -247,13 +315,15 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
   end
 
   describe '#uninstalled' do
-    let_it_be(:installation) { create(:jira_connect_installation) }
+    let_it_be(:installation) { create(:jira_connect_installation, organization: current_organization) }
 
     let(:client_key) { installation.client_key }
+    let(:jwt_token) { Atlassian::Jwt.encode({ iss: client_key, qsh: 'test' }, installation.shared_secret) }
     let(:params) do
       {
         clientKey: client_key,
-        baseUrl: 'https://test.atlassian.net'
+        baseUrl: 'https://test.atlassian.net',
+        jwt: jwt_token
       }
     end
 
@@ -291,6 +361,15 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
         expect_next_instance_of(JiraConnectInstallations::DestroyService, installation, jira_base_path, jira_event_path) do |destroy_service|
           expect(destroy_service).to receive(:execute).and_return(false)
         end
+
+        expect(Gitlab::IntegrationsLogger).to receive(:info).with(
+          hash_including(
+            integration: 'JiraConnect',
+            message: 'JiraConnect lifecycle event rejected',
+            jira_event_action: :uninstall,
+            jira_client_key: client_key
+          )
+        )
 
         post_uninstalled
 

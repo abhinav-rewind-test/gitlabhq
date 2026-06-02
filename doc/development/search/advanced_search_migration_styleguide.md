@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Global Search
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Advanced search migration style guide
 ---
 
@@ -164,6 +164,10 @@ marked as completed by default and can set to pending by sending `including: fal
 
 Provides an instance of `Gitlab::Elastic::Helper.default`
 
+#### `es_client`
+
+Provides an instance of `Gitlab::Search::Client.new`
+
 #### `warm_elasticsearch_migrations_cache!`
 
 Primes the `::Elastic::DataMigrationService` migration cache by calling `migration_has_finished?` for each migration.
@@ -183,6 +187,18 @@ Returns a random delay between 0 and `Search::ElasticGroupAssociationDeletionWor
 #### `items_in_index`
 
 Returns an array of `id` that exist in the provided index name.
+
+### Choosing a backfill helper
+
+Use the following table to decide which helper to use when backfilling a field:
+
+| | `MigrationBackfillHelper` | `MigrationProjectScopedUpdateByQueryHelper` |
+|---|---|---|
+| **Mechanism** | Search for documents missing the field, build references, track them through the bookkeeping pipeline for re-indexing. | Search for projects with documents missing the field, issue async `update_by_query` tasks with a Painless script. Uses dual-mode strategy: safe mode for large projects (one at a time), speed mode for small projects (can batch multiple together). |
+| **Best for** | Indices backed by an ActiveRecord model (`DOCUMENT_TYPE`) where the indexer populates the field on re-index. | Project-scoped indices (commits, blobs, wikis) where the field value is derived from the project/namespace and the index is populated by the Go-based indexer. |
+| **Batch limit** | 10,000 documents per search (Elasticsearch default). | Configurable `batch_size` per task (safe mode) and `speed_mode_batch_size` for batched updates (speed mode). Both tunable at runtime via migration state. |
+| **Concurrency** | Sequential. | Concurrent — up to `max_concurrent_tasks` (default: 50) projects processed simultaneously. Tunable at runtime via migration state. |
+| **Optimization** | None - always sequential. | Automatically optimizes based on project size: careful processing for large projects (≥10k docs), batched processing for small projects. |
 
 ### Migration helpers
 
@@ -379,7 +395,7 @@ end
 
 When marking a skippable migration as obsolete, you must keep the `skip_if` condition.
 
-You can test this migration with the `'a deprecated Advanced Search migration'`
+You can test this migration with the `'a deprecated advanced search migration'`
 shared examples. Follow the [process for marking migrations as obsolete](#process-for-marking-migrations-as-obsolete).
 
 #### `Search::Elastic::MigrationCreateIndexHelper`
@@ -572,6 +588,256 @@ include_examples 'migration reindexes all data' do
 end
 ```
 
+#### `Search::Elastic::MigrationProjectScopedUpdateByQueryHelper`
+
+Backfills a field on a project-scoped index (commits, blobs, wikis) using asynchronous
+`update_by_query` tasks grouped by project. Unlike `MigrationBackfillHelper`, which
+re-indexes documents through the bookkeeping pipeline, this helper updates documents
+in-place with a Painless script directly in Elasticsearch.
+
+> [!warning]
+> This helper is intended for indices that are populated by the Go-based indexer
+> (`gitlab-elasticsearch-indexer`) rather than the Rails bookkeeping pipeline
+> (`Elastic::ProcessBookkeepingService`). For indices backed by an ActiveRecord model,
+> use [`MigrationBackfillHelper`](#searchelasticmigrationbackfillhelper) or
+> [`MigrationReindexBasedOnSchemaVersion`](#searchelasticmigrationreindexbasedonschemaversion) instead.
+
+##### Dual-mode migration strategy
+
+This helper automatically adapts its strategy based on project size:
+
+- **Safe mode**: For large projects (≥10,000 documents by default) - processes one project at a time with careful concurrency control.
+- **Speed mode**: For smaller projects - can batch multiple projects together in a single update for faster processing.
+
+The helper determines which mode to use by checking if any remaining projects have document counts
+exceeding the `large_project_threshold`. Safe mode runs first when large projects remain, then
+automatically switches to speed mode after all large projects are complete.
+
+##### Required methods
+
+Migrations must implement four methods:
+
+```ruby
+# The document type to filter by (e.g., 'commit', 'blob', 'wiki_blob')
+def document_type_value
+  'commit'
+end
+
+# The field being backfilled
+def field_name
+  'traversal_ids'
+end
+
+# Painless script for updating a single project's documents
+# Used in safe mode (large projects) and as fallback in speed mode
+def update_script(project)
+  {
+    source: "ctx._source.traversal_ids = params.traversal_ids",
+    params: { traversal_ids: project.namespace.traversal_ids }
+  }
+end
+
+# Painless script for batch updating multiple projects at once
+# Used in speed mode for small projects
+# Must be implemented by all migrations using this helper
+def batch_update_script(projects)
+  # Convert IDs to strings to match ES keyword fields
+  project_values = projects.index_by { |p| p.id.to_s }.transform_values(&:namespace_ancestry)
+  {
+    source: "ctx._source.traversal_ids = params.project_values[ctx._source.rid.toString()]",
+    params: { project_values: project_values }
+  }
+end
+```
+
+##### Required: Implement batch processing
+
+Migrations must implement the `batch_update_script(projects)` method to enable batch processing in speed mode:
+
+```ruby
+# Returns a Painless script that works across multiple projects
+# Receives an array of Project objects in this batch
+# @param projects [Array<Project>] Projects being batched together
+# @return [Hash] Script with :source and :params keys
+def batch_update_script(projects)
+  # Build a lookup map from project data
+  # IMPORTANT: Convert project IDs to strings to match keyword fields in Elasticsearch
+  project_values = projects.index_by { |p| p.id.to_s }.transform_values(&:namespace_ancestry)
+  {
+    source: "ctx._source.traversal_ids = params.project_values[ctx._source.rid.toString()]",
+    params: { project_values: project_values }
+  }
+end
+```
+
+##### Optional overrides
+
+```ruby
+# Override to change the Elasticsearch field storing project ID (default: 'rid')
+def project_id_field
+  'rid'
+end
+
+# Override to customize eager loading (default: Project.with_namespace)
+def project_relation
+  Project.includes(:namespace, :route)
+end
+```
+
+##### Configuration via migration state
+
+All migration parameters can be tuned at runtime without code changes:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `batch_size` | Inherited | Max documents per update_by_query task |
+| `max_concurrent_tasks` | 50 | Max concurrent update tasks allowed |
+| `speed_mode_batch_size` | 10,000 | Max documents when batching projects in speed mode |
+| `large_project_threshold` | 10,000 | Document count threshold for "large" projects |
+
+Using a Rails console:
+
+```ruby
+migration = Elastic::DataMigrationService[20260216153009].send(:migration)
+migration.set_migration_state(
+  migration.migration_state.merge(
+    batch_size: 5_000,
+    max_concurrent_tasks: 100,
+    speed_mode_batch_size: 20_000,
+    large_project_threshold: 15_000
+  )
+)
+```
+
+Alternatively, update the migration state directly in Elasticsearch.
+Migration state is stored in the `#{target_name}-migrations` index
+(for example, `gitlab-production-migrations`). Each migration document is indexed
+by its version number, and the state is in the `state` field. Use the
+[Update API](https://www.elastic.co/guide/en/elasticsearch/reference/7.17/docs-update.html)
+with the migration version as the document ID:
+
+```shell
+# Update migration parameters for migration 20260216153009
+curl --request POST "localhost:9200/gitlab-production-migrations/_update/20260216153009" \
+  --header 'Content-Type: application/json' --data'
+{
+  "script": {
+    "source": "ctx._source.state.max_concurrent_tasks = params.max_tasks; ctx._source.state.batch_size = params.batch_size; ctx._source.state.speed_mode_batch_size = params.speed_batch_size; ctx._source.state.large_project_threshold = params.threshold",
+    "params": {
+      "max_tasks": 100,
+      "batch_size": 5000,
+      "speed_batch_size": 20000,
+      "threshold": 15000
+    }
+  }
+}'
+```
+
+##### Example migration
+
+```ruby
+class BackfillTraversalIdsOnCommits < Elastic::Migration
+  include ::Search::Elastic::MigrationProjectScopedUpdateByQueryHelper
+
+  batched!
+  batch_size 10_000
+  throttle_delay 5.seconds
+  retry_on_failure
+
+  def index_name
+    ::Elastic::Latest::CommitConfig.index_name
+  end
+
+  private
+
+  def document_type_value
+    'commit'
+  end
+
+  def field_name
+    'traversal_ids'
+  end
+
+  def update_script(project)
+    {
+      source: "ctx._source.traversal_ids = params.traversal_ids",
+      params: { traversal_ids: project.elastic_namespace_ancestry }
+    }
+  end
+
+  # Enable batching for faster processing in speed mode
+  def batch_update_script(projects)
+    # Convert IDs to strings to match keyword fields in ES
+    project_values = projects.index_by { |p| p.id.to_s }.transform_values(&:namespace_ancestry)
+    {
+      source: "ctx._source.traversal_ids = params.project_values[ctx._source.rid.toString()]",
+      params: { project_values: project_values }
+    }
+  end
+end
+```
+
+##### Migration progress and logging
+
+The helper logs the current mode and includes document counts for better observability:
+
+```plaintext
+Running migration in safe mode (processing large projects)
+In Progress: update_by_query task, project_id: 123, document_count: 15000
+Completed: update_by_query task, project_id: 123, document_count: 15000
+
+Running migration in speed mode (batching small projects)
+In Progress: update_by_query task, project_id: 456, document_count: 2000
+Completed: update_by_query task, project_id: 456, document_count: 2000
+```
+
+You can test this migration with the
+`'migration backfills a field using project-scoped update_by_query'` shared examples.
+The consuming spec must define two methods inside the `it_behaves_like` block:
+
+- `index_documents_for_projects(projects)` — indexes documents for the given projects.
+- `remove_field_from_indexed_documents(project_ids)` — removes the target field
+  from indexed documents (project IDs are strings because `rid` is a keyword field).
+
+```ruby
+RSpec.describe BackfillTraversalIdsOnCommits, :elastic, :sidekiq_inline, feature_category: :global_search do
+  let(:version) { 20260216153009 }
+  let(:version_mapping_migration) { 20260216152309 }
+  let(:expected_batch_size) { 10_000 }
+  let(:expected_throttle_delay) { 5.seconds }
+
+  let_it_be_with_reload(:projects) { create_list(:project, 3, :repository) }
+
+  it_behaves_like 'migration backfills a field using project-scoped update_by_query' do
+    def index_documents_for_projects(projects)
+      projects.each { |p| p.repository.index_commits_and_blobs }
+    end
+
+    def remove_field_from_indexed_documents(project_ids)
+      client = Gitlab::Search::Client.new
+
+      client.update_by_query({
+        index: index_name,
+        wait_for_completion: true,
+        refresh: true,
+        body: {
+          script: {
+            source: "ctx._source.remove('traversal_ids');",
+            lang: "painless"
+          },
+          query: {
+            bool: {
+              must: [{ exists: { field: 'traversal_ids' } }],
+              filter: [{ terms: { rid: project_ids } }]
+            }
+          }
+        }
+      })
+    end
+  end
+end
+```
+
 #### `Search::Elastic::MigrationHelper`
 
 Contains methods you can use when a migration doesn't fit the previous examples.
@@ -597,24 +863,19 @@ end
 - `batched!` - Allow the migration to run in batches. If set, [`Elastic::MigrationWorker`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/workers/elastic/migration_worker.rb)
   re-enqueues itself with a delay which is set using the `throttle_delay` option described below. The batching
   must be handled in the `migrate` method. This setting controls the re-enqueuing only.
-
 - `batch_size` - Sets the number of documents modified during a `batched!` migration run. This size should be set to a value which allows the updates
   enough time to finish. This can be tuned in combination with the `throttle_delay` option described below. The batching
   must be handled in a custom `migrate` method or by using the [`Search::Elastic::MigrationBackfillHelper`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/workers/concerns/elastic/migration_backfill_helper.rb)
   `migrate` method which uses this setting. Default value is 1000 documents.
-
 - `throttle_delay` - Sets the wait time in between batch runs. This time should be set high enough to allow each migration batch
   enough time to finish. Additionally, the time should be less than 5 minutes because that is how often the
   [`Elastic::MigrationWorker`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/workers/elastic/migration_worker.rb)
   cron worker runs. The default value is 3 minutes.
-
 - `pause_indexing!` - Pause indexing while the migration runs. This setting records the indexing setting before
   the migration runs and set it back to that value when the migration is completed.
-
 - `space_requirements!` - Verify that enough free space is available in the cluster when the migration runs. This setting
   halts the migration if the storage required is not available when the migration runs. The migration must provide
   the space required in bytes by defining a `space_required_bytes` method.
-
 - `retry_on_failure` - Enable the retry on failure feature. By default, it retries
   the migration 30 times. After it runs out of retries, the migration is marked as halted.
   To customize the number of retries, pass the `max_attempts` argument:
@@ -704,6 +965,52 @@ Follow these best practices for best results:
 - Pause indexing if you're using any Elasticsearch Reindex API operations.
 - Consider adding a retry limit if there is potential for the migration to fail.
   This ensures that migrations can be halted if an issue occurs.
+- Inline index mappings and settings within the migration file. This protects
+  the migration from future code changes in shared configuration classes. Define
+  mappings and settings in private methods rather than referencing external
+  classes or modules. This follows the same pattern as database migrations to
+  ensure migrations remain stable over time.
+
+### Inlining mappings and settings
+
+When creating or updating an index, define mappings and settings directly in the
+migration file using private methods:
+
+```ruby
+class MigrationName < Elastic::Migration
+  include ::Search::Elastic::MigrationHelper
+
+  def migrate
+    helper.create_index(
+      index_name: 'my-index',
+      settings: index_settings,
+      mappings: index_mappings
+    )
+  end
+
+  private
+
+  def index_settings
+    {
+      number_of_shards: 1,
+      number_of_replicas: 1
+    }
+  end
+
+  def index_mappings
+    {
+      properties: {
+        id: { type: 'keyword' },
+        name: { type: 'text' },
+        created_at: { type: 'date' }
+      }
+    }
+  end
+end
+```
+
+This approach ensures the migration continues to work correctly even if shared
+configuration classes change in future GitLab versions.
 
 ## Cleaning up advanced search migrations
 
@@ -755,7 +1062,7 @@ the Keep:
     ClassName.prepend ::Search::Elastic::MigrationObsolete
    ```
 
-1. Replaces the spec file content with the `'a deprecated Advanced Search migration'` shared example.
+1. Replaces the spec file content with the `'a deprecated advanced search migration'` shared example.
 1. Randomly selects a Global Search backend engineer as an assignee.
 1. Updates the dictionary file to mark the migration as obsolete.
 
@@ -789,10 +1096,10 @@ The MR assignee must:
 You can check migration status from Slack (or any ChatOps‑enabled channel) at any time:
 
 ```plaintext
-/chatops run search_migrations --help
-/chatops run search_migrations list
-/chatops run search_migrations get MigrationName
-/chatops run search_migrations get VersionNumber
+/chatops gitlab run search_migrations --help
+/chatops gitlab run search_migrations list
+/chatops gitlab run search_migrations get MigrationName
+/chatops gitlab run search_migrations get VersionNumber
 ```
 
 The above uses the [search_migrations](https://gitlab.com/gitlab-com/chatops/-/blob/master/lib/chatops/commands/search_migrations.rb) ChatOps plugin to fetch current migration state.

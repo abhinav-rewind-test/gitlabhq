@@ -3,11 +3,11 @@
 require 'spec_helper'
 
 RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category: :importers do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:bulk_import) { create(:bulk_import, :with_configuration, user: user) }
-  let_it_be(:member_user1) { create(:user, email: 'email1@email.com') }
-  let_it_be(:member_user2) { create(:user, email: 'email2@email.com') }
-  let_it_be(:member_data) do
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:bulk_import, freeze: false) { create(:bulk_import, :with_configuration, user: user) }
+  let_it_be(:member_user1, freeze: false) { create(:user, email: 'email1@email.com') }
+  let_it_be(:member_user2, freeze: false) { create(:user, email: 'email2@email.com') }
+  let_it_be(:member_data, freeze: false) do
     {
       user_id: member_user1.id,
       created_by_id: member_user2.id,
@@ -67,7 +67,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
           allow(extractor).to receive(:extract).and_return(first_page, last_page)
         end
 
-        expect { pipeline.run }.to change(portable.members, :count).by(2)
+        expect { pipeline.run }.to change { portable.members.count }.by(2)
 
         expect(members).to contain_exactly(
           { user_id: member_user1.id, access_level: 30 },
@@ -90,14 +90,14 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
           allow(extractor).to receive(:extract).and_return(extracted)
         end
 
-        expect { pipeline.run }.to change(portable.members, :count).by(1)
+        expect { pipeline.run }.to change { portable.members.count }.by(1)
 
         # Run again with exact same configuration
         allow_next_instance_of(BulkImports::Common::Extractors::GraphqlExtractor) do |extractor|
           allow(extractor).to receive(:extract).and_return(extracted)
         end
 
-        expect { pipeline.run }.not_to change(portable.members, :count)
+        expect { pipeline.run }.not_to change { portable.members.count }
       end
 
       context 'when importer_user_mapping is enabled' do
@@ -209,7 +209,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
 
     describe '#load' do
       it 'creates new membership' do
-        expect { subject.load(context, member_data) }.to change(portable.members, :count).by(1)
+        expect { subject.load(context, member_data) }.to change { portable.members.count }.by(1)
 
         member = portable.members.find_by_user_id(member_user1.id)
 
@@ -230,7 +230,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
       it 'removes source_xid and entity_type from data before creating member' do
         data = member_data.merge('source_xid' => '123', 'entity_type' => 'group')
 
-        expect { pipeline.load(context, data) }.to change(portable.members, :count).by(1)
+        expect { pipeline.load(context, data) }.to change { portable.members.count }.by(1)
 
         created_member = portable.members.last
         expect(created_member.attributes).not_to include('source_xid', 'entity_type')
@@ -240,13 +240,13 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
         it 'does not create new membership' do
           data = { user_id: user.id }
 
-          expect { pipeline.load(context, data) }.not_to change(portable.members, :count)
+          expect { pipeline.load(context, data) }.not_to change { portable.members.count }
         end
       end
 
       context 'when data is nil' do
         it 'does not create new membership' do
-          expect { pipeline.load(context, nil) }.not_to change(portable.members, :count)
+          expect { pipeline.load(context, nil) }.not_to change { portable.members.count }
         end
       end
 
@@ -254,7 +254,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
         it 'does not create new membership' do
           portable.members.create!(member_data)
 
-          expect { pipeline.load(context, member_data) }.not_to change(portable.members, :count)
+          expect { pipeline.load(context, member_data) }.not_to change { portable.members.count }
         end
       end
 
@@ -267,7 +267,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
 
         context 'when the same membership exists in parent group' do
           it 'does not create new membership' do
-            expect { pipeline.load(context, member_data) }.not_to change(portable_with_parent.members, :count)
+            expect { pipeline.load(context, member_data) }.not_to change { portable_with_parent.members.count }
           end
         end
 
@@ -275,7 +275,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
           it 'creates new direct membership' do
             data = member_data.merge(access_level: Gitlab::Access::MAINTAINER)
 
-            expect { pipeline.load(context, data) }.to change(portable_with_parent.members, :count)
+            expect { pipeline.load(context, data) }.to change { portable_with_parent.members.count }
 
             member = portable_with_parent.members.find_by_user_id(member_user1.id)
 
@@ -287,7 +287,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
           it 'does not create new membership' do
             data = member_data.merge(access_level: Gitlab::Access::GUEST)
 
-            expect { pipeline.load(context, data) }.not_to change(portable_with_parent.members, :count)
+            expect { pipeline.load(context, data) }.not_to change { portable_with_parent.members.count }
           end
         end
       end
@@ -332,14 +332,14 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
         end
 
         it 'creates new membership' do
-          expect { subject.load(context, data) }.to change(portable.members, :count).by(1)
+          expect { subject.load(context, data) }.to change { portable.members.count }.by(1)
         end
       end
     end
   end
 
   context 'when importing to group' do
-    let_it_be(:portable) { create(:group) }
+    let_it_be(:portable, freeze: false) { create(:group) }
 
     let(:portable_with_parent) { create(:group, parent: parent) }
     let(:entity) { create(:bulk_import_entity, :group_entity, group: portable, bulk_import: bulk_import) }
@@ -355,14 +355,14 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
       end
 
       it 'does not create new membership' do
-        expect { pipeline.load(context, member_data) }.not_to change(Member, :count)
+        expect { pipeline.load(context, member_data) }.not_to change { Member.count }
       end
 
       context 'when membership is a higher access level' do
         it 'creates new direct membership' do
           data = member_data.merge(access_level: Gitlab::Access::MAINTAINER)
 
-          expect { pipeline.load(context, data) }.to change(portable.members, :count).by(1)
+          expect { pipeline.load(context, data) }.to change { portable.members.count }.by(1)
 
           member = portable.members.find_by_user_id(member_user1.id)
 
@@ -373,7 +373,7 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
   end
 
   context 'when importing to project' do
-    let_it_be(:portable) { create(:project) }
+    let_it_be(:portable, freeze: false) { create(:project) }
 
     let(:portable_with_parent) { create(:project, namespace: parent) }
     let(:entity) { create(:bulk_import_entity, :project_entity, project: portable, bulk_import: bulk_import) }
@@ -389,14 +389,14 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
       end
 
       it 'does not create new membership' do
-        expect { pipeline.load(context, member_data) }.not_to change(Member, :count)
+        expect { pipeline.load(context, member_data) }.not_to change { Member.count }
       end
 
       context 'when membership is a higher access level' do
         it 'creates new direct membership' do
           data = member_data.merge(access_level: Gitlab::Access::MAINTAINER)
 
-          expect { pipeline.load(context, data) }.to change(portable.members, :count).by(1)
+          expect { pipeline.load(context, data) }.to change { portable.members.count }.by(1)
 
           member = portable.members.find_by_user_id(member_user1.id)
 
@@ -415,14 +415,14 @@ RSpec.describe BulkImports::Common::Pipelines::MembersPipeline, feature_category
       end
 
       it 'does not create new membership' do
-        expect { pipeline.load(context, member_data) }.not_to change(Member, :count)
+        expect { pipeline.load(context, member_data) }.not_to change { Member.count }
       end
 
       context 'when membership is a higher access level' do
         it 'creates new direct membership' do
           data = member_data.merge(access_level: Gitlab::Access::MAINTAINER)
 
-          expect { pipeline.load(context, data) }.to change(portable_with_parent.members, :count).by(1)
+          expect { pipeline.load(context, data) }.to change { portable_with_parent.members.count }.by(1)
 
           member = portable_with_parent.members.find_by_user_id(member_user1.id)
 

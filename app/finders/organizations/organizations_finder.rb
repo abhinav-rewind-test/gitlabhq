@@ -6,6 +6,7 @@
 #   current_user - which user is requesting organizations
 #   params:
 #     search: string
+#     exclude_default: boolean
 module Organizations
   class OrganizationsFinder
     def initialize(current_user, params = {})
@@ -19,14 +20,26 @@ module Organizations
 
     private
 
-    attr_reader :params
+    attr_reader :current_user, :params
 
     def base_scope
-      ::Organizations::Organization.all
+      return ::Organizations::Organization.public_only unless current_user
+      return ::Organizations::Organization.all if current_user.can_read_all_resources?
+
+      ::Organizations::Organization
+         .public_to_user(current_user)
+         .or(current_user.organizations)
     end
 
     def filter_organizations(organizations)
+      organizations = by_exclude_default(organizations)
       by_search(organizations)
+    end
+
+    def by_exclude_default(items)
+      return items unless params[:exclude_default]
+
+      items.without_default
     end
 
     def by_search(items)

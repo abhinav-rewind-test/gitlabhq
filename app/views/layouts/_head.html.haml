@@ -13,7 +13,11 @@
   %meta{ 'http-equiv' => 'X-UA-Compatible', content: 'IE=edge' }
   -# Prevent iOS auto-zoom on input focus while allowing manual pinch-to-zoom
   %meta{ name: 'viewport', content: "width=device-width, initial-scale=1#{', maximum-scale=1' if browser.device.iphone? }" }
+
   %title= page_title(site_name)
+
+  = render 'layouts/loading_hints'
+
   = Gon::Base.render_data(nonce: content_security_policy_nonce)
   = yield :project_javascripts
 
@@ -42,13 +46,10 @@
   - else
     = universal_stylesheet_link_tag "application"
     = yield :page_specific_styles
-  - if project_studio_enabled?
-    = universal_stylesheet_link_tag 'tailwind_cqs'
-  - else
-    = universal_stylesheet_link_tag 'tailwind'
+
+  = universal_stylesheet_link_tag 'tailwind_cqs'
   = universal_stylesheet_link_tag "disable_animations", media: "all" if Rails.env.test? || Gitlab.config.gitlab['disable_animations']
   = universal_stylesheet_link_tag "test_environment", media: "all" if Rails.env.test?
-
   = universal_stylesheet_link_tag "fonts"
 
   - if user_application_system_mode?
@@ -60,7 +61,6 @@
   = universal_stylesheet_link_tag 'performance_bar' if performance_bar_enabled?
 
   = render 'layouts/snowplow'
-  = render 'layouts/loading_hints'
 
   = render_if_exists 'layouts/header/translations'
   - if Gitlab::CurrentSettings.sentry_enabled

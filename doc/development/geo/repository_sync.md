@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Geo
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Geo repository synchronization
 ---
 
@@ -49,13 +49,13 @@ To ensure all repositories are synchronized, `Geo::RepositoryRegistrySyncWorker`
 runs periodically in the background on secondary sites. Specifically, this worker:
 
 - Queries the tracking database for registries that need syncing. These can be:
-  - Unsynced: Projects that have never been synced on the **secondary**
+  - Unsynced: Projects that have never been synced on the secondary
     site and so do not exist yet.
   - Updated recently: Projects that have a `last_repository_updated_at`
-  timestamp that is more recent than the `last_repository_successful_sync_at`
-  timestamp in the `Geo::ProjectRepositoryRegistry` model.
+    timestamp that is more recent than the `last_repository_successful_sync_at`
+    timestamp in the `Geo::ProjectRepositoryRegistry` model.
   - Manually resynced: The administrator can manually flag a repository to resync in the
-  [Geo **Admin** area](../../administration/geo_sites.md).
+    [Geo **Admin** area](../../administration/geo_sites.md).
 - Enqueues `Geo::SyncWorker` jobs for each repository that needs updating.
 - Provides baseline synchronization for all repositories.
 

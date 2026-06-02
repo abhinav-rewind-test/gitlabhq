@@ -4,6 +4,7 @@ import { createAlert } from '~/alert';
 import { __, sprintf } from '~/locale';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import updateCiJobTokenPermissionsMutation from '../graphql/mutations/update_ci_job_token_permissions.mutation.graphql';
 import getCiJobTokenPermissionsQuery from '../graphql/queries/get_ci_job_token_permissions.query.graphql';
@@ -18,6 +19,7 @@ export default {
     CrudComponent,
     HelpIcon,
   },
+  mixins: [glFeatureFlagsMixin()],
   inject: ['fullPath'],
   apollo: {
     ciCdSettings: {
@@ -32,7 +34,9 @@ export default {
       },
       result({ data }) {
         this.projectName = data?.project?.name;
-        this.allowPushToRepo = data?.project?.ciCdSettings?.pushRepositoryForJobTokenAllowed;
+        this.localAllowPushToRepo = data?.project?.ciCdSettings?.pushRepositoryForJobTokenAllowed;
+        this.localAllowCrossProjectPush =
+          data?.project?.ciCdSettings?.crossProjectPushForJobTokenAllowed;
       },
       error() {
         createAlert({
@@ -43,7 +47,8 @@ export default {
   },
   data() {
     return {
-      allowPushToRepo: false,
+      localAllowPushToRepo: false,
+      localAllowCrossProjectPush: false,
       isUpdating: false,
       projectName: '',
       // eslint-disable-next-line vue/no-unused-properties -- Provided by Apollo query, used implicitly
@@ -57,7 +62,13 @@ export default {
   },
   methods: {
     updateAllowPushToRepo(value) {
-      this.allowPushToRepo = value;
+      this.localAllowPushToRepo = value;
+      if (!value) {
+        this.localAllowCrossProjectPush = false;
+      }
+    },
+    updateAllowCrossProjectPush(value) {
+      this.localAllowCrossProjectPush = value;
     },
     async updateCiJobTokenPermissions() {
       this.isUpdating = true;
@@ -72,7 +83,8 @@ export default {
           variables: {
             input: {
               fullPath: this.fullPath,
-              pushRepositoryForJobTokenAllowed: this.allowPushToRepo,
+              pushRepositoryForJobTokenAllowed: this.localAllowPushToRepo,
+              crossProjectPushForJobTokenAllowed: this.localAllowCrossProjectPush,
             },
           },
         });
@@ -106,12 +118,30 @@ export default {
         {{ s__("CICD|Grant additional access permissions to this project's CI/CD job tokens.") }}
       </template>
 
-      <gl-form-checkbox :checked="allowPushToRepo" @input="updateAllowPushToRepo">
+      <gl-form-checkbox :checked="localAllowPushToRepo" @input="updateAllowPushToRepo">
         {{ s__('CICD|Allow Git push requests to the repository') }}
         <p class="gl-mb-3 gl-text-subtle">
           {{
             s__(
               'CICD|CI/CD job token can be used to authenticate a Git push to this repository, using the permissions of the user that started the job.',
+            )
+          }}<gl-link :href="$options.docsLink" target="_blank">
+            <help-icon class="gl-ml-2" />
+          </gl-link>
+        </p>
+      </gl-form-checkbox>
+
+      <gl-form-checkbox
+        v-if="glFeatures.allowPushToAllowlistedProjects"
+        :checked="localAllowCrossProjectPush"
+        :disabled="!localAllowPushToRepo"
+        @input="updateAllowCrossProjectPush"
+      >
+        {{ s__('CICD|Allow cross-project Git push requests from allowlisted projects') }}
+        <p class="gl-mb-3 gl-text-subtle">
+          {{
+            s__(
+              'CICD|CI/CD job tokens from projects on the allowlist with the admin_repositories permission can push to this repository.',
             )
           }}<gl-link :href="$options.docsLink" target="_blank">
             <help-icon class="gl-ml-2" />

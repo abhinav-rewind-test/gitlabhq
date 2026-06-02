@@ -1,4 +1,5 @@
 import { GlCollapsibleListbox, GlListboxItem } from '@gitlab/ui';
+// eslint-disable-next-line no-restricted-syntax -- test mocks viewport breakpoints; component is deprecated
 import { GlBreakpointInstance } from '@gitlab/ui/src/utils';
 import { mount } from '@vue/test-utils';
 import Vue, { nextTick } from 'vue';
@@ -67,7 +68,9 @@ describe('MaxRole', () => {
   const findListbox = () => wrapper.findComponent(GlCollapsibleListbox);
   const findListboxItems = () => wrapper.findAllComponents(GlListboxItem);
   const findListboxItemByText = (text) =>
-    findListboxItems().wrappers.find((item) => item.text() === text);
+    findListboxItems().wrappers.find(
+      (item) => item.find('[data-testid="access-level-link"]').text() === text,
+    );
 
   beforeEach(() => {
     gon.features = { showOverageOnRolePromotion: true };
@@ -92,7 +95,9 @@ describe('MaxRole', () => {
 
   it('has items prop with all valid roles', () => {
     createComponent();
-    const roles = findListboxItems().wrappers.map((item) => item.text());
+    const roles = findListboxItems().wrappers.map((item) =>
+      item.find('[data-testid="access-level-link"]').text(),
+    );
     expect(roles).toEqual(Object.keys(member.validRoles));
   });
 
@@ -104,7 +109,9 @@ describe('MaxRole', () => {
     });
 
     it('sets dropdown toggle and checks selected role', () => {
-      expect(findListbox().find('[aria-selected=true]').text()).toBe('Owner');
+      expect(
+        findListbox().find('[aria-selected=true] [data-testid="access-level-link"]').text(),
+      ).toBe('Owner');
     });
 
     describe('when dropdown item is selected', () => {

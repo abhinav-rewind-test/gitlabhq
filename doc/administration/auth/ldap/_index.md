@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: no
 title: Integrate LDAP with GitLab
 description: Integrate directory services for centralized authentication.
@@ -29,7 +29,7 @@ This integration works with most LDAP-compliant directory servers, including:
 
 Users added through LDAP:
 
-- Usually use a [licensed seat](../../../subscriptions/manage_users_and_seats.md#billable-users).
+- Usually use a [licensed seat](../../../subscriptions/manage_seats.md#billable-users).
 - Can authenticate with Git using either their GitLab username or their email and LDAP password,
   even if password authentication for Git
   [is disabled](../../settings/sign_in_restrictions.md#allow-password-authentication-for-git-over-https).
@@ -106,13 +106,11 @@ To configure LDAP, you edit the settings in a configuration file:
   - `uid`
   - `base`
   - `encryption`
-
 - You can include the following optional settings in your configuration file:
   - [Optional basic configuration settings](#basic-configuration-settings).
   - [SSL settings](#ssl-configuration-settings).
   - [Attribute settings](#attribute-configuration-settings).
   - [LDAP sync settings](#ldap-sync-configuration-settings).
-
 - You can also configure LDAP to:
   - [Use multiple servers](#use-multiple-ldap-servers).
   - [Filter users](#set-up-ldap-user-filter).
@@ -496,15 +494,156 @@ attribute can be either:
 The user's LDAP sign in is the LDAP attribute [specified as `uid`](#basic-configuration-settings).
 
 All of the following LDAP attributes are optional. If you define these attributes,
-you must do so in an `attributes` hash.
+All of the following LDAP attributes are optional. You only need to specify attributes
+that differ from the default. If you specify one, for example `username`, you do not
+need to specify the others, defaults will apply.
 
-| Setting      | Description | Examples |
+If you define any of them, you must do so in an `attributes` hash.
+
+| Setting      | Description | Default values |
 |--------------|-------------|----------|
-| `username`   | The `@username` that the GitLab account will be provisioned with. If the value contains an email address, the GitLab username is the part of the email address before the `@`. Defaults to the LDAP attribute [specified as `uid`](#basic-configuration-settings). | `['uid', 'userid', 'sAMAccountName']` |
-| `email`      | LDAP attribute for user email. Defaults to `['mail', 'email', 'userPrincipalName']` | `['mail', 'email', 'userPrincipalName']` |
-| `name`       | LDAP attribute for user display name. If `name` is blank, the full name is taken from the `first_name` and `last_name`. Defaults to `'cn'`. | Attributes `'cn'`, or `'displayName'` commonly carry full names. Alternatively, you can force the use of `first_name` and `last_name` by specifying an absent attribute such as `'somethingNonExistent'`. |
-| `first_name` | LDAP attribute for user first name. Used when the attribute configured for `name` does not exist. Defaults to `'givenName'`. | `'givenName'` |
-| `last_name`  | LDAP attribute for user last name. Used when the attribute configured for `name` does not exist. Defaults to `'sn'`. | `'sn'` |
+| `username`   | The `@username` that the GitLab account will be provisioned with. If the value contains an email address, the GitLab username is the part of the email address before the `@`. | Defaults to the LDAP attribute [specified as `uid`](#basic-configuration-settings) (`['uid', 'userid', 'sAMAccountName']`). |
+| `email`      | LDAP attribute for user email. | `['mail', 'email', 'userPrincipalName']` |
+| `name`       | LDAP attribute for user display name. If `name` is blank, the full name is taken from the `first_name` and `last_name`. Attributes `'cn'`, or `'displayName'` commonly carry full names. Alternatively, you can force the use of `first_name` and `last_name` by specifying an absent attribute such as `'somethingNonExistent'`. | `'cn'` |
+| `first_name` | LDAP attribute for user first name. Used when the attribute configured for `name` does not exist. | `'givenName'` |
+| `last_name`  | LDAP attribute for user last name. Used when the attribute configured for `name` does not exist. | `'sn'` |
+
+Example configuration that uses `displayName` for the user's name and an array of attributes for `email`:
+
+{{< tabs >}}
+
+{{< tab title="Linux package (Omnibus)" >}}
+
+1. Edit `/etc/gitlab/gitlab.rb`:
+
+   ```ruby
+   gitlab_rails['ldap_servers'] = {
+     'main' => {
+       # Other configuration settings ...
+       'attributes' => {
+         'username' => 'uid',
+         'email' => ['mail', 'email', 'userPrincipalName'],
+         'name' => 'displayName',
+         'first_name' => 'givenName',
+         'last_name' => 'sn'
+       }
+     }
+   }
+   ```
+
+1. Save the file and reconfigure GitLab:
+
+   ```shell
+   sudo gitlab-ctl reconfigure
+   ```
+
+{{< /tab >}}
+
+{{< tab title="Helm chart (Kubernetes)" >}}
+
+1. Export the Helm values:
+
+   ```shell
+   helm get values gitlab > gitlab_values.yaml
+   ```
+
+1. Edit `gitlab_values.yaml`:
+
+   ```yaml
+   global:
+     appConfig:
+       ldap:
+         servers:
+           main:
+             # Other configuration settings ...
+             attributes:
+               username: 'uid'
+               email:
+                 - 'mail'
+                 - 'email'
+                 - 'userPrincipalName'
+               name: 'displayName'
+               first_name: 'givenName'
+               last_name: 'sn'
+   ```
+
+1. Save the file and apply the new values:
+
+   ```shell
+   helm upgrade -f gitlab_values.yaml gitlab gitlab/gitlab
+   ```
+
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
+
+1. Edit `docker-compose.yml`:
+
+   ```yaml
+   version: "3.6"
+   services:
+     gitlab:
+       image: 'gitlab/gitlab-ee:latest'
+       restart: always
+       hostname: 'gitlab.example.com'
+       environment:
+         GITLAB_OMNIBUS_CONFIG: |
+           gitlab_rails['ldap_servers'] = {
+             'main' => {
+               # Other configuration settings ...
+               'attributes' => {
+                 'username' => 'uid',
+                 'email' => ['mail', 'email', 'userPrincipalName'],
+                 'name' => 'displayName',
+                 'first_name' => 'givenName',
+                 'last_name' => 'sn'
+               }
+             }
+           }
+   ```
+
+1. Save the file and restart GitLab:
+
+   ```shell
+   docker compose up -d
+   ```
+
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+1. Edit `/home/git/gitlab/config/gitlab.yml`:
+
+   ```yaml
+   production: &base
+     ldap:
+       servers:
+         main:
+           # Other configuration settings ...
+           attributes:
+             username: 'uid'
+             email:
+               - 'mail'
+               - 'email'
+               - 'userPrincipalName'
+             name: 'displayName'
+             first_name: 'givenName'
+             last_name: 'sn'
+   ```
+
+1. Save the file and restart GitLab:
+
+   ```shell
+   # For systems running systemd
+   sudo systemctl restart gitlab.target
+
+   # For systems running SysV init
+   sudo service gitlab restart
+   ```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### LDAP sync configuration settings
 
@@ -1340,11 +1479,8 @@ For more information on synchronizing users and groups between LDAP and GitLab, 
    - [`values.yml` for Helm chart installations](../../../integration/saml.md).
 
 1. Optional. [Disable the LDAP auth from the sign-in page](#disable-ldap-web-sign-in).
-
 1. Optional. To fix issues with linking users, you can first [remove those users' LDAP identities](ldap-troubleshooting.md#remove-the-identity-records-that-relate-to-the-removed-ldap-server).
-
 1. Confirm that users are able to sign in to their accounts. If a user cannot sign in, check if that user's LDAP is still there and remove it if necessary. If this issue persists, check the logs to identify the problem.
-
 1. In the configuration file, change:
    - `omniauth_auto_link_user` to `saml` only.
    - `omniauth_auto_link_ldap_user` to false.

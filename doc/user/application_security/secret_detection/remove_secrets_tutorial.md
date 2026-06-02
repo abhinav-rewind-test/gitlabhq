@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Secret Detection
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: 'Tutorial: Remove a secret from your commits'
 ---
 
@@ -77,7 +77,17 @@ you can amend the history to remove it:
    git commit --amend
    ```
 
-The secret is removed from the file and the commit history, and you can safely push your changes.
+1. Push your changes to the remote branch:
+
+   ```shell
+   git push --force-with-lease
+   ```
+
+   Because the commit history was rewritten, a regular `git push` fails.
+   The `--force-with-lease` flag forces the push while protecting against
+   overwriting other contributors' commits.
+
+The secret is removed from the file and the commit history.
 
 ### Amending multiple commits
 
@@ -102,7 +112,6 @@ to every commit after the secret was added:
    ```
 
    Even if the secret is removed from commit `456def`, it still exists in the history and is exposed if the changes are pushed now.
-
 1. To fix the history, start an interactive rebase from the commit that introduced the secret:
 
    ```shell
@@ -149,7 +158,17 @@ to every commit after the secret was added:
    Successfully rebased and updated refs/heads/secret-tutorial
    ```
 
-The secret is removed and you can safely push your changes to the remote.
+1. Push your changes to the remote branch:
+
+   ```shell
+   git push --force-with-lease
+   ```
+
+   Because the commit history was rewritten, a regular `git push` fails.
+   The `--force-with-lease` flag forces the push while protecting against
+   overwriting other contributors' commits.
+
+The secret is removed from the commit history.
 
 ## What to do when you push a secret
 

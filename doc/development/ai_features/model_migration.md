@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Model Migration Process
 ---
 
@@ -16,7 +16,8 @@ limit: 10
 query: label = "AI Model Migration" AND opened = true
 ```
 
-*Note: This table is dynamically generated using GitLab Query Language (GLQL) when viewing the rendered documentation. It shows up to 10 open issues with the AI Model Migration label, sorted by most recently updated.*
+> [!note]
+> This table is dynamically generated using GitLab Query Language (GLQL) when viewing the rendered documentation. It shows up to 10 open issues with the AI Model Migration label, sorted by most recently updated.
 
 ## Quick Links
 
@@ -29,7 +30,8 @@ query: label = "AI Model Migration" AND opened = true
 
 LLM models are constantly evolving, and GitLab needs to regularly update our AI features to support newer models. This guide provides a structured approach for migrating AI features to new models while maintaining stability and reliability.
 
-*Note: GitLab strives to leverage the latest AI model capabilities to help provide optimal performance and features, which means model updates from existing GitLab subprocessors might occur without specific customer notifications beyond documentation updates.*
+> [!note]
+> GitLab strives to leverage the latest AI model capabilities to help provide optimal performance and features, which means model updates from existing GitLab subprocessors might occur without specific customer notifications beyond documentation updates.
 
 ## Model Migration Timelines
 
@@ -39,7 +41,6 @@ Model migrations typically follow these general timelines:
   - Example: Upgrading from Claude Sonnet 3.5 to 3.7
   - Involves model validation, testing, and staged rollout
   - Primary focus on maintaining stability and performance
-
 - **Complex Migrations**: 1-2 months (full milestone or longer)
   - Example: Adding support for a new provider like AWS Bedrock
   - Example: Major version upgrades with breaking changes (for example, Claude 2 to 3)
@@ -125,6 +126,11 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
    - Set due date at least 2-4 weeks before provider's cutoff date
    - AI Framework team identifies replacement models
 
+1. **Deprecation Announcement**
+   - AI Framework team adds a `deprecation` block to the model entry in
+      [`ai_gateway/model_selection/models.yml`](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/main/ai_gateway/model_selection/models.yml)
+      following the [model deprecation instructions](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/main/docs/model_selection.md#model-deprecations)
+   - (Optional) Marketing/AI Partnership publishes a blog post on the model deprecation
 1. **Evaluation**
    - AI Framework team evaluates replacement models
    - Feature teams test affected features with candidates
@@ -132,20 +138,17 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 1. **Implementation**
    - AI Framework team creates model configuration files
-   - Feature teams update features to use the replacement model
-   - Teams implement feature flags for controlled rollout
+   - Feature teams update [`ai_gateway/model_selection/unit_primitives.yml`](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/main/ai_gateway/model_selection/unit_primitives.yml) to use the replacement model
 
 1. **Testing**
    - Feature teams run comprehensive evaluations
    - Teams document performance metrics
 
 1. **Deployment**
-   - Feature teams manage phased rollout via feature flags
    - Teams monitor performance closely
    - Rollout expands gradually based on performance
 
 1. **Completion**
-   - Remove feature flags when migration is complete
    - Update documentation
    - Clean up deprecated model references
 
@@ -173,7 +176,6 @@ Before starting a model migration:
    - Review provider API documentation for breaking changes
 
 1. **Ensure access** to testing environments and monitoring tools
-
 1. **Complete model evaluation** using the [Centralized Evaluation Framework](https://gitlab.com/gitlab-org/modelops/ai-model-validation-and-research/ai-evaluation/prompt-library)
 
 ### Additional Prerequisites for Model Deprecations
@@ -249,23 +251,6 @@ Feature teams should use the [AI Model Rollout template](https://gitlab.com/gitl
 - Monitor performance during rollout
 - Update documentation
 
-## Feature Flag Implementation
-
-### Implementation Steps
-
-For implementing feature flags, refer to our [Feature Flags Development Guidelines](../feature_flags/_index.md).
-
-> [!note]
-> Feature flag implementations will affect self-hosted cloud-connected customers. These customers won't receive the model upgrade until the feature flag is removed from the AI Gateway codebase, as they won't have access to the new GitLab release.
-
-### Model Selection Implementation
-
-Implement model selection logic in:
-
-- AI Gateway client (`ee/lib/gitlab/llm/chain/requests/ai_gateway.rb`)
-- Model definitions in AI Gateway
-- Any custom implementations in specific features
-
 ### Rollout Strategy
 
 1. **Enable feature flag** for small percentage of users/groups
@@ -328,6 +313,7 @@ Implement model selection logic in:
 **AI Framework Team**:
 
 - Create epic to track deprecation
+- Mark model as deprecated and announce model deprecation
 - Evaluate replacement models
 - Create model configuration
 - Document routing logic
@@ -435,7 +421,6 @@ See an example in our [Claude 3.7 Model Upgrade](https://gitlab.com/gitlab-org/g
 - **Model Documentation**
   - [Anthropic Model Documentation](https://docs.anthropic.com/claude/reference/versions)
   - [Google Vertex AI Documentation](https://cloud.google.com/vertex-ai/docs/reference)
-
 - **GitLab Resources**
   - [GitLab AI Features - Default GitLab AI Vendor Models](https://duo-feature-list-754252.gitlab.io/)
   - [AI Gateway Repository](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist)

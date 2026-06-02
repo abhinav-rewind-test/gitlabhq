@@ -288,13 +288,11 @@ RSpec.shared_examples Integrations::Base::PipelinesEmail do
             it_behaves_like 'not sending email', branches_to_be_notified: "default"
           end
 
-          context 'when notifications are enabled only for protected branch',
-            quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17045' do
+          context 'when notifications are enabled only for protected branch' do
             it_behaves_like 'sending email', branches_to_be_notified: "protected"
           end
 
-          context 'when notifications are enabled only for default and protected branches',
-            quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17045' do
+          context 'when notifications are enabled only for default and protected branches' do
             it_behaves_like 'sending email', branches_to_be_notified: "default_and_protected"
           end
 
@@ -377,6 +375,89 @@ RSpec.shared_examples Integrations::Base::PipelinesEmail do
         end
 
         subject.execute(data)
+      end
+    end
+
+    context 'with child pipeline notifications' do
+      before do
+        stub_feature_flags(pipelines_email_notify_child_pipelines: true)
+      end
+
+      let(:child_pipeline) do
+        create(:ci_pipeline, :failed,
+          project: project,
+          sha: project.commit('master').sha,
+          ref: project.default_branch,
+          source: :parent_pipeline
+        )
+      end
+
+      let(:child_data) do
+        Gitlab::DataBuilder::Pipeline.build(child_pipeline)
+      end
+
+      def run
+        subject.execute(child_data)
+      end
+
+      context 'when notify_child_pipelines is enabled' do
+        before do
+          subject.notify_child_pipelines = true
+        end
+
+        it_behaves_like 'sending email'
+      end
+
+      context 'when notify_child_pipelines is disabled' do
+        before do
+          subject.notify_child_pipelines = false
+        end
+
+        it_behaves_like 'not sending email'
+      end
+
+      context 'when notify_child_pipelines is enabled for parent pipelines' do
+        def run
+          subject.execute(data) # regular pipeline data
+        end
+
+        before do
+          subject.notify_child_pipelines = true
+        end
+
+        it_behaves_like 'sending email'
+      end
+    end
+
+    context 'when feature flag is disabled' do
+      before do
+        stub_feature_flags(pipelines_email_notify_child_pipelines: false)
+      end
+
+      context 'with child pipeline' do
+        let(:child_pipeline) do
+          create(:ci_pipeline, :failed,
+            project: project,
+            sha: project.commit('master').sha,
+            ref: project.default_branch,
+            source: :parent_pipeline
+          )
+        end
+
+        let(:child_data) do
+          Gitlab::DataBuilder::Pipeline.build(child_pipeline)
+        end
+
+        def run
+          subject.execute(child_data)
+        end
+
+        before do
+          subject.notify_child_pipelines = false
+          subject.recipients = recipients
+        end
+
+        it_behaves_like 'sending email'
       end
     end
   end

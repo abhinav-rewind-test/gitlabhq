@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Secret Detection
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Validity checks
 ---
 
@@ -43,16 +43,32 @@ knowing which secrets are active is an important part of triage and remediation.
 Prerequisites:
 
 - You must have a project with pipeline security scanning enabled.
+- Your instance must have [outbound network access](#configure-outbound-network-access) to partner validation APIs.
 
 To enable validity checks for a project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Secure** > **Security configuration**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Secure** > **Security configuration**.
 1. Under **Pipeline Secret Detection**, turn on the **Validity checks** toggle.
 
 GitLab checks the status of detected secrets when the `secret_detection` CI/CD job is complete.
 To view a secret's status, view the vulnerability details page. To update the status of a secret,
 for example after revoking it, re-run the `secret_detection` CI/CD job.
+
+To turn on validity checks at the group level, as a Maintainer or higher role, use a [GraphQL API mutation](../../../api/graphql/reference/_index.md#mutationsetgroupvaliditychecks):
+
+```graphql
+mutation {
+  setGroupValidityChecks(input: {
+    validityChecksEnabled: true,
+    namespacePath: "my-group/my-subgroup",
+    projectsToExclude: [100, 105, 108]
+  }) {
+    clientMutationId
+    validityChecksEnabled
+  }
+}
+```
 
 ### Coverage
 
@@ -88,6 +104,23 @@ Validity checks support the following secret types:
 - GCP API keys
 - GCP OAuth client secrets
 - Postman API tokens
+
+### Configure outbound network access
+
+Validity checks are not supported in offline environments. This feature requires outbound
+network access to partner validation APIs to verify whether detected tokens are active.
+
+If your GitLab instance is behind a firewall but has internet access, allowlist the URLs
+for each partner's validation API.
+The supported URLs are:
+
+- `https://sts.amazonaws.com/`
+- `https://oauth2.googleapis.com/tokeninfo`
+- `https://api.getpostman.com/me`
+
+If you cannot allow outbound access to these endpoints, do not enable this feature.
+Enabling validity checks in a restricted network environment causes network errors during
+validation.
 
 ## Validity check workflow
 

@@ -37,20 +37,32 @@ module Mcp
 
       # Registry of all custom tools mapped to their service classes
       CUSTOM_TOOLS = {
-        'get_mcp_server_version' => ::Mcp::Tools::GetServerVersionService
+        'get_mcp_server_version' => ::Mcp::Tools::GetServerVersionService,
+        'get_merge_request_conflicts' => ::Mcp::Tools::GetMergeRequestConflictsService
       }.freeze
 
       GRAPHQL_TOOLS = {
         'create_workitem_note' => ::Mcp::Tools::WorkItems::GraphqlCreateWorkItemNoteService,
         'get_workitem_notes' => ::Mcp::Tools::WorkItems::GraphqlGetWorkItemNotesService,
-        'search_labels' => ::Mcp::Tools::Labels::GraphqlSearchService
+        'get_saved_view_work_items' => ::Mcp::Tools::WorkItems::GraphqlGetSavedViewWorkItemsService,
+        'search_labels' => ::Mcp::Tools::Labels::GraphqlSearchService,
+        'link_work_items' => ::Mcp::Tools::WorkItems::GraphqlLinkWorkItemsService
       }.freeze
 
-      attr_reader :tools, :alias_map
-
       def initialize
-        @tools = build_tools
-        @alias_map = build_alias_map
+        # Do not call build_tools here. Route discovery (discover_api_tools) reads
+        # API::API.routes which is lazily memoized by Grape. When Manager is instantiated
+        # at class-definition time (via namespace_setting in API::Mcp::Base), EE modules
+        # haven't been prepended yet, so EE-only routes (e.g. SemanticCodeSearch) would be
+        # missed. Deferring to the first call of #tools ensures routes are fully compiled.
+      end
+
+      def tools
+        @tools ||= build_tools
+      end
+
+      def alias_map
+        @alias_map ||= build_alias_map
       end
 
       def list_tools

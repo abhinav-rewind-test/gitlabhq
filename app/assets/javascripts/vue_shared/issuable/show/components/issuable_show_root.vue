@@ -97,7 +97,19 @@ export default {
       required: false,
       default: '',
     },
+    typeIconName: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
+  emits: [
+    'edit-issuable',
+    'keydown-description',
+    'keydown-title',
+    'task-list-update-failure',
+    'task-list-update-success',
+  ],
   methods: {
     handleKeydownTitle(e, issuableMeta) {
       this.$emit('keydown-title', e, issuableMeta);
@@ -122,6 +134,7 @@ export default {
       :issuable-type="issuable.type"
       :workspace-type="workspaceType"
       :show-work-item-type-icon="showWorkItemTypeIcon"
+      :type-icon-name="typeIconName"
     >
       <template #status-badge>
         <slot name="status-badge"></slot>
@@ -156,8 +169,8 @@ export default {
       <template #status-badge>
         <slot name="status-badge"></slot>
       </template>
-      <template #edit-form-actions="actionsProps">
-        <slot name="edit-form-actions" v-bind="actionsProps"></slot>
+      <template #edit-form-actions="{ issuableMeta }">
+        <slot name="edit-form-actions" v-bind="{ issuableMeta }"></slot>
       </template>
     </issuable-body>
 

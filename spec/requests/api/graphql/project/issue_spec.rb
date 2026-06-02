@@ -176,6 +176,54 @@ RSpec.describe 'Query.project(fullPath).issue(iid)', feature_category: :team_pla
     end
   end
 
+  describe '.workItemType' do
+    let(:issue_fields) { 'workItemType { id name iconName }' }
+
+    it 'returns the work item type for the issue' do
+      post_query
+
+      work_item_type_data = graphql_data.dig('project', 'issue', 'workItemType')
+
+      expect(work_item_type_data).to include(
+        'id' => issue.work_item_type.to_global_id.to_s,
+        'name' => issue.work_item_type.name,
+        'iconName' => issue.work_item_type.icon_name
+      )
+    end
+  end
+
+  describe 'createNoteEmail field' do
+    let(:issue_fields) { 'createNoteEmail' }
+
+    context 'when using an api scoped token' do
+      let(:api_token) { create(:personal_access_token, user: current_user, scopes: [:api]) }
+
+      before do
+        stub_incoming_email_setting(enabled: true, address: "p+%{key}@gl.ab")
+        post_graphql(query, current_user: current_user, token: { personal_access_token: api_token })
+      end
+
+      it 'returns the createNoteEmail' do
+        email = graphql_data.dig('project', 'issue', 'createNoteEmail')
+        expect(email).not_to be_nil
+      end
+    end
+
+    context 'when using a read_api scoped token' do
+      let(:read_api_token) { create(:personal_access_token, user: current_user, scopes: [:read_api]) }
+
+      before do
+        stub_incoming_email_setting(enabled: true, address: "p+%{key}@gl.ab")
+        post_graphql(query, current_user: current_user, token: { personal_access_token: read_api_token })
+      end
+
+      it 'does not return createNoteEmail' do
+        email = graphql_data.dig('project', 'issue', 'createNoteEmail')
+        expect(email).to be_nil
+      end
+    end
+  end
+
   def id_hash(object)
     a_graphql_entity_for(object)
   end

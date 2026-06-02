@@ -1,13 +1,14 @@
 <script>
 import { GlLink, GlPopover, GlTooltipDirective, GlTruncateText } from '@gitlab/ui';
-import { difference, groupBy, xor } from 'lodash';
+import { difference, groupBy, xor } from 'lodash-es';
 import { __, n__, s__ } from '~/locale';
 import WorkItemSidebarDropdownWidget from '~/work_items/components/shared/work_item_sidebar_dropdown_widget.vue';
 import Tracking from '~/tracking';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import getGroupContactsQuery from '~/crm/contacts/components/graphql/get_group_contacts.query.graphql';
 import workItemByIidQuery from '~/work_items/graphql/work_item_by_iid.query.graphql';
 import updateWorkItemMutation from '../graphql/update_work_item.mutation.graphql';
-import { i18n, TRACKING_CATEGORY_SHOW } from '../constants';
+import { i18n, TRACKING_CATEGORY_SHOW, VIEW_CONTEXT } from '../constants';
 import { findCrmContactsWidget, newWorkItemFullPath, newWorkItemId } from '../utils';
 
 export default {
@@ -20,7 +21,10 @@ export default {
     GlTruncateText,
     WorkItemSidebarDropdownWidget,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [glFeatureFlagsMixin(), Tracking.mixin()],
+  inject: {
+    viewContext: { default: VIEW_CONTEXT.fullScreen },
+  },
   props: {
     fullPath: {
       type: String,
@@ -78,6 +82,7 @@ export default {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_contact',
         property: `type_${this.workItemType}`,
+        extra: { viewContext: this.viewContext },
       };
     },
     selectedOrganizations() {
@@ -130,6 +135,7 @@ export default {
         return {
           fullPath: this.workItemFullPath,
           iid: this.workItemIid,
+          useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
         };
       },
       update(data) {
@@ -229,6 +235,7 @@ export default {
                 contactIds: newSelectedItemIds,
               },
             },
+            useWorkItemFeatures: Boolean(this.glFeatures?.workItemFeaturesField),
           },
         });
 

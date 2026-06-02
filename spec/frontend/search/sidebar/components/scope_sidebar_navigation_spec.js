@@ -150,7 +150,7 @@ describe('ScopeSidebarNavigation', () => {
           groupId: 'gid://gitlab/Group/123',
           projectId: undefined,
           includeArchived: false,
-          includeForked: false,
+          excludeForks: false,
           regex: false,
         });
       });
@@ -174,7 +174,7 @@ describe('ScopeSidebarNavigation', () => {
             groupId: undefined,
             projectId: undefined,
             includeArchived: false,
-            includeForked: false,
+            excludeForks: false,
             regex: false,
           });
         });
@@ -229,6 +229,32 @@ describe('ScopeSidebarNavigation', () => {
 
       it('captures exception in Sentry when query fails', () => {
         expect(Sentry.captureException).toHaveBeenCalledWith(mockError);
+      });
+    });
+
+    describe('when error is expected global search disabled message', () => {
+      const expectedError = new Error('Global search is not enabled for this scope');
+      const mockExpectedQueryError = jest.fn().mockRejectedValue(expectedError);
+
+      beforeEach(async () => {
+        jest.spyOn(Sentry, 'captureException').mockImplementation();
+        createComponent(
+          {
+            zoektAvailable: true,
+            query: {
+              search: 'test search',
+              group_id: '123',
+              regex: 'false',
+            },
+          },
+          mockExpectedQueryError,
+        );
+        jest.runOnlyPendingTimers();
+        await waitForPromises();
+      });
+
+      it('does not report to Sentry', () => {
+        expect(Sentry.captureException).not.toHaveBeenCalled();
       });
     });
 

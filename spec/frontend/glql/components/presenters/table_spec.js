@@ -1,14 +1,15 @@
 import { nextTick } from 'vue';
-import { GlSkeletonLoader } from '@gitlab/ui';
+import { GlIcon, GlSkeletonLoader } from '@gitlab/ui';
 import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import ThResizable from '~/glql/components/common/th_resizable.vue';
 import IssuablePresenter from '~/glql/components/presenters/issuable.vue';
+import ProjectPresenter from '~/glql/components/presenters/project.vue';
 import StatePresenter from '~/glql/components/presenters/state.vue';
 import TablePresenter from '~/glql/components/presenters/table.vue';
 import HtmlPresenter from '~/glql/components/presenters/html.vue';
 import UserPresenter from '~/glql/components/presenters/user.vue';
 import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
-import { MOCK_FIELDS, MOCK_ISSUES } from '../../mock_data';
+import { MOCK_FIELDS, MOCK_ISSUES, MOCK_PROJECT } from '../../mock_data';
 
 describe('TablePresenter', () => {
   let wrapper;
@@ -83,6 +84,19 @@ describe('TablePresenter', () => {
     ]);
   });
 
+  it('routes the title-aliased field of a Project row through ProjectPresenter', async () => {
+    await createWrapper(
+      {
+        data: { nodes: [{ ...MOCK_PROJECT, id: 'gid://gitlab/Project/1', name: 'Wget2' }] },
+        fields: [{ key: 'name', label: 'Name', name: 'name' }],
+      },
+      mountExtended,
+    );
+
+    const row = wrapper.findByTestId('table-row-0');
+    expect(row.findComponent(ProjectPresenter).exists()).toBe(true);
+  });
+
   const order0 = [
     ['Issue 1 (gitlab-test#1)', '@foobar', 'Open', 'This is a description'],
     ['Issue 2 (gitlab-test#2 - closed)', '@janedoe', 'Closed', 'This is another description'],
@@ -119,6 +133,23 @@ describe('TablePresenter', () => {
       it('sorts the table by the field in ascending order', () => {
         expect(actualOrder).toEqual(orderAsc);
       });
+
+      it('shows an arrow-up icon on the sorted column', () => {
+        const icon = wrapper.findByTestId(`column-${cellIndex}`).findComponent(GlIcon);
+
+        expect(icon.props('name')).toBe('arrow-up');
+      });
+
+      it('does not show a sort icon on other columns', () => {
+        const otherColumns = MOCK_FIELDS.filter((_, i) => i !== cellIndex);
+
+        otherColumns.forEach((_, i) => {
+          const colIndex = i >= cellIndex ? i + 1 : i;
+          const icon = wrapper.findByTestId(`column-${colIndex}`).findComponent(GlIcon);
+
+          expect(icon.exists()).toBe(false);
+        });
+      });
     });
 
     describe('twice', () => {
@@ -128,6 +159,12 @@ describe('TablePresenter', () => {
 
       it('sorts the table by the field in descending order', () => {
         expect(actualOrder).toEqual(orderDesc);
+      });
+
+      it('shows an arrow-down icon on the sorted column', () => {
+        const icon = wrapper.findByTestId(`column-${cellIndex}`).findComponent(GlIcon);
+
+        expect(icon.props('name')).toBe('arrow-down');
       });
     });
   });

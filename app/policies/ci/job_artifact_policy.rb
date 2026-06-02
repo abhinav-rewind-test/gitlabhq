@@ -4,6 +4,10 @@ module Ci
   class JobArtifactPolicy < BasePolicy
     delegate { @subject.job.project }
 
+    # Ensure read_job_artifacts does not get prevented due to prevent_all in the delegate
+    # See: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/229560
+    overrides(:read_job_artifacts)
+
     condition(:public_access, scope: :subject) do
       @subject.public_access? # public:true | access:all
     end
@@ -20,16 +24,22 @@ module Ci
       can?(:read_build, @subject.job.project)
     end
 
-    condition(:has_access_to_project) do
-      can?(:developer_access, @subject.job.project)
+    condition(:can_read_developer_artifacts) do
+      can?(:_read_developer_job_artifact, @subject.job.project)
     end
 
-    condition(:has_maintainer_access_to_project) do
-      can?(:maintainer_access, @subject.job.project)
+    condition(:can_read_maintainer_artifacts) do
+      can?(:_read_maintainer_job_artifact, @subject.job.project)
+    end
+
+    condition(:can_read_security_report_job_artifacts) do
+      Enums::Ci::JobArtifact.all_security_report_file_types.include?(@subject.file_type) &&
+        can?(:_read_security_report_job_artifact, @subject.job.project)
     end
 
     rule { can_read_project_build & ~none_access }.enable :read_job_artifacts
-    rule { ~public_access & ~has_access_to_project }.prevent :read_job_artifacts
-    rule { maintainer_only_access & ~has_maintainer_access_to_project }.prevent :read_job_artifacts
+    rule { ~public_access & ~can_read_developer_artifacts & ~can_read_security_report_job_artifacts }
+      .prevent :read_job_artifacts
+    rule { maintainer_only_access & ~can_read_maintainer_artifacts }.prevent :read_job_artifacts
   end
 end

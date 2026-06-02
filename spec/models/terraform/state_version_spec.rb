@@ -10,6 +10,8 @@ RSpec.describe Terraform::StateVersion, feature_category: :infrastructure_as_cod
   it { is_expected.to belong_to(:created_by_user).class_name('User').optional }
   it { is_expected.to belong_to(:build).class_name('Ci::Build').optional }
 
+  it { is_expected.to delegate_method(:project).to(:terraform_state).allow_nil }
+
   it_behaves_like 'object storable' do
     let(:locally_stored) do
       terraform_state_version = create(:terraform_state_version)
@@ -123,16 +125,6 @@ RSpec.describe Terraform::StateVersion, feature_category: :infrastructure_as_cod
       it 'returns false' do
         expect(state_version.encryption_enabled?).to be false
       end
-
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(skip_encrypting_terraform_state_file: false)
-        end
-
-        it 'returns true' do
-          expect(state_version.encryption_enabled?).to be true
-        end
-      end
     end
 
     context 'when encryption is enabled in settings' do
@@ -140,16 +132,6 @@ RSpec.describe Terraform::StateVersion, feature_category: :infrastructure_as_cod
 
       it 'returns true' do
         expect(state_version.encryption_enabled?).to be true
-      end
-
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(skip_encrypting_terraform_state_file: false)
-        end
-
-        it 'returns true' do
-          expect(state_version.encryption_enabled?).to be true
-        end
       end
     end
 

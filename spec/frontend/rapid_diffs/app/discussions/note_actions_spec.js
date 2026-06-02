@@ -7,15 +7,18 @@ import {
   GlButton,
 } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
+import waitForPromises from 'helpers/wait_for_promises';
 import NoteActions from '~/rapid_diffs/app/discussions/note_actions.vue';
 import UserAccessRoleBadge from '~/vue_shared/components/user_access_role_badge.vue';
 import ReplyButton from '~/notes/components/note_actions/reply_button.vue';
 import AbuseCategorySelector from '~/abuse_reports/components/abuse_category_selector.vue';
 import EmojiPicker from '~/emoji/components/picker.vue';
 import { isLoggedIn } from '~/lib/utils/common_utils';
+import { copyToClipboard } from '~/lib/utils/copy_to_clipboard';
 import * as constants from '~/notes/constants';
 
 jest.mock('~/lib/utils/common_utils');
+jest.mock('~/lib/utils/copy_to_clipboard');
 // Vue 3 compat doesn't like async components
 jest.mock('~/emoji/components/picker.vue', () => {
   return {
@@ -175,10 +178,10 @@ describe('NoteActions', () => {
       expect(findReplyButton().exists()).toBe(true);
     });
 
-    it('emits start-replying when ReplyButton emits start-replying', () => {
+    it('emits startReplying when ReplyButton emits start-replying', () => {
       createComponent({ showReply: true });
       findReplyButton().vm.$emit('start-replying');
-      expect(wrapper.emitted('start-replying')).toEqual([[]]);
+      expect(wrapper.emitted('startReplying')).toEqual([[]]);
     });
 
     it('renders the Edit button when canEdit is true', () => {
@@ -249,11 +252,23 @@ describe('NoteActions', () => {
         expect(findMoreActionsDropdown().text().includes('Copy link')).toBe(false);
       });
 
-      it('shows toast when copy link is clicked', async () => {
+      it('copies URL and shows toast when copy link is clicked', async () => {
+        copyToClipboard.mockResolvedValue();
         createComponent({ noteUrl: 'http://note.url' });
 
         findCopyLinkButton().vm.$emit('action');
-        await nextTick();
+        await waitForPromises();
+
+        expect(copyToClipboard).toHaveBeenCalledWith('http://note.url');
+        expect(toast.show).toHaveBeenCalledWith('Link copied to clipboard.');
+      });
+
+      it('shows toast even when clipboard copy fails', async () => {
+        copyToClipboard.mockRejectedValue(new Error('Copy failed'));
+        createComponent({ noteUrl: 'http://note.url' });
+
+        findCopyLinkButton().vm.$emit('action');
+        await waitForPromises();
 
         expect(toast.show).toHaveBeenCalledWith('Link copied to clipboard.');
       });
@@ -290,6 +305,56 @@ describe('NoteActions', () => {
         findDropdownDeleteButton().vm.$emit('action');
         expect(wrapper.emitted('delete')).toEqual([[]]);
       });
+    });
+  });
+
+  describe('Resolve Button', () => {
+    const findResolveButton = () => wrapper.find('[data-testid="resolve-discussion-button"]');
+
+    it('renders when canResolve is true', () => {
+      createComponent({ canResolve: true });
+      expect(findResolveButton().exists()).toBe(true);
+    });
+
+    it('does not render when canResolve is false', () => {
+      createComponent({ canResolve: false });
+      expect(findResolveButton().exists()).toBe(false);
+    });
+
+    it('shows check-circle icon when unresolved', () => {
+      createComponent({ canResolve: true, isResolved: false });
+      expect(findResolveButton().props('icon')).toBe('check-circle');
+    });
+
+    it('shows check-circle-filled icon when resolved', () => {
+      createComponent({ canResolve: true, isResolved: true });
+      expect(findResolveButton().props('icon')).toBe('check-circle-filled');
+    });
+
+    it('applies success text class when resolved', () => {
+      createComponent({ canResolve: true, isResolved: true });
+      expect(findResolveButton().classes()).toContain('!gl-text-success');
+    });
+
+    it('shows loading state when resolving', () => {
+      createComponent({ canResolve: true, isResolving: true });
+      expect(findResolveButton().props('loading')).toBe(true);
+    });
+
+    it('emits resolve event when clicked', () => {
+      createComponent({ canResolve: true });
+      findResolveButton().vm.$emit('click');
+      expect(wrapper.emitted('resolve')).toEqual([[]]);
+    });
+
+    it('shows correct tooltip for unresolved thread', () => {
+      createComponent({ canResolve: true, isResolved: false });
+      expect(findResolveButton().attributes('title')).toBe('Resolve thread');
+    });
+
+    it('shows correct tooltip for resolved thread', () => {
+      createComponent({ canResolve: true, isResolved: true });
+      expect(findResolveButton().attributes('title')).toBe('Reopen thread');
     });
   });
 

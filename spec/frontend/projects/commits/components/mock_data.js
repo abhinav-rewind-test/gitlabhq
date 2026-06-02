@@ -7,6 +7,7 @@ export const mockCommit = {
   titleHtml: 'Edit CODEOWNERS',
   description: 'Some commit description',
   descriptionHtml: '',
+  hasAgentSession: false,
   message: 'Edit CODEOWNERS',
   webPath: '/gitlab-org/gitlab-shell/-/commit/8e3336548a7aa36b7cae362fbd8c694793ecc110',
   webUrl: '/gitlab-org/gitlab-shell/-/tree/8e3336548a7aa36b7cae362fbd8c694793ecc110',
@@ -47,9 +48,7 @@ export const mockCommit = {
       },
     ],
   },
-  tag: {
-    name: 'V1.2.3',
-  },
+  tags: ['V1.2.3'],
 };
 
 const mockCommitSecond = {
@@ -62,6 +61,7 @@ const mockCommitSecond = {
     "GitLab currently doesn't support patches that involve a merge commit: add a commit here",
   description: '',
   descriptionHtml: '',
+  hasAgentSession: false,
   message:
     "GitLab currently doesn't support patches that involve a merge commit: add a commit here\n",
   webPath: '/gitlab-org/gitlab-test/-/commit/5f923865dde3436854e9ceb9cdb7815618d4e849',
@@ -95,9 +95,7 @@ const mockCommitSecond = {
       },
     ],
   },
-  tag: {
-    name: 'very long tag to test out layout is doing okay',
-  },
+  tags: ['very long tag to test out layout is doing okay'],
 };
 
 const mockCommitThird = {
@@ -109,6 +107,7 @@ const mockCommitThird = {
   titleHtml: 'Another commit on a different day',
   description: '',
   descriptionHtml: '',
+  hasAgentSession: false,
   message: 'Another commit on a different day\n',
   webPath: '/gitlab-org/gitlab-test/-/commit/abc123def456',
   webUrl: '/gitlab-org/gitlab-test/-/commit/abc123def456',
@@ -130,6 +129,7 @@ const mockCommitThird = {
     __typename: 'PipelineConnection',
     edges: [],
   },
+  tags: [],
 };
 
 // Flat array of commits as returned by GraphQL

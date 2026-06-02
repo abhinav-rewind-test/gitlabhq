@@ -29,6 +29,9 @@ export default {
     GlButton,
     PersonalAccessTokenStatusBadge,
   },
+  inject: {
+    granularTokensEnforced: { default: false },
+  },
   props: {
     tokens: {
       type: Array,
@@ -39,8 +42,17 @@ export default {
       required: true,
     },
   },
-  emits: ['select', 'rotate', 'revoke'],
+  emits: ['select', 'rotate', 'revoke', 'duplicate'],
   methods: {
+    canDuplicate(token) {
+      return token.granular;
+    },
+    canRotate(token) {
+      return token.active && (!this.granularTokensEnforced || token.granular);
+    },
+    canRevoke(token) {
+      return token.active;
+    },
     selectTargetToken(token) {
       this.$emit('select', token);
     },
@@ -49,6 +61,9 @@ export default {
     },
     revokeTargetToken(token) {
       this.$emit('revoke', token);
+    },
+    duplicateTargetToken(token) {
+      this.$emit('duplicate', token);
     },
     expiryDate(token) {
       return timeFormattedAsDate(token.expiresAt);
@@ -70,6 +85,7 @@ export default {
     lastUsed: s__('AccessTokens|Last used: %{date}'),
     actions: __('Actions'),
     viewDetails: s__('AccessTokens|View details'),
+    duplicate: s__('AccessTokens|Duplicate'),
     rotate: s__('AccessTokens|Rotate'),
     revoke: s__('AccessTokens|Revoke'),
   },
@@ -91,40 +107,44 @@ export default {
     </template>
 
     <template #cell(name)="{ item, value }">
-      <gl-button variant="link" @click="selectTargetToken(item)">
+      <gl-button
+        variant="link"
+        button-text-classes="!gl-whitespace-normal gl-wrap-anywhere gl-text-right @md/panel:gl-text-left"
+        @click="selectTargetToken(item)"
+      >
         {{ value }}
       </gl-button>
     </template>
 
     <template #cell(description)="{ value }">
-      <div>
-        <span v-if="value">{{ value }}</span>
-        <span v-else class="gl-text-subtle">
-          {{ $options.i18n.noDescription }}
-        </span>
-      </div>
+      <span v-if="value" class="gl-wrap-anywhere">{{ value }}</span>
+      <span v-else class="gl-text-subtle">
+        {{ $options.i18n.noDescription }}
+      </span>
     </template>
 
     <template #cell(status)="{ item }">
       <div
-        class="gl-flex gl-flex-wrap gl-items-center gl-justify-end gl-gap-3 @md/panel:gl-justify-start"
+        class="gl-flex gl-flex-wrap gl-items-center gl-justify-end gl-gap-3 gl-text-nowrap @md/panel:gl-flex-nowrap @md/panel:gl-justify-start"
       >
-        <div v-gl-tooltip="expiryTimestamp(item)" data-testid="token-expiry">
+        <span v-gl-tooltip="expiryTimestamp(item)" data-testid="token-expiry">
           <gl-icon name="expire" class="gl-mr-2" />
           <gl-sprintf :message="$options.i18n.expires">
             <template #date>{{ expiryDate(item) }}</template>
           </gl-sprintf>
-        </div>
+        </span>
         <personal-access-token-status-badge :token="item" />
       </div>
 
-      <div class="gl-mt-3 gl-flex gl-justify-end lg:gl-justify-start">
-        <div v-gl-tooltip.d0="lastUsedTimestamp(item)" data-testid="token-last-used">
-          <gl-icon name="hourglass" class="gl-mr-2" />
-          <gl-sprintf :message="$options.i18n.lastUsed">
-            <template #date>{{ lastUsedDate(item) }}</template>
-          </gl-sprintf>
-        </div>
+      <div
+        v-gl-tooltip.d0="lastUsedTimestamp(item)"
+        class="gl-mt-3 gl-justify-self-end gl-text-nowrap @md/panel:gl-justify-self-start"
+        data-testid="token-last-used"
+      >
+        <gl-icon name="hourglass" class="gl-mr-2" />
+        <gl-sprintf :message="$options.i18n.lastUsed">
+          <template #date>{{ lastUsedDate(item) }}</template>
+        </gl-sprintf>
       </div>
     </template>
 
@@ -140,11 +160,17 @@ export default {
         <gl-disclosure-dropdown-item @action="selectTargetToken(item)">
           <template #list-item>{{ $options.i18n.viewDetails }}</template>
         </gl-disclosure-dropdown-item>
-        <gl-disclosure-dropdown-item v-if="item.active" @action="rotateTargetToken(item)">
+
+        <gl-disclosure-dropdown-item v-if="canDuplicate(item)" @action="duplicateTargetToken(item)">
+          <template #list-item>{{ $options.i18n.duplicate }}</template>
+        </gl-disclosure-dropdown-item>
+
+        <gl-disclosure-dropdown-item v-if="canRotate(item)" @action="rotateTargetToken(item)">
           <template #list-item>{{ $options.i18n.rotate }}</template>
         </gl-disclosure-dropdown-item>
+
         <gl-disclosure-dropdown-item
-          v-if="item.active"
+          v-if="canRevoke(item)"
           variant="danger"
           @action="revokeTargetToken(item)"
         >

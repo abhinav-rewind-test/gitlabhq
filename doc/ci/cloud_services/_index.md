@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Pipeline Security
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Connect to cloud services
 ---
 
@@ -88,6 +88,10 @@ accDescr: The flow of authorization requests between GitLab and a cloud provider
 1. The cloud verifies the token, validates the conditional role from the payload, and returns a temporary credential.
 
 ## Configure a conditional role with OIDC claims
+
+When you configure a conditional role, include stable, unique identifiers such as `namespace_id` or `project_id` alongside path-based claims like `sub` where the cloud provider supports them. These identifiers are independent of paths, so trust policies that reference them are not affected by changes to paths, such as group or project renames.
+
+Support for these condition keys varies by cloud provider and GitLab offering. For example, AWS supports `namespace_id` and `project_id` for the `gitlab.com` OIDC identity provider only. For a provider example, see [Configure OpenID Connect in AWS](aws/_index.md#configure-a-role-and-trust).
 
 To configure the trust between GitLab and OIDC, you must create a conditional role in the cloud provider that checks against the JWT.
 The condition is validated against the JWT to create a trust specifically against two claims, the audience and subject.

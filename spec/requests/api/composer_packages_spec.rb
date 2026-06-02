@@ -5,10 +5,10 @@ RSpec.describe API::ComposerPackages, feature_category: :package_registry do
   include HttpBasicAuthHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:group, reload: true) { create(:group, :public) }
+  let_it_be_with_reload(:group) { create(:group, :public) }
   let_it_be(:personal_access_token) { create(:personal_access_token, user: user) }
   let_it_be(:package_name) { 'package-name' }
-  let_it_be(:project, reload: true) { create(:project, :custom_repo, files: { 'composer.json' => { name: package_name }.to_json }, group: group) }
+  let_it_be_with_reload(:project) { create(:project, :custom_repo, files: { 'composer.json' => { name: package_name }.to_json }, group: group) }
   let_it_be(:deploy_token_for_project) { create(:deploy_token, read_package_registry: true, write_package_registry: true, projects: [project]) }
   let_it_be(:deploy_token_for_group) { create(:deploy_token, :group, read_package_registry: true, write_package_registry: true, groups: [group]) }
   let_it_be(:job) { create(:ci_build, :running, user: user, project: project) }
@@ -522,7 +522,7 @@ RSpec.describe API::ComposerPackages, feature_category: :package_registry do
       let(:params) { { tag: 'v1.2.99' } }
 
       before do
-        project.add_maintainer(user)
+        project.add_maintainer(user) # -- Does not work in before_all
       end
 
       it 'does not create a new package' do
@@ -795,14 +795,24 @@ RSpec.describe API::ComposerPackages, feature_category: :package_registry do
         end
 
         context 'for head request' do
-          subject { head api(url), headers:, params: }
+          subject(:request) { head api(url), headers: headers, params: params }
 
           before_all do
             project.add_developer(user)
           end
 
           it 'does not bump last downloaded at field' do
-            expect { subject }.not_to change { package.reload.last_downloaded_at }
+            expect { request }.not_to change { package.reload.last_downloaded_at }
+          end
+
+          it 'returns 200 OK with correct headers without archive generation' do
+            expect(Gitlab::Workhorse).not_to receive(:send_git_archive)
+
+            request
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(response.headers['Content-Type']).to include('application/zip')
+            expect(response.headers['Content-Disposition']).to include('attachment')
           end
         end
       end

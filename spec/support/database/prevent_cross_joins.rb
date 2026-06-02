@@ -31,18 +31,17 @@ module Database
       # See https://gitlab.com/gitlab-org/gitlab/-/issues/339396
       return if sql.include?("DISABLE TRIGGER") || sql.include?("ENABLE TRIGGER")
 
-      tables = begin
-        PgQuery.parse(sql).tables
+      begin
+        tables = PgQuery.parse(sql).tables
       rescue PgQuery::ParseError
         # PgQuery might fail in some cases due to limited nesting:
         # https://github.com/pganalyze/pg_query/issues/209
         return
       end
 
-      schemas = ::Gitlab::Database::GitlabSchema.table_schemas!(tables)
-
-      unless ::Gitlab::Database::GitlabSchema.cross_joins_allowed?(schemas, tables)
+      unless ::Gitlab::Database::GitlabSchema.cross_joins_allowed?(tables)
         Thread.current[:has_cross_join_exception] = true
+        schemas = ::Gitlab::Database::GitlabSchema.table_schemas!(tables)
         raise CrossJoinAcrossUnsupportedTablesError,
           "Unsupported cross-join across '#{tables.join(', ')}' querying '#{schemas.to_a.join(', ')}' discovered " \
           "when executing query '#{sql}'. Please refer to https://docs.gitlab.com/ee/development/database/multiple_databases.html#removing-joins-between-main-and-non-main-tables for details on how to resolve this exception."

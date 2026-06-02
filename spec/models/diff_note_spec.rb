@@ -319,7 +319,7 @@ RSpec.describe DiffNote, feature_category: :code_review_workflow do
         diff_note = create(:diff_note_on_merge_request, project: project, noteable: merge_request)
 
         expect { create(:diff_note_on_merge_request, noteable: merge_request, in_reply_to: diff_note) }
-          .not_to change(NoteDiffFile, :count)
+          .not_to change { NoteDiffFile.count }
       end
     end
 
@@ -333,7 +333,7 @@ RSpec.describe DiffNote, feature_category: :code_review_workflow do
 
       it 'does not create diff note file if it is a reply' do
         expect { create(:diff_note_on_commit, in_reply_to: diff_note) }
-          .not_to change(NoteDiffFile, :count)
+          .not_to change { NoteDiffFile.count }
       end
     end
   end
@@ -823,6 +823,69 @@ RSpec.describe DiffNote, feature_category: :code_review_workflow do
       allow(diff_note).to receive(:should_create_diff_file?).and_return(false)
 
       expect(diff_note.requires_diff_file_validation_during_import?).to be(false)
+    end
+  end
+
+  describe '#sync_keep_around_commits' do
+    let(:note) { build_stubbed(:diff_note_on_merge_request, project: project, noteable: merge_request) }
+
+    context 'when async_keep_around_refs_for_merge_request_diffs is enabled' do
+      before do
+        stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: true)
+      end
+
+      it 'does not call repository.keep_around' do
+        expect(note.repository).not_to receive(:keep_around)
+
+        note.send(:sync_keep_around_commits)
+      end
+    end
+
+    context 'when async_keep_around_refs_for_merge_request_diffs is disabled' do
+      before do
+        stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: false)
+      end
+
+      it 'calls repository.keep_around with shas' do
+        expect(note.repository).to receive(:keep_around).with(
+          *note.shas,
+          source: "#{note.noteable_type}/#{note.class.name}"
+        )
+
+        note.send(:sync_keep_around_commits)
+      end
+    end
+  end
+
+  describe '#enqueue_keep_around_commits' do
+    let(:note) { build_stubbed(:diff_note_on_merge_request, project: project, noteable: merge_request) }
+
+    context 'when async_keep_around_refs_for_merge_request_diffs is enabled' do
+      before do
+        stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: true)
+      end
+
+      it 'enqueues KeepAroundRefsWorker' do
+        expect(MergeRequests::KeepAroundRefsWorker).to receive(:perform_async).with(
+          [note.project.id],
+          note.shas,
+          "#{note.noteable_type}/#{note.class.name}"
+        )
+
+        note.send(:enqueue_keep_around_commits)
+      end
+    end
+
+    context 'when async_keep_around_refs_for_merge_request_diffs is disabled' do
+      before do
+        stub_feature_flags(async_keep_around_refs_for_merge_request_diffs: false)
+      end
+
+      it 'does not enqueue KeepAroundRefsWorker' do
+        expect(MergeRequests::KeepAroundRefsWorker).not_to receive(:perform_async)
+
+        note.send(:enqueue_keep_around_commits)
+      end
     end
   end
 end

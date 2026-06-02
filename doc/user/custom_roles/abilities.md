@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+info: "To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>"
 title: Custom permissions
 description: Configure granular permissions with specific abilities for fine-grained access controls.
 ---
@@ -20,6 +20,7 @@ description: Configure granular permissions with specific abilities for fine-gra
 
 - Custom admin roles [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/181346) in GitLab 17.9 [with a flag](../../administration/feature_flags/_index.md) named `custom_admin_roles`. Disabled by default.
 - Custom admin roles [generally available](https://gitlab.com/groups/gitlab-org/-/epics/15957) in GitLab 18.3. Feature flag `custom_admin_roles` enabled by default.
+- Feature flag `custom_admin_roles` removed in GitLab 19.0.
 
 {{< /history >}}
 
@@ -61,13 +62,20 @@ You can create a [custom role](_index.md) by adding one or more custom permissio
 | Manage deploy tokens | Manage deploy tokens at the group or project level. | [`manage_deploy_tokens`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/151677) | Group,<br> Project | GitLab [17.0](https://gitlab.com/gitlab-org/gitlab/-/issues/448843) |
 | Manage Protected Environments | Create, read, update, and delete protected environments | [`admin_protected_environments`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/178283) | Group,<br> Project | GitLab [17.9](https://gitlab.com/gitlab-org/gitlab/-/issues/471385) |
 
+## Duo agent platform
+
+| Permission | Description | API Attribute | Scope | Introduced |
+|:-----------|:------------|:--------------|:------|:-----------|
+| Configure AI catalog items | Enable, disable, and configure custom agents and flows from the AI catalog for a project. | [`admin_ai_catalog_item_consumer`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/234759) | Project | GitLab [19.0](https://gitlab.com/gitlab-org/gitlab/-/issues/578558) |
+| Manage AI catalog items | Create, edit, and delete custom agents and flows in the AI catalog. | [`admin_ai_catalog_item`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/234759) | Project | GitLab [19.0](https://gitlab.com/gitlab-org/gitlab/-/issues/578558) |
+
 ## Groups and projects
 
 | Permission | Description | API Attribute | Scope | Introduced |
 |:-----------|:------------|:--------------|:------|:-----------|
 | Archive project | Allows archiving of projects. | [`archive_project`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/134998) | Project | GitLab [16.6](https://gitlab.com/gitlab-org/gitlab/-/issues/425957) |
-| Delete group | Ability to delete or restore a group. This ability does not allow deleting top-level groups. Review the Retention period settings to prevent accidental deletion. | [`remove_group`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/145166) | Group | GitLab [16.10](https://gitlab.com/gitlab-org/gitlab/-/issues/425962) |
 | Delete project | Allows deletion of projects. | [`remove_project`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/139696) | Project | GitLab [16.8](https://gitlab.com/gitlab-org/gitlab/-/issues/425959) |
+| Delete subgroup | Ability to delete or restore a subgroup. This ability does not allow deleting top-level groups. Review the retention period settings to prevent accidental deletion. | [`remove_group`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/145166) | Group | GitLab [16.10](https://gitlab.com/gitlab-org/gitlab/-/issues/425962) |
 | Manage group members | Add or remove users in a group, and assign roles to users. When assigning a role, users with this custom permission must select a role that has the same or fewer permissions as the default role used as the base for their custom role. | [`admin_group_member`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/131914) | Group | GitLab [16.5](https://gitlab.com/gitlab-org/gitlab/-/issues/17364) |
 
 ## Infrastructure as code
@@ -99,14 +107,21 @@ You can create a [custom role](_index.md) by adding one or more custom permissio
 
 | Permission | Description | API Attribute | Scope | Introduced |
 |:-----------|:------------|:--------------|:------|:-----------|
-| Apply security scan profiles | Apply security scan profiles. | [`apply_security_scan_profiles`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/215433) | Group,<br> Project | GitLab [18.9](https://gitlab.com/groups/gitlab-org/-/epics/19802) |
-| Read security scan profiles | Read security scan profiles. | [`read_security_scan_profiles`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213203) | Group,<br> Project | GitLab [18.7](https://gitlab.com/groups/gitlab-org/-/epics/19802) |
+| Manage security attributes | Manage the security categories and attributes belonging to a top-level group. Also requires the `read_security_attribute` permission. | [`admin_security_attributes`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/195554) | Group | GitLab [18.2](https://gitlab.com/groups/gitlab-org/-/epics/18010) |
+| View security attributes | Allows read-only access to the security categories and attributes that belong to a top-level group. | [`read_security_attribute`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/209670) | Group | GitLab [18.6](https://gitlab.com/gitlab-org/gitlab/-/issues/567237) |
 
 ## Security policy management
 
 | Permission | Description | API Attribute | Scope | Introduced |
 |:-----------|:------------|:--------------|:------|:-----------|
 | Link to a security policy project | Allows linking security policy projects. | [`manage_security_policy_link`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/148371) | Group,<br> Project | GitLab [16.11](https://gitlab.com/gitlab-org/gitlab/-/issues/440226) |
+
+## Security testing configuration
+
+| Permission | Description | API Attribute | Scope | Introduced |
+|:-----------|:------------|:--------------|:------|:-----------|
+| Apply security scan profiles | Apply security scan profiles. | [`apply_security_scan_profiles`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/215433) | Group,<br> Project | GitLab [18.9](https://gitlab.com/groups/gitlab-org/-/epics/19802) |
+| Read security scan profiles | Read security scan profiles. | [`read_security_scan_profiles`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213203) | Group,<br> Project | GitLab [18.7](https://gitlab.com/groups/gitlab-org/-/epics/19802) |
 
 ## Source code management
 
@@ -130,11 +145,18 @@ You can create a [custom role](_index.md) by adding one or more custom permissio
 |:-----------|:------------|:--------------|:------|:-----------|
 | View CRM contact | Read CRM contact. | [`read_crm_contact`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154017) | Group | GitLab [17.1](https://gitlab.com/gitlab-org/gitlab/-/issues/443268) |
 
+## Virtual registry
+
+| Permission | Description | API Attribute | Scope | Introduced |
+|:-----------|:------------|:--------------|:------|:-----------|
+| Read virtual registry | Allows read access to virtual registries at the group level. Enables users to resolve packages through the virtual registry without requiring broader group membership permissions. Only works on top level groups. | [`read_virtual_registry`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/231294) | Group | GitLab [18.10](https://gitlab.com/gitlab-org/gitlab/-/work_items/596622) |
+
 ## Vulnerability management
 
 | Permission | Description | API Attribute | Scope | Introduced |
 |:-----------|:------------|:--------------|:------|:-----------|
 | Manage vulnerabilities | Edit the status, linked issue, and severity of a vulnerability object. Also requires the `read_vulnerability` permission. | [`admin_vulnerability`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/121534) | Group,<br> Project | GitLab [16.1](https://gitlab.com/gitlab-org/gitlab/-/issues/412536) |
+| Update SAST Vulnerability Resolution setting | Turn SAST Vulnerability Resolution on or off for a project. Also requires the `read_vulnerability` permission. | [`update_sast_vulnerability_resolution_setting`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235831) | Project | GitLab [19.1](https://gitlab.com/gitlab-org/gitlab/-/issues/599602) |
 | View dependency list | Allows read-only access to the dependencies and licenses. | [`read_dependency`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/126247) | Group,<br> Project | GitLab [16.3](https://gitlab.com/gitlab-org/gitlab/-/issues/415255) |
 | View vulnerability reports and dashboards | Read vulnerability reports and security dashboards. | [`read_vulnerability`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/120704) | Group,<br> Project | GitLab [16.1](https://gitlab.com/gitlab-org/gitlab/-/issues/399119) |
 

@@ -1,4 +1,5 @@
 import { s__ } from '~/locale';
+import { WIKI_ICON } from '~/wikis/constants';
 import {
   CONFIDENTAL_FILTER_PARAM,
   INCLUDE_ARCHIVED_FILTER_PARAM,
@@ -10,6 +11,7 @@ import {
   STATE_FILTER_PARAM,
   AUTHOR_PARAM,
   NOT_AUTHOR_PARAM,
+  WORK_ITEM_TYPE_FILTER_PARAM,
 } from '~/search/sidebar/constants';
 
 export const MAX_FREQUENT_ITEMS = 5;
@@ -21,6 +23,7 @@ export const GROUPS_LOCAL_STORAGE_KEY = 'global-search-frequent-groups';
 export const PROJECTS_LOCAL_STORAGE_KEY = 'global-search-frequent-projects';
 
 export const SIDEBAR_PARAMS = [
+  WORK_ITEM_TYPE_FILTER_PARAM,
   STATE_FILTER_PARAM,
   CONFIDENTAL_FILTER_PARAM,
   LANGUAGE_FILTER_PARAM,
@@ -40,6 +43,7 @@ export const NUMBER_FORMATING_OPTIONS = { notation: 'compact', compactDisplay: '
 export const ICON_MAP = {
   blobs: 'code',
   issues: 'issues',
+  work_items: 'work-items',
   epics: 'epic',
   merge_requests: 'merge-request',
   commits: 'commit',
@@ -47,13 +51,14 @@ export const ICON_MAP = {
   milestones: 'milestone',
   users: 'users',
   projects: 'project',
-  wiki_blobs: 'book',
+  wiki_blobs: WIKI_ICON,
   snippet_titles: 'snippet',
 };
 
 export const SCOPE_NAVIGATION_MAP = {
   blobs: s__('GlobalSearch|Code'),
   issues: s__('GlobalSearch|Issues'),
+  work_items: s__('GlobalSearch|Work items'),
   epics: s__('GlobalSearch|Epics'),
   merge_requests: s__('GlobalSearch|Merge request'),
   commits: s__('GlobalSearch|Commits'),

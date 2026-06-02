@@ -5,22 +5,18 @@ require 'spec_helper'
 RSpec.describe 'Dropdown release', :js, feature_category: :team_planning do
   include FilteredSearchHelpers
 
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project, freeze: false) { create(:project) }
   let_it_be(:user) { create(:user) }
-  let_it_be(:release) { create(:release, tag: 'v1.0', project: project) }
+  let_it_be(:release, freeze: false) { create(:release, tag: 'v1.0', project: project) }
   let_it_be(:crazy_release) { create(:release, tag: '☺!/"#%&\'{}+,-.<>;=@]_`{|}🚀', project: project) }
   let_it_be(:issue) { create(:issue, project: project) }
 
   before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-
     project.add_maintainer(user)
+    create(:callout, user: user, feature_name: :work_items_onboarding_modal)
     sign_in(user)
 
-    visit project_issues_path(project)
+    visit project_work_items_path(project)
   end
 
   describe 'behavior' do

@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Auditor users
 description: Provide read-only access for auditing and compliance monitoring across all resources.
 ---
@@ -46,7 +46,7 @@ Prerequisites:
 To create a new auditor user:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Users**.
+1. In the left sidebar, select **Overview** > **Users**.
 1. Select **New user**.
 1. In the **Account** section, enter the required account information.
 1. For **User type**, select **Auditor**.

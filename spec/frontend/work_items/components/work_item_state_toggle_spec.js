@@ -28,10 +28,14 @@ import {
   mockBlockedByOpenAndClosedLinkedItems,
   workItemByIidResponseFactory,
   workItemBlockedByLinkedItemsResponse,
+  workItemBlockedByLinkedItemsResponseWithFeatures,
   workItemNoBlockedByLinkedItemsResponse,
+  workItemNoBlockedByLinkedItemsResponseWithFeatures,
   workItemsClosedAndOpenLinkedItemsResponse,
   mockOpenChildrenCount,
+  mockOpenChildrenCountWithFeatures,
   mockNoOpenChildrenCount,
+  mockNoOpenChildrenCountWithFeatures,
 } from 'ee_else_ce_jest/work_items/mock_data';
 
 jest.mock('~/work_items/graphql/cache_utils', () => ({
@@ -70,6 +74,7 @@ describe('Work Item State toggle button component', () => {
     hasComment = false,
     disabled = false,
     parentId = null,
+    provide = {},
   } = {}) => {
     wrapper = shallowMountExtended(WorkItemStateToggle, {
       apolloProvider: createMockApollo([
@@ -89,6 +94,7 @@ describe('Work Item State toggle button component', () => {
         disabled,
         parentId,
       },
+      provide,
     });
   };
 
@@ -103,12 +109,12 @@ describe('Work Item State toggle button component', () => {
   describe('work item State button text', () => {
     it.each`
       workItemState   | workItemType                      | buttonText
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Close task'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Reopen task'}
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Close objective'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Reopen objective'}
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Close key result'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Reopen key result'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Close Task'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Reopen Task'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Close Objective'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Reopen Objective'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Close Key Result'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Reopen Key Result'}
     `(
       'is "$buttonText" when "$workItemType" state is "$workItemState"',
       ({ workItemState, workItemType, buttonText }) => {
@@ -120,12 +126,12 @@ describe('Work Item State toggle button component', () => {
 
     it.each`
       workItemState   | workItemType                      | buttonText
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Comment & close task'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Comment & reopen task'}
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Comment & close objective'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Comment & reopen objective'}
-      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Comment & close key result'}
-      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Comment & reopen key result'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Comment & close Task'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_TASK}       | ${'Comment & reopen Task'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Comment & close Objective'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_OBJECTIVE}  | ${'Comment & reopen Objective'}
+      ${STATE_OPEN}   | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Comment & close Key Result'}
+      ${STATE_CLOSED} | ${WORK_ITEM_TYPE_NAME_KEY_RESULT} | ${'Comment & reopen Key Result'}
     `(
       'is "$buttonText" when "$workItemType" state is "$workItemState" and hasComment is true',
       ({ workItemState, workItemType, buttonText }) => {
@@ -142,12 +148,14 @@ describe('Work Item State toggle button component', () => {
 
       findStateToggleButton().vm.$emit('click');
 
-      expect(mutationSuccessHandler).toHaveBeenCalledWith({
-        input: {
-          id,
-          stateEvent: STATE_EVENT_CLOSE,
-        },
-      });
+      expect(mutationSuccessHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            id,
+            stateEvent: STATE_EVENT_CLOSE,
+          },
+        }),
+      );
     });
 
     it('calls a mutation with REOPEN', () => {
@@ -157,12 +165,14 @@ describe('Work Item State toggle button component', () => {
 
       findStateToggleButton().vm.$emit('click');
 
-      expect(mutationSuccessHandler).toHaveBeenCalledWith({
-        input: {
-          id,
-          stateEvent: STATE_EVENT_REOPEN,
-        },
-      });
+      expect(mutationSuccessHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            id,
+            stateEvent: STATE_EVENT_REOPEN,
+          },
+        }),
+      );
     });
 
     it('emits `submit-comment` when hasComment is true', async () => {
@@ -181,7 +191,7 @@ describe('Work Item State toggle button component', () => {
       await waitForPromises();
 
       expect(wrapper.emitted('error')).toEqual([
-        ['Something went wrong while updating the task. Please try again.'],
+        ['Something went wrong while updating the Task. Please try again.'],
       ]);
     });
 
@@ -197,6 +207,7 @@ describe('Work Item State toggle button component', () => {
         category: TRACKING_CATEGORY_SHOW,
         label: 'item_state',
         property: 'type_Task',
+        extra: { viewContext: 'full_screen' },
       });
     });
 
@@ -232,13 +243,13 @@ describe('Work Item State toggle button component', () => {
 
     it('has title text', () => {
       expect(findBlockedByModal().attributes('title')).toBe(
-        'Are you sure you want to close this blocked task?',
+        'Are you sure you want to close this blocked Task?',
       );
     });
 
     it('has body text', () => {
       expect(findBlockedByModal().text()).toContain(
-        'This task is currently blocked by the following items:',
+        'This Task is currently blocked by the following items:',
       );
     });
 
@@ -286,13 +297,69 @@ describe('Work Item State toggle button component', () => {
 
     it('has title text', () => {
       expect(findOpenChildrenModal().attributes('title')).toBe(
-        'Are you sure you want to close this epic?',
+        'Are you sure you want to close this Epic?',
       );
     });
 
     it('has body text', () => {
       expect(findOpenChildrenModal().text()).toContain(
-        'This epic has open child items. If you close this epic, they will remain open.',
+        'This Epic has open child items. If you close this Epic, they will remain open.',
+      );
+    });
+  });
+
+  describe('when workItemFeaturesField feature flag is enabled', () => {
+    const provide = { glFeatures: { workItemFeaturesField: true } };
+
+    it('passes useWorkItemFeatures as true to the linked items query', async () => {
+      const workItemLinkedItemsHandler = jest
+        .fn()
+        .mockResolvedValue(workItemNoBlockedByLinkedItemsResponseWithFeatures);
+      createComponent({ workItemLinkedItemsHandler, provide });
+      await waitForPromises();
+
+      expect(workItemLinkedItemsHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ useWorkItemFeatures: true }),
+      );
+    });
+
+    it('passes useWorkItemFeatures as true to the open child count query', async () => {
+      const workItemOpenChildCountHandler = jest
+        .fn()
+        .mockResolvedValue(mockNoOpenChildrenCountWithFeatures);
+      createComponent({ workItemOpenChildCountHandler, provide });
+      await waitForPromises();
+
+      expect(workItemOpenChildCountHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ useWorkItemFeatures: true }),
+      );
+    });
+
+    it('renders blocked-by modal when blockers are sourced from features.linkedItems', async () => {
+      const blockers = mockBlockedByLinkedItem.linkedItems.nodes;
+      createComponent({
+        workItemLinkedItemsHandler: jest
+          .fn()
+          .mockResolvedValue(workItemBlockedByLinkedItemsResponseWithFeatures),
+        provide,
+      });
+      await waitForPromises();
+
+      expect(findBlockedByModal().findAllComponents(GlLink)).toHaveLength(blockers.length);
+    });
+
+    it('triggers open-children modal when counts are sourced from features.hierarchy', async () => {
+      createComponent({
+        workItemOpenChildCountHandler: jest
+          .fn()
+          .mockResolvedValue(mockOpenChildrenCountWithFeatures),
+        workItemType: WORK_ITEM_TYPE_NAME_EPIC,
+        provide,
+      });
+      await waitForPromises();
+
+      expect(findOpenChildrenModal().text()).toContain(
+        'This Epic has open child items. If you close this Epic, they will remain open.',
       );
     });
   });

@@ -21,8 +21,9 @@ module API
     prepend_mod_with('API::Namespaces') # rubocop: disable Cop/InjectEnterpriseEditionModule
 
     resource :namespaces do
-      desc 'List namespaces' do
-        detail 'Get a list of the namespaces of the authenticated user. If the user is an administrator, a list of all namespaces in the GitLab instance is shown.'
+      desc 'List all namespaces' do
+        detail 'Lists all namespaces available to the current user. If the user is an administrator, this endpoint ' \
+          'returns all namespaces in the instance.'
         success Entities::Namespace
         failure [
           { code: 401, message: 'Unauthorized' }
@@ -39,6 +40,7 @@ module API
         use :pagination
         use :optional_list_params_ee
       end
+      route_setting :authorization, permissions: :read_namespace, boundary_type: :user
       get feature_category: :groups_and_projects, urgency: :low do
         owned_only = params[:owned_only] == true
 
@@ -59,8 +61,8 @@ module API
         present paginate(namespaces), options.reverse_merge(custom_namespace_present_options)
       end
 
-      desc 'Get namespace by ID' do
-        detail 'Get a namespace by ID'
+      desc 'Retrieve namespace details' do
+        detail 'Retrieves a specified namespace.'
         success Entities::Namespace
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -71,14 +73,15 @@ module API
       params do
         requires :id, types: [String, Integer], desc: 'ID or URL-encoded path of the namespace'
       end
+      route_setting :authorization, permissions: :read_namespace, boundary_type: :user
       get ':id', requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS, feature_category: :groups_and_projects, urgency: :low do
         user_namespace = find_namespace!(params[:id])
 
         present user_namespace, with: Entities::Namespace, current_user: current_user
       end
 
-      desc 'Get existence of a namespace' do
-        detail 'Get existence of a namespace by path. Suggests a new namespace path that does not already exist.'
+      desc 'Verify namespace availability' do
+        detail 'Verifies that a namespace is available for use.'
         success Entities::NamespaceExistence
         failure [
           { code: 401, message: 'Unauthorized' }
@@ -89,6 +92,7 @@ module API
         requires :id, type: String, desc: "Namespace’s path"
         optional :parent_id, type: Integer, desc: 'The ID of the parent namespace. If no ID is specified, only top-level namespaces are considered.'
       end
+      route_setting :authorization, permissions: :read_namespace, boundary_type: :user
       get ':id/exists', requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS, feature_category: :groups_and_projects, urgency: :low do
         check_rate_limit!(:namespace_exists, scope: current_user)
 

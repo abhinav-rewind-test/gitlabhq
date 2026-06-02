@@ -3,11 +3,11 @@
 require 'spec_helper'
 
 RSpec.describe WebHooks::CreateService, feature_category: :webhooks do
-  let_it_be(:current_user) { create(:user) }
+  let_it_be(:current_user, freeze: false) { create(:user) }
 
   describe '#execute' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:relation) { ProjectHook.none }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:relation, freeze: false) { ProjectHook.none }
     let(:hook_params) { { url: 'https://example.com/hook', project_id: project.id } }
 
     subject(:webhook_created) { described_class.new(current_user) }
@@ -24,7 +24,7 @@ RSpec.describe WebHooks::CreateService, feature_category: :webhooks do
       end
 
       context 'when creating a new system hook' do
-        let_it_be(:system_hook_relation) { SystemHook }
+        let_it_be(:system_hook_relation, freeze: false) { SystemHook }
         let(:hook_params) { { url: 'https://example.com/hook' } }
         let(:organization) { create(:organization) }
 
@@ -71,7 +71,7 @@ RSpec.describe WebHooks::CreateService, feature_category: :webhooks do
         response = webhook_created.execute(invalid_params, relation)
 
         expect(response).not_to be_success
-        expect(response[:message]).to eq("Custom headers must be a valid json schema")
+        expect(response[:message]).to eq("Custom headers validation failed: must be a valid json schema")
         expect(response[:http_status]).to eq(422)
       end
     end
@@ -83,7 +83,7 @@ RSpec.describe WebHooks::CreateService, feature_category: :webhooks do
         response = webhook_created.execute(invalid_params, relation)
 
         expect(response).not_to be_success
-        expect(response[:message]).to eq("Custom headers must be a valid json schema")
+        expect(response[:message]).to eq("Custom headers validation failed: must be a valid json schema")
         expect(response[:http_status]).to eq(422)
       end
     end

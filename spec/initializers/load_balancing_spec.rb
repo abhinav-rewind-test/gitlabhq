@@ -93,7 +93,72 @@ RSpec.describe 'load_balancing', :delete, :reestablished_active_record_base, fea
           end
 
           group.reload
-        end.to change(group, :updated_at)
+        end.to change { group.updated_at }
+      end
+    end
+  end
+
+  context 'when hot reloading' do
+    it 'reconfigures load balancing' do
+      initialize_load_balancer
+
+      original_models = Gitlab::Database::LoadBalancing.base_model_names.dup
+      expect(original_models).not_to be_empty
+
+      # Simulate the LB singleton losing its state (as if it were reloaded).
+      Gitlab::Database::LoadBalancing.configure! do |lb|
+        lb.base_model_names = []
+      end
+      expect(Gitlab::Database::LoadBalancing.base_model_names).to be_empty
+
+      configure_load_balancing!
+
+      expect(Gitlab::Database::LoadBalancing.base_model_names).to match_array(original_models)
+    end
+  end
+
+  describe Gitlab::Database::LoadBalancing do
+    describe '.base_models' do
+      it 'returns the models to apply load balancing to' do
+        models = described_class.base_models
+
+        expect(models).to include(ActiveRecord::Base)
+        expect(models).to include(Ci::ApplicationRecord) if Gitlab::Database.has_config?(:ci)
+      end
+
+      it 'returns the models as a frozen array' do
+        expect(described_class.base_models).to be_frozen
+      end
+    end
+  end
+
+  describe Gitlab::Database::LoadBalancing::Callbacks do
+    describe '.configure!' do
+      it 'configures track_exception_proc to forward exceptions to ErrorTracking' do
+        expect(Gitlab::ErrorTracking).to receive(:track_exception)
+                                           .with(an_instance_of(Gitlab::Utils::ConcurrentRubyThreadIsUsedError))
+
+        initialize_load_balancer
+
+        Gitlab::Utils.restrict_within_concurrent_ruby do
+          expect { ApplicationRecord.connection.execute("SELECT 1") }
+            .to raise_error(Gitlab::Utils::ConcurrentRubyThreadIsUsedError)
+        end
+      end
+
+      it 'configures metrics_host_gauge_proc to set prometheus metrics', :reestablished_active_record_base do
+        expect(described_class).to receive(:metrics_host_gauge)
+                                     .with({}, 1).and_call_original
+
+        # Metric will be set once configured host list:
+        # - 1 host since we only have primary
+        # - this test will fail if running CI against replicas
+        model = Gitlab::Database::LoadBalancing.base_models.first
+        Gitlab::Database::LoadBalancing::Setup.new(model).setup
+
+        metric = ::Prometheus::Client.registry.get(:db_load_balancing_hosts)
+        expect(metric).not_to be_nil
+        expect(metric.values[{}].get).to eq(1)
       end
     end
   end

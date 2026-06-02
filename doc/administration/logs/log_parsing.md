@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Parsing GitLab logs with `jq`
 ---
 
@@ -263,7 +263,7 @@ for example.
 
 #### Find most common Geo sync errors
 
-If [the `geo:status` Rake task](../geo/replication/troubleshooting/common.md#sync-status-rake-task)
+If [the `gitlab:geo:status` Rake task](../geo/replication/troubleshooting/common.md#sync-status-rake-task)
 repeatedly reports that some items never reach 100%,
 the following command helps to focus on the most common errors.
 

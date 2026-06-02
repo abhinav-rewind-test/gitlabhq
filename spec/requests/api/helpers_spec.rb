@@ -11,7 +11,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
   using RSpec::Parameterized::TableSyntax
 
   let_it_be(:organization) { create(:organization) }
-  let_it_be(:user, reload: true) { create(:user, organizations: [organization]) }
+  let_it_be_with_reload(:user) { create(:user, organizations: [organization]) }
 
   let(:admin) { create(:admin) }
   let(:key) { create(:key, user: user) }
@@ -81,7 +81,61 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
           it 'sets the environment with data of the current user' do
             subject
 
-            expect(env[API::Helpers::API_USER_ENV]).to eq({ user_id: subject.id, username: subject.username })
+            expect(env[API::Helpers::API_USER_ENV]).to eq({ user_id: subject.id, username: subject.username, user_is_bot: false })
+          end
+
+          context 'when the user does not respond to bot?' do
+            before do
+              allow(user).to receive(:respond_to?).and_call_original
+              allow(user).to receive(:respond_to?).with(:bot?).and_return(false)
+            end
+
+            it 'sets user_is_bot to false' do
+              subject
+
+              expect(env[API::Helpers::API_USER_ENV][:user_is_bot]).to be(false)
+            end
+          end
+
+          context "when endpoint is not AI/DAP-related (/user)" do
+            before do
+              env['api.endpoint'] = instance_double(Grape::Endpoint)
+              allow(env['api.endpoint']).to receive(:namespace).and_return("/user")
+            end
+
+            it 'sets the environment with data of the current user without global id' do
+              subject
+
+              expect(env[API::Helpers::API_USER_ENV]).to eq(
+                {
+                  user_id: subject.id,
+                  username: subject.username,
+                  user_is_bot: false
+                }
+              )
+            end
+          end
+
+          ['/code_suggestions/direct_access', '/ai/third_party_agents/direct_access'].each do |endpoint|
+            context "when endpoint is AI/DAP-related (#{endpoint})" do
+              before do
+                env['api.endpoint'] = instance_double(Grape::Endpoint)
+                allow(env['api.endpoint']).to receive(:namespace).and_return(endpoint)
+              end
+
+              it 'sets the environment with data of the current user and its global id' do
+                subject
+
+                expect(env[API::Helpers::API_USER_ENV]).to eq(
+                  {
+                    user_id: subject.id,
+                    username: subject.username,
+                    user_is_bot: false,
+                    global_user_id: Gitlab::GlobalAnonymousId.user_id(subject)
+                  }
+                )
+              end
+            end
           end
         end
 
@@ -251,7 +305,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
     end
 
     describe "when authenticating using a job token" do
-      let_it_be(:job, reload: true) do
+      let_it_be_with_reload(:job) do
         create(:ci_build, user: user, status: :running)
       end
 
@@ -326,14 +380,14 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
 
         it 'raises an error stating that the feature is not yet supported' do
           expect { current_user }.to raise_error Gitlab::Auth::GranularPermissionsError,
-            'Granular tokens are not yet supported'
+            'Access denied: Fine-grained personal access tokens are not yet supported.'
         end
       end
 
       context 'when authorization permissions and boundary type are not defined for an endpoint' do
         it 'raises an error stating that the permissions cannot be determined' do
           expect { current_user }.to raise_error Gitlab::Auth::GranularPermissionsError,
-            'Unable to determine boundaries and permissions for authorization'
+            "Access denied: This operation doesn't support fine-grained personal access tokens."
         end
       end
 
@@ -365,10 +419,12 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
 
         with_them do
           context 'when the granular token scopes are insufficient' do
+            let(:granular_pat) { create(:granular_pat, user: user) }
+            let(:assignable) { Authz::PermissionGroups::Assignable.for_permission(permissions).first }
+            let(:perm_label) { "#{assignable.resource_name}: #{assignable.action.titleize}" }
             let(:message) do
-              msg = "Access denied: Your Personal Access Token lacks the required permissions: [#{permissions}]"
-              msg << " for \"#{boundary.path}\"" if boundary.path
-              msg << "."
+              "Access denied: This operation requires a fine-grained personal access token " \
+                "with the following #{boundary_type} permissions: [#{perm_label}]."
             end
 
             it 'raises an error that includes the missing scope' do
@@ -377,7 +433,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
           end
 
           context 'when the granular token scopes are sufficient' do
-            let(:granular_pat) { create(:granular_pat, user:, permissions:, boundary:) }
+            let(:granular_pat) { create(:granular_pat, user: user, permissions: :create_work_item, boundary: boundary) }
 
             it 'does not raise an error and returns the token user' do
               expect(current_user).to eq(user)
@@ -385,10 +441,46 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
           end
         end
       end
+
+      context 'when the boundary resource is not visible to the token user' do
+        let_it_be(:other_user) { create(:user) }
+        let_it_be(:private_project) { create(:project, :private) }
+        let_it_be(:granular_pat) { create(:granular_pat, user: other_user) }
+
+        before do
+          env['PATH_INFO'] = "/api/v4/projects/endpoint"
+
+          allow(self).to receive(:route_setting).with(:authorization)
+            .and_return(permissions: :read_code, boundary_type: :project, boundary_param: nil)
+
+          allow(self).to receive(:params).and_return(id: private_project.id)
+        end
+
+        it 'renders a generic 404 to hide existence' do
+          expect { current_user }.to raise_error(StandardError, /404.*404 Not Found/)
+        end
+      end
+
+      context 'when the boundary resource ID does not resolve' do
+        let_it_be(:granular_pat) { create(:granular_pat) }
+
+        before do
+          env['PATH_INFO'] = "/api/v4/projects/endpoint"
+
+          allow(self).to receive(:route_setting).with(:authorization)
+            .and_return(permissions: :read_code, boundary_type: :project, boundary_param: nil)
+
+          allow(self).to receive(:params).and_return(id: non_existing_record_id)
+        end
+
+        it 'renders the same generic 404 as a hidden private resource' do
+          expect { current_user }.to raise_error(StandardError, /404.*404 Not Found/)
+        end
+      end
     end
   end
 
-  describe '.set_current_organization', :without_current_organization do
+  describe '.set_current_organization' do
     context 'when user argument is omitted' do
       before do
         allow(self).to receive(:current_user).and_return(user)

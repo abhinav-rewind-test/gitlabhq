@@ -13,8 +13,12 @@ module ContainerRegistry
     OCI_MANIFEST_V1_TYPE = 'application/vnd.oci.image.manifest.v1+json'
     CONTAINER_IMAGE_V1_TYPE = 'application/vnd.docker.container.image.v1+json'
 
-    ACCEPTED_TYPES = [DOCKER_DISTRIBUTION_MANIFEST_V2_TYPE, OCI_MANIFEST_V1_TYPE].freeze
-    ACCEPTED_TYPES_RAW = [DOCKER_DISTRIBUTION_MANIFEST_V2_TYPE, OCI_MANIFEST_V1_TYPE, DOCKER_DISTRIBUTION_MANIFEST_LIST_V2_TYPE, OCI_DISTRIBUTION_INDEX_TYPE].freeze
+    ACCEPTED_TYPES = [
+      DOCKER_DISTRIBUTION_MANIFEST_V2_TYPE,
+      OCI_MANIFEST_V1_TYPE,
+      DOCKER_DISTRIBUTION_MANIFEST_LIST_V2_TYPE,
+      OCI_DISTRIBUTION_INDEX_TYPE
+    ].freeze
 
     RETRY_EXCEPTIONS = [Faraday::Retry::Middleware::DEFAULT_EXCEPTIONS, Faraday::ConnectionFailed].flatten.freeze
     RETRY_OPTIONS = {
@@ -76,7 +80,7 @@ module ContainerRegistry
 
     def faraday(timeout_enabled: true)
       @faraday ||= faraday_base(timeout_enabled: timeout_enabled) do |conn|
-        initialize_connection(conn, @options, &method(:configure_connection))
+        initialize_connection(conn, @options) { |connection| configure_connection(connection) }
       end
     end
 

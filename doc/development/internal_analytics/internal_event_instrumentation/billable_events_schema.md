@@ -1,13 +1,13 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Billable Events Schema
 ---
 
 ## Overview
 
-The billable events schema defines the structure and fields for tracking usage events that contribute to customer billing. This schema is used across GitLab SaaS, Dedicated, and Self-Managed deployments to capture standardized usage data for billing purposes.
+The billable events schema defines the structure and fields for tracking usage events that contribute to customer billing. This schema is used across GitLab.com, Dedicated, and Self-Managed deployments to capture standardized usage data for billing purposes.
 
 This document serves as the reference for the billable usage event schema based on the [`billable_usage` jsonschema](https://gitlab.com/gitlab-org/iglu/-/blob/master/public/schemas/com.gitlab/billable_usage/jsonschema).
 
@@ -50,6 +50,7 @@ Fields that identify users, seats, and resources associated with the billable ev
 | `namespace_id` | ID of the associated namespace (e.g., `3445555`) | `namespace_id` | Integer |
 | `root_namespace_id` | ID of the associated ultimate parent namespace (e.g., `5343322`) | `root_namespace_id` | Integer |
 | `entity_id` | ID of the entity associated with the event | `entity_id` | String |
+| `organization_id` | ID of the associated organization (e.g., `1445`) | `organization_id` | Integer |
 
 ### Usage Measurement Fields
 
@@ -92,6 +93,7 @@ The following fields are critical for billing calculations and must be present i
 | `llm_operations[].model_id` | String | Identifier of the LLM model used (e.g., `claude-3-sonnet-20240229`) | Yes |
 | `llm_operations[].prompt_tokens` | Integer | Number of tokens in the prompt | Yes |
 | `llm_operations[].completion_tokens` | Integer | Number of tokens in the completion/response | Yes |
+| `orbit_called` | Boolean | Whether any Orbit tools were called during the workflow session | No |
 
 ---
 
@@ -114,7 +116,8 @@ The following fields are critical for billing calculations and must be present i
             "prompt_tokens": 3150,
             "completion_tokens": 2178
         }
-    ]
+    ],
+    "orbit_called": true
 }
 ```
 

@@ -5,22 +5,31 @@ require 'spec_helper'
 RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pipeline_composition do
   include GraphqlHelpers
 
-  let_it_be(:namespace) { create(:group) }
-  let_it_be(:private_namespace_project) { create(:project, :private, name: 'z private test', namespace: namespace) }
-  let_it_be(:private_namespace_project_2) { create(:project, :private, name: 'a private test', namespace: namespace) }
-  let_it_be(:public_namespace_project) do
+  let_it_be(:namespace, freeze: false) { create(:group) }
+  let_it_be(:private_namespace_project, freeze: false) do
+    create(:project, :private, name: 'z private test', namespace: namespace)
+  end
+
+  let_it_be(:private_namespace_project_2, freeze: false) do
+    create(:project, :private, name: 'a private test', namespace: namespace)
+  end
+
+  let_it_be(:public_namespace_project, freeze: false) do
     create(:project, :public, name: 'public', description: 'Test', namespace: namespace)
   end
 
-  let_it_be(:internal_project) { create(:project, :internal, name: 'internal') }
-  let_it_be(:private_resource) { create(:ci_catalog_resource, :published, project: private_namespace_project) }
-  let_it_be(:private_resource_2) { create(:ci_catalog_resource, project: private_namespace_project_2) }
-  let_it_be(:public_resource) do
+  let_it_be(:internal_project, freeze: false) { create(:project, :internal, name: 'internal') }
+  let_it_be(:private_resource, freeze: false) do
+    create(:ci_catalog_resource, :published, project: private_namespace_project)
+  end
+
+  let_it_be(:private_resource_2, freeze: false) { create(:ci_catalog_resource, project: private_namespace_project_2) }
+  let_it_be(:public_resource, freeze: false) do
     create(:ci_catalog_resource, :published, project: public_namespace_project, verification_level: 100)
   end
 
-  let_it_be(:internal_resource) { create(:ci_catalog_resource, :published, project: internal_project) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:internal_resource, freeze: false) { create(:ci_catalog_resource, :published, project: internal_project) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   let(:ctx) { { current_user: user } }
   let(:search) { nil }
@@ -30,6 +39,7 @@ RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pip
   let(:verification_level) { nil }
   let(:topics) { [] }
   let(:min_access_level) { nil }
+  let(:group_ids) { nil }
 
   let(:args) do
     {
@@ -39,7 +49,8 @@ RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pip
       scope: scope,
       verification_level: verification_level,
       topics: topics,
-      min_access_level: min_access_level
+      min_access_level: min_access_level,
+      group_ids: group_ids
     }.compact
   end
 
@@ -95,15 +106,26 @@ RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pip
 
           # rubocop:disable RSpec/MultipleMemoizedHelpers -- Inherits helpers from parent context
           context 'with min_access_level argument' do
-            let_it_be(:access_level_user) { create(:user) }
-            let_it_be(:maintainer_project) { create(:project, :private, name: 'maintainer project') }
-            let_it_be(:developer_project) { create(:project, :private, name: 'developer project') }
-            let_it_be(:reporter_project) { create(:project, :private, name: 'reporter project') }
-            let_it_be(:owner_project) { create(:project, :private, name: 'owner project') }
-            let_it_be(:maintainer_resource) { create(:ci_catalog_resource, :published, project: maintainer_project) }
-            let_it_be(:developer_resource) { create(:ci_catalog_resource, :published, project: developer_project) }
-            let_it_be(:reporter_resource) { create(:ci_catalog_resource, :published, project: reporter_project) }
-            let_it_be(:owner_resource) { create(:ci_catalog_resource, :published, project: owner_project) }
+            let_it_be(:access_level_user, freeze: false) { create(:user) }
+            let_it_be(:maintainer_project, freeze: false) { create(:project, :private, name: 'maintainer project') }
+            let_it_be(:developer_project, freeze: false) { create(:project, :private, name: 'developer project') }
+            let_it_be(:reporter_project, freeze: false) { create(:project, :private, name: 'reporter project') }
+            let_it_be(:owner_project, freeze: false) { create(:project, :private, name: 'owner project') }
+            let_it_be(:maintainer_resource, freeze: false) do
+              create(:ci_catalog_resource, :published, project: maintainer_project)
+            end
+
+            let_it_be(:developer_resource, freeze: false) do
+              create(:ci_catalog_resource, :published, project: developer_project)
+            end
+
+            let_it_be(:reporter_resource, freeze: false) do
+              create(:ci_catalog_resource, :published, project: reporter_project)
+            end
+
+            let_it_be(:owner_resource, freeze: false) do
+              create(:ci_catalog_resource, :published, project: owner_project)
+            end
 
             let(:ctx) { { current_user: access_level_user } }
 
@@ -199,9 +221,9 @@ RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pip
       end
 
       context 'with topics argument' do
-        let_it_be(:topic_ruby) { create(:topic, name: 'ruby') }
-        let_it_be(:topic_rails) { create(:topic, name: 'rails') }
-        let_it_be(:topic_gitlab) { create(:topic, name: 'gitlab') }
+        let_it_be(:topic_ruby, freeze: false) { create(:topic, name: 'ruby') }
+        let_it_be(:topic_rails, freeze: false) { create(:topic, name: 'rails') }
+        let_it_be(:topic_gitlab, freeze: false) { create(:topic, name: 'gitlab') }
 
         before_all do
           create(:project_topic, project: public_namespace_project, topic: topic_ruby)
@@ -286,10 +308,76 @@ RSpec.describe Resolvers::Ci::Catalog::ResourcesResolver, feature_category: :pip
           end
         end
       end
+
+      context 'with group_ids argument' do
+        let_it_be(:other_namespace, freeze: false) { create(:group) }
+        let_it_be(:other_namespace_project, freeze: false) do
+          create(:project, :public, name: 'other group resource', namespace: other_namespace, reporters: user)
+        end
+
+        let_it_be(:other_namespace_resource, freeze: false) do
+          create(:ci_catalog_resource, :published, project: other_namespace_project)
+        end
+
+        context 'when filtering by a single group' do
+          let(:group_ids) { [namespace.to_global_id] }
+
+          it 'returns only resources whose project namespace matches' do
+            expect(result.items.pluck(:name)).to contain_exactly('public', 'z private test')
+          end
+        end
+
+        context 'when filtering by multiple groups' do
+          let(:group_ids) { [namespace.to_global_id, other_namespace.to_global_id] }
+
+          it 'returns the union of resources across the given namespaces' do
+            expect(result.items.pluck(:name))
+              .to contain_exactly('public', 'z private test', 'other group resource')
+          end
+        end
+
+        context 'when group_ids does not match any namespace' do
+          let_it_be(:empty_namespace, freeze: false) { create(:group) }
+          let(:group_ids) { [empty_namespace.to_global_id] }
+
+          it 'returns no resources' do
+            expect(result.items).to be_empty
+          end
+        end
+
+        context 'when group_ids is empty' do
+          let(:group_ids) { [] }
+
+          it 'returns all visible resources' do
+            expect(result.items.pluck(:name)).to contain_exactly('public', 'internal', 'z private test',
+              'other group resource')
+          end
+        end
+
+        context 'when combined with other filters' do
+          context 'with search' do
+            let(:group_ids) { [namespace.to_global_id] }
+            let(:search) { 'public' }
+
+            it 'returns resources matching both filters' do
+              expect(result.items.pluck(:name)).to contain_exactly('public')
+            end
+          end
+
+          context 'with scope' do
+            let(:group_ids) { [namespace.to_global_id] }
+            let(:scope) { 'NAMESPACES' }
+
+            it 'returns resources matching both filters' do
+              expect(result.items.pluck(:name)).to contain_exactly('public', 'z private test')
+            end
+          end
+        end
+      end
     end
 
     context 'when the user is anonymous' do
-      let_it_be(:user) { nil }
+      let_it_be(:user, freeze: false) { nil }
 
       it 'returns only public projects' do
         expect(result.items.to_a.size).to be(1)

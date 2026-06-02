@@ -35,7 +35,7 @@ module MergeRequests
 
       private
 
-      attr_reader :merge_request, :checks, :ci_check
+      attr_reader :merge_request
 
       def preparing?
         merge_request.preparing?

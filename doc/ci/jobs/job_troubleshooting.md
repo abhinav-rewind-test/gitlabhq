@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting jobs
 ---
 
@@ -193,6 +193,32 @@ busy_resources.pluck(:build_id)
 # free up busy resources
 busy_resources.update_all(build_id: nil)
 ```
+
+## Error: `data integrity failure`
+
+You might see a `data integrity failure` error during job processing. It can occur on
+any job type, including trigger jobs for
+[downstream pipelines](../pipelines/downstream_pipelines.md), jobs waiting for
+runner assignment, and stuck jobs during cleanup.
+
+Check your PostgreSQL and Sidekiq logs for the underlying cause.
+Common causes on GitLab Self-Managed instances include:
+
+Database sequence corruption after an upgrade
+: PostgreSQL logs contain `PG::UniqueViolation` errors. Verify that the relevant
+  database trigger functions reference the correct sequences.
+
+Stale Sidekiq processes after an upgrade
+: Failures are intermittent and retrying the job succeeds. Verify that all Sidekiq
+  nodes run the expected GitLab version and restart any that do not.
+
+Ambiguous or invalid SQL from schema changes
+: PostgreSQL logs contain SQL errors from queries executed during job processing.
+  Verify whether recent schema changes affected the queries that run for this job type.
+
+If the error persists, inspect the job in the
+[Rails console](../../administration/operations/rails_console.md) to determine the
+`failure_reason` and whether a downstream pipeline was created.
 
 ## `You are not authorized to run this manual job` message
 

@@ -12,7 +12,6 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     let(:user) { create(:user) }
 
     before do
-      stub_feature_flags(new_project_creation_form: false)
       sign_in user
       visit new_project_path
     end
@@ -92,7 +91,6 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     let(:user)    { create(:user) }
 
     before do
-      stub_feature_flags(new_project_creation_form: false)
       sign_in user
       visit new_project_path
     end
@@ -162,7 +160,6 @@ RSpec.describe 'Project', feature_category: :source_code_management do
 
     before do
       sign_in(project.first_owner)
-      visit path
     end
 
     it 'shows project topics' do
@@ -282,8 +279,7 @@ RSpec.describe 'Project', feature_category: :source_code_management do
       stub_application_setting(deletion_adjourned_period: 7)
     end
 
-    def remove_with_confirm(button_text, confirm_with)
-      click_button button_text
+    def remove_with_confirm(confirm_with)
       fill_in 'confirm_name_input', with: confirm_with
       click_button 'Yes, delete project'
       wait_for_requests
@@ -298,9 +294,13 @@ RSpec.describe 'Project', feature_category: :source_code_management do
       it 'deletes project delayed and is restorable' do
         expect(page).to have_content("This action will permanently delete this project, including all its resources, on #{permanent_deletion_date_formatted}. Scheduled pipelines will not run during deletion.")
 
-        remove_with_confirm("Delete", project_to_delete.path_with_namespace)
+        click_button 'Delete'
 
-        expect(page).to have_content("This project and all its data will be permanently deleted on #{permanent_deletion_date_formatted}.")
+        expect(page).to have_content("This action will place this project, including all its resources, in a pending deletion state for 7 days, and delete it permanently on #{permanent_deletion_date_formatted}.")
+
+        remove_with_confirm(project_to_delete.path_with_namespace)
+
+        expect(page).to have_current_path(dashboard_projects_path, ignore_query: true)
 
         visit inactive_dashboard_projects_path
 
@@ -318,46 +318,11 @@ RSpec.describe 'Project', feature_category: :source_code_management do
         end
 
         it 'allows permanent deletion', :sidekiq_inline do
-          remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
+          click_button 'Delete permanently'
+
+          remove_with_confirm(project_aimed_for_deletion.path_with_namespace)
 
           expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
-        end
-      end
-
-      context 'when "Allow permanent deletion" setting is disabled' do
-        before do
-          stub_application_setting(allow_immediate_namespaces_deletion: false)
-        end
-
-        context 'when allow_immediate_namespaces_deletion feature flag is disabled' do
-          before do
-            stub_feature_flags(allow_immediate_namespaces_deletion: false)
-            sign_in user
-            visit edit_project_path(project_aimed_for_deletion)
-          end
-
-          it 'allows permanent deletion', :sidekiq_inline do
-            remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
-
-            expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
-          end
-        end
-
-        it 'allows permanent deletion for admins', :enable_admin_mode, :sidekiq_inline do
-          sign_in admin
-          visit edit_project_path(project_aimed_for_deletion)
-
-          remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
-
-          expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
-        end
-
-        it 'does not allow permanent deletion' do
-          sign_in user
-          visit edit_project_path(project_aimed_for_deletion)
-
-          expect(page).not_to have_button('Delete permanently')
-          expect(page).to have_content("This project and all its data will be permanently deleted on #{permanent_deletion_date_formatted(project_aimed_for_deletion)}.")
         end
       end
     end
@@ -370,22 +335,25 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     before do
       project.add_maintainer(user)
       sign_in user
-      visit project_path(project)
     end
 
     it 'has working links to files' do
+      visit project_path(project)
+
       click_link('PROCESS.md')
 
       expect(page).to have_selector('.file-holder')
     end
 
     it 'has working links to directories' do
+      visit project_path(project)
       click_link('encoding')
 
       expect(page).to have_selector('.breadcrumb-item', text: 'encoding')
     end
 
     it 'has working links to submodules' do
+      visit project_path(project)
       submodule = find_link('645f6c4c')
 
       expect(submodule[:href]).to eq('https://gitlab.com/gitlab-org/gitlab-grack/-/tree/645f6c4c82fd3f5e06f67134450a570b795e55a6')
@@ -411,6 +379,7 @@ RSpec.describe 'Project', feature_category: :source_code_management do
       let(:project) { create(:project, :repository, group: subgroup) }
 
       it 'renders tree table without errors' do
+        visit project_path(project)
         wait_for_requests
 
         expect(page).to have_selector('.tree-item')
@@ -572,11 +541,5 @@ RSpec.describe 'Project', feature_category: :source_code_management do
 
       it_behaves_like 'show badges'
     end
-  end
-
-  def remove_with_confirm(button_text, confirm_with, confirm_button_text = 'Confirm')
-    click_button button_text
-    fill_in 'confirm_name_input', with: confirm_with
-    click_button confirm_button_text
   end
 end

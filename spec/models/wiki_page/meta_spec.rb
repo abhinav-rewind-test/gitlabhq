@@ -3,8 +3,140 @@
 require 'spec_helper'
 
 RSpec.describe WikiPage::Meta, feature_category: :wiki do
-  let_it_be(:project) { create(:project, :wiki_repo) }
+  let_it_be(:project, freeze: false) { create(:project, :wiki_repo) }
   let_it_be(:other_project) { create(:project) }
+
+  describe '.for_projects_visible_to_user' do
+    let_it_be(:private_project, freeze: true) { create(:project, :private) }
+    let_it_be(:public_project, freeze: true) { create(:project, :public) }
+    let_it_be(:user, freeze: true) { create(:user) }
+    let_it_be(:private_meta, freeze: true) { create(:wiki_page_meta, title: 'Private Page', project: private_project) }
+    let_it_be(:public_meta, freeze: true) { create(:wiki_page_meta, title: 'Public Page', project: public_project) }
+
+    subject(:results) { described_class.for_projects_visible_to_user(user) }
+
+    it 'excludes meta records from the private project', :aggregate_failures do
+      expect(results).to include(public_meta)
+      expect(results).not_to include(private_meta)
+    end
+
+    context 'when user has access to the private project' do
+      before_all do
+        private_project.add_developer(user)
+      end
+
+      it 'returns meta records for both private and public projects' do
+        expect(results).to include(private_meta, public_meta)
+      end
+    end
+  end
+
+  describe '.for_groups_visible_to_user' do
+    let_it_be(:public_group, freeze: true) { create(:group, :public) }
+    let_it_be(:user, freeze: true) { create(:user) }
+    let_it_be(:public_meta, freeze: true) do
+      create(:wiki_page_meta, title: 'Public Group Page', namespace: public_group)
+    end
+
+    let_it_be(:private_group, freeze: true) { create(:group, :private) }
+    let_it_be(:private_meta, freeze: true) do
+      create(:wiki_page_meta, title: 'Private Group Page', namespace: private_group)
+    end
+
+    subject(:results) { described_class.for_groups_visible_to_user(user) }
+
+    it 'excludes meta records from the private group', :aggregate_failures do
+      expect(results).to include(public_meta)
+      expect(results).not_to include(private_meta)
+    end
+
+    context 'when user has access to the private group' do
+      before_all do
+        private_group.add_developer(user)
+      end
+
+      it 'returns meta records for both private and public groups' do
+        expect(results).to include(private_meta, public_meta)
+      end
+    end
+
+    context 'when meta record belongs to a project' do
+      let_it_be(:project_meta, freeze: true) do
+        create(:wiki_page_meta, title: 'Project Page', project: create(:project, :public))
+      end
+
+      it 'excludes project-level wiki page meta records', :aggregate_failures do
+        expect(results).to include(public_meta)
+        expect(results).not_to include(project_meta)
+      end
+    end
+  end
+
+  describe '.active' do
+    let_it_be(:active_meta, freeze: true) { create(:wiki_page_meta, title: 'Active Page', project: project) }
+    let_it_be(:deleted_meta, freeze: true) do
+      create(:wiki_page_meta, title: 'Deleted Page', project: project, deleted_at: 3.days.ago)
+    end
+
+    it 'returns only records without deleted_at set', :aggregate_failures do
+      results = described_class.active
+
+      expect(results).to include(active_meta)
+      expect(results).not_to include(deleted_meta)
+    end
+  end
+
+  describe '.search_by_title' do
+    let_it_be(:meta_1, freeze: true) { create(:wiki_page_meta, title: 'Deploy Guide', project: project) }
+    let_it_be(:meta_2, freeze: true) { create(:wiki_page_meta, title: 'Setup Instructions', project: project) }
+    let_it_be(:meta_3, freeze: true) { create(:wiki_page_meta, title: 'Deployment Pipeline', project: project) }
+
+    it 'returns records matching the search term case-insensitively', :aggregate_failures do
+      results = described_class.search_by_title('deploy')
+
+      expect(results).to include(meta_1, meta_3)
+      expect(results).not_to include(meta_2)
+    end
+
+    it 'returns records matching partial titles', :aggregate_failures do
+      results = described_class.search_by_title('Guide')
+
+      expect(results).to include(meta_1)
+      expect(results).not_to include(meta_2, meta_3)
+    end
+
+    it 'is case-insensitive', :aggregate_failures do
+      results = described_class.search_by_title('SETUP')
+
+      expect(results).to include(meta_2)
+      expect(results).not_to include(meta_1, meta_3)
+    end
+  end
+
+  describe '.id_in_ordered' do
+    let_it_be(:meta_a, freeze: true) { create(:wiki_page_meta, title: 'Page A', project: project) }
+    let_it_be(:meta_b, freeze: true) { create(:wiki_page_meta, title: 'Page B', project: project) }
+    let_it_be(:meta_c, freeze: true) { create(:wiki_page_meta, title: 'Page C', project: project) }
+
+    it 'returns records in the specified order' do
+      ordered_ids = [meta_c.id, meta_a.id, meta_b.id]
+      results = described_class.id_in_ordered(ordered_ids)
+
+      expect(results.map(&:id)).to eq(ordered_ids)
+    end
+
+    it 'returns records matching the given ids' do
+      results = described_class.id_in_ordered([meta_a.id, meta_b.id])
+
+      expect(results).to contain_exactly(meta_a, meta_b)
+    end
+
+    it 'handles a single id' do
+      results = described_class.id_in_ordered([meta_a.id])
+
+      expect(results).to contain_exactly(meta_a)
+    end
+  end
 
   describe 'Associations' do
     it { is_expected.to belong_to(:project) }
@@ -79,12 +211,17 @@ RSpec.describe WikiPage::Meta, feature_category: :wiki do
   end
 
   describe '#participants' do
-    let_it_be(:wiki_page_meta) { create(:wiki_page_meta, canonical_slug: 'foo', container: project) }
-    let_it_be(:user_1) { create(:user, developer_of: project) }
-    let_it_be(:user_2) { create(:user, developer_of: project) }
-    let_it_be(:user_3) { create(:user, developer_of: project) }
-    let_it_be(:note_1) { create(:note, project: project, noteable: wiki_page_meta, author: user_1, note: "Quux") }
-    let_it_be(:note_2) { create(:note, project: project, noteable: wiki_page_meta, author: user_2, note: "Quuux") }
+    let_it_be(:wiki_page_meta, freeze: false) { create(:wiki_page_meta, canonical_slug: 'foo', container: project) }
+    let_it_be(:user_1, freeze: false) { create(:user, developer_of: project) }
+    let_it_be(:user_2, freeze: true) { create(:user, developer_of: project) }
+    let_it_be(:user_3, freeze: true) { create(:user, developer_of: project) }
+    let_it_be(:note_1, freeze: false) do
+      create(:note, project: project, noteable: wiki_page_meta, author: user_1, note: "Quux")
+    end
+
+    let_it_be(:note_2, freeze: true) do
+      create(:note, project: project, noteable: wiki_page_meta, author: user_2, note: "Quuux")
+    end
 
     it 'returns all note authors' do
       expect(wiki_page_meta.participants).to match_array([user_1, user_2])
@@ -209,8 +346,10 @@ RSpec.describe WikiPage::Meta, feature_category: :wiki do
   end
 
   describe '#wiki_page' do
-    let(:wiki_page) { create(:wiki_page, container: project, content: 'test content') }
-    let(:meta) { create(:wiki_page_meta, :for_wiki_page, container: project, wiki_page: wiki_page) }
+    let_it_be(:wiki_page, freeze: false) { create(:wiki_page, container: project, content: 'test content') }
+    let_it_be(:meta, freeze: false) do
+      create(:wiki_page_meta, :for_wiki_page, container: project, wiki_page: wiki_page)
+    end
 
     subject { meta.wiki_page }
 

@@ -3,13 +3,15 @@
 module Gitlab
   module Diff
     class Highlight
+      include Gitlab::Utils::StrongMemoize
+
       PREFIX_REGEXP = /\A(.)/
 
       attr_reader :diff_file, :diff_lines, :repository, :project
 
       delegate :old_path, :new_path, :old_sha, :new_sha, to: :diff_file, prefix: :diff
 
-      def initialize(diff_lines, repository: nil, plain: false)
+      def initialize(diff_lines, repository: nil, plain: false, diff_file: nil)
         @repository = repository
         @project = repository&.project
         @plain = plain
@@ -19,6 +21,10 @@ module Gitlab
           @diff_lines = @diff_file.diff_lines
         else
           @diff_lines = diff_lines
+          @diff_file = diff_file
+          @repository ||= diff_file&.repository
+          @project ||= @repository&.project
+          @use_diff_line_highlighting = diff_file.present?
         end
 
         @raw_lines = @diff_lines.map(&:text)
@@ -82,7 +88,7 @@ module Gitlab
         return unless diff_file && diff_file.diff_refs
         return diff_line_highlighting(diff_line, plain: true) if blobs_too_large? || plain
 
-        if Feature.enabled?(:diff_line_syntax_highlighting, project)
+        if diff_line_syntax_highlighting? || @use_diff_line_highlighting
           diff_line_highlighting(diff_line)
         else
           blob_highlighting(diff_line)
@@ -149,6 +155,11 @@ module Gitlab
 
         blob.present.highlight(used_on: :diff).lines
       end
+
+      def diff_line_syntax_highlighting?
+        Feature.enabled?(:diff_line_syntax_highlighting, project)
+      end
+      strong_memoize_attr :diff_line_syntax_highlighting?
 
       def blobs_too_large?
         return true if Gitlab::Highlight.too_large?(diff_file.old_blob&.size)

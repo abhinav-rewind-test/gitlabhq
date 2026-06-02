@@ -43,15 +43,18 @@ module Gitlab
 
           scope :for_partition, ->(partition) { where(partition: partition) }
           scope :unfinished, -> { with_statuses(:queued, :active, :paused) }
+          scope :completed, -> { with_statuses(:finished, :failed) }
           scope :with_job_arguments, ->(args) { where("job_arguments = ?", args.to_json) } # rubocop:disable Rails/WhereEquals -- to override Rails comparison
           scope :not_on_hold, -> { where('on_hold_until IS NULL OR on_hold_until < NOW()') }
           scope :for_gitlab_schema, ->(gitlab_schema) { where(gitlab_schema: gitlab_schema) }
+          scope :for_job_class, ->(job_class_name) { where(job_class_name: job_class_name) }
+          scope :ordered_by_created_at_desc, -> { order(created_at: :desc) }
 
           scope :executable, -> do
             with_statuses(:queued, :active, :paused).not_on_hold
           end
 
-          scope :unfinished_with_config, ->(job_class_name, table_name, column_name, job_arguments, org_id: nil) do
+          scope :with_config, ->(job_class_name, table_name, column_name, job_arguments, org_id: nil) do
             config = {
               job_class_name: job_class_name,
               table_name: table_name,
@@ -60,7 +63,15 @@ module Gitlab
 
             config = config.merge(organization_id: org_id) if org_id.present?
 
-            unfinished.with_job_arguments(job_arguments).where(config)
+            with_job_arguments(job_arguments).where(config)
+          end
+
+          scope :unfinished_with_config, ->(*args, **kwargs) do
+            unfinished.with_config(*args, **kwargs)
+          end
+
+          scope :completed_with_config, ->(*args, **kwargs) do
+            completed.with_config(*args, **kwargs)
           end
 
           partitioned_by :partition, strategy: :sliding_list,
@@ -213,6 +224,11 @@ module Gitlab
             jobs.with_status(:succeeded).sum(:batch_size)
           end
 
+          # Format <worker_type:partition_id:id>
+          def external_id
+            "#{self.class::WORKER_TYPE}:#{partition}:#{id.last}"
+          end
+
           private
 
           def sufficient_jobs_for_failure_check?
@@ -254,6 +270,18 @@ module Gitlab
               .from_union(unions, remove_duplicates: false, remove_order: false)
               .order(partition: :asc, created_at: :asc)
               .limit(limit)
+          end
+
+          def resolve_job_class(job_class_name)
+            "#{JOB_CLASS_MODULE}::#{job_class_name}".constantize
+          end
+
+          def previous_max_cursor(job_class_name, table_name, column_name, job_arguments, org_id: nil)
+            completed_with_config(job_class_name, table_name, column_name, job_arguments, org_id: org_id)
+              .order(created_at: :desc, id: :desc)
+              .first
+              &.last_job
+              &.max_cursor
           end
         end
       end

@@ -12,6 +12,18 @@ RSpec.describe Route do
     source_type: Cells::Claimable::CLAIMS_SOURCE_TYPE::RAILS_TABLE_ROUTES,
     claiming_attributes: [:path]
 
+  describe '.cells_claims_scope' do
+    let_it_be(:top_level_route) { create(:group, path: 'top-level').route }
+    let_it_be(:sub_route) { create(:group, parent: create(:group), path: 'child').route }
+
+    it 'returns only top-level routes without a slash in the path' do
+      scope = described_class.cells_claims_scope
+
+      expect(scope).to include(top_level_route)
+      expect(scope).not_to include(sub_route)
+    end
+  end
+
   describe 'relationships' do
     it { is_expected.to belong_to(:source) }
     it { is_expected.to belong_to(:namespace) }
@@ -73,8 +85,9 @@ RSpec.describe Route do
   end
 
   describe '.by_paths' do
-    let!(:nested_group) { create(:group, path: 'foo', name: 'foo', parent: group) }
-    let!(:project) { create(:project, path: 'other-project', namespace: group) }
+    let_it_be(:group) { create(:group, path: 'git_lab', name: 'git_lab') }
+    let_it_be(:nested_group) { create(:group, path: 'foo', name: 'foo', parent: group) }
+    let_it_be(:project) { create(:project, path: 'other-project', namespace: group) }
 
     it 'returns correct routes' do
       expect(described_class.by_paths(%w[git_lab/foo git_lab/other-project])).to match_array(
@@ -251,6 +264,64 @@ RSpec.describe Route do
     end
   end
 
+  describe '#delete_conflicting_redirects cells claims' do
+    let(:route) { create(:project).route }
+
+    context 'when cells claims are enabled for RedirectRoute' do
+      before do
+        stub_config_cell(enabled: true)
+      end
+
+      it 'collects destroy metadata from conflicting redirects' do
+        redirect = route.create_redirect("#{route.path}/foo")
+
+        expect(redirect).to respond_to(:build_destroy_metadata_for_worker)
+
+        metadata = redirect.build_destroy_metadata_for_worker(:path)
+        expect(metadata).to be_a(Hash)
+        expect(metadata).to include(
+          'bucket_type', 'bucket_value', 'subject_type', 'subject_id', 'source_type', 'primary_key'
+        )
+      end
+
+      it 'queues BulkClaimsWorker in after_commit when conflicting redirects exist' do
+        redirect = route.create_redirect("#{route.path}/foo")
+        metadata = redirect.build_destroy_metadata_for_worker(:path)
+
+        expect(metadata).to be_present
+
+        # Verify the method collects metadata and passes it to run_after_commit
+        expect(route).to receive(:run_after_commit).and_yield
+
+        expect(Cells::BulkClaimsWorker).to receive(:perform_async).with(
+          'RedirectRoute', 'path', hash_including('destroy_metadata' => [metadata])
+        )
+
+        route.delete_conflicting_redirects
+      end
+
+      it 'deletes the redirect routes' do
+        route.create_redirect("#{route.path}/foo")
+
+        expect { route.delete_conflicting_redirects }.to change { RedirectRoute.count }.by(-1)
+      end
+    end
+
+    context 'when cells claims are disabled' do
+      before do
+        stub_config_cell(enabled: false)
+      end
+
+      it 'does not schedule BulkClaimsWorker' do
+        route.create_redirect("#{route.path}/foo")
+
+        expect(Cells::BulkClaimsWorker).not_to receive(:perform_async)
+
+        route.delete_conflicting_redirects
+      end
+    end
+  end
+
   describe '#conflicting_redirects' do
     let(:route) { create(:project).route }
 
@@ -300,14 +371,14 @@ RSpec.describe Route do
 
   describe 'conflicting routes validation' do
     context 'when there is a conflicting route' do
-      let!(:conflicting_group) { create(:group, path: 'foo') }
+      let_it_be(:conflicting_group) { create(:group, path: 'foo') }
 
       before do
         route.path = conflicting_group.route.path
       end
 
       context 'when deleting the conflicting route' do
-        let!(:offending_route) { conflicting_group.route }
+        let_it_be(:offending_route) { conflicting_group.route }
 
         it 'does not delete the original route' do
           # before deleting the route, check its there

@@ -5,7 +5,7 @@ import {
   GlDisclosureDropdownItem,
   GlTooltipDirective,
 } from '@gitlab/ui';
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import { s__ } from '~/locale';
 import { createAlert } from '~/alert';
 import { convertToGraphQLId, getIdFromGraphQLId } from '~/graphql_shared/utils';
@@ -18,13 +18,14 @@ import {
   TASKS_ANCHOR,
   DEFAULT_PAGE_SIZE_CHILD_ITEMS,
   DETAIL_VIEW_QUERY_PARAM_NAME,
-  WORKITEM_LINKS_SHOWLABELS_LOCALSTORAGEKEY,
+  WORKITEM_LINKS_METADATA_LOCALSTORAGEKEY,
   WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY,
 } from '../../constants';
 import {
   findHierarchyWidget,
   saveToggleToLocalStorage,
   getToggleFromLocalStorage,
+  getHiddenMetadataKeysFromLocalStorage,
   getItems,
 } from '../../utils';
 import { removeHierarchyChild } from '../../graphql/cache_utils';
@@ -37,6 +38,10 @@ import WorkItemLinksForm from './work_item_links_form.vue';
 import WorkItemChildrenWrapper from './work_item_children_wrapper.vue';
 
 export default {
+  childrenType: {
+    id: 'gid://gitlab/WorkItems::Type/5',
+    name: 'Task', // eslint-disable-line @gitlab/require-i18n-strings
+  },
   components: {
     GlAlert,
     GlDisclosureDropdown,
@@ -126,12 +131,10 @@ export default {
       reportedUserId: 0,
       reportedUrl: '',
       widgetName: TASKS_ANCHOR,
-      showLabels: true,
+      hiddenMetadataKeys: [],
       showClosed: true,
       fetchNextPageInProgress: false,
       disableContent: false,
-      showLabelsLocalStorageKey: WORKITEM_LINKS_SHOWLABELS_LOCALSTORAGEKEY,
-      showClosedLocalStorageKey: WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY,
     };
   },
   computed: {
@@ -196,8 +199,11 @@ export default {
     },
   },
   mounted() {
-    this.showLabels = getToggleFromLocalStorage(this.showLabelsLocalStorageKey);
-    this.showClosed = getToggleFromLocalStorage(this.showClosedLocalStorageKey);
+    this.hiddenMetadataKeys = getHiddenMetadataKeysFromLocalStorage(
+      WORKITEM_LINKS_METADATA_LOCALSTORAGEKEY,
+      [],
+    );
+    this.showClosed = getToggleFromLocalStorage(WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY);
   },
   methods: {
     showAddForm(formType) {
@@ -243,13 +249,12 @@ export default {
     openReportAbuseModal(reply) {
       this.toggleReportAbuseModal(true, reply);
     },
-    toggleShowLabels() {
-      this.showLabels = !this.showLabels;
-      saveToggleToLocalStorage(this.showLabelsLocalStorageKey, this.showLabels);
+    handleUpdateHiddenMetadataKeys(hiddenKeys) {
+      this.hiddenMetadataKeys = [...hiddenKeys];
     },
     toggleShowClosed() {
       this.showClosed = !this.showClosed;
-      saveToggleToLocalStorage(this.showClosedLocalStorageKey, this.showClosed);
+      saveToggleToLocalStorage(WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY, this.showClosed);
     },
     async fetchNextPage() {
       if (this.hasNextPage && !this.fetchNextPageInProgress) {
@@ -286,6 +291,7 @@ export default {
     noChildItemsOpen: s__('WorkItem|No child items are currently open.'),
   },
   FORM_TYPES,
+  WORKITEM_LINKS_METADATA_LOCALSTORAGEKEY,
 };
 </script>
 
@@ -329,10 +335,11 @@ export default {
         :work-item-iid="iid"
         :full-path="fullPath"
         :work-item-type="workItemType"
-        :show-labels="showLabels"
+        :hidden-metadata-keys="hiddenMetadataKeys"
         :show-closed="showClosed"
         :show-view-roadmap-action="false"
-        @toggle-show-labels="toggleShowLabels"
+        :metadata-local-storage-key="$options.WORKITEM_LINKS_METADATA_LOCALSTORAGEKEY"
+        @update-hidden-metadata-keys="handleUpdateHiddenMetadataKeys"
         @toggle-show-closed="toggleShowClosed"
       />
     </template>
@@ -350,6 +357,7 @@ export default {
         :is-group="false"
         :issuable-gid="issuableGid"
         :children-ids="childrenIds"
+        :children-type="$options.childrenType"
         :parent-confidential="confidential"
         :parent-iteration="issuableIteration"
         :parent-milestone="issuableMilestone"
@@ -373,7 +381,7 @@ export default {
           :is-group="isGroup"
           :full-path="fullPath"
           :work-item-id="issuableGid"
-          :show-labels="showLabels"
+          :hidden-metadata-keys="hiddenMetadataKeys"
           :show-closed="showClosed"
           :disable-content="disableContent"
           :has-indirect-children="false"
@@ -393,7 +401,7 @@ export default {
         :work-item-iid="activeChild.iid"
         :work-item-full-path="activeChildNamespaceFullPath"
         @close="closeModal"
-        @workItemDeleted="handleWorkItemDeleted(activeChild)"
+        @work-item-deleted="handleWorkItemDeleted(activeChild)"
         @openReportAbuse="openReportAbuseModal"
       />
       <work-item-abuse-modal

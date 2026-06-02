@@ -1,7 +1,7 @@
 ---
 stage: Application Security Testing
 group: Static Analysis
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting Code Quality
 ---
 
@@ -24,7 +24,7 @@ You should configure Code Quality checks to run on your worker as documented in
 
 A common issue is that the terms `Code Quality` (GitLab specific) and `Code Climate`
 (Engine used by GitLab) are very similar. You must add a **`.codeclimate.yml`** file
-to change the default configuration, **not** a `.codequality.yml` file. If you use
+to change the default configuration, not a `.codequality.yml` file. If you use
 the wrong filename, the [default `.codeclimate.yml`](https://gitlab.com/gitlab-org/ci-cd/codequality/-/blob/master/codeclimate_defaults/.codeclimate.yml.template)
 is still used.
 

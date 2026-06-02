@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Geo
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure GitLab Geo replication between two single-node sites for disaster recovery, supporting Linux package and Docker installations.
 title: Set up Geo for two single-node sites
 ---
@@ -36,9 +36,9 @@ Prerequisites:
 
 > [!note]
 > For Docker-based installations:
-> 
+>
 > Either apply the settings mentioned below directly to the GitLab container's `/etc/gitlab/gitlab.rb` file, or add them to the `GITLAB_OMNIBUS_CONFIG` environment variable in its [Docker Compose](../../../install/docker/installation.md#install-gitlab-by-using-docker-compose) file.
-> 
+>
 > When using [Docker Compose](../../../install/docker/installation.md#install-gitlab-by-using-docker-compose), use `docker-compose -f <docker-compose-file-name>.yml up` instead of `gitlab-ctl reconfigure` to apply configuration changes.
 
 1. SSH into your GitLab primary site and sign in as root:
@@ -48,7 +48,6 @@ Prerequisites:
    ```
 
 1. [Opt out of automatic PostgreSQL upgrades](https://docs.gitlab.com/omnibus/settings/database/#opt-out-of-automatic-postgresql-upgrades) to avoid unintended downtime when upgrading GitLab. Be aware of the known [caveats when upgrading PostgreSQL with Geo](https://docs.gitlab.com/omnibus/settings/database/#caveats-when-upgrading-postgresql-with-geo). Especially for larger environments, PostgreSQL upgrades must be planned and executed consciously. As a result and going forward, ensure PostgreSQL upgrades are part of the regular maintenance activities.
-
 1. Add a unique Geo site name to `/etc/gitlab/gitlab.rb`:
 
    ```ruby
@@ -74,7 +73,6 @@ Prerequisites:
    This command uses the `external_url` defined in `/etc/gitlab/gitlab.rb`.
 
 1. Copy the configuration example from [Complete primary site](#complete-primary-site).
-
 1. Create a password for the `gitlab` database user and update Rail to use the new password.
 
    > [!note]
@@ -226,11 +224,10 @@ Prerequisites:
    gitlab-ctl reconfigure
    ```
 
-   The PostgreSQL server is set up to accept remote connections
+   The PostgreSQL server is set up to accept remote connections.
 
 1. Run `netstat -plnt | grep 5432` to ensure that PostgreSQL is listening on port
    `5432` to the primary site private address.
-
 1. A certificate was automatically generated when GitLab was reconfigured. The certificate
    is used automatically to protect your PostgreSQL traffic from
    eavesdroppers. To protect against active ("man-in-the-middle") attackers,
@@ -258,7 +255,6 @@ Prerequisites:
    ```
 
 1. [Opt out of automatic PostgreSQL upgrades](https://docs.gitlab.com/omnibus/settings/database/#opt-out-of-automatic-postgresql-upgrades) to avoid unintended downtime when upgrading GitLab. Be aware of the known [caveats when upgrading PostgreSQL with Geo](https://docs.gitlab.com/omnibus/settings/database/#caveats-when-upgrading-postgresql-with-geo). Especially for larger environments, PostgreSQL upgrades must be planned and executed consciously. As a result and going forward, ensure PostgreSQL upgrades are part of the regular maintenance activities.
-
 1. To prevent any commands from running before the site is configured, stop the application server and Sidekiq:
 
    ```shell
@@ -370,7 +366,6 @@ Prerequisites:
    Be sure to replace the IP addresses with addresses appropriate to your network configuration.
 
 1. Copy the configuration example from [Complete secondary site](#complete-secondary-site).
-
 1. To apply the changes, save the file and reconfigure GitLab:
 
    ```shell
@@ -688,7 +683,7 @@ If you convert an existing site to Geo, you should check that the clone method i
 On the primary site:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility and access controls**.
 1. If you use Git over SSH:
    1. Ensure **Enabled Git access protocols** is set to **Both SSH and HTTP(S)**.
@@ -703,7 +698,7 @@ the primary site.
 After you sign in:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Geo** > **Sites**.
+1. In the left sidebar, select **Geo** > **Sites**.
 1. Verify that the site is correctly identified as a secondary Geo site, and that
    Geo is enabled.
 

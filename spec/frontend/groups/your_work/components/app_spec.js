@@ -2,20 +2,20 @@ import Vue from 'vue';
 import MockAdapter from 'axios-mock-adapter';
 import VueApollo from 'vue-apollo';
 import VueRouter from 'vue-router';
-import { GlPagination } from '@gitlab/ui';
+import { GlKeysetPagination } from '@gitlab/ui';
 import dashboardGroupsResponse from 'test_fixtures/groups/dashboard/index.json';
 import YourWorkGroupsApp from '~/groups/your_work/components/app.vue';
 import { createRouter } from '~/groups/your_work';
 import groupCountsQuery from '~/groups/your_work/graphql/queries/group_counts.query.graphql';
 import {
-  GROUP_DASHBOARD_TABS,
-  FIRST_TAB_ROUTE_NAMES,
-  SORT_OPTIONS,
-  SORT_OPTION_UPDATED,
-  SORT_OPTION_CREATED,
-  FILTERED_SEARCH_TERM_KEY,
   FILTERED_SEARCH_NAMESPACE,
+  FILTERED_SEARCH_TERM_KEY,
+  FIRST_TAB_ROUTE_NAMES,
+  GROUP_DASHBOARD_TABS,
   GROUPS_DASHBOARD_ROUTE_NAME,
+  SORT_OPTION_CREATED,
+  SORT_OPTION_UPDATED,
+  SORT_OPTIONS,
 } from '~/groups/your_work/constants';
 import TabsWithList from '~/groups_projects/components/tabs_with_list.vue';
 import TabView from '~/groups_projects/components/tab_view.vue';
@@ -28,8 +28,9 @@ import {
 import axios from '~/lib/utils/axios_utils';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import { resolvers } from '~/vue_shared/components/groups_list/resolvers';
-import { shallowMountExtended, mountExtended } from 'helpers/vue_test_utils_helper';
+import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
+import { useConfigurePathHelpers } from 'helpers/configure_path_helpers';
 
 Vue.use(VueApollo);
 Vue.use(VueRouter);
@@ -41,6 +42,7 @@ describe('YourWorkGroupsApp', () => {
 
   const defaultPropsData = {
     initialSort: 'created_desc',
+    canCreateGroup: true,
   };
 
   const endpoint = '/dashboard/groups.json';
@@ -73,14 +75,13 @@ describe('YourWorkGroupsApp', () => {
 
   afterEach(() => {
     mockAxios.restore();
-    window.gon = {};
   });
 
   it('renders TabsWithList component and passes correct props', async () => {
     mockAxios.onGet(endpoint).replyOnce(200, dashboardGroupsResponse);
     await createComponent();
 
-    expect(wrapper.findComponent(TabsWithList).props()).toEqual({
+    expect(wrapper.findComponent(TabsWithList).props()).toMatchObject({
       tabs: GROUP_DASHBOARD_TABS,
       filteredSearchTestid: null,
       filteredSearchSupportedTokens: [],
@@ -112,21 +113,33 @@ describe('YourWorkGroupsApp', () => {
       tabCountsQueryErrorMessage: 'An error occurred loading the group counts.',
       shouldUpdateActiveTabCountFromTabQuery: false,
       userPreferencesSortKey: null,
+      sortStorageKey: 'groups',
     });
   });
 
-  it('renders relative URL that supports relative_url_root', async () => {
-    window.gon = { relative_url_root: '/gitlab' };
-    mockAxios.onGet(endpoint).replyOnce(200, dashboardGroupsResponse);
-
+  it('links to the "Explore groups" page', async () => {
     await createComponent({ mountFn: mountExtended });
-    await waitForPromises();
 
-    const [expectedGroup] = dashboardGroupsResponse;
-
-    expect(wrapper.findByRole('link', { name: expectedGroup.full_name }).attributes('href')).toBe(
-      `/gitlab/${expectedGroup.full_path}`,
+    expect(wrapper.findByTestId('explore-groups-button').attributes('href')).toBe(
+      '/explore/groups',
     );
+  });
+
+  describe('when relative_url_root is set', () => {
+    useConfigurePathHelpers('/gitlab');
+
+    it('renders group with relative URL prefix', async () => {
+      mockAxios.onGet(endpoint).replyOnce(200, dashboardGroupsResponse);
+
+      await createComponent({ mountFn: mountExtended });
+      await waitForPromises();
+
+      const [expectedGroup] = dashboardGroupsResponse;
+
+      expect(wrapper.findByRole('link', { name: expectedGroup.full_name }).attributes('href')).toBe(
+        `/gitlab/${expectedGroup.full_path}`,
+      );
+    });
   });
 
   it('correctly renders `Edit` action', async () => {
@@ -156,19 +169,16 @@ describe('YourWorkGroupsApp', () => {
     });
   });
 
-  it('uses offset pagination', async () => {
+  it('uses keyset pagination', async () => {
     mockAxios.onGet(endpoint).replyOnce(200, dashboardGroupsResponse, {
       'X-PER-PAGE': 20,
-      'X-PAGE': 1,
-      'X-TOTAL': 25,
-      'X-TOTAL-PAGES': 2,
-      'X-NEXT-PAGE': 2,
+      'X-NEXT-PAGE': 'next-cursor',
       'X-PREV-PAGE': null,
     });
     await createComponent({ mountFn: mountExtended });
     await waitForPromises();
 
-    expect(wrapper.findComponent(GlPagination).exists()).toBe(true);
+    expect(wrapper.findComponent(GlKeysetPagination).exists()).toBe(true);
   });
 
   it.each(GROUP_DASHBOARD_TABS)(
@@ -182,7 +192,7 @@ describe('YourWorkGroupsApp', () => {
 
       expect(wrapper.findComponent(FilteredSearchAndSort).props()).toMatchObject({
         sortOptions: SORT_OPTIONS,
-        activeSortOption: SORT_OPTION_UPDATED,
+        activeSortOption: SORT_OPTION_CREATED,
       });
     },
   );

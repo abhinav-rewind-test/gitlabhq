@@ -82,6 +82,21 @@
       "$ref": "#/definitions/servicesDefinition"
     },
     "start_in": true,
+    "suspend_options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suspend_on_success": {
+          "type": "boolean"
+        },
+        "suspend_on_failure": {
+          "type": "boolean"
+        },
+        "environment_key": {
+          "type": "string"
+        }
+      }
+    },
     "trigger": {
       "$ref": "#/definitions/triggerDefinition"
     }
@@ -104,6 +119,9 @@
           "$ref": "#/definitions/reportPath"
         },
         "api_fuzzing": {
+          "$ref": "#/definitions/reportPath"
+        },
+        "environment_key": {
           "$ref": "#/definitions/reportPath"
         },
         "archive": {
@@ -190,6 +208,9 @@
           "$ref": "#/definitions/reportPath"
         },
         "requirements_v2": {
+          "$ref": "#/definitions/reportPath"
+        },
+        "sarif": {
           "$ref": "#/definitions/reportPath"
         },
         "sast": {
@@ -380,7 +401,8 @@
       "additionalProperties": false,
       "properties": {
         "allowed": true,
-        "exceptions": true
+        "exceptions": true,
+        "dotenv": true
       }
     },
     "hooksDefinition": {
@@ -486,9 +508,11 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                  "direct_asset_path": true,
                   "filepath": true,
                   "link_type": true,
                   "name": true,
+                  "type": true,
                   "url": true
                 }
               }

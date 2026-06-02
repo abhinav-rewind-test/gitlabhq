@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Accessibility feature tests
 ---
 
@@ -47,12 +47,18 @@ We want to make sure that users are able to interact with all available componen
 
 ### Create new spec file
 
-We want automated accessibility tests to follow already defined [user journeys](https://handbook.gitlab.com/handbook/product/ux/user-journeys/).
+For automated accessibility tests, we want to follow already defined steps for various user journeys.
 To achieve this we are reusing test cases defined for E2E tests.
 
-To add a new accessibility spec for your team, you can:
+#### Golden user journeys
 
-Browse the list of test cases for your team by either:
+We want to make sure that already defined [golden user journeys](https://handbook.gitlab.com/handbook/product/ux/user-journeys/) have accessibility test coverage. To do this, we translated Figma files to YAML format that can be used to generate accessibility specs.
+
+Follow [Accessibility journeys README](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/accessibility_journeys/README.md) to learn how to implement these specs.
+
+#### Specific user flows
+
+To add a new accessibility spec for your feature, browse the list of test cases for your group by either:
 
 - [Looking through Test Cases page](https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases),
   which you can filter by your group's label.
@@ -125,7 +131,6 @@ However, there are a few things that can help you contribute to accessibility te
 In most cases you do not want to test accessibility of a whole page. There are a couple of reasons:
 
 1. We have elements that appear on every application view, such as breadcrumbs or main navigation. Including them in every feature spec takes up quite a lot of resources and multiplies something that can be done just once. These elements have their own feature specs and that's where we want to test them.
-
 1. If a feature spec covers a whole view, the best practice would be to scope it to `<main id="content-body">` element. Here's an example of such test case:
 
    ```ruby
@@ -150,11 +155,8 @@ advantage of a fact that axe_core rules is used both for Ruby tests and Deque br
 provide the same output.
 
 1. Make sure you have axe DevTools extension installed in a browser of your choice. See [axe DevTools official website for more information](https://www.deque.com/axe/browser-extensions/).
-
 1. Navigate to the view you're testing with a feature test.
-
 1. Open axe DevTools extension and run a scan of the page.
-
 1. Expand found issues and use Highlight option to see the elements on the page for each violation.
 
 ### Known accessibility violations

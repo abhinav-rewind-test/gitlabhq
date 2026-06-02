@@ -10,7 +10,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
   let_it_be(:project2) { create(:project, creator: user) }
 
   # We need to reload as the shared example 'pipelines visibility table' is changing project
-  let_it_be(:project, reload: true) do
+  let_it_be_with_reload(:project) do
     create(:project, :repository, creator: user, maintainers: user)
   end
 
@@ -375,7 +375,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
   describe 'GET /projects/:id/pipelines/:pipeline_id/jobs' do
     let(:query) { {} }
     let(:api_user) { user }
-    let_it_be(:job) do
+    let_it_be(:job, freeze: false) do
       create(
         :ci_build,
         :success,
@@ -917,7 +917,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
           )
         end
 
-        shared_examples 'creating a succesful pipeline' do
+        shared_examples 'creating a successful pipeline' do
           it 'creates a pipeline using inputs' do
             expect { post_request }.to change { Ci::Pipeline.count }.by(1)
 
@@ -943,7 +943,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
               params: { ref: project.default_branch, inputs: inputs }.to_json
           end
 
-          it_behaves_like 'creating a succesful pipeline'
+          it_behaves_like 'creating a successful pipeline'
         end
 
         context 'when passing parameters as form data' do
@@ -961,7 +961,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
               params: { ref: project.default_branch, inputs: transformed_values }
           end
 
-          it_behaves_like 'creating a succesful pipeline'
+          it_behaves_like 'creating a successful pipeline'
         end
       end
 
@@ -1533,7 +1533,7 @@ RSpec.describe API::Ci::Pipelines, feature_category: :continuous_integration do
       create(:ci_empty_pipeline, project: project, sha: project.commit.id, ref: project.default_branch)
     end
 
-    let_it_be(:job) { create(:ci_build, :running, pipeline: pipeline) }
+    let_it_be(:job, freeze: false) { create(:ci_build, :running, pipeline: pipeline) }
 
     context 'authorized user', :aggregate_failures do
       context 'when supports canceling is true' do

@@ -7,20 +7,10 @@ import DraggableList from '~/lib/utils/vue3compat/draggable_compat.vue';
 import { defaultSortableOptions, DRAG_DELAY } from '~/sortable/constants';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { sortableStart, sortableEnd } from '~/sortable/utils';
-
 import WorkItemLinkChildContents from 'ee_else_ce/work_items/components/shared/work_item_link_child_contents.vue';
-
-import { SUPPORT_BOT_USERNAME } from '~/issues/show/utils/issuable_data';
-
 import removeLinkedItemsMutation from '../../graphql/remove_linked_items.mutation.graphql';
 import addLinkedItemsMutation from '../../graphql/add_linked_items.mutation.graphql';
-
-import {
-  RELATIONSHIP_TYPE_ENUM,
-  WORK_ITEM_TYPE_NAME_INCIDENT,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-  WORK_ITEM_TYPE_NAME_TICKET,
-} from '../../constants';
+import { RELATIONSHIP_TYPE_ENUM } from '../../constants';
 
 export default {
   RELATIONSHIP_TYPE_ENUM,
@@ -28,6 +18,7 @@ export default {
     WorkItemLinkChildContents,
     DraggableList,
   },
+  inject: ['workItemTypesConfiguration'],
   props: {
     parentWorkItemId: {
       type: String,
@@ -56,16 +47,21 @@ export default {
       required: false,
       default: false,
     },
-    showLabels: {
-      type: Boolean,
+    hiddenMetadataKeys: {
+      type: Array,
       required: false,
-      default: true,
+      default: () => [],
     },
     workItemFullPath: {
       type: String,
       required: true,
     },
     activeChildItemId: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    activePanel: {
       type: String,
       required: false,
       default: null,
@@ -108,6 +104,10 @@ export default {
   watch: {
     activeChildItemId(newVal) {
       if (!newVal && this.lastActiveElement) {
+        if (this.activePanel) {
+          this.lastActiveElement = null;
+          return;
+        }
         scrollToElement(this.lastActiveElement, { offset: -80, behavior: 'auto' });
         this.lastActiveElement = null;
       }
@@ -211,34 +211,20 @@ export default {
       }
     },
     handleLinkedItemClick(event, linkedItem) {
-      if (this.isLegacyItem(linkedItem)) {
+      const type = this.workItemTypesConfiguration.find(
+        ({ id }) => id === linkedItem.workItem.workItemType.id,
+      );
+
+      if (type.useIssueView) {
         visitUrl(linkedItem.workItem.webUrl);
-      } else {
-        this.$emit('showModal', { event, child: linkedItem.workItem });
-        this.$nextTick(() => {
-          this.lastActiveElement = event.target;
-          scrollToElement(this.lastActiveElement, { offset: -80, behavior: 'auto' });
-        });
+        return;
       }
-    },
-    isLegacyItem(linkedItem) {
-      return (
-        this.isIncident(linkedItem) ||
-        this.isTicket(linkedItem) ||
-        this.isServiceDeskIssue(linkedItem)
-      );
-    },
-    isIncident(linkedItem) {
-      return linkedItem?.workItem?.workItemType?.name === WORK_ITEM_TYPE_NAME_INCIDENT;
-    },
-    isTicket(linkedItem) {
-      return linkedItem?.workItem?.workItemType?.name === WORK_ITEM_TYPE_NAME_TICKET;
-    },
-    isServiceDeskIssue(linkedItem) {
-      return (
-        linkedItem?.workItem?.workItemType?.name === WORK_ITEM_TYPE_NAME_ISSUE &&
-        linkedItem?.workItem?.author?.username === SUPPORT_BOT_USERNAME
-      );
+
+      this.$emit('showModal', { event, child: linkedItem.workItem });
+      this.$nextTick(() => {
+        this.lastActiveElement = event.target;
+        scrollToElement(this.lastActiveElement, { offset: -80, behavior: 'auto' });
+      });
     },
   },
 };
@@ -248,7 +234,7 @@ export default {
     <h3
       v-if="heading"
       data-testid="work-items-list-heading"
-      class="gl-mb-0 gl-mt-0 gl-block gl-rounded-base gl-bg-strong gl-px-3 gl-py-2 gl-text-sm gl-font-semibold gl-text-subtle"
+      class="gl-mb-0 gl-mt-0 gl-block gl-rounded-base gl-bg-strong gl-px-3 gl-py-2 gl-text-sm gl-font-semibold gl-text-heading"
     >
       {{ heading }}
     </h3>
@@ -277,7 +263,7 @@ export default {
           :child-item="linkedItem.workItem"
           :can-update="canUpdate"
           :is-group="isGroup"
-          :show-labels="showLabels"
+          :hidden-metadata-keys="hiddenMetadataKeys"
           :work-item-full-path="workItemFullPath"
           :class="{
             'gl-border-default gl-bg-blue-50 hover:gl-bg-blue-50':

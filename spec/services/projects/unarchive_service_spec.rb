@@ -3,19 +3,13 @@
 require 'spec_helper'
 
 RSpec.describe Projects::UnarchiveService, feature_category: :groups_and_projects do
-  include Namespaces::StatefulHelpers
-
   let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group) }
-  let_it_be_with_reload(:project) { create(:project, namespace: group, archived: true) }
 
   subject(:service) { described_class.new(project: project, current_user: user) }
 
   describe '#execute' do
     context 'when user is not authorized to unarchive project' do
-      before_all do
-        project.add_maintainer(user)
-      end
+      let_it_be(:project) { create(:project, maintainers: [user]) }
 
       it 'returns not authorized error' do
         result = service.execute
@@ -26,14 +20,9 @@ RSpec.describe Projects::UnarchiveService, feature_category: :groups_and_project
     end
 
     context 'when user is authorized to unarchive project' do
-      before_all do
-        project.add_owner(user)
-      end
-
       context 'when project ancestors are already archived' do
-        before do
-          group.update!(archived: true)
-        end
+        let_it_be(:group) { create(:group, :archived) }
+        let_it_be(:project) { create(:project, namespace: group, owners: [user]) }
 
         it 'returns ancestor already archived error' do
           result = service.execute
@@ -44,6 +33,9 @@ RSpec.describe Projects::UnarchiveService, feature_category: :groups_and_project
       end
 
       context 'when project ancestors are not archived' do
+        let_it_be(:group) { create(:group) }
+        let_it_be_with_reload(:project) { create(:project, :archived, namespace: group, owners: [user]) }
+
         context 'when unarchiving project fails' do
           before do
             allow(project).to receive(:update).with(archived: false).and_return(false)
@@ -83,10 +75,10 @@ RSpec.describe Projects::UnarchiveService, feature_category: :groups_and_project
           end
 
           it 'updates the project_namespace state' do
-            set_state(project.project_namespace, :archived)
+            project.project_namespace.update!(state: :archived)
 
             expect { service.execute }.to change { project.project_namespace.state }
-              .from(Namespaces::Stateful::STATES[:archived]).to(Namespaces::Stateful::STATES[:ancestor_inherited])
+              .from('archived').to('ancestor_inherited')
           end
 
           it 'updates the project archived status to false' do

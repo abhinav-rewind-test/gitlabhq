@@ -1,5 +1,5 @@
 import Visibility from 'visibilityjs';
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import { createAlert } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
 import { convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
@@ -30,7 +30,12 @@ const commitPaginationData = ({ state, commit, data }) => {
   const hasCursors = !isEmpty(data.pageInfo || {});
 
   if (supportsCursorPagination(state.provider) && hasCursors) {
-    commit(types.SET_PAGE_CURSORS, data.pageInfo);
+    const payload = { ...data.pageInfo };
+    if (state.provider === PROVIDERS.BITBUCKET && data.workspacePagingInfo) {
+      payload.workspacePagingInfo = data.workspacePagingInfo;
+    }
+
+    commit(types.SET_PAGE_CURSORS, payload);
   } else {
     const nextPage = state.pageInfo.page + 1;
     commit(types.SET_PAGE, nextPage);
@@ -47,6 +52,24 @@ const commitPaginationData = ({ state, commit, data }) => {
   }
 };
 const paginationParams = ({ state }) => {
+  if (state.provider === PROVIDERS.BITBUCKET) {
+    const workspacesWithNextPage = Object.entries(state.workspacePagingInfo)
+      .filter(([, info]) => Boolean(info.hasNextPage))
+      .map(([workspace, pageInfo]) => ({
+        workspace,
+        page_info: {
+          next_page: pageInfo.nextPage,
+          has_next_page: pageInfo.hasNextPage,
+        },
+      }));
+
+    if (workspacesWithNextPage.length > 0) {
+      return { workspace_paging_info: btoa(JSON.stringify(workspacesWithNextPage)) };
+    }
+
+    return {};
+  }
+
   if (supportsCursorPagination(state.provider) && state.pageInfo.endCursor) {
     return { after: state.pageInfo.endCursor };
   }

@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Spamcheck anti-spam service
 ---
 
@@ -49,7 +49,7 @@ Prerequisites:
 - Administrator access.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Reporting**.
+1. In the left sidebar, select **Settings** > **Reporting**.
 1. Expand **Spam and Anti-bot Protection**.
 1. Update the Spam Check settings:
    1. Check the "Enable Spam Check via external API endpoint" checkbox.

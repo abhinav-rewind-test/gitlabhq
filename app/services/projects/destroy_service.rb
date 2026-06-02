@@ -83,10 +83,6 @@ module Projects
       end
     end
 
-    def reschedule_deletion
-      project.reschedule_deletion!(transition_user: current_user)
-    end
-
     def all_pipelines
       # We don't use `Project#all_pipelines` to skip the `build_enabled?` setting in order to get all pipelines.
       ::Ci::Pipeline.for_project(project.id)
@@ -169,8 +165,11 @@ module Projects
       unless project.destroyed?
         # Restrict project visibility if the parent namespace visibility was made more restrictive while the project was scheduled for deletion.
         visibility_level = project.visibility_level_allowed_by_namespace? ? project.visibility_level : project.namespace.visibility_level
-        project.update(delete_error: message, pending_delete: false, visibility_level: visibility_level)
-        reschedule_deletion
+
+        Project.transaction do
+          project.update!(pending_delete: false, visibility_level: visibility_level)
+          project.reschedule_deletion!(transition_user: current_user, deletion_error: message)
+        end
       end
 
       log_error("Deletion failed on #{project.full_path} with the following message: #{message}")
@@ -204,6 +203,7 @@ module Projects
 
       destroy_merge_request_diffs!
       delete_environments
+      delete_lfs_objects_projects
 
       # Rails attempts to load all related records into memory before
       # destroying: https://github.com/rails/rails/issues/22510
@@ -360,6 +360,23 @@ module Projects
         project_id: project.id,
         message: 'Deleting environments completed',
         deleted_environment_count: deleted_count
+      )
+    end
+
+    def delete_lfs_objects_projects
+      deleted_count = 0
+
+      loop do
+        deleted_rows = LfsObjectsProject.project_id_in(project.id).limit(BATCH_SIZE).delete_all
+        deleted_count += deleted_rows
+        break if deleted_rows < BATCH_SIZE
+      end
+
+      Gitlab::AppLogger.info(
+        class: self.class.name,
+        project_id: project.id,
+        message: 'Deleting LFS objects projects completed',
+        deleted_lfs_objects_project_count: deleted_count
       )
     end
 

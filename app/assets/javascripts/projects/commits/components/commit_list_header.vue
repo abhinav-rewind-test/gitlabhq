@@ -37,10 +37,24 @@ export default {
     'browseFilesPath',
     'commitsFeedPath',
   ],
-  computed: {
-    currentPath() {
-      return this.$route.params.path || '';
+  props: {
+    currentRef: {
+      type: String,
+      required: false,
+      default: '',
     },
+    filePath: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    initialFilterTokens: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
+  },
+  computed: {
     dropdownItems() {
       return [
         {
@@ -67,12 +81,18 @@ export default {
       };
     },
     refSelectorValue() {
-      return this.refType ? joinPaths('refs', this.refType, this.escapedRef) : this.escapedRef;
+      const ref = this.currentRef || this.escapedRef;
+      return this.refType ? joinPaths('refs', this.refType, ref) : ref;
     },
   },
   methods: {
     onRefChange(selectedRef) {
-      const { path, query } = generateRouterParams(selectedRef, this.$route);
+      const routeWithPath = {
+        ...this.$route,
+        params: { ...this.$route.params, path: this.filePath },
+      };
+      const { path, query, ref } = generateRouterParams(selectedRef, routeWithPath);
+      this.$emit('ref-change', ref);
       this.$router.push({ path, query });
     },
   },
@@ -92,7 +112,7 @@ export default {
         :query-params="refSelectorQueryParams"
         @input="onRefChange"
       />
-      <commit-list-breadcrumb class="gl-grow" />
+      <commit-list-breadcrumb class="gl-grow" :file-path="filePath" />
     </div>
 
     <div class="gl-flex gl-items-center gl-justify-between">
@@ -100,9 +120,9 @@ export default {
 
       <div class="gl-flex gl-items-baseline gl-gap-3">
         <open-mr-badge
-          v-if="currentPath"
+          v-if="filePath"
           :project-path="projectFullPath"
-          :blob-path="currentPath"
+          :blob-path="filePath"
           :current-ref="escapedRef"
         />
         <gl-disclosure-dropdown
@@ -129,6 +149,9 @@ export default {
       </div>
     </div>
 
-    <commit-filtered-search @filter="$emit('filter', $event)" />
+    <commit-filtered-search
+      :initial-filter-tokens="initialFilterTokens"
+      @filter="$emit('filter', $event)"
+    />
   </div>
 </template>

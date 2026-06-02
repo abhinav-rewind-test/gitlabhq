@@ -39,6 +39,7 @@ const keyToken = {
 };
 
 export default {
+  name: 'DeployKeysApp',
   components: {
     ConfirmModal,
     KeysPanel,
@@ -110,6 +111,7 @@ export default {
       pageInfo: {},
       currentPage: null,
       currentScope: null,
+      refetching: false,
       deployKeyToRemove: null,
       searchObject: null,
       searchValue: [],
@@ -141,13 +143,14 @@ export default {
       return Boolean(this.searchObject?.search);
     },
     loading() {
-      return this.$apollo.queries.deployKeys.loading;
+      return this.$apollo.queries.deployKeys.loading || this.refetching;
     },
   },
   methods: {
     onChangeTab(scope) {
       this.searchObject = null;
       this.searchValue = [];
+      this.refetching = true;
 
       return this.$apollo
         .mutate({
@@ -155,7 +158,7 @@ export default {
           variables: { scope },
         })
         .then(() => {
-          this.$apollo.queries.deployKeys.refetch();
+          return this.$apollo.queries.deployKeys.refetch();
         })
         .catch((error) => {
           captureException(error, {
@@ -163,6 +166,9 @@ export default {
               deployKeyScope: scope,
             },
           });
+        })
+        .finally(() => {
+          this.refetching = false;
         });
     },
     moveNext() {
@@ -259,7 +265,7 @@ export default {
           :tabs="tabs"
           scope="deployKeys"
           class="gl-rounded-lg"
-          @onChangeTab="onChangeTab"
+          @on-change-tab="onChangeTab"
         />
       </div>
     </div>
@@ -267,7 +273,7 @@ export default {
     <div class="gl-mt-4 gl-px-4">
       <gl-filtered-search
         v-model="searchValue"
-        :placeholder="__('Search deploy keys')"
+        :placeholder="s__('DeployKeys|Search deploy keys')"
         :available-tokens="availableTokens"
         :view-only="loading"
         @clear="handleSearch"

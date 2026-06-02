@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Development guide for GitLab CI/CD templates (Deprecated)
 ---
 
@@ -16,7 +16,7 @@ title: Development guide for GitLab CI/CD templates (Deprecated)
 > This ensures that template and component functionality remain in sync, aligning with
 > our new development practices.
 
-This document explains how to develop [GitLab CI/CD templates](../../ci/examples/_index.md#cicd-templates).
+This document explains how to develop GitLab CI/CD templates.
 
 ## Requirements for CI/CD templates
 

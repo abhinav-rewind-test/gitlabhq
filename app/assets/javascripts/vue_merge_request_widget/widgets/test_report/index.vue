@@ -1,5 +1,5 @@
 <script>
-import { uniqueId, uniq } from 'lodash';
+import { uniqueId, uniq } from 'lodash-es';
 import { __ } from '~/locale';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_NO_CONTENT } from '~/lib/utils/http_status';
@@ -258,8 +258,8 @@ export default {
       :summary="summary"
       :fetch-collapsed-data="fetchCollapsedData"
       :is-collapsible="hasSuites"
-      :label="$options.i18n.label"
-      path="test-summary"
+      :expand-button-label="s__('Reports|Expand test summary')"
+      :collapse-button-label="s__('Reports|Collapse test summary')"
     >
       <template #content>
         <mr-widget-row

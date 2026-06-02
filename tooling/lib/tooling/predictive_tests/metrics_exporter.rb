@@ -5,12 +5,12 @@ require_relative "changed_files"
 require_relative "mapping_fetcher"
 
 require_relative "../helpers/file_handler"
-require_relative "../events/track_pipeline_events"
 require_relative "../find_changes"
 
 require "logger"
 require "tmpdir"
 require "open3"
+require "gitlab_quality/test_tooling/click_house/client"
 
 # rubocop:disable Gitlab/Json -- non-rails
 module Tooling
@@ -24,8 +24,13 @@ module Tooling
 
       # @return [String] script path for jest predictive tests list generation
       JEST_PREDICTIVE_TESTS_SCRIPT_PATH = "scripts/frontend/find_jest_predictive_tests.js"
-      # @return [String] event name used by internal events
-      PREDICTIVE_TEST_METRICS_EVENT = "glci_predictive_tests_metrics"
+      REQUIRED_CLICKHOUSE_ENV_VARS = %w[
+        GLCI_DA_CLICKHOUSE_URL
+        GLCI_CLICKHOUSE_METRICS_USERNAME
+        GLCI_CLICKHOUSE_METRICS_PASSWORD
+        GLCI_CLICKHOUSE_METRICS_DB
+        GLCI_PREDICTIVE_TESTS_CLICKHOUSE_TABLE
+      ].freeze
       # @return [Hash] Supported test types with strategies
       TEST_TYPES = {
         backend: [:coverage, :described_class],
@@ -33,6 +38,8 @@ module Tooling
       }.freeze
       # @return [Integer] default spec runtime for tracking purposes
       DEFAULT_SPEC_RUNTIME_SECONDS = 0
+      # @return [Array] feature spec path prefixes (system tests)
+      FEATURE_SPEC_PREFIXES = %w[spec/features/ ee/spec/features/].freeze
 
       def initialize(
         test_type:,
@@ -79,9 +86,13 @@ module Tooling
       #
       # @return [Boolean]
       def export_rspec_metrics
-        export_all_strategies(TEST_TYPES[:backend]) do |strategy|
+        result = export_all_strategies(TEST_TYPES[:backend]) do |strategy|
           generate_and_record_metrics(strategy, rspec_matching_tests(strategy))
         end
+
+        export_duo_metrics
+
+        result
       end
 
       # Export jest test metrics
@@ -111,6 +122,56 @@ module Tooling
         results.all?(true)
       end
 
+      # Export Duo metrics by reading from artifact written by detect-system-tests-duo-experiment.
+      #
+      # Duo is intentionally NOT re-invoked here because:
+      # 1. It would incur additional LLM API costs
+      # 2. The LLM response is non-deterministic - a second call could return different
+      #    specs than what was actually used for test selection, making metrics misleading
+      #
+      # Instead, the detect-system-tests-duo-experiment job saves its predictions to a file which
+      # is passed to this job as an artifact via GLCI_PREDICTIVE_DUO_SYSTEM_TESTS_PATH.
+      #
+      # Note: missed_failing_test_files is calculated against feature specs only, since
+      # Duo exclusively predicts feature specs.
+      #
+      # @return [void]
+      def export_duo_metrics
+        system_tests_file = ENV['GLCI_PREDICTIVE_DUO_SYSTEM_TESTS_PATH']
+
+        unless system_tests_file
+          logger.info("Skipping Duo metrics - GLCI_PREDICTIVE_DUO_SYSTEM_TESTS_PATH not set")
+          return
+        end
+
+        unless File.exist?(system_tests_file)
+          logger.warn("Skipping Duo metrics - artifact file not found (#{system_tests_file})")
+          return
+        end
+
+        predicted_tests = read_array_from_file(system_tests_file)
+        predicted_failing = (predicted_tests & duo_failed_test_files).size
+        logger.info("Duo predicted #{predicted_failing} out of #{duo_failed_test_files.size} feature spec failures " \
+          "| #{failed_test_files.size} total test failures")
+
+        generate_and_record_metrics(:duo, predicted_tests, scoped_failed_files: duo_failed_test_files)
+      rescue StandardError => e
+        logger.error("Failed to export Duo metrics: #{e.message}")
+        logger.error(e.backtrace.select { |entry| entry.include?(project_root) }.join("\n")) if e.backtrace
+      end
+
+      # Failed test files scoped to feature specs only.
+      #
+      # Duo only predicts feature specs, so recall/miss metrics must be calculated
+      # against this subset rather than all pipeline failures.
+      #
+      # @return [Array]
+      def duo_failed_test_files
+        @duo_failed_test_files ||= failed_test_files.select do |f|
+          FEATURE_SPEC_PREFIXES.any? { |prefix| f.start_with?(prefix) }
+        end
+      end
+
       # Project root folder
       #
       # @return [String]
@@ -123,13 +184,6 @@ module Tooling
       # @return [String]
       def output_path
         @output_path ||= File.join(@output_dir, test_type.to_s).tap { |path| FileUtils.mkdir_p(path) }
-      end
-
-      # Internal event tracker
-      #
-      # @return [TrackPipelineEvents]
-      def tracker
-        @tracker ||= Tooling::Events::TrackPipelineEvents.new(logger: logger)
       end
 
       # MR changed files
@@ -237,18 +291,21 @@ module Tooling
       # Create, save and export metrics for selected RSpec tests for specific strategy
       #
       # @param strategy [Symbol]
+      # @param predicted_test_files [Array]
+      # @param scoped_failed_files [Array] failed test files to calculate misses against
       # @return [void]
-      def generate_and_record_metrics(strategy, predicted_test_files)
+      def generate_and_record_metrics(strategy, predicted_test_files, scoped_failed_files: failed_test_files)
         logger.info("Generating metrics for mapping strategy '#{strategy}' ...")
 
         metrics = generate_metrics_data(
           changed_files,
           predicted_test_files,
-          strategy
+          strategy,
+          scoped_failed_files: scoped_failed_files
         )
 
         save_metrics(metrics, strategy)
-        send_metrics_events(metrics, strategy)
+        send_clickhouse_metrics(metrics, strategy)
 
         logger.info("Metrics generation completed for strategy '#{strategy}'")
       end
@@ -268,8 +325,10 @@ module Tooling
       # @param changed_files [Array]
       # @param predicted_test_files [Array]
       # @param strategy [Symbol]
+      # @param scoped_failed_files [Array] failed test files to calculate misses against;
+      #   defaults to all failed files but can be scoped to a subset (e.g. feature specs for Duo)
       # @return [Hash]
-      def generate_metrics_data(changed_files, predicted_test_files, strategy)
+      def generate_metrics_data(changed_files, predicted_test_files, strategy, scoped_failed_files: failed_test_files)
         {
           timestamp: Time.now.iso8601,
           test_type: test_type,
@@ -277,9 +336,9 @@ module Tooling
           core_metrics: {
             changed_files_count: changed_files.size,
             predicted_test_files_count: predicted_test_files.size,
-            missed_failing_test_files: (failed_test_files - predicted_test_files).size,
-            predicted_failing_test_files: (failed_test_files & predicted_test_files).size,
-            failed_test_files_count: failed_test_files.size,
+            missed_failing_test_files: (scoped_failed_files - predicted_test_files).size,
+            predicted_failing_test_files: (scoped_failed_files & predicted_test_files).size,
+            failed_test_files_count: scoped_failed_files.size,
             # rspec tests have runtime information provided via knapsack report
             # frontend tests don't have a runtime report yet, so we skip them
             runtime_metrics: runtime_metrics(predicted_test_files)
@@ -296,40 +355,57 @@ module Tooling
         File.write(File.join(output_path, "metrics_#{strategy}.json"), JSON.pretty_generate(metrics))
       end
 
-      # Send event with specific metrics via internal events
-      # @param label [String]
-      # @param value [Integer|Float]
-      # @param strategy [Symbol]
-      def send_event(label, value, strategy)
-        extra_properties = { ci_job_id: ENV["CI_JOB_ID"], ci_pipeline_id: ENV["CI_PIPELINE_ID"], test_type: test_type }
-        tracker.send_event(
-          PREDICTIVE_TEST_METRICS_EVENT,
-          label: label,
-          value: value,
-          property: strategy.to_s,
-          extra_properties: extra_properties
-        )
-      end
-
-      # Send events containing calculated predictive tests metrics
+      # Send metrics to ClickHouse
       #
       # @param metrics [Hash]
       # @param strategy [Symbol]
       # @return [void]
-      def send_metrics_events(metrics, strategy)
+      def send_clickhouse_metrics(metrics, strategy)
+        unless environment_variables_set?
+          missing = REQUIRED_CLICKHOUSE_ENV_VARS.reject { |var| ENV[var] && !ENV[var].empty? }
+          logger.warn("ClickHouse export skipped - missing env vars: #{missing.join(', ')}")
+          return
+        end
+
         core = metrics[:core_metrics]
+        runtime = core[:runtime_metrics] || {}
 
-        send_event("changed_files_count", core[:changed_files_count], strategy)
-        send_event("predicted_test_files_count", core[:predicted_test_files_count], strategy)
-        send_event("missed_failing_test_files", core[:missed_failing_test_files], strategy)
-        send_event("predicted_failing_test_files", core[:predicted_failing_test_files], strategy)
+        row = {
+          timestamp: metrics[:timestamp],
+          test_type: test_type.to_s,
+          strategy: strategy.to_s,
+          ci_job_id: ENV["CI_JOB_ID"].to_i,
+          ci_pipeline_id: ENV["CI_PIPELINE_ID"].to_i,
+          ci_project_id: ENV["CI_PROJECT_ID"].to_i,
+          ci_project_path: ENV["CI_PROJECT_PATH"].to_s,
+          ci_merge_request_iid: ENV["CI_MERGE_REQUEST_IID"].to_i,
+          changed_files_count: core[:changed_files_count],
+          predicted_test_files_count: core[:predicted_test_files_count],
+          missed_failing_test_files: core[:missed_failing_test_files],
+          predicted_failing_test_files: core[:predicted_failing_test_files],
+          failed_test_files_count: core[:failed_test_files_count],
+          projected_test_runtime_seconds: runtime[:projected_test_runtime_seconds] || 0,
+          test_files_missing_runtime_count: runtime[:test_files_missing_runtime_count] || 0
+        }
 
-        return unless test_type == :backend
+        clickhouse_client.insert_json_data(ENV["GLCI_PREDICTIVE_TESTS_CLICKHOUSE_TABLE"], [row])
+        logger.info("Successfully exported metrics to ClickHouse for strategy '#{strategy}'")
+      end
 
-        runtime = core[:runtime_metrics]
+      # @return [Boolean]
+      def environment_variables_set?
+        REQUIRED_CLICKHOUSE_ENV_VARS.all? { |var| ENV[var] && !ENV[var].empty? }
+      end
 
-        send_event("projected_test_runtime_seconds", runtime[:projected_test_runtime_seconds], strategy)
-        send_event("test_files_missing_runtime_count", runtime[:test_files_missing_runtime_count], strategy)
+      # @return [GitlabQuality::TestTooling::ClickHouse::Client]
+      def clickhouse_client
+        @clickhouse_client ||= GitlabQuality::TestTooling::ClickHouse::Client.new(
+          url: ENV["GLCI_DA_CLICKHOUSE_URL"],
+          database: ENV["GLCI_CLICKHOUSE_METRICS_DB"],
+          username: ENV["GLCI_CLICKHOUSE_METRICS_USERNAME"],
+          password: ENV["GLCI_CLICKHOUSE_METRICS_PASSWORD"],
+          logger: logger
+        )
       end
 
       # Create projected test runtime metrics hash for rspec tests based on knapsack report

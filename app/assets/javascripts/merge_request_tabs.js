@@ -9,8 +9,17 @@ import { scrollTo, scrollToElement } from '~/lib/utils/scroll_utils';
 import { NO_SCROLL_TO_HASH_CLASS } from '~/lib/utils/constants';
 import { getScrollingElement } from '~/lib/utils/panels';
 import { parseUrlPathname, visitUrl } from '~/lib/utils/url_utility';
+import { pinia } from '~/pinia/instance';
+import { useMergeRequestVersions } from '~/merge_request/stores/merge_request_versions';
+import { useDiffsList } from '~/rapid_diffs/stores/diffs_list';
+import { findApplicablePosition } from '~/rapid_diffs/utils/discussion_position';
+import {
+  removeLinkedFileUrlParams,
+  withLinkedFileUrlParams,
+} from '~/rapid_diffs/utils/linked_file';
 import createEventHub from '~/helpers/event_hub_factory';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
+import InternalEvents from '~/tracking/internal_events';
 import BlobForkSuggestion from './blob/blob_fork_suggestion';
 import Diff from './diff';
 import { initDiffStatsDropdown } from './init_diff_stats_dropdown';
@@ -104,6 +113,7 @@ function mountPipelines() {
       artifactsEndpointPlaceholder: pipelineTableViewEl.dataset.artifactsEndpointPlaceholder,
       targetProjectFullPath: mrWidgetData?.target_project_full_path || '',
       fullPath: pipelineTableViewEl.dataset.fullPath,
+      newPipelinePath: pipelineTableViewEl.dataset.newPipelinePath,
       graphqlPath: pipelineTableViewEl.dataset.graphqlPath,
       manualActionsLimit: 50,
       mergeRequestId: mrWidgetData ? mrWidgetData.iid : null,
@@ -215,6 +225,7 @@ export default class MergeRequestTabs {
     this.sidebar = document.querySelector('.js-right-sidebar');
     this.pageLayout = document.querySelector('.layout-page');
     this.expandSidebar = document.querySelectorAll('.js-expand-sidebar, .js-sidebar-toggle');
+    this.rapidDiffsToggle = document.getElementById('js-rapid-diffs-toggle');
     this.paddingTop = 16;
     this.actionRegex = /\/(commits|diffs|pipelines|reports(?:\/[^/]+)?)(\.html)?\/?$/;
 
@@ -227,6 +238,7 @@ export default class MergeRequestTabs {
     this.diffsClass = null;
     this.commitsLoaded = false;
     this.isFixedLayoutPreferred = this.contentWrapper.classList.contains('container-limited');
+    this.isNewMergeRequest = Boolean(document.querySelector('.js-merge-request-new-submit'));
     this.createRapidDiffsApp = createRapidDiffsApp;
     this.rapidDiffsApp = null;
     this.eventHub = createEventHub();
@@ -302,17 +314,25 @@ export default class MergeRequestTabs {
 
       const { action } = e.currentTarget.dataset || {};
 
+      const href = e.currentTarget.getAttribute('href');
+
       if (isMetaClick(e)) {
-        const targetLink = e.currentTarget.getAttribute('href');
-        visitUrl(targetLink, true);
+        visitUrl(href, true);
+      } else if (
+        this.createRapidDiffsApp &&
+        this.isDiffAction(action) &&
+        !this.loadedPages[action] &&
+        !this.isNewMergeRequest &&
+        !this.#hasDiffRefs()
+      ) {
+        visitUrl(href);
       } else if (action) {
-        const href = e.currentTarget.getAttribute('href');
         this.tabShown(action, href);
       }
     }
   }
 
-  tabShown(action, href, shouldScroll = true) {
+  async tabShown(action, href, shouldScroll = true) {
     toggleLoader(false);
 
     if (action !== this.currentTab && this.mergeRequestTabs) {
@@ -339,7 +359,16 @@ export default class MergeRequestTabs {
       const tab = this.mergeRequestTabs.querySelector(`.${action}-tab`);
       if (tab) tab.classList.add('active');
 
-      if (isInVueNoteablePage() && !this.loadedPages[action] && action in pageBundles) {
+      const skipPageBundle = this.isDiffAction(action) && this.createRapidDiffsApp;
+      if (
+        isInVueNoteablePage() &&
+        !this.loadedPages[action] &&
+        action in pageBundles &&
+        !skipPageBundle
+      ) {
+        if (this.isDiffAction(action)) {
+          this.trackSpaVisit('legacy_diffs');
+        }
         toggleLoader(true);
         pageBundles[action]()
           .then(({ default: init }) => {
@@ -354,6 +383,7 @@ export default class MergeRequestTabs {
       }
 
       this.expandSidebar?.forEach((el) => el.classList.toggle('!gl-hidden', action !== 'show'));
+      this.rapidDiffsToggle?.classList.toggle('!gl-hidden', action !== 'diffs');
       this.rapidDiffsApp?.hide?.();
 
       if (action === 'commits') {
@@ -370,7 +400,10 @@ export default class MergeRequestTabs {
       } else if (this.isDiffAction(action)) {
         if (this.createRapidDiffsApp) {
           if (!this.rapidDiffsApp) {
-            this.rapidDiffsApp = this.createRapidDiffsApp();
+            if (!this.loadedPages[action]) {
+              this.trackSpaVisit('rapid_diffs');
+            }
+            this.rapidDiffsApp = await this.createRapidDiffsApp();
             this.rapidDiffsApp.init();
           } else {
             this.rapidDiffsApp.show();
@@ -396,6 +429,7 @@ export default class MergeRequestTabs {
         this.mountPipelinesView();
       } else if (action === 'reports') {
         this.resetViewContainer();
+        this.mergeRequestPipelinesTable = destroyPipelines(this.mergeRequestPipelinesTable);
       } else {
         const notesTab = this.mergeRequestTabs.querySelector('.notes-tab');
         const notesPane = this.mergeRequestTabPanes.querySelector('#notes');
@@ -467,6 +501,20 @@ export default class MergeRequestTabs {
 
     const pathname = location.pathname.replace(/\/*$/, '');
 
+    // For reports tab, preserve Vue Router sub-paths (e.g., /reports/security-scan)
+    const HAS_REPORTS_SUB_PATH = /merge_requests\/\d+\/reports\/.+/;
+    if (action === 'reports' && HAS_REPORTS_SUB_PATH.test(pathname)) {
+      window.history.replaceState(
+        {
+          url: window.location.href,
+          action,
+        },
+        document.title,
+        window.location.href,
+      );
+      return pathname + location.search;
+    }
+
     // Remove a trailing '/commits' '/diffs' '/pipelines'
     let newStatePathname = pathname.replace(this.actionRegex, '');
 
@@ -479,8 +527,9 @@ export default class MergeRequestTabs {
       newStatePathname += `/${this.currentAction}`;
     }
 
-    // Ensure parameters and hash come along for the ride
-    const newState = newStatePathname + location.search + location.hash;
+    // Strip linked file params and note hash when switching tabs
+    const cleanUrl = removeLinkedFileUrlParams(newStatePathname + location.search + location.hash);
+    const newState = cleanUrl.pathname + cleanUrl.search + cleanUrl.hash;
 
     if (pathname !== newStatePathname) {
       window.history.pushState(
@@ -612,6 +661,13 @@ export default class MergeRequestTabs {
     return action === 'diffs' || action === 'new/diffs';
   }
 
+  trackSpaVisit(label) {
+    InternalEvents.trackEvent('view_merge_request_diffs', {
+      label,
+      property: 'spa_navigation',
+    });
+  }
+
   expandViewContainer() {
     if (this.contentWrapper.classList.contains('container-limited')) {
       this.contentWrapper.classList.remove('container-limited');
@@ -656,5 +712,79 @@ export default class MergeRequestTabs {
     this.pageLayout.className = this.cachedPageLayoutClasses;
     this.sidebar.style.width = '';
     delete this.cachedPageLayoutClasses;
+  }
+
+  async navigateToDiffNote(discussion) {
+    if (!this.createRapidDiffsApp) {
+      visitUrl(discussion.discussion_path);
+      return;
+    }
+
+    const position = discussion.position || discussion.original_position;
+    if (!position || discussion.for_commit || discussion.commit_id) {
+      this.#visitLegacyDiffNote(discussion);
+      return;
+    }
+
+    const { diffRefs } = useMergeRequestVersions(pinia);
+    const canSpaNavigate = this.rapidDiffsApp
+      ? diffRefs && findApplicablePosition(discussion, diffRefs)
+      : discussion.active;
+
+    if (!canSpaNavigate) {
+      this.#visitDiffNote(discussion);
+      return;
+    }
+
+    await this.#spaNavigateToDiffNote(discussion, position);
+  }
+
+  async #spaNavigateToDiffNote(discussion, position) {
+    this.storeScroll();
+    if (!this.rapidDiffsApp) {
+      useDiffsList(pinia).setLinkedFileData({
+        old_path: position.old_path,
+        new_path: position.new_path,
+      });
+    }
+
+    const noteId = discussion.notes?.[0]?.id;
+    if (noteId) {
+      const url = new URL(window.location.href);
+      url.hash = `note_${noteId}`;
+      window.history.replaceState(null, '', url);
+    }
+    await this.tabShown('diffs', null, false);
+    this.rapidDiffsApp.scrollToDiffNote(discussion);
+  }
+
+  #visitDiffNote(discussion) {
+    const position = discussion.position || discussion.original_position;
+    const noteId = discussion.notes?.[0]?.id;
+    const url = withLinkedFileUrlParams(discussion.discussion_path, {
+      oldPath: position?.old_path,
+      newPath: position?.new_path,
+      hash: noteId ? `note_${noteId}` : undefined,
+    });
+    visitUrl(url.toString());
+  }
+
+  #hasDiffRefs() {
+    const appDataEl = document.querySelector('[data-rapid-diffs]');
+    if (!appDataEl) return false;
+
+    try {
+      const appData = JSON.parse(appDataEl.dataset.appData);
+      return Boolean(appData?.versions);
+    } catch {
+      return false;
+    }
+  }
+
+  #visitLegacyDiffNote(discussion) {
+    const url = new URL(discussion.discussion_path, window.location.origin);
+    url.searchParams.set('rapid_diffs_disabled', 'true');
+    url.searchParams.set('reason', 'unsupported');
+    visitUrl(url.toString());
   }
 }

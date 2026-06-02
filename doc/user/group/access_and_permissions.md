@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Configure and manage group access and permissions.
 title: Group access and permissions
 ---
@@ -15,35 +15,6 @@ title: Group access and permissions
 
 Configure your groups to control group permissions and access.
 For more information, see also [Sharing projects and groups](../project/members/sharing_projects_groups.md).
-
-## Group push rules
-
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-Group push rules allow group maintainers to set
-[push rules](../project/repository/push_rules.md) for newly created projects in the specific group.
-
-To configure push rules for a group:
-
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Repository**.
-1. Expand the **Pre-defined push rules** section.
-1. Select the settings you want.
-1. Select **Save push rules**.
-
-New projects inherit push rules from:
-
-- The closest parent group with push rules defined.
-- Push rules set for the entire instance, if no parent groups have push rules defined.
-
-Only projects inherit push rules. Subgroups don't inherit push
-rules from parent groups. To verify which push rules apply to new projects,
-create a project in the subgroup and check the project's push rules.
 
 ## Restrict Git access protocols
 
@@ -60,8 +31,8 @@ configured by an administrator.
 
 To change the permitted Git access protocols for a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. Choose the permitted protocols from **Enabled Git access protocols**.
 1. Select **Save changes**.
@@ -110,8 +81,8 @@ Administrators can combine restricted access by IP address with
 
 To restrict group access by IP address:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. In the **Restrict access by IP address** text box, enter a list of IPv4 or IPv6
    address ranges in CIDR notation:
@@ -155,6 +126,7 @@ list of security implications when accessing GitLab from a disallowed IP address
 - IP restrictions might not apply to forked projects or actions that indirectly interact with issues
   or artifacts in an IP-restricted group. For example, a merge request that closes an issue in an
   IP-restricted group by using an issue reference in the merge request description.
+- IP restrictions apply to project and group access tokens, service accounts, deploy keys, and deploy tokens.
 
 ### GitLab.com access restrictions
 
@@ -184,8 +156,8 @@ to access that group. Subgroups inherit the same allowlist.
 
 To restrict group access by domain:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. In the **Restrict membership by email domain** text box, enter the domain names to allow.
 1. Select **Save changes**.
@@ -193,7 +165,7 @@ To restrict group access by domain:
 The next time you attempt to add a user to the group, their [primary email](../profile/_index.md#change-your-primary-email)
 must match one of the allowed domains.
 
-You cannot restrict the most popular public email domains, such as:
+You cannot restrict using the most popular public email domains, such as:
 
 - `aol.com`, `gmail.com`, `hotmail.co.uk`, `hotmail.com`,
 - `hotmail.fr`, `icloud.com`, `live.com`, `mail.com`,
@@ -213,8 +185,8 @@ When you share a group, both the source and target namespaces must allow the dom
 As a group Owner, you can prevent non-members from requesting access to
 your group.
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. Clear the **Allow users to request access** checkbox.
 1. Select **Save changes**.
@@ -247,8 +219,8 @@ Prerequisites:
 
 To prevent projects from being forked outside the group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. Check **Prevent project forking outside current group**.
 1. Select **Save changes**.
@@ -279,8 +251,8 @@ The setting does not cascade. Projects in subgroups observe the subgroup configu
 
 To prevent members from being added to projects in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. Under **Membership**, select **Users cannot be added to projects in this group**.
 1. Select **Save changes**.
@@ -312,13 +284,25 @@ Group links can be created by using either a CN or a filter. To create these gro
 - In GitLab 16.7 and earlier, group Owners cannot add members to or remove members from the group. The LDAP server is considered the single source of truth for group membership for all users who have signed in with LDAP credentials.
 - In GitLab 16.8 and later, group Owners can use the [member roles API](../../api/member_roles.md) or [group members API](../../api/group_members.md#add-a-group-member) to add a service account user to or remove a service account user from the group, even when LDAP synchronization is enabled for the group. Group Owners cannot add or remove non-service account users.
 
-When a user belongs to two LDAP groups configured for the same GitLab group, GitLab assigns them the
-higher of the two associated roles.
-For example:
+When a user belongs to multiple LDAP groups configured for the same GitLab group, GitLab assigns
+them the higher of the two associated roles. For example:
 
 - User is a member of LDAP groups `Owner` and `Dev`.
 - The GitLab Group is configured with these two LDAP groups.
-- When group sync is completed, the user is granted the Owner role as this is the higher of the two LDAP group roles.
+- When group sync is completed, the user is granted the `Owner` role as this is the higher of the two LDAP group roles.
+
+With custom roles, the same logic applies when the roles have different base access levels. For example:
+
+- If user is a member of LDAP groups `Developer` and `Developer + admin_vulnerability`
+- The user is granted `Developer + admin_vulnerability` as this is the higher of the two LDAP group roles.
+
+When two custom roles share the same base access level, GitLab cannot determine a higher role by
+rank alone. Instead, the custom role from the earliest-created group link takes precedence.
+For example:
+
+- If a user is a member of LDAP groups `Developer + admin_vulnerability` and `Developer + admin_merge_request`
+- Both roles share the `Developer` base access level.
+- The user is granted whichever LDAP group link was created earlier.
 
 For more information on the administration of LDAP and group sync, refer to the [main LDAP documentation](../../administration/auth/ldap/ldap_synchronization.md#group-sync).
 
@@ -329,13 +313,6 @@ You can use a workaround to [manage project access through LDAP groups](../proje
 
 ### Create group links with a CN
 
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
 To create group links with LDAP group CN:
 
 <!-- vale gitlab_base.Spelling = NO -->
@@ -343,39 +320,29 @@ To create group links with LDAP group CN:
 1. Select the **LDAP Server** for the link.
 1. As the **Sync method**, select `LDAP Group cn`.
 1. In the **LDAP Group cn** field, begin typing the CN of the group. There is a dropdown list with matching CNs in the configured `group_base`. Select your CN from this list.
-1. In the **LDAP Access** section, choose a [default role](../permissions.md) or [custom role](../custom_roles/_index.md) for users synced in this group.
+1. In the **LDAP Access** section, choose a [default role](../permissions.md) or [custom member role](../custom_roles/_index.md) for users synced in this group.
 1. Select **Add Synchronization**.
+
+GitLab begins linking the role to any matching LDAP users. This process may take over an hour to complete.
 
 <!-- vale gitlab_base.Spelling = YES -->
 
 ### Create group links with a filter
-
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
 
 To create group links with an LDAP user filter:
 
 1. Select the **LDAP Server** for the link.
 1. As the **Sync method**, select `LDAP user filter`.
 1. Input your filter in the **LDAP User filter** box. Follow the [documentation on user filters](../../administration/auth/ldap/_index.md#set-up-ldap-user-filter).
-1. In the **LDAP Access** section, choose a [default role](../permissions.md) or [custom role](../custom_roles/_index.md) for users synced in this group.
+1. In the **LDAP Access** section, choose a [default role](../permissions.md) or [custom member role](../custom_roles/_index.md) for users synced in this group.
 1. Select **Add Synchronization**.
+
+GitLab begins linking the role to any matching LDAP users. This process may take over an hour to complete.
 
 ### Remove group links
 
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Active synchronization**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Active synchronization**.
 1. Identify the group link you want to remove and select **Remove**.
 
 > [!note]
@@ -383,17 +350,10 @@ To create group links with an LDAP user filter:
 
 ### Override user permissions
 
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
 LDAP user permissions can be manually overridden by an administrator. To override a user's permissions:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**. If LDAP synchronization
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**. If LDAP synchronization
    has granted a user a role with:
    - More permissions than the parent group membership, that user is displayed as having
      [direct membership](../project/members/_index.md#display-direct-members) of the group.
@@ -420,18 +380,18 @@ project setting. New projects created in the group have this value selected by d
 
 Prerequisites:
 
-- You must have at least the Maintainer role in the group.
+- You must have the Maintainer or Owner role in the group.
 - The group must be the top-level group, not a subgroup.
 
 To set the default minimum role:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **CI/CD** > **Variables**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **CI/CD** > **Variables**.
 1. Under **Default role to use pipeline variables** select a minimum role, or select
    **No one allowed** to prevent any user from using pipeline variables.
 1. Select **Save changes**.
 
-After a new project is created, project members with at least the Maintainer role
+After a new project is created, project members with the Maintainer or Owner role
 can change the project setting to another value if needed.
 
 ## Troubleshooting

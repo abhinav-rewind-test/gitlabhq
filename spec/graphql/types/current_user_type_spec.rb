@@ -20,8 +20,7 @@ RSpec.describe GitlabSchema.types['CurrentUser'], feature_category: :user_profil
   describe 'fields with :ai_workflows scope' do
     %w[id webUrl webPath].each do |field_name|
       it "includes :ai_workflows scope for the #{field_name} field" do
-        field = described_class.fields[field_name]
-        expect(field.instance_variable_get(:@scopes)).to include(:ai_workflows)
+        expect(described_class.fields[field_name]).to include_graphql_scopes(:ai_workflows)
       end
     end
   end
@@ -67,7 +66,8 @@ RSpec.describe GitlabSchema.types['CurrentUser'], feature_category: :user_profil
         crmContactId
         crmOrganizationId
         releaseTagWildcardId
-        releaseTag]
+        releaseTag
+        workItemTypeIds]
 
       is_expected.to have_graphql_arguments(expected_fields)
       is_expected.to have_graphql_type(Types::WorkItemType.connection_type)

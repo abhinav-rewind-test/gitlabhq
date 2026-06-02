@@ -1,5 +1,5 @@
 <script>
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { GlFormGroup, GlFormInput, GlFormCharacterCount } from '@gitlab/ui';
 import { n__, __ } from '~/locale';
 import SafeHtml from '~/vue_shared/directives/safe_html';
@@ -51,7 +51,7 @@ export default {
   },
   computed: {
     invalidFeedback() {
-      return this.titleHtml || this.title ? '' : this.$options.i18n.requiredFieldFeedback;
+      return this.title ? '' : this.$options.i18n.requiredFieldFeedback;
     },
   },
   safeHtmlConfig: {
@@ -111,7 +111,6 @@ export default {
     data-testid="work-item-title"
     class="gl-heading-1 !gl-m-0 gl-w-full gl-wrap-anywhere"
   >
-    <span v-if="titleHtml" v-safe-html:[$options.safeHtmlConfig]="titleHtml"></span>
-    <span v-else>{{ title }}</span>
+    <span v-safe-html:[$options.safeHtmlConfig]="titleHtml"></span>
   </component>
 </template>

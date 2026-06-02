@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: For assistance with this What's new page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+info: For assistance with this What's new page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects>.
 title: What's new
 description: Configure the What's new feature.
 ---
@@ -34,6 +34,6 @@ Prerequisites:
 To configure **What's new**:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Preferences**.
+1. In the left sidebar, select **Settings** > **Preferences**.
 1. Expand **What's new**, and choose the required option.
 1. Select **Save changes**.

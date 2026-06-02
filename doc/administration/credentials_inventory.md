@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Credentials inventory
 description: Monitor credentials through a comprehensive access inventory.
@@ -24,9 +24,9 @@ description: Monitor credentials through a comprehensive access inventory.
 Use the credentials inventory to monitor and control access to your organization.
 
 - On GitLab.com, the credentials inventory monitors enterprise users and service
-accounts in a top-level group.
+  accounts in a top-level group.
 - On GitLab Self-Managed and GitLab Dedicated, the credentials inventory monitors
-all human users and service accounts across the entire instance.
+  all human users and service accounts across the entire instance.
 
 Prerequisites:
 
@@ -50,7 +50,7 @@ To view the credentials inventory:
 {{< tab title="For an instance" >}}
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Credentials**.
+1. In the left sidebar, select **Credentials**.
 
 {{< /tab >}}
 
@@ -81,7 +81,7 @@ To revoke a personal access token:
 {{< tab title="For an instance" >}}
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Credentials**.
+1. In the left sidebar, select **Credentials**.
 1. Next to the personal access token, select **Revoke**.
    If the token was previously expired or revoked, the associated date is displayed.
 
@@ -112,7 +112,7 @@ To revoke a project or group access token:
 {{< tab title="For an instance" >}}
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Credentials**.
+1. In the left sidebar, select **Credentials**.
 1. Select the **Project and group access tokens** tab.
 1. Next to the project access token, select **Revoke**.
 
@@ -139,7 +139,7 @@ To delete an SSH key:
 {{< tab title="For an instance" >}}
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Credentials**.
+1. In the left sidebar, select **Credentials**.
 1. Select the **SSH Keys** tab.
 1. Next to the SSH key, select **Delete**.
 

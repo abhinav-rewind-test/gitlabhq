@@ -3,7 +3,7 @@ import { createTestingPinia } from '@pinia/testing';
 import Vue from 'vue';
 import { PiniaVuePlugin } from 'pinia';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
-import { stubComponent } from 'helpers/stub_component';
+import { RENDER_ALL_SLOTS_TEMPLATE, stubComponent } from 'helpers/stub_component';
 import AccessTokenTable from '~/vue_shared/access_tokens/components/access_token_table.vue';
 import { useAccessTokens } from '~/vue_shared/access_tokens/stores/access_tokens';
 
@@ -31,7 +31,7 @@ describe('AccessTokenTable', () => {
         ...props,
       },
       stubs: {
-        GlModal: stubComponent(GlModal),
+        GlModal: stubComponent(GlModal, { template: RENDER_ALL_SLOTS_TEMPLATE }),
       },
     });
   };
@@ -43,36 +43,6 @@ describe('AccessTokenTable', () => {
   const findModal = () => wrapper.findComponent(GlModal);
   const findIcon = (component) => component.findComponent(GlIcon);
   const findTable = () => wrapper.findComponent(GlTable);
-
-  describe('busy state', () => {
-    describe('when it is `true`', () => {
-      beforeEach(() => {
-        createComponent({ busy: true });
-      });
-
-      it('has aria-busy `true` in the table', () => {
-        expect(findTable().attributes('aria-busy')).toBe('true');
-      });
-
-      it('disables the dropdown', () => {
-        expect(findDisclosure().props('disabled')).toBe(true);
-      });
-    });
-
-    describe('when it is `false`', () => {
-      beforeEach(() => {
-        createComponent();
-      });
-
-      it('has aria-busy `false` in the table', () => {
-        expect(findTable().attributes('aria-busy')).toBe('false');
-      });
-
-      it('enables the dropdown', () => {
-        expect(findDisclosure().props('disabled')).toBe(false);
-      });
-    });
-  });
 
   describe('table headers', () => {
     it('usage header should contain a link and an assistive message', () => {
@@ -295,6 +265,15 @@ describe('AccessTokenTable', () => {
           expect(findDisclosure().exists()).toBe(false);
         });
       });
+
+      describe('when token is granular', () => {
+        it('does not render the token', () => {
+          const tokens = [{ ...defaultToken, granular: true }];
+          createComponent({ tokens });
+
+          expect(findTable().props('items')).toHaveLength(0);
+        });
+      });
     });
   });
 
@@ -307,7 +286,6 @@ describe('AccessTokenTable', () => {
 
       expect(modal.props()).toMatchObject({
         visible: true,
-        title: "Revoke the token 'My name <super token>'?",
         actionPrimary: {
           text: 'Revoke',
           attributes: { variant: 'danger' },
@@ -316,7 +294,11 @@ describe('AccessTokenTable', () => {
           text: 'Cancel',
         },
       });
-      expect(modal.text()).toBe(
+
+      expect(wrapper.findByTestId('slot-modal-title').text()).toBe(
+        "Revoke the token 'My name <super token>'?",
+      );
+      expect(wrapper.findByTestId('slot-default').text()).toBe(
         'Are you sure you want to revoke the token My name <super token>? This action cannot be undone. Any tools that rely on this access token will stop working.',
       );
     });
@@ -339,7 +321,6 @@ describe('AccessTokenTable', () => {
 
       expect(modal.props()).toMatchObject({
         visible: true,
-        title: "Rotate the token 'My name <super token>'?",
         actionPrimary: {
           text: 'Rotate',
           attributes: { variant: 'danger' },
@@ -348,7 +329,10 @@ describe('AccessTokenTable', () => {
           text: 'Cancel',
         },
       });
-      expect(modal.text()).toBe(
+      expect(modal.find('[data-testid="slot-modal-title"]').text()).toBe(
+        "Rotate the token 'My name <super token>'?",
+      );
+      expect(modal.find('[data-testid="slot-default"]').text()).toBe(
         'Are you sure you want to rotate the token My name <super token>? This action cannot be undone. Any tools that rely on this access token will stop working.',
       );
     });

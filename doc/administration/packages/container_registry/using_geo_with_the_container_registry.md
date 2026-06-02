@@ -1,10 +1,11 @@
 ---
 stage: Package
 group: Container Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Use the GitLab container registry metadata database with Geo
 description: Use the GitLab container registry metadata database with Geo
 ---
+
 Use the GitLab container registry with Geo to replicate container images. Each site's container registry metadata database is
 independent and does not use Postgres replication.
 
@@ -103,7 +104,7 @@ Prerequisites:
 
 ### Migration Steps
 
-Downtime depends on the import method. For recommendations on import methods, see [How to choose the right import method](../container_registry_metadata_database.md#how-to-choose-the-right-import-method).
+Downtime depends on the import method. For recommendations on import methods, see [choose the right import method](../container_registry_metadata_database.md#choose-the-right-import-method).
 
 > [!note]
 > The registry being migrated is read-only during the import.

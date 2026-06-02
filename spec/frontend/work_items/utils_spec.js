@@ -4,7 +4,16 @@ import {
   STATE_OPEN,
   WIDGET_TYPE_DESCRIPTION,
   WIDGET_TYPE_ASSIGNEES,
+  WIDGET_TYPE_AWARD_EMOJI,
+  WIDGET_TYPE_NOTIFICATIONS,
+  WIDGET_TYPE_NOTES,
+  WIDGET_TYPE_ERROR_TRACKING,
+  WIDGET_TYPE_CRM_CONTACTS,
+  WIDGET_TYPE_DEVELOPMENT,
+  WIDGET_TYPE_LABELS,
+  WIDGET_TYPE_LINKED_RESOURCES,
   WIDGET_TYPE_HIERARCHY,
+  WIDGET_TYPE_LINKED_ITEMS,
   WORK_ITEM_TYPE_ENUM_EPIC,
   WORK_ITEM_TYPE_ENUM_INCIDENT,
   WORK_ITEM_TYPE_ENUM_ISSUE,
@@ -23,20 +32,36 @@ import {
   WORK_ITEM_TYPE_NAME_TASK,
   WORK_ITEM_TYPE_NAME_TEST_CASE,
   WORK_ITEM_TYPE_NAME_TICKET,
+  WIDGET_TYPE_MILESTONE,
+  WIDGET_TYPE_START_AND_DUE_DATE,
+  WIDGET_TYPE_TIME_TRACKING,
 } from '~/work_items/constants';
 import {
   autocompleteDataSources,
   convertTypeEnumToName,
+  findAssigneesWidget,
+  findAwardEmojiWidget,
+  findBlockerLinkedItems,
+  findDevelopmentWidget,
+  findErrorTrackingWidget,
+  findNotificationsWidget,
+  findNotesWidget,
+  findOpenChildItemsCountsByType,
+  findCrmContactsWidget,
+  findLabelsWidget,
+  findLinkedResourcesWidget,
+  findStartAndDueDateWidget,
+  findTimeTrackingWidget,
   formatLabelForListbox,
   formatUserForListbox,
   newWorkItemPath,
   getDisplayReference,
   isReference,
   workItemRoadmapPath,
-  saveToggleToLocalStorage,
-  getToggleFromLocalStorage,
-  makeDrawerUrlParam,
-  makeDrawerItemFullPath,
+  saveHiddenMetadataKeysToLocalStorage,
+  getHiddenMetadataKeysFromLocalStorage,
+  makeDetailPanelUrlParam,
+  makeDetailPanelItemFullPath,
   getItems,
   canRouterNav,
   formatSelectOptionForCustomField,
@@ -51,9 +76,30 @@ import {
   setLastUsedWorkItemTypeIdForNamespace,
   getLastUsedWorkItemTypeIdForNamespace,
   combineWorkItemLists,
+  isCurrentViewWorkItem,
+  getSortValue,
+  isWorkplanTemplate,
 } from '~/work_items/utils';
 import { useLocalStorageSpy } from 'helpers/local_storage_helper';
 import { TYPE_EPIC } from '~/issues/constants';
+import {
+  CLOSED_AT_ASC,
+  CLOSED_AT_DESC,
+  CREATED_ASC,
+  CREATED_DESC,
+  DUE_DATE_ASC,
+  DUE_DATE_DESC,
+  MILESTONE_DUE_ASC,
+  MILESTONE_DUE_DESC,
+  POPULARITY_ASC,
+  POPULARITY_DESC,
+  START_DATE_ASC,
+  START_DATE_DESC,
+  TITLE_ASC,
+  TITLE_DESC,
+  UPDATED_ASC,
+  UPDATED_DESC,
+} from '~/work_items/list/constants';
 import { workItemQueryResponse } from './mock_data';
 
 describe('formatLabelForListbox', () => {
@@ -170,36 +216,16 @@ describe('newWorkItemPath', () => {
     );
   });
 
-  it('returns correct path for workItemType', () => {
-    expect(
-      newWorkItemPath({ fullPath: 'group/project', workItemType: WORK_ITEM_TYPE_NAME_ISSUE }),
-    ).toBe('/foobar/group/project/-/issues/new');
-  });
-
   it('returns correct data sources with group context', () => {
-    expect(
-      newWorkItemPath({
-        fullPath: 'group',
-        isGroup: true,
-        workItemType: WORK_ITEM_TYPE_NAME_EPIC,
-      }),
-    ).toBe('/foobar/groups/group/-/epics/new');
+    expect(newWorkItemPath({ fullPath: 'group', isGroup: true })).toBe(
+      '/foobar/groups/group/-/work_items/new',
+    );
   });
 
   it('appends a query string to the path', () => {
     expect(newWorkItemPath({ fullPath: 'project', query: '?foo=bar' })).toBe(
       '/foobar/project/-/work_items/new?foo=bar',
     );
-  });
-
-  it('returns `work_items` path for group issues', () => {
-    expect(
-      newWorkItemPath({
-        fullPath: 'my-group',
-        isGroup: true,
-        workItemType: WORK_ITEM_TYPE_NAME_ISSUE,
-      }),
-    ).toBe('/foobar/groups/my-group/-/work_items/new');
   });
 });
 
@@ -265,82 +291,91 @@ describe('workItemRoadmapPath', () => {
   });
 });
 
-describe('utils for remembering user showLabel preferences', () => {
+describe('utils for remembering hidden metadata keys', () => {
   useLocalStorageSpy();
 
   afterEach(() => {
     localStorage.clear();
   });
 
-  describe('saveToggleToLocalStorage', () => {
-    it('saves the value to localStorage', () => {
+  describe('saveHiddenMetadataKeysToLocalStorage', () => {
+    it('saves the array value to localStorage as JSON', () => {
       const TEST_KEY = `test-key-${new Date().getTime}`;
 
       expect(localStorage.getItem(TEST_KEY)).toBe(null);
 
-      saveToggleToLocalStorage(TEST_KEY, true);
+      saveHiddenMetadataKeysToLocalStorage(TEST_KEY, ['label1', 'label2']);
       expect(localStorage.setItem).toHaveBeenCalled();
-      expect(localStorage.getItem(TEST_KEY)).toBe(true);
+      expect(localStorage.getItem(TEST_KEY)).toBe('["label1","label2"]');
     });
   });
 
-  describe('getToggleFromLocalStorage', () => {
-    it('defaults to true when there is no value from localStorage and no default value is passed', () => {
+  describe('getHiddenMetadataKeysFromLocalStorage', () => {
+    it('returns default empty array when there is no value from localStorage and no default value is passed', () => {
       const TEST_KEY = `test-key-${new Date().getTime}`;
 
       expect(localStorage.getItem(TEST_KEY)).toBe(null);
 
-      const result = getToggleFromLocalStorage(TEST_KEY);
+      const result = getHiddenMetadataKeysFromLocalStorage(TEST_KEY);
       expect(localStorage.getItem).toHaveBeenCalled();
-      expect(result).toBe(true);
+      expect(result).toEqual([]);
     });
 
-    it('returns the default boolean value passed when there is no value from localStorage', () => {
+    it('returns an empty array when there is no value from localStorage', () => {
       const TEST_KEY = `test-key-${new Date().getTime}`;
-      const DEFAULT_VALUE = false;
 
       expect(localStorage.getItem(TEST_KEY)).toBe(null);
 
-      const result = getToggleFromLocalStorage(TEST_KEY, DEFAULT_VALUE);
+      const result = getHiddenMetadataKeysFromLocalStorage(TEST_KEY);
       expect(localStorage.getItem).toHaveBeenCalled();
-      expect(result).toBe(false);
+      expect(result).toEqual([]);
     });
 
-    it('returns the boolean value from localStorage if it exists', () => {
+    it('returns the parsed array value from localStorage if it exists', () => {
       const TEST_KEY = `test-key-${new Date().getTime}`;
-      const DEFAULT_VALUE = true;
+      const TEST_ARRAY = ['labels', 'weight', 'milestone'];
 
-      localStorage.setItem(TEST_KEY, 'false');
+      localStorage.setItem(TEST_KEY, JSON.stringify(TEST_ARRAY));
 
-      const newResult = getToggleFromLocalStorage(TEST_KEY, DEFAULT_VALUE);
+      const result = getHiddenMetadataKeysFromLocalStorage(TEST_KEY);
       expect(localStorage.getItem).toHaveBeenCalled();
-      expect(newResult).toBe(false);
+      expect(result).toEqual(TEST_ARRAY);
+    });
+
+    it('returns an empty array when stored value is invalid JSON', () => {
+      const TEST_KEY = `test-key-${new Date().getTime}`;
+
+      localStorage.setItem(TEST_KEY, 'invalid-json');
+
+      const result = getHiddenMetadataKeysFromLocalStorage(TEST_KEY);
+      expect(localStorage.getItem).toHaveBeenCalled();
+      expect(result).toEqual([]);
     });
   });
 });
 
-describe('`makeDrawerItemFullPath`', () => {
+describe('`makeDetailPanelItemFullPath`', () => {
   it('returns the items `fullPath` if present', () => {
-    const result = makeDrawerItemFullPath(
+    const result = makeDetailPanelItemFullPath(
       { fullPath: 'this/should/be/returned' },
       'this/should/not',
     );
     expect(result).toBe('this/should/be/returned');
   });
   it('returns the fallback `fullPath` if `activeItem` does not have a `referencePath`', () => {
-    const result = makeDrawerItemFullPath({}, 'this/should/be/returned');
+    const result = makeDetailPanelItemFullPath({}, 'this/should/be/returned');
     expect(result).toBe('this/should/be/returned');
   });
   describe('when `activeItem` has a `referencePath`', () => {
     it('handles the default `issuableType` of `ISSUE`', () => {
-      const result = makeDrawerItemFullPath(
+      const result = makeDetailPanelItemFullPath(
         { referencePath: 'this/should/be/returned#100' },
         'this/should/not',
       );
       expect(result).toBe('this/should/be/returned');
     });
     it('handles case where `issuableType` is an `EPIC`', () => {
-      const result = makeDrawerItemFullPath(
+      const result = makeDetailPanelItemFullPath(
         { referencePath: 'this/should/be/returned&100' },
         'this/should/not',
         TYPE_EPIC,
@@ -350,9 +385,9 @@ describe('`makeDrawerItemFullPath`', () => {
   });
 });
 
-describe('`makeDrawerUrlParam`', () => {
+describe('`makeDetailPanelUrlParam`', () => {
   it('returns iid, full_path, and id', () => {
-    const result = makeDrawerUrlParam(
+    const result = makeDetailPanelUrlParam(
       { id: 'gid://gitlab/Issue/1', iid: '123', fullPath: 'gitlab-org/gitlab' },
       'gitlab-org/gitlab',
     );
@@ -908,5 +943,528 @@ describe('combineWorkItemLists', () => {
         });
       });
     });
+  });
+});
+
+describe('isCurrentViewWorkItem', () => {
+  const createDescriptionWrapper = (issuableType) => {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('js-issuable-description-wrapper');
+    if (issuableType) {
+      wrapper.dataset.issuableType = issuableType;
+    }
+    document.body.appendChild(wrapper);
+    return wrapper;
+  };
+
+  afterEach(() => {
+    document.body.dataset.page = '';
+    document.querySelector('.js-issuable-description-wrapper')?.remove();
+  });
+
+  it.each`
+    issuableType  | description
+    ${'incident'} | ${'Incident'}
+    ${'ticket'}   | ${'Ticket'}
+  `('returns false for $description pages', ({ issuableType }) => {
+    document.body.dataset.page = 'projects:issues:show';
+    createDescriptionWrapper(issuableType);
+
+    expect(isCurrentViewWorkItem()).toBe(false);
+  });
+
+  it.each`
+    page                           | description
+    ${'groups:work_items:index'}   | ${'Group Work Items list'}
+    ${'groups:epics:index'}        | ${'Group Epics list'}
+    ${'groups:issues'}             | ${'Group Issues'}
+    ${'groups:boards:index'}       | ${'Group Issues Board'}
+    ${'groups:epic_boards:index'}  | ${'Group Epics Board'}
+    ${'projects:work_items:index'} | ${'Project Work Items list'}
+    ${'projects:issues:index'}     | ${'Project Issues list'}
+    ${'projects:boards:index'}     | ${'Project Issues Board'}
+    ${'groups:work_items:show'}    | ${'Group Work Item detail'}
+    ${'groups:epics:show'}         | ${'Group Epic detail'}
+    ${'projects:work_items:show'}  | ${'Project Work Item detail'}
+    ${'projects:issues:show'}      | ${'Project Issue detail'}
+  `('returns true for $description view ($page)', ({ page }) => {
+    document.body.dataset.page = page;
+
+    expect(isCurrentViewWorkItem()).toBe(true);
+  });
+
+  it.each`
+    page                              | description
+    ${'projects:merge_requests:show'} | ${'Merge Request detail'}
+    ${'projects:pipelines:show'}      | ${'Pipeline detail'}
+    ${''}                             | ${'empty page'}
+  `('returns false for $description view ($page)', ({ page }) => {
+    document.body.dataset.page = page;
+
+    expect(isCurrentViewWorkItem()).toBe(false);
+  });
+});
+
+describe('findAssigneesWidget', () => {
+  const assigneesWidget = { type: WIDGET_TYPE_ASSIGNEES, assignees: { nodes: [] } };
+  const featuresAssignees = { allowsMultipleAssignees: true, assignees: { nodes: [] } };
+
+  it('returns features.assignees when present', () => {
+    const workItem = {
+      features: { assignees: featuresAssignees },
+      widgets: [assigneesWidget],
+    };
+
+    expect(findAssigneesWidget(workItem)).toBe(featuresAssignees);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [assigneesWidget] };
+
+    expect(findAssigneesWidget(workItem)).toBe(assigneesWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findAssigneesWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('getSortValue', () => {
+  const mockItem = {
+    createdAt: '2024-01-15T10:00:00Z',
+    updatedAt: '2024-02-20T14:30:00Z',
+    closedAt: '2024-03-10T16:45:00Z',
+    title: 'Test Work Item',
+    widgets: [
+      {
+        type: WIDGET_TYPE_AWARD_EMOJI,
+        upvotes: 5,
+      },
+      {
+        type: WIDGET_TYPE_START_AND_DUE_DATE,
+        dueDate: '2024-05-15',
+        startDate: '2024-05-01',
+      },
+      {
+        type: WIDGET_TYPE_MILESTONE,
+        milestone: {
+          dueDate: '2024-04-30',
+          startDate: '2024-04-01',
+        },
+      },
+    ],
+  };
+
+  it.each`
+    sortKey               | itemModifier                                          | expectedResult
+    ${CREATED_ASC}        | ${(item) => item}                                     | ${new Date('2024-01-15T10:00:00Z')}
+    ${CREATED_DESC}       | ${(item) => item}                                     | ${new Date('2024-01-15T10:00:00Z')}
+    ${UPDATED_ASC}        | ${(item) => item}                                     | ${new Date('2024-02-20T14:30:00Z')}
+    ${UPDATED_DESC}       | ${(item) => item}                                     | ${new Date('2024-02-20T14:30:00Z')}
+    ${CLOSED_AT_ASC}      | ${(item) => item}                                     | ${new Date('2024-03-10T16:45:00Z')}
+    ${CLOSED_AT_DESC}     | ${(item) => item}                                     | ${new Date('2024-03-10T16:45:00Z')}
+    ${MILESTONE_DUE_ASC}  | ${(item) => item}                                     | ${new Date('2024-04-30')}
+    ${MILESTONE_DUE_DESC} | ${(item) => item}                                     | ${new Date('2024-04-30')}
+    ${DUE_DATE_ASC}       | ${(item) => item}                                     | ${new Date('2024-05-15')}
+    ${DUE_DATE_DESC}      | ${(item) => item}                                     | ${new Date('2024-05-15')}
+    ${START_DATE_ASC}     | ${(item) => item}                                     | ${new Date('2024-05-01')}
+    ${START_DATE_DESC}    | ${(item) => item}                                     | ${new Date('2024-05-01')}
+    ${TITLE_ASC}          | ${(item) => item}                                     | ${'test work item'}
+    ${TITLE_DESC}         | ${(item) => item}                                     | ${'test work item'}
+    ${TITLE_ASC}          | ${(item) => ({ ...item, title: 'MiXeD CaSe TiTlE' })} | ${'mixed case title'}
+    ${POPULARITY_ASC}     | ${(item) => item}                                     | ${5}
+    ${POPULARITY_DESC}    | ${(item) => item}                                     | ${5}
+  `('returns $expectedResult for $sortKey', ({ sortKey, itemModifier, expectedResult }) => {
+    const item = itemModifier(mockItem);
+    const result = getSortValue(item, sortKey);
+    expect(result).toEqual(expectedResult);
+  });
+
+  it.each`
+    sortKey               | itemModifier                                                                                                                              | expectedResult
+    ${CLOSED_AT_ASC}      | ${(item) => ({ ...item, closedAt: null })}                                                                                                | ${null}
+    ${CLOSED_AT_DESC}     | ${(item) => ({ ...item, closedAt: null })}                                                                                                | ${null}
+    ${TITLE_ASC}          | ${(item) => ({ ...item, title: null })}                                                                                                   | ${''}
+    ${TITLE_DESC}         | ${(item) => ({ ...item, title: null })}                                                                                                   | ${''}
+    ${POPULARITY_DESC}    | ${(item) => ({ ...item, widgets: item.widgets.map((w) => (w.type === WIDGET_TYPE_AWARD_EMOJI ? { ...w, upvotes: undefined } : w)) })}     | ${null}
+    ${MILESTONE_DUE_ASC}  | ${(item) => ({ ...item, widgets: item.widgets.filter((w) => w.type !== WIDGET_TYPE_MILESTONE) })}                                         | ${null}
+    ${MILESTONE_DUE_DESC} | ${(item) => ({ ...item, widgets: item.widgets.filter((w) => w.type !== WIDGET_TYPE_MILESTONE) })}                                         | ${null}
+    ${MILESTONE_DUE_ASC}  | ${(item) => ({ ...item, widgets: item.widgets.map((w) => (w.type === WIDGET_TYPE_MILESTONE ? { ...w, milestone: {} } : w)) })}            | ${null}
+    ${MILESTONE_DUE_DESC} | ${(item) => ({ ...item, widgets: item.widgets.map((w) => (w.type === WIDGET_TYPE_MILESTONE ? { ...w, milestone: {} } : w)) })}            | ${null}
+    ${DUE_DATE_ASC}       | ${(item) => ({ ...item, widgets: item.widgets.filter((w) => w.type !== WIDGET_TYPE_START_AND_DUE_DATE) })}                                | ${null}
+    ${DUE_DATE_DESC}      | ${(item) => ({ ...item, widgets: item.widgets.map((w) => (w.type === WIDGET_TYPE_START_AND_DUE_DATE ? { ...w, dueDate: null } : w)) })}   | ${null}
+    ${START_DATE_ASC}     | ${(item) => ({ ...item, widgets: item.widgets.filter((w) => w.type !== WIDGET_TYPE_START_AND_DUE_DATE) })}                                | ${null}
+    ${START_DATE_DESC}    | ${(item) => ({ ...item, widgets: item.widgets.map((w) => (w.type === WIDGET_TYPE_START_AND_DUE_DATE ? { ...w, startDate: null } : w)) })} | ${null}
+    ${'UNKNOWN_SORT_KEY'} | ${(item) => item}                                                                                                                         | ${null}
+    ${''}                 | ${(item) => item}                                                                                                                         | ${null}
+  `('returns null for $sortKey', ({ sortKey, itemModifier, expectedResult }) => {
+    const item = itemModifier(mockItem);
+    const result = getSortValue(item, sortKey);
+    expect(result).toEqual(expectedResult);
+  });
+});
+
+describe('findAwardEmojiWidget', () => {
+  const awardEmojiWidget = { type: WIDGET_TYPE_AWARD_EMOJI, awardEmoji: { nodes: [] } };
+  const featuresAwardEmoji = { upvotes: 0, downvotes: 0, awardEmoji: { nodes: [] } };
+
+  it('returns features.awardEmoji when present', () => {
+    const workItem = {
+      features: { awardEmoji: featuresAwardEmoji },
+      widgets: [awardEmojiWidget],
+    };
+
+    expect(findAwardEmojiWidget(workItem)).toBe(featuresAwardEmoji);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [awardEmojiWidget] };
+
+    expect(findAwardEmojiWidget(workItem)).toBe(awardEmojiWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findAwardEmojiWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findNotificationsWidget', () => {
+  const notificationsWidget = { type: WIDGET_TYPE_NOTIFICATIONS, subscribed: true };
+  const featuresNotifications = { subscribed: true };
+
+  it('returns features.notifications when present', () => {
+    const workItem = {
+      features: { notifications: featuresNotifications },
+      widgets: [notificationsWidget],
+    };
+
+    expect(findNotificationsWidget(workItem)).toBe(featuresNotifications);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [notificationsWidget] };
+
+    expect(findNotificationsWidget(workItem)).toBe(notificationsWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findNotificationsWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findNotesWidget', () => {
+  describe('when features.notes is present', () => {
+    const featuresNotes = { discussionLocked: true };
+    const notesWidget = { type: WIDGET_TYPE_NOTES, discussionLocked: false };
+    let workItem;
+
+    beforeEach(() => {
+      workItem = {
+        features: { notes: featuresNotes },
+        widgets: [notesWidget],
+      };
+    });
+
+    it('returns features.notes', () => {
+      expect(findNotesWidget(workItem)).toBe(featuresNotes);
+    });
+  });
+
+  describe('when features.notes is not present', () => {
+    const notesWidget = { type: WIDGET_TYPE_NOTES, discussionLocked: false };
+    let workItem;
+
+    beforeEach(() => {
+      workItem = { widgets: [notesWidget] };
+    });
+
+    it('falls back to widgets', () => {
+      expect(findNotesWidget(workItem)).toBe(notesWidget);
+    });
+  });
+
+  describe('when neither exists', () => {
+    it('returns undefined', () => {
+      expect(findNotesWidget({ widgets: [] })).toBeUndefined();
+    });
+  });
+});
+
+describe('findErrorTrackingWidget', () => {
+  const errorTrackingWidget = {
+    type: WIDGET_TYPE_ERROR_TRACKING,
+    identifier: '1',
+    stackTrace: { nodes: [] },
+    status: 'SUCCESS',
+  };
+  const featuresErrorTracking = { identifier: '1', stackTrace: { nodes: [] }, status: 'SUCCESS' };
+
+  it('returns features.errorTracking when present', () => {
+    const workItem = {
+      features: { errorTracking: featuresErrorTracking },
+      widgets: [errorTrackingWidget],
+    };
+
+    expect(findErrorTrackingWidget(workItem)).toBe(featuresErrorTracking);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [errorTrackingWidget] };
+
+    expect(findErrorTrackingWidget(workItem)).toBe(errorTrackingWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findErrorTrackingWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findCrmContactsWidget', () => {
+  const crmContactsWidget = { type: WIDGET_TYPE_CRM_CONTACTS, contacts: { nodes: [] } };
+  const featuresCrmContacts = { contactsAvailable: true, contacts: { nodes: [] } };
+
+  it('returns features.crmContacts when present', () => {
+    const workItem = {
+      features: { crmContacts: featuresCrmContacts },
+      widgets: [crmContactsWidget],
+    };
+
+    expect(findCrmContactsWidget(workItem)).toBe(featuresCrmContacts);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [crmContactsWidget] };
+
+    expect(findCrmContactsWidget(workItem)).toBe(crmContactsWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findCrmContactsWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findLinkedResourcesWidget', () => {
+  const linkedResourcesWidget = {
+    type: WIDGET_TYPE_LINKED_RESOURCES,
+    linkedResources: { nodes: [] },
+  };
+  const featuresLinkedResources = { linkedResources: { nodes: [] } };
+
+  it('returns features.linkedResources when present', () => {
+    const workItem = {
+      features: { linkedResources: featuresLinkedResources },
+      widgets: [linkedResourcesWidget],
+    };
+
+    expect(findLinkedResourcesWidget(workItem)).toBe(featuresLinkedResources);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [linkedResourcesWidget] };
+
+    expect(findLinkedResourcesWidget(workItem)).toBe(linkedResourcesWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findLinkedResourcesWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findStartAndDueDateWidget', () => {
+  const startAndDueDateWidget = {
+    type: WIDGET_TYPE_START_AND_DUE_DATE,
+    startDate: '2024-01-01',
+    dueDate: '2024-01-31',
+  };
+  const featuresStartAndDueDate = { startDate: '2024-02-01', dueDate: '2024-02-28' };
+
+  it('returns features.startAndDueDate when present', () => {
+    const workItem = {
+      features: { startAndDueDate: featuresStartAndDueDate },
+      widgets: [startAndDueDateWidget],
+    };
+
+    expect(findStartAndDueDateWidget(workItem)).toBe(featuresStartAndDueDate);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [startAndDueDateWidget] };
+
+    expect(findStartAndDueDateWidget(workItem)).toBe(startAndDueDateWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findStartAndDueDateWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findLabelsWidget', () => {
+  const labelsWidget = {
+    type: WIDGET_TYPE_LABELS,
+    allowsScopedLabels: false,
+    labels: { nodes: [{ id: 'gid://gitlab/Label/1', title: 'bug' }] },
+  };
+  const featuresLabels = {
+    allowsScopedLabels: true,
+    labels: { nodes: [{ id: 'gid://gitlab/Label/2', title: 'feature' }] },
+  };
+
+  it('returns features.labels when present', () => {
+    const workItem = {
+      features: { labels: featuresLabels },
+      widgets: [labelsWidget],
+    };
+
+    expect(findLabelsWidget(workItem)).toBe(featuresLabels);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [labelsWidget] };
+
+    expect(findLabelsWidget(workItem)).toBe(labelsWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findLabelsWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findDevelopmentWidget', () => {
+  const developmentWidget = {
+    type: WIDGET_TYPE_DEVELOPMENT,
+    willAutoCloseByMergeRequest: false,
+    closingMergeRequests: { count: 0, nodes: [] },
+  };
+  const featuresDevelopment = {
+    willAutoCloseByMergeRequest: true,
+    closingMergeRequests: { count: 1, nodes: [] },
+  };
+
+  it('returns features.development when present', () => {
+    const workItem = {
+      features: { development: featuresDevelopment },
+      widgets: [developmentWidget],
+    };
+
+    expect(findDevelopmentWidget(workItem)).toBe(featuresDevelopment);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [developmentWidget] };
+
+    expect(findDevelopmentWidget(workItem)).toBe(developmentWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findDevelopmentWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findTimeTrackingWidget', () => {
+  const timeTrackingWidget = {
+    type: WIDGET_TYPE_TIME_TRACKING,
+    timeEstimate: 0,
+    humanReadableAttributes: { timeEstimate: '' },
+    timelogs: { nodes: [] },
+    totalTimeSpent: 0,
+  };
+  const featuresTimeTracking = {
+    timeEstimate: 3600,
+    humanReadableAttributes: { timeEstimate: '1h' },
+    timelogs: { nodes: [] },
+    totalTimeSpent: 1800,
+  };
+
+  it('returns features.timeTracking when present', () => {
+    const workItem = {
+      features: { timeTracking: featuresTimeTracking },
+      widgets: [timeTrackingWidget],
+    };
+
+    expect(findTimeTrackingWidget(workItem)).toBe(featuresTimeTracking);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [timeTrackingWidget] };
+
+    expect(findTimeTrackingWidget(workItem)).toBe(timeTrackingWidget);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findTimeTrackingWidget({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findBlockerLinkedItems', () => {
+  const widgetNodes = [{ linkId: 'gid://gitlab/IssueLink/1', linkType: 'is_blocked_by' }];
+  const featuresNodes = [{ linkId: 'gid://gitlab/IssueLink/2', linkType: 'is_blocked_by' }];
+  const linkedItemsWidget = {
+    type: WIDGET_TYPE_LINKED_ITEMS,
+    linkedItems: { nodes: widgetNodes },
+  };
+
+  it('returns features.linkedItems.linkedItems.nodes when present', () => {
+    const workItem = {
+      features: { linkedItems: { linkedItems: { nodes: featuresNodes } } },
+      widgets: [linkedItemsWidget],
+    };
+
+    expect(findBlockerLinkedItems(workItem)).toBe(featuresNodes);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [linkedItemsWidget] };
+
+    expect(findBlockerLinkedItems(workItem)).toBe(widgetNodes);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findBlockerLinkedItems({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('findOpenChildItemsCountsByType', () => {
+  const widgetCounts = [
+    { countsByState: { opened: 1, all: 1, closed: 0 }, workItemType: { name: 'Task' } },
+  ];
+  const featuresCounts = [
+    { countsByState: { opened: 2, all: 2, closed: 0 }, workItemType: { name: 'Issue' } },
+  ];
+  const hierarchyWidget = {
+    type: WIDGET_TYPE_HIERARCHY,
+    rolledUpCountsByType: widgetCounts,
+  };
+
+  it('returns features.hierarchy.rolledUpCountsByType when present', () => {
+    const workItem = {
+      features: { hierarchy: { rolledUpCountsByType: featuresCounts } },
+      widgets: [hierarchyWidget],
+    };
+
+    expect(findOpenChildItemsCountsByType(workItem)).toBe(featuresCounts);
+  });
+
+  it('falls back to widgets when features not present', () => {
+    const workItem = { widgets: [hierarchyWidget] };
+
+    expect(findOpenChildItemsCountsByType(workItem)).toBe(widgetCounts);
+  });
+
+  it('returns undefined when neither exists', () => {
+    expect(findOpenChildItemsCountsByType({ widgets: [] })).toBeUndefined();
+  });
+});
+
+describe('isWorkplanTemplate', () => {
+  it.each([
+    ['feature.plan', true],
+    ['something.plan', true],
+    ['Bug', false],
+    ['plan', false],
+    ['', false],
+    [undefined, false],
+    [null, false],
+  ])('returns %p for "%s"', (input, expected) => {
+    expect(isWorkplanTemplate(input)).toBe(expected);
   });
 });

@@ -17,6 +17,8 @@ module API
           track_runner_authentication
           forbidden! unless current_runner
 
+          set_current_organization_from_runner(current_runner)
+
           current_runner.heartbeat(creation_state: creation_state) if ensure_runner_manager
           return unless ensure_runner_manager
 
@@ -27,6 +29,8 @@ module API
         def authenticate_runner_from_header!
           track_runner_authentication
           forbidden! unless current_runner_from_header
+
+          set_current_organization_from_runner(current_runner_from_header)
         end
 
         def get_runner_details_from_request
@@ -100,20 +104,27 @@ module API
             job = job_from_token
 
             forbidden! unless job
-          rescue ::Ci::AuthJobFinder::DeletedProjectError
+          rescue ::Ci::AuthJobFinder::DeletedProjectError => e
+            log_job_auth_failure(e.job, 'project_deleted')
             forbidden!('Project has been deleted!')
-          rescue ::Ci::AuthJobFinder::ErasedJobError
+          rescue ::Ci::AuthJobFinder::ErasedJobError => e
+            log_job_auth_failure(e.job, 'job_erased')
             forbidden!('Job has been erased!')
-          rescue ::Ci::AuthJobFinder::NotRunningJobError
-            # Pass current_job solely to load actual status of the job.
-            # AuthJobFinder currently returns no details.
-            job_forbidden!(current_job, 'Job is not processing on runner')
+          rescue ::Ci::AuthJobFinder::NotRunningJobError => e
+            log_job_auth_failure(e.job, 'job_not_running')
+            job_forbidden!(e.job, 'Job is not processing on runner')
           rescue ::Ci::AuthJobFinder::ExpiredJobTokenError => e
             if fail_on_expired_token
-              e.job.drop!(:job_token_expired)
-              log_job_failed_due_to_expired_token(e.job)
+              dropped = \
+                begin
+                  e.job.drop(:job_token_expired)
+                rescue ActiveRecord::StaleObjectError
+                  false
+                end
+
+              log_job_auth_failure(e.job, dropped ? 'job_dropped_token_expired' : 'job_token_expired')
             else
-              log_job_forbidden_due_to_expired_token(e.job)
+              log_job_auth_failure(e.job, 'job_token_expired')
             end
 
             job_forbidden!(e.job, 'Job token has expired')
@@ -173,14 +184,16 @@ module API
         end
 
         def job_from_token
-          # Uses the Ci::AuthJobFinder, which we want to use
-          # as the sole centralized job token authentication service.
-          #
-          # If the token does not link to the URL-specified job,
-          # return a generic auth error with no build details.
-
           return unless current_job
-          return unless current_job == ::Ci::AuthJobFinder.new(token: job_token).execute!
+
+          found_job = ::Ci::AuthJobFinder.new(token: job_token).execute!
+
+          return unless found_job
+
+          unless current_job == found_job
+            log_job_auth_failure(found_job, 'job_token_mismatch')
+            return
+          end
 
           current_job
         end
@@ -192,9 +205,15 @@ module API
         end
 
         def set_application_context
-          return unless current_job
+          if current_job
+            Gitlab::ApplicationContext.push(job: current_job, runner: current_runner)
+          elsif current_runner
+            Gitlab::ApplicationContext.push(runner: current_runner)
+          end
 
-          Gitlab::ApplicationContext.push(job: current_job, runner: current_runner)
+          # Idempotent: organization_assigned guard in the callee prevents
+          # double-assignment when authenticate_runner! already set it.
+          set_current_organization_from_runner(current_runner)
         end
 
         def track_ci_minutes_usage!(_build)
@@ -221,6 +240,16 @@ module API
 
         private
 
+        # rubocop:disable Gitlab/AvoidCurrentOrganization -- Runner API does not go
+        # through standard set_current_organization
+        def set_current_organization_from_runner(runner)
+          return if ::Current.organization_assigned
+          return if runner.nil? || runner.instance_type?
+
+          ::Current.organization = ::Organizations::Organization.find_by_id_with_isolation_record(runner.organization_id)
+        end
+        # rubocop:enable Gitlab/AvoidCurrentOrganization
+
         def processing_on_runner?(job)
           job.running? || job.canceling?
         end
@@ -237,23 +266,15 @@ module API
           strong_memoize(:metrics) { ::Gitlab::Ci::Runner::Metrics.new }
         end
 
-        def log_job_forbidden_due_to_expired_token(job)
+        def log_job_auth_failure(job, reason)
           Gitlab::AppLogger.info({
             class: self.class.name,
             job_id: job.id,
+            job_status: job.status,
             job_user_id: job.user_id,
             job_project_id: job.project_id,
-            message: "Job forbidden due to expired JWT"
-          }.merge(Gitlab::ApplicationContext.current))
-        end
-
-        def log_job_failed_due_to_expired_token(job)
-          Gitlab::AppLogger.info({
-            class: self.class.name,
-            job_id: job.id,
-            job_user_id: job.user_id,
-            job_project_id: job.project_id,
-            message: "Job failed due to expired JWT"
+            auth_fail_reason: reason,
+            message: "Job auth error"
           }.merge(Gitlab::ApplicationContext.current))
         end
       end

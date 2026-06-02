@@ -16,7 +16,7 @@ import {
   GlTooltipDirective,
   GlSprintf,
 } from '@gitlab/ui';
-import { isEmpty } from 'lodash';
+import { isEmpty } from 'lodash-es';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { s__, n__ } from '~/locale';
 import InstanceComponent from '~/vue_shared/components/deployment_instance.vue';
@@ -25,6 +25,7 @@ import { STATUS_MAP, CANARY_STATUS } from '../constants';
 import CanaryIngress from './canary_ingress.vue';
 
 export default {
+  name: 'DeployBoard',
   components: {
     InstanceComponent,
     CanaryIngress,

@@ -497,7 +497,7 @@ RSpec.describe Trigger, feature_category: :tooling do
         it 'includes extra variables' do
           expect(subject.variables).to include({
             "FULL_RUBY_VERSION" => RUBY_VERSION,
-            "SKIP_JOB_REGEX" => "/final-images-listing/",
+            "SKIP_JOB_REGEX" => "/^(final-images-listing)$/",
             "DEBIAN_IMAGE" => "debian:bookworm-slim",
             "ALPINE_IMAGE" => "alpine:3.20",
             "CONTAINER_VERSION_SUFFIX" => "project-path",
@@ -601,7 +601,7 @@ RSpec.describe Trigger, feature_category: :tooling do
           it 'does not skip gitlab-rails job' do
             expect(subject.variables).to include({
               "SKIP_IMAGE_TAGGING" => "true",
-              "SKIP_JOB_REGEX" => "/final-images-listing|alpine-stable|debian-stable|gitlab-base/",
+              "SKIP_JOB_REGEX" => "/^(final-images-listing|alpine-stable|debian-stable|gitlab-base)$/",
               "DEBIAN_IMAGE" => "#{debian_image}@#{image_digest}",
               "DEBIAN_DIGEST" => image_digest,
               "DEBIAN_BUILD_ARGS" => "--build-arg DEBIAN_IMAGE=#{debian_image}@#{image_digest}",
@@ -629,7 +629,7 @@ RSpec.describe Trigger, feature_category: :tooling do
 
           it 'does not skip jobs with non existing tags' do
             expect(subject.variables).to include({
-              "SKIP_JOB_REGEX" => "/final-images-listing|alpine-stable|debian-stable|gitlab-rails-ee/"
+              "SKIP_JOB_REGEX" => "/^(final-images-listing|alpine-stable|debian-stable|gitlab-rails-ee)$/"
             })
           end
         end
@@ -859,37 +859,98 @@ RSpec.describe Trigger, feature_category: :tooling do
     end
 
     describe '#cleanup!' do
-      let(:downstream_environment_response) { double('downstream_environment', id: 42) }
+      let(:downstream_environment_response) { double('downstream_environment', id: 42, state: 'available') }
       let(:downstream_environments_response) { [downstream_environment_response] }
 
       before do
         expect(com_gitlab_client).to receive(:environments)
           .with(downstream_project_path, name: subject.__send__(:downstream_environment))
           .and_return(downstream_environments_response)
-        expect(com_gitlab_client).to receive(:stop_environment)
-          .with(downstream_project_path, downstream_environment_response.id)
-          .and_return(downstream_environment_stopping_response)
+      end
+
+      context "when no environment is found" do
+        let(:downstream_environments_response) { [] }
+
+        before do
+          allow(com_gitlab_client).to receive(:environments)
+            .with(downstream_project_path, name: subject.__send__(:downstream_environment))
+            .and_return(downstream_environments_response)
+        end
+
+        it 'returns without error' do
+          allow(subject).to receive(:puts)
+
+          subject.cleanup!
+
+          expect(subject).to have_received(:puts)
+            .with(include("No environment found"))
+        end
+      end
+
+      context "when the API raises an error on stop" do
+        let(:response) do
+          Gitlab::ObjectifiedHash.new(
+            code: 500,
+            parsed_response: "Server Error",
+            request: { base_uri: "gitlab.com", path: "/stop_environment" }
+          )
+        end
+
+        before do
+          expect(com_gitlab_client).to receive(:stop_environment)
+            .with(downstream_project_path, downstream_environment_response.id)
+            .and_raise(Gitlab::Error::InternalServerError.new(response))
+        end
+
+        it 'displays an error message and exits' do
+          allow(subject).to receive(:puts)
+
+          expect { subject.cleanup! }.to raise_error(SystemExit) do |error|
+            expect(error.status).to eq(1)
+          end
+
+          expect(subject).to have_received(:puts)
+            .with(include("Failed to stop"))
+        end
       end
 
       context "when stopping the environment succeeds" do
-        let(:downstream_environment_stopping_response) { double('downstream_environment', state: 'stopped') }
+        let(:downstream_environment_stopping_response) { double('downstream_environment', id: 42, state: 'stopped') }
+
+        before do
+          expect(com_gitlab_client).to receive(:stop_environment)
+            .with(downstream_project_path, downstream_environment_response.id)
+            .and_return(downstream_environment_stopping_response)
+        end
 
         it 'displays a success message' do
-          expect(subject).to receive(:puts)
-            .with("=> Downstream environment '#{subject.__send__(:downstream_environment)}' stopped.")
+          allow(subject).to receive(:puts)
 
           subject.cleanup!
+
+          expect(subject).to have_received(:puts)
+            .with(include("stopped"))
         end
       end
 
       context "when stopping the environment fails" do
-        let(:downstream_environment_stopping_response) { double('downstream_environment', state: 'running') }
+        let(:downstream_environment_stopping_response) { double('downstream_environment', id: 42, state: 'running') }
 
-        it 'displays a failure message' do
-          expect(subject).to receive(:puts)
-            .with("=> Downstream environment '#{subject.__send__(:downstream_environment)}' failed to stop.")
+        before do
+          expect(com_gitlab_client).to receive(:stop_environment)
+            .with(downstream_project_path, downstream_environment_response.id)
+            .and_return(downstream_environment_stopping_response)
+        end
 
-          subject.cleanup!
+        it 'displays a failure message and exits with non-zero status' do
+          allow(subject).to receive(:puts)
+
+          expect { subject.cleanup! }.to raise_error(SystemExit) do |error|
+            expect(error.status).to eq(1)
+          end
+
+          expect(subject).to have_received(:puts)
+            .with(include("failed to stop"))
         end
       end
     end
@@ -922,6 +983,10 @@ RSpec.describe Trigger, feature_category: :tooling do
         it 'sets TOP_UPSTREAM_SOURCE_SHA to ci_merge_request_source_branch_sha' do
           expect(subject.variables['TOP_UPSTREAM_SOURCE_SHA']).to eq('ci_merge_request_source_branch_sha')
         end
+
+        it 'still sets UPSTREAM_TARGET_SHA to CI_COMMIT_SHA' do
+          expect(subject.variables['UPSTREAM_TARGET_SHA']).to eq(env['CI_COMMIT_SHA'])
+        end
       end
 
       context 'when CI_MERGE_REQUEST_SOURCE_BRANCH_SHA is set as empty' do
@@ -932,6 +997,10 @@ RSpec.describe Trigger, feature_category: :tooling do
         it 'sets TOP_UPSTREAM_SOURCE_SHA to CI_COMMIT_SHA' do
           expect(subject.variables['TOP_UPSTREAM_SOURCE_SHA']).to eq(env['CI_COMMIT_SHA'])
         end
+
+        it 'sets UPSTREAM_TARGET_SHA to CI_COMMIT_SHA' do
+          expect(subject.variables['UPSTREAM_TARGET_SHA']).to eq(env['CI_COMMIT_SHA'])
+        end
       end
 
       context 'when CI_MERGE_REQUEST_SOURCE_BRANCH_SHA is not set' do
@@ -941,6 +1010,10 @@ RSpec.describe Trigger, feature_category: :tooling do
 
         it 'sets TOP_UPSTREAM_SOURCE_SHA to CI_COMMIT_SHA' do
           expect(subject.variables['TOP_UPSTREAM_SOURCE_SHA']).to eq(env['CI_COMMIT_SHA'])
+        end
+
+        it 'sets UPSTREAM_TARGET_SHA to CI_COMMIT_SHA' do
+          expect(subject.variables['UPSTREAM_TARGET_SHA']).to eq(env['CI_COMMIT_SHA'])
         end
       end
     end
@@ -984,12 +1057,50 @@ RSpec.describe Trigger, feature_category: :tooling do
             env['CI_MERGE_REQUEST_IID']
           )
           .and_return(double(auto_paginate: mr_notes))
+
+        allow(com_gitlab_client).to receive(:update_commit_status)
       end
 
       it 'invokes the trigger with expected variables' do
         expect_run_trigger_with_params
 
         subject.invoke!
+      end
+
+      describe 'pending commit status' do
+        it 'posts a pending database-testing commit status against the upstream target SHA' do
+          expect_run_trigger_with_params
+          expect(com_gitlab_client).to receive(:update_commit_status)
+            .with(
+              env['CI_PROJECT_PATH'],
+              env['CI_COMMIT_SHA'],
+              'pending',
+              name: described_class::COMMIT_STATUS_NAME,
+              target_url: env['CI_JOB_URL'],
+              description: described_class::COMMIT_STATUS_DESCRIPTION
+            )
+
+          subject.invoke!
+        end
+
+        context 'when CI_MERGE_REQUEST_SOURCE_BRANCH_SHA is set' do
+          before do
+            stub_env('CI_MERGE_REQUEST_SOURCE_BRANCH_SHA', 'ci_merge_request_source_branch_sha')
+          end
+
+          it 'still posts the commit status against CI_COMMIT_SHA' do
+            expect_run_trigger_with_params
+            expect(com_gitlab_client).to receive(:update_commit_status)
+              .with(
+                env['CI_PROJECT_PATH'],
+                env['CI_COMMIT_SHA'],
+                'pending',
+                hash_including(name: described_class::COMMIT_STATUS_NAME)
+              )
+
+            subject.invoke!
+          end
+        end
       end
 
       describe '#downstream_project_path' do

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Import
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Group import and export API
 description: "Import and export groups with the REST API."
 ---
@@ -24,13 +24,14 @@ Group exports include the following:
 - Group labels
 - Group badges
 - Group members
+- Group events
 - Group wikis (Premium and Ultimate only)
 - Subgroups. Each subgroup includes all previous data in the list.
 
 To preserve group-level relationships from imported projects, you should run group export and import first. This way,
 you can import project exports into the desired group structure.
 
-Because of a [known issue](https://gitlab.com/gitlab-org/gitlab/-/issues/405168), imported groups have a `private`
+Because of [issue 405168](https://gitlab.com/gitlab-org/gitlab/-/issues/405168), imported groups have a `private`
 visibility level unless you import them into a parent group. By default, if you import groups into a parent group,
 the subgroups inherit the same level of visibility as the parent.
 
@@ -87,7 +88,7 @@ ls *export.tar.gz
 2020-12-05_22-11-148_namespace_export.tar.gz
 ```
 
-Time spent on exporting a group might vary depending on a size of the group. This endpoint
+Time spent on exporting a group might vary depending on the size of the group. This endpoint
 returns either:
 
 - The exported archive (when available)
@@ -101,10 +102,10 @@ The maximum import file size can be set by the Administrator on GitLab Self-Mana
 As an administrator, you can modify the maximum import file size either:
 
 - In the [**Admin** area](../administration/settings/import_and_export_settings.md).
-- By using the `max_import_size` option in the [Application settings API](settings.md#update-application-settings).
+- By using the `max_import_size` option in the [application settings API](settings.md#update-application-settings).
 
 For information on the maximum import file size on GitLab.com, see
-[Account and limit settings](../user/gitlab_com/_index.md#account-and-limit-settings).
+[account and limit settings](../user/gitlab_com/_index.md#account-and-limit-settings).
 
 ```plaintext
 POST /groups/import

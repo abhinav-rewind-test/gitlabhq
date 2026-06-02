@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe Groups::Settings::AccessTokensController, feature_category: :system_access do
-  let_it_be(:user) { create(:user) }
-  let_it_be(:resource) { create(:group, owners: user) }
-  let_it_be(:access_token_user) { create(:user, :project_bot, maintainer_of: resource) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:resource, freeze: false) { create(:group, owners: user) }
+  let_it_be(:access_token_user, freeze: false) { create(:user, :project_bot, maintainer_of: resource) }
 
-  let_it_be(:another_resource) { create(:group) }
-  let_it_be(:access_token_user_from_another_resource) { create(:user, :project_bot, maintainer_of: another_resource) }
+  let_it_be(:another_resource, freeze: false) { create(:group) }
+  let_it_be(:access_token_user_from_another_resource, freeze: false) { create(:user, :project_bot, maintainer_of: another_resource) }
 
   before do
     sign_in(user)
@@ -93,6 +93,21 @@ RSpec.describe Groups::Settings::AccessTokensController, feature_category: :syst
 
       it_behaves_like 'POST resource access tokens available'
     end
+
+    context 'when scopes are not provided' do
+      let(:access_token_params) { { name: 'Nerd bot', expires_at: 1.month.from_now } }
+
+      it { expect(subject).to have_gitlab_http_status(:unprocessable_entity) }
+
+      it 'returns error message' do
+        subject
+        expect(json_response['errors']).to include('Select at least one scope.')
+      end
+
+      it 'does not create the token' do
+        expect { subject }.not_to change { PersonalAccessToken.count }
+      end
+    end
   end
 
   describe 'PUT /:namespace/-/settings/access_tokens/:id', :sidekiq_inline do
@@ -108,7 +123,7 @@ RSpec.describe Groups::Settings::AccessTokensController, feature_category: :syst
   end
 
   describe '#index' do
-    let_it_be(:resource_access_tokens) { create_list(:personal_access_token, 3, user: access_token_user) }
+    let_it_be(:resource_access_tokens, freeze: false) { create_list(:personal_access_token, 3, user: access_token_user) }
 
     before do
       get group_settings_access_tokens_path(resource)

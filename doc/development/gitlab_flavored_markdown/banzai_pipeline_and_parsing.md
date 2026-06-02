@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 description: The Banzai pipeline and parsing.
 title: The Banzai pipeline and parsing
 ---
@@ -61,6 +61,23 @@ a users' permissions, they may not be able to see those references. `PostProcess
 confidential information based on user permissions. These changes are never cached, as they need to get recomputed each time
 they are displayed.
 
+### `SingleLinePipeline`
+
+The `SingleLinePipeline` is used for single-line text fields like issuable titles. It is configured in the `Issuable` concern with
+`cache_markdown_field :title, pipeline: :single_line`.
+
+Unlike the `FullPipeline`, this pipeline does not run the Markdown parser (`MarkdownFilter`). It processes plain text through a minimal set of filters:
+
+- `HtmlEntityFilter` - escapes HTML entities, treating the input as plain text.
+- `EmojiFilter` - converts `:emoji:` shortcodes.
+- `CustomEmojiFilter` - converts custom emoji shortcodes.
+- `AutolinkFilter` - auto-links URLs.
+- `ExternalLinkFilter` - processes external links.
+- reference filters - resolve GitLab references like `#123`, `@user`, and `!456`.
+
+This means titles do not support bold, italic, code spans, Markdown links, or any other standard Markdown formatting. For more information about what
+formatting is available in titles, see [work item and merge request titles](../../user/markdown.md#work-item-and-merge-request-titles).
+
 ### Performance
 
 It's important to not only have the filters run as fast as possible, but to ensure that they don't take too long in general.
@@ -85,7 +102,7 @@ We use our [`gitlab-glfm-markdown`](https://gitlab.com/gitlab-org/ruby/gems/gitl
 
 `comrak` provides 100% compatibility with GFM and CommonMark while allowing additional extensions to be added to it. For example, we were able to implement our multi-line blockquote and wikilink syntax directly in `comrak`. The goal is to move more of the Ruby filters into either `comrak` (if it makes sense) or into `gitlab-glfm-markdown`.
 
-For more information about the various options that get passed into `comrak`, see [glfm_markdown.rb](https://gitlab.com/gitlab-org/gitlab/blob/master/lib/banzai/filter/markdown_engines/glfm_markdown.rb#L12-L52).
+For more information about the various options that get passed into `comrak`, see [`glfm_markdown.rb`](https://gitlab.com/gitlab-org/gitlab/blob/master/lib/banzai/filter/markdown_engines/glfm_markdown.rb#L12-L52).
 
 ## Caching
 

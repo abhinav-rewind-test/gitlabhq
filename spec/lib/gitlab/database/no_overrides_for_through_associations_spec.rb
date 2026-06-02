@@ -14,7 +14,11 @@ RSpec.describe 'overridden has_many :through associations', :eager_load, feature
       # https://gitlab.com/gitlab-org/gitlab/-/issues/424854
       override_class.new(:remediations, 'ee/app/models/vulnerabilities/finding.rb'),
       # https://gitlab.com/gitlab-org/gitlab/-/issues/450797
-      override_class.new(:vulnerability_findings, 'ee/app/models/ee/ci/pipeline.rb')
+      override_class.new(:vulnerability_findings, 'ee/app/models/ee/ci/pipeline.rb'),
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/581931
+      override_class.new(:work_item_types, 'ee/app/models/issuables/custom_field.rb'),
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/581931
+      override_class.new(:work_item_types, 'ee/app/models/work_items/statuses/custom/lifecycle.rb')
     ]
   end
 
@@ -45,19 +49,19 @@ RSpec.describe 'overridden has_many :through associations', :eager_load, feature
   end
 
   it 'onlies have allowed list of overridden has_many/has_one :through associations', :aggregate_failures do
-    overridden_associations.each do |overriden_method|
-      expect(allowed_override?(overriden_method)).to be_truthy,
-        "Found an overridden #{overriden_method.association_type_name} association " \
-        "named `#{overriden_method.method_name}`, in #{overriden_method.file_path}, which isn't allowed. " \
+    overridden_associations.each do |overridden_method|
+      expect(allowed_override?(overridden_method)).to be_truthy,
+        "Found an overridden #{overridden_method.association_type_name} association " \
+        "named `#{overridden_method.method_name}`, in #{overridden_method.file_path}, which isn't allowed. " \
         "Overriding such associations can have dangerous impacts, see: #{documentation_link}"
     end
   end
 
   private
 
-  def allowed_override?(overriden_method)
+  def allowed_override?(overridden_method)
     allowed_overrides.find do |override|
-      override == overriden_method
+      override == overridden_method
     end
   end
 

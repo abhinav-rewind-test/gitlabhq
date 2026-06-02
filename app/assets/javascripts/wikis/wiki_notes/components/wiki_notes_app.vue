@@ -1,6 +1,6 @@
 <script>
 import { GlAlert } from '@gitlab/ui';
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import { produce } from 'immer';
 import { __ } from '~/locale';
 import wikiPageQuery from '~/wikis/graphql/wiki_page.query.graphql';
@@ -198,7 +198,7 @@ export default {
 };
 </script>
 <template>
-  <div class="wiki-comments">
+  <div class="wiki-comments gl-px-3">
     <wiki-notes-activity-header />
     <ordered-layout :slot-keys="slotKeys">
       <template #form>

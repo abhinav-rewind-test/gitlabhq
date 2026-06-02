@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Gitaly
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Troubleshooting Gitaly
 ---
 
@@ -27,7 +27,7 @@ When using standalone Gitaly servers, you must make sure they are the same versi
 as GitLab to ensure full compatibility:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Gitaly servers**.
+1. In the left sidebar, select **Overview** > **Gitaly servers**.
 1. Confirm all Gitaly servers indicate that they are up to date.
 
 ## Find storage resource details
@@ -391,7 +391,11 @@ Dynatrace can cause the `sudo -u git -- /opt/gitlab/embedded/bin/gitaly-hooks` r
 to take several seconds to start up and shut down. `gitaly-hooks` is executed twice when users
 push, which causes a significant delay.
 
-If Git pushes are too slow when Dynatrace is enabled, disable Dynatrace.
+Dynatrace appears to instrument binaries by loading an `.so` file dynamically, which contributes to the poor
+performance of relatively short-lived `gitaly-hooks` processes.
+
+If Git pushes are too slow when Dynatrace is enabled, disable Dynatrace. You might need to completely remove
+Dynatrace from the system that Gitaly is running on to prevent the `.so` file from being loaded.
 
 ## `gitaly check` fails with `401` status code
 

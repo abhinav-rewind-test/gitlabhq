@@ -9,9 +9,6 @@ end
 
 require './spec/deprecation_warnings'
 
-require './spec/deprecation_toolkit_env'
-DeprecationToolkitEnv.configure!
-
 require './spec/knapsack_env'
 KnapsackEnv.configure!
 
@@ -24,12 +21,12 @@ CrystalballEnv.start!
 ENV["RAILS_ENV"] = 'test'
 ENV["IN_MEMORY_APPLICATION_SETTINGS"] = 'true'
 ENV["GITLAB_SECURITY_MANAGER_ROLE"] = 'true'
+ENV["GITLAB_LOAD_WIP_CUSTOM_ABILITIES"] = 'true'
 
 require_relative '../config/environment'
 
 require 'rspec/mocks'
 require 'rspec/rails'
-require 'rspec/retry'
 require 'rspec-parameterized'
 require 'shoulda/matchers'
 require 'test_prof/recipes/rspec/let_it_be'
@@ -73,9 +70,6 @@ RSpec.configure do |config|
   config.use_transactional_fixtures = true
   config.use_instantiated_fixtures = false
   config.fixture_paths = [Rails.root]
-
-  config.verbose_retry = true
-  config.display_try_failure_messages = true
 
   config.infer_spec_type_from_file_location!
 
@@ -161,6 +155,7 @@ RSpec.configure do |config|
   config.include SelectionHelper, :js
   config.include InspectRequests, :js
   config.include LiveDebugger, :js
+  config.include Database::BatchedBackgroundMigrationHelpers, :migration
   config.include MigrationsHelpers, :migration
   config.include MigrationsHelpers, :background_operation
   config.include RedisHelpers
@@ -204,18 +199,6 @@ RSpec.configure do |config|
   include StubMember
   include VersionCheckHelpers
 
-  if ENV['CI'] || ENV['RETRIES']
-    # Gradually stop using rspec-retry
-    # See https://gitlab.com/gitlab-org/gitlab/-/issues/438388
-    config.default_retry_count = 1
-    config.prepend_before(:each, type: :feature) do |example|
-      # This includes the first try, i.e. tests will be run 2 times before failing.
-      example.metadata[:retry] = ENV.fetch('RETRIES', 1).to_i + 1
-    end
-
-    config.exceptions_to_hard_fail = [DeprecationToolkitEnv::DeprecationBehaviors::SelectiveRaise::RaiseDisallowedDeprecation]
-  end
-
   if Gitlab::RspecFlaky::Config.generate_report?
     config.reporter.register_listener(
       Gitlab::RspecFlaky::Listener.new,
@@ -232,8 +215,6 @@ RSpec.configure do |config|
     # Enable all features by default for testing
     # Reset any changes in after hook.
     stub_all_feature_flags
-
-    TestEnv.seed_db
   end
 
   config.after(:all) do
@@ -350,20 +331,13 @@ RSpec.configure do |config|
       # Enable explicitly in tests that need it.
       stub_feature_flags(autoflow_enabled: false)
 
-      # Short lived feature flag to enable user-based rollout to internal users before main feature flag
-      # `work_item_planning_view` is rolled out. `work_item_planning_view` is disabled for specific specs, so stubbing
-      # out `work_items_consolidated_list_user` is an easy work around.
-      stub_feature_flags(work_items_consolidated_list_user: false)
-
-      # Short lived feature flag to enable user-based rollout to internal users before main feature flag
-      # `work_items_saved_views` is rolled out. `work_items_saved_views` is disabled for specific specs, so stubbing
-      # out `work_items_saved_views_user` is an easy work around.
-      stub_feature_flags(work_items_saved_views_user: false)
-
       stub_feature_flags(merge_widget_stop_polling: false)
 
       # This feature has global impact and most tests aren't ready for it yet
       stub_feature_flags(cells_unique_claims: false)
+
+      # Org migration target cell mode is only enabled in Cells on GitLab.com
+      stub_feature_flags(org_migration_target_cell: false)
 
       # This feature flag will be removed in %19.0
       stub_feature_flags(work_item_legacy_url: false)
@@ -376,13 +350,29 @@ RSpec.configure do |config|
       # See https://gitlab.com/gitlab-org/gitlab/-/merge_requests/220909
       stub_feature_flags(work_item_features_field: false)
 
-      # When `dap_onboarding_empty_states` is enabled, the Duo Chat panel is expanded for free users.
-      # This might cause elements to be laid out differently in the main panel due to container
-      # queries, which in turn can cause some specs to fail.
-      # Due to time constraints, we'll need to address those in follow-ups.
-      stub_feature_flags(dap_onboarding_empty_states: false)
       # This feature is wip and should not be enabled in tests by default
       stub_feature_flags(iam_svc_login: false)
+
+      # When enabled, audit events are written only to the new scoped tables and not to the legacy
+      # AuditEvent table. The flag is being rolled out gradually; many existing specs assert on
+      # AuditEvent.count, so keep legacy writes enabled in tests by default. Specs that need to
+      # exercise the new behavior should stub this explicitly.
+      # See https://gitlab.com/gitlab-org/gitlab/-/issues/591414
+      stub_feature_flags(stop_legacy_audit_event_writes: false)
+
+      # Work items list REST API is still in development and not compatible with
+      # all filters yet.
+      # Please see https://gitlab.com/gitlab-org/gitlab/-/work_items/594636 for tracking progress.
+      stub_feature_flags(work_item_rest_api_frontend_users: false)
+
+      # This middleware fires use_pat for every PAT-authenticated request
+      # enabling it by default breaks existing specs that use strict receive(:track_event) expectations
+      stub_feature_flags(track_api_request_from_personal_access_token: false)
+
+      # The user preferences and sort options are being merged in a drawer
+      # and it will be a WIP feature that will be enabled in a future milestone.
+      # https://gitlab.com/gitlab-org/gitlab/-/work_items/597602
+      stub_feature_flags(work_item_list_display_settings_drawer: false)
     else
       unstub_all_feature_flags
     end
@@ -436,6 +426,21 @@ RSpec.configure do |config|
     stub_snowplow unless example.metadata[:do_not_stub_snowplow_by_default]
   end
 
+  # WIP custom abilities are enabled by default via ENV var so that all specs
+  # see the full set of permissions (column accessors, Grape params, and
+  # GraphQL enum values are registered at class load time). Tests tagged with
+  # :disable_wip_custom_abilities exercise the runtime wip-filter behavior
+  # (matching production where the env var is unset). Definition memoizes the
+  # filtered set, so flipping the env var requires reloading.
+  config.around(:example, :disable_wip_custom_abilities) do |example|
+    ENV['GITLAB_LOAD_WIP_CUSTOM_ABILITIES'] = 'false'
+    Gitlab::CustomRoles::Definition.load_abilities!
+    example.run
+  ensure
+    ENV['GITLAB_LOAD_WIP_CUSTOM_ABILITIES'] = 'true'
+    Gitlab::CustomRoles::Definition.load_abilities!
+  end
+
   config.around(:example, :quarantine) do |example|
     # Skip tests in quarantine unless we explicitly focus on them or not in CI
     example.run if config.inclusion_filter[:quarantine] || !ENV['CI']
@@ -465,6 +470,12 @@ RSpec.configure do |config|
   # previous test runs may have left some resources throttled
   config.before do
     ::Gitlab::ExclusiveLease.reset_all!("el:throttle:*")
+    # data_isolation is checked on every organizations query, causing it to appear in exception
+    # payloads via feature_flag_states. Suppress it to avoid polluting exception log assertions.
+    # See: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/226037
+    RequestStore.delete(:feature_flag_events)
+    allow(Feature).to receive(:log_feature_flag_states?).and_call_original
+    allow(Feature).to receive(:log_feature_flag_states?).with(:data_isolation).and_return(false)
   end
 
   config.before(:example, :assume_throttled) do |example|
@@ -625,15 +636,21 @@ Support::PermissionsCheck.inject(Ability.singleton_class)
 
 ActiveRecord::Migration.maintain_test_schema!
 
+# maintain_test_schema! may rebuild the test DB from structure.sql via
+# clear_all_connections! + db:test:prepare. This clears connection-level
+# schema caches but NOT class-level column caches on AR models. If an
+# initializer (e.g. session_store.rb) queried ApplicationSetting before
+# the rebuild, stale column names persist - causing PG::UndefinedColumn
+# errors for models using explicit column selection (those with
+# ignored_columns).
+ApplicationSetting.reset_column_information
+
 Shoulda::Matchers.configure do |config|
   config.integrate do |with|
     with.test_framework :rspec
     with.library :rails
   end
 end
-
-# Prevent Rugged from picking up local developer gitconfig.
-Rugged::Settings['search_path_global'] = Rails.root.join('tmp/tests').to_s
 
 # Initialize FactoryDefault to use create_default helper
 TestProf::FactoryDefault.init

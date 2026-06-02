@@ -10,7 +10,7 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::ImportExport::Project::RelationTreeRestorer, :clean_gitlab_redis_shared_state, feature_category: :importers do
-  let_it_be(:importable, reload: true) do
+  let_it_be_with_reload(:importable) do
     create(:project, :builds_enabled, :issues_disabled, name: 'project', path: 'project')
   end
 
@@ -43,8 +43,9 @@ RSpec.describe Gitlab::ImportExport::Project::RelationTreeRestorer, :clean_gitla
 
         project = Project.find_by_path('project')
 
+        expect(project.name).to eq('Project name')
         expect(project.description).to eq('Nisi et repellendus ut enim quo accusamus vel magnam.')
-        expect(project.labels.count).to eq(3)
+        expect(project.labels.count).to eq(4)
         expect(project.boards.count).to eq(1)
         expect(project.project_feature).not_to be_nil
         expect(project.custom_attributes.count).to eq(2)
@@ -84,6 +85,21 @@ RSpec.describe Gitlab::ImportExport::Project::RelationTreeRestorer, :clean_gitla
     end
 
     it_behaves_like 'import project successfully'
+
+    context 'when the export contains has_external_issue_tracker' do
+      let(:attributes) do
+        relation_reader.consume_attributes(importable_name).merge('has_external_issue_tracker' => true)
+      end
+
+      it 'does not overwrite has_external_issue_tracker' do
+        expect(relation_tree_restorer.restore).to eq(true)
+
+        project = Project.find_by_path('project')
+
+        expect(project.integrations.active.external_issue_trackers).to be_empty
+        expect(project.has_external_issue_tracker).to be_falsy
+      end
+    end
 
     context 'when importing an archived project' do
       let(:attributes) { relation_reader.consume_attributes(importable_name).merge('archived' => true) }

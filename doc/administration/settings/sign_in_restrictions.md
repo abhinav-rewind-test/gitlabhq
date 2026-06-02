@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Sign-in restrictions
 ---
@@ -30,7 +30,7 @@ disables using passkeys for two-factor authentication.
 To allow password and passkey authentication for the web interface:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section.
 1. Select the **Allow password and passkey authentication for the web interface** checkbox.
 1. Select **Save changes**.
@@ -49,7 +49,7 @@ This setting is enabled by default. When disabled, users must authenticate with 
 To allow password authentication for Git over HTTP(S):
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section.
 1. Select the **Allow password authentication for Git over HTTP(S)** checkbox.
 1. Select **Save changes**.
@@ -64,7 +64,7 @@ web interface. Passkeys can never be used with Git over HTTP(S).
 To disable password and passkey authentication for users with an SSO identity:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section.
 1. Select the **Disable password and passkey authentication for users with an SSO identity** checkbox.
 1. Select **Save changes**.
@@ -80,7 +80,7 @@ This requires all users, including administrators, to register a 2FA method.
 To enforce two-factor authentication for all users:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section.
 1. Select the **Enforce two-factor authentication** checkbox.
 1. Optional. In **Two-factor grace period**, enter a number of hours. users must register a 2FA
@@ -94,11 +94,22 @@ This requires only administrators to register a 2FA method. This also includes u
 To enforce two-factor authentication for administrators:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Sign-in restrictions** section.
 1. Select the **Enforce two-factor authentication for administrators** checkbox.
 1. Optional. In **Two-factor grace period**, enter a number of hours. users must register a 2FA
    method at the end of this time. Set to `0` to enforce registration at the next sign in.
+1. Select **Save changes**.
+
+### Enable email OTP
+
+To allow users to configure [Email One Time Passwords](../../user/profile/account/two_factor_authentication.md#enable-email-otp):
+
+1. In the upper-right corner, select **Admin**.
+1. In the left sidebar, select **Settings** > **General**.
+1. Expand the **Sign-in restrictions** section.
+1. Select both the **Enable email-based one-time passwords** checkbox
+   and **Require email verification when account is locked** checkbox.
 1. Select **Save changes**.
 
 ## Admin Mode
@@ -153,7 +164,7 @@ Open the [Rails console](../operations/rails_console.md) and run the following:
 To enable Admin Mode through the UI:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Sign-in restrictions**.
 1. Select **Enable Admin Mode**.
 1. Select **Save changes**.
@@ -190,7 +201,7 @@ Go to your list of active sessions:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Active sessions**.
+1. In the left sidebar, select **Access** > **Active sessions**.
 
 Sessions which have Admin Mode turned on display the text **Signed in on `date of session` with Admin Mode**.
 

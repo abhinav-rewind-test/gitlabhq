@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Groups
 description: Project management, access control, client groups, and team groups.
 ---
@@ -98,9 +98,9 @@ the immediate parent group.
 
 To explore all public or internal groups:
 
-1. On the top bar, select **Search or go to**.
+1. In the top bar, select **Search or go to**.
 1. From the dropdown, select **Explore**.
-1. On the left sidebar, select **Groups**.
+1. In the left sidebar, select **Groups**.
 
 ## View groups you are a member of
 
@@ -113,7 +113,7 @@ To explore all public or internal groups:
 
 To view groups where you have direct or indirect membership:
 
-1. On the top bar, select **Search or go to**.
+1. In the top bar, select **Search or go to**.
 1. From the dropdown, select **View all my groups**.
 
 This page shows groups that you are a member of through:
@@ -128,6 +128,7 @@ This page shows groups that you are a member of through:
 - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/13781) **Inactive** tab in GitLab 18.2 [with a flag](../../administration/feature_flags/_index.md) named `your_work_groups_vue`. Disabled by default.
 - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/542790) in GitLab 18.3. Feature flag `your_work_groups_vue` removed.
 - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/13781) **Inactive** tab on the **Explore groups** page in GitLab 18.8 [with a flag](../../administration/feature_flags/_index.md) named `explore_groups_vue`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/585432) in GitLab 18.11. Feature flag `explore_groups_vue` removed.
 
 {{< /history >}}
 
@@ -135,7 +136,7 @@ A group is inactive when it is either pending deletion or it has been archived.
 
 To view all inactive groups:
 
-1. On the top bar, select **Search or go to**.
+1. In the top bar, select **Search or go to**.
 1. From the dropdown, select either:
    - **View all my groups** to filter groups you are a member of.
    - **Explore** to filter public or internal groups.
@@ -171,7 +172,7 @@ The group overview page displays information about the group and its members, su
 
 To view a group:
 
-- On the top bar, select **Search or go to** and find your group.
+- In the top bar, select **Search or go to** and find your group.
 
 You can search for the subgroups and projects of the group
 and sort them in ascending or descending order.
@@ -186,7 +187,7 @@ You might need the group ID if you want to interact with it using the [GitLab AP
 
 To find the Group ID:
 
-1. On the top bar, select **Search or go to** and find your group.
+1. In the top bar, select **Search or go to** and find your group.
 1. On the Group overview page, in the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}).
 1. Select **Copy Group ID**.
 
@@ -194,8 +195,8 @@ To find the Group ID:
 
 To view the activity of a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Activity**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Activity**.
 1. Optional. To filter activity by contribution type, select a tab:
 
    - **All**: All contributions by group members in the group and group's projects.
@@ -240,8 +241,8 @@ Prerequisites:
 
 To edit group details:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. In the **Group name** text box, enter your group name. See the [limitations on group names](../reserved_names.md).
 1. Optional. In the **Group description (optional)** text box, enter your group description.
    The description is limited to 500 characters.
@@ -263,7 +264,7 @@ When you leave a group:
 
 To leave a group:
 
-1. On the top bar, select **Search or go to** and find your group.
+1. In the top bar, select **Search or go to** and find your group.
 1. On the group overview page, in the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}).
 1. Select **Leave group**, then **Leave group** again.
 
@@ -286,15 +287,14 @@ Prerequisites:
 
 To delete a group and its contents:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
-1. Expand the **Advanced** section.
-1. In the **Delete group** section, select **Delete**.
+1. In the top bar, select **Search or go to** and find your group.
+1. On the group overview page, in the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}).
+1. Select **Delete**.
 1. On the confirmation dialog, enter the group path and select **Yes, delete group**.
 
 You can also delete a group from the groups dashboard:
 
-1. On the top bar, select **Search or go to** > **View all my groups**.
+1. In the top bar, select **Search or go to** > **View all my groups**.
 1. Select ({{< icon name="ellipsis_v" >}}) for the group you want to delete.
 1. Select **Delete**.
 1. On the confirmation dialog, enter the group path and select **Yes, delete group**.
@@ -314,9 +314,8 @@ the deletion job instead restores the group, and the group is no longer schedule
 
 {{< history >}}
 
-- Enabled delayed deletion by default [on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/393622) and [on GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/119606) in GitLab 16.0.
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/561680) in GitLab 18.4 [with a flag](../../administration/feature_flags/_index.md) named `disallow_immediate_deletion`. Disabled by default.
-- [Replaced](https://gitlab.com/gitlab-org/gitlab/-/issues/569453) in GitLab 18.5 by an instance setting to allow permanent deletion of groups and projects scheduled for deletion. [Controlled by a flag](../../administration/feature_flags/_index.md) named `allow_immediate_namespaces_deletion`. Feature flag is disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/389557) in GitLab 16.0. Premium and Ultimate only.
+- [Moved](https://gitlab.com/groups/gitlab-org/-/epics/17208) from GitLab Premium to GitLab Free in GitLab 18.0.
 
 {{< /history >}}
 
@@ -329,10 +328,9 @@ Prerequisites:
 
 To permanently delete a group scheduled for deletion:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
-1. Expand **Advanced**.
-1. In the **Delete group** section, select **Delete permanently**.
+1. In the top bar, select **Search or go to** and find your group.
+1. On the group overview page, in the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}).
+1. Select **Delete permanently**.
 1. On the confirmation dialog, enter the group path and select **Yes, delete group**.
 
 This action deletes the group, its subgroups, projects, and all related resources, including issues and merge requests.
@@ -341,10 +339,9 @@ This action deletes the group, its subgroups, projects, and all related resource
 
 To restore a group that is scheduled for deletion:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
-1. Expand the **Advanced** section.
-1. In the **Restore group** section, select **Restore group**.
+1. In the top bar, select **Search or go to** and find your group.
+1. On the group overview page, in the upper-right corner, select **Actions** ({{< icon name="ellipsis_v" >}}).
+1. Select **Restore**.
 
 ## Manage groups with the Actions menu
 
@@ -357,7 +354,7 @@ Prerequisites:
 
 To access the **Actions** menu for groups:
 
-1. On the top bar, select **Search or go to** > **View all my groups**.
+1. In the top bar, select **Search or go to** > **View all my groups**.
 1. On the **Groups** page, find your group and select the **Actions** menu ({{< icon name="ellipsis_v" >}}).
 1. Select an action.
 
@@ -373,24 +370,24 @@ The following actions are available, depending on the state of the group:
 
 As a user, you can request to be a member of a group, if an administrator allows it.
 
-1. On the top bar, select **Search or go to** > **View all my groups**.
+1. In the top bar, select **Search or go to** > **View all my groups**.
 1. In the upper right, select **Explore groups**.
 1. In the **Search** text box, enter the name of the group you want to join.
 1. In the search results, select the name of the group.
-1. On the group page, under the group name, select **Request Access**.
+1. On the group page, under the group name, select **Request access**.
 
 Up to ten of the most recently active group owners receive an email with your request.
 Any group owner can approve or decline the request.
 
 If you change your mind before your request is approved, select
-**Withdraw Access Request**.
+**Withdraw access request**.
 
 ## View group members
 
 To view members of a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 
 A table displays the member's:
 
@@ -409,7 +406,7 @@ A table displays the member's:
 > The display of group members' **Source** might be inconsistent.
 > For more information, see [issue 23020](https://gitlab.com/gitlab-org/gitlab/-/issues/23020).
 
-To view all namespace members (and their respective occupied seats), in the top-level namespace, [view the **Usage quotas** page](../../subscriptions/manage_users_and_seats.md#view-seat-usage).
+To view all namespace members (and their respective occupied seats), in the top-level namespace, [view the **Usage quotas** page](../../subscriptions/manage_seats.md#view-seat-usage).
 
 ## Filter and sort members in a group
 
@@ -424,8 +421,8 @@ In lists of group members, entries can display the following badges:
 - **SAML**, to indicate the member has a [SAML account](saml_sso/_index.md) connected to them.
 - **Enterprise**, to indicate that the member of the top-level group is an [enterprise user](../enterprise_user/_index.md).
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Above the list of members, in the **Filter members** text box, enter your search criteria. To view:
    - Direct members of the group, select **Membership = Direct**.
    - Inherited, shared, and inherited shared members of the group, select **Membership = Indirect**.
@@ -436,8 +433,8 @@ In lists of group members, entries can display the following badges:
 
 You can search for members by name, username, or [public email](../profile/_index.md#set-your-public-email).
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Above the list of members, in the **Filter members** box, enter search criteria.
 1. To the right of the **Filter members** box, select the magnifying glass ({{< icon name="search" >}}).
 
@@ -445,8 +442,8 @@ You can search for members by name, username, or [public email](../profile/_inde
 
 You can sort members by **Account**, **Access granted**, **Role**, or **Last sign-in**.
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Above the list of members, in the upper-right corner, from the **Account** list, select
    the criteria to filter by.
 1. To switch the sort between ascending and descending, to the right of the **Account** list, select the
@@ -467,12 +464,12 @@ Prerequisites:
 
 - You must have the Owner role for the group.
 - For GitLab Self-Managed instances:
-  - If [new sign-ups are disabled](../../administration/settings/sign_up_restrictions.md#disable-new-sign-ups), an administrator must add the user.
+  - If [new user account creation is disabled](../../administration/settings/sign_up_restrictions.md#disable-new-user-account-creation), an administrator must add the user.
   - If [user invitations are not allowed](../../administration/settings/visibility_and_access_controls.md#prevent-invitations-to-groups-and-projects), an administrator must add the user.
   - If [administrator approval is enabled](../../administration/settings/sign_up_restrictions.md#turn-on-administrator-approval-for-role-promotions), an administrator must approve the invitation.
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Select **Invite members**.
 1. If the user:
 
@@ -511,8 +508,8 @@ If [administrator approval for role promotions](../../administration/settings/si
 
 To view users pending promotion:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Select the **Role promotions** tab.
 
 If the **Role promotions** tab is not displayed, the group has no pending promotions.
@@ -528,8 +525,8 @@ Prerequisites:
 
 To remove a member from a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Members**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Members**.
 1. Next to the member you want to remove, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}).
 1. Select **Remove member**.
 1. Optional. On the **Remove member** confirmation dialog, select one or both checkboxes:
@@ -558,8 +555,8 @@ By default, users with at least the:
 
 To specify which roles can create projects in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the **Permissions and group features** section.
 1. From **Minimum role required to create projects**, select an option.
 1. Select **Save changes**.

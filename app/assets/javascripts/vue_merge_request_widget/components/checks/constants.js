@@ -6,7 +6,8 @@ export const COMPONENTS = {
   draft_status: () => import('./draft.vue'),
   merge_time: () => import('./merge_time.vue'),
   need_rebase: () => import('./rebase.vue'),
-  title_regex: () => import('./title_regex.vue'),
+  title_regex: () =>
+    import('ee_component/vue_merge_request_widget/components/checks/title_regex.vue'),
   default: () => import('./message.vue'),
   requested_changes: () =>
     import('ee_component/vue_merge_request_widget/components/checks/requested_changes.vue'),
@@ -19,6 +20,10 @@ export const COMPONENTS = {
   security_policy_violations: () =>
     import(
       'ee_component/vue_merge_request_widget/components/checks/security_policy_violations.vue'
+    ),
+  security_policy_pipeline_check: () =>
+    import(
+      'ee_component/vue_merge_request_widget/components/checks/security_policy_pipeline_check.vue'
     ),
 };
 
@@ -42,6 +47,9 @@ export const FAILURE_REASONS = {
   locked_paths: __('All paths must be unlocked'),
   locked_lfs_files: __('All LFS files must be unlocked.'),
   security_policy_violations: __('All policy rules must be satisfied.'),
+  security_policy_pipeline_check: __(
+    'When security policies are enforced, all pipelines for the latest commit must succeed before merge.',
+  ),
   merge_time: __('Cannot merge until this date and time.'),
   title_regex: s__('mrWidget|Title must match required pattern'),
 };

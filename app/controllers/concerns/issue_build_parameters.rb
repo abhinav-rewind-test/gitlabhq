@@ -15,6 +15,7 @@ module IssueBuildParameters
     )
 
     issue_params.merge(
+      add_related_issue: allowed_params[:add_related_issue],
       merge_request_to_resolve_discussions_of: allowed_params[:merge_request_to_resolve_discussions_of],
       discussion_to_resolve: allowed_params[:discussion_to_resolve],
       confidential: !!Gitlab::Utils.to_boolean(issue_params[:confidential]),
@@ -25,7 +26,7 @@ module IssueBuildParameters
       }).tap(&:permit!)
   end
 
-  # Overriden in EE
+  # Overridden in EE
   def issue_params
     allowed_params ||= params.permit(:issue_type, issue: issue_attributes)
     issue_params = allowed_params[:issue] || ActionController::Parameters.new(assignee_ids: "")
@@ -38,7 +39,7 @@ module IssueBuildParameters
 
   private
 
-  # Overriden on EE
+  # Overridden on EE
   def issue_attributes
     [
       :title,
@@ -63,7 +64,7 @@ module IssueBuildParameters
   end
 
   def allowed_issue_type?(issue_type)
-    ::WorkItems::TypesFilter.allowed_types_for_issues.include?(issue_type.to_s)
+    ::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues.include?(issue_type.to_s)
   end
 
   def vulnerability

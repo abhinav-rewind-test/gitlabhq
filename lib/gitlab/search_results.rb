@@ -49,10 +49,8 @@ module Gitlab
       case scope
       when 'projects'
         formatted_limited_count(limited_projects_count)
-      when 'issues'
+      when 'issues', 'work_items'
         formatted_limited_count(limited_issues_count)
-      when 'work_items'
-        work_items_search_enabled? ? formatted_limited_count(limited_issues_count) : '0'
       when 'merge_requests'
         formatted_limited_count(limited_merge_requests_count)
       when 'milestones'
@@ -134,13 +132,21 @@ module Gitlab
       false
     end
 
+    def server_error?
+      false
+    end
+
+    def error_type(*)
+      nil
+    end
+
     def error(*)
       nil
     end
 
     def work_items(finder_params = {})
       # In CE, work items are just issues since group-level work items are EE-only
-      issues(finder_params)
+      by_work_item_type_ids(issues(finder_params))
     end
 
     private
@@ -152,7 +158,7 @@ module Gitlab
       when 'issues'
         issues
       when 'work_items'
-        work_items_search_enabled? ? work_items : Issue.none
+        work_items
       when 'merge_requests'
         merge_requests
       when 'milestones'
@@ -161,6 +167,14 @@ module Gitlab
         users
       end
     end
+
+    # rubocop:disable CodeReuse/ActiveRecord -- scoping search results by type
+    def by_work_item_type_ids(items)
+      return items unless filters[:work_item_type_ids].present?
+
+      items.where(work_item_type_id: filters[:work_item_type_ids])
+    end
+    # rubocop:enable CodeReuse/ActiveRecord
 
     # rubocop: disable CodeReuse/ActiveRecord
     def apply_sort(results, scope: nil)
@@ -201,7 +215,6 @@ module Gitlab
 
     def issues(finder_params = {})
       issues = IssuesFinder.new(current_user, issuable_params.merge(finder_params)).execute
-                 .preload(:work_item_type) # rubocop: disable CodeReuse/ActiveRecord -- preload for permission checks
 
       unless default_project_filter
         project_ids = project_ids_relation
@@ -290,10 +303,6 @@ module Gitlab
 
     def limited_count(relation)
       relation.without_order.limit(count_limit).size
-    end
-
-    def work_items_search_enabled?
-      ::Feature.enabled?(:search_scope_work_item, :instance)
     end
   end
 end

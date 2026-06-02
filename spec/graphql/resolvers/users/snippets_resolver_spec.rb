@@ -2,12 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe Resolvers::Users::SnippetsResolver, :with_current_organization, feature_category: :source_code_management do
+RSpec.describe Resolvers::Users::SnippetsResolver, feature_category: :source_code_management do
   include GraphqlHelpers
 
   describe '#resolve' do
     let_it_be(:current_user) { create(:user) }
-    let_it_be(:other_user) { create(:user) }
+    let_it_be(:other_user, freeze: false) { create(:user) }
     let_it_be(:project) { create(:project) }
 
     let_it_be(:private_personal_snippet) { create(:personal_snippet, :private, author: current_user) }
@@ -18,8 +18,6 @@ RSpec.describe Resolvers::Users::SnippetsResolver, :with_current_organization, f
 
     before do
       project.add_developer(current_user)
-      # Since this doesn't go through a request flow, we need to manually set Current.organization
-      Current.organization = current_organization
     end
 
     it 'calls SnippetsFinder' do

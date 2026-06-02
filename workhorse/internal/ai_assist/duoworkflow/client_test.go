@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	pb "gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/clients/gopb/contract"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
@@ -135,6 +137,128 @@ func TestExecuteWorkflow(t *testing.T) {
 	// 	_, err = workflowStream.Recv()
 	// 	require.Error(t, err)
 	// })
+
+	t.Run("client name not provided, uses default", func(t *testing.T) {
+		config := &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}
+		client, err := NewClient(config, "test-agent/1.0", "")
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		var capturedClientName string
+		server.execWorkflowHandler = func(stream pb.DuoWorkflow_ExecuteWorkflowServer) error {
+			md, ok := metadata.FromIncomingContext(stream.Context())
+			require.True(t, ok)
+			clientNames := md.Get("x-gitlab-client-name")
+			require.Len(t, clientNames, 1)
+			capturedClientName = clientNames[0]
+			return nil
+		}
+
+		workflowStream, err := client.ExecuteWorkflow(ctx)
+		require.NoError(t, err)
+		_, _ = workflowStream.Recv()
+
+		require.Equal(t, "gitlab-duo-workflow", capturedClientName)
+	})
+
+	t.Run("client name provided, uses provided value", func(t *testing.T) {
+		config := &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}
+		client, err := NewClient(config, "test-agent/1.0", "my-custom-client")
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		var capturedClientName string
+		server.execWorkflowHandler = func(stream pb.DuoWorkflow_ExecuteWorkflowServer) error {
+			md, ok := metadata.FromIncomingContext(stream.Context())
+			require.True(t, ok)
+			clientNames := md.Get("x-gitlab-client-name")
+			require.Len(t, clientNames, 1)
+			capturedClientName = clientNames[0]
+			return nil
+		}
+
+		workflowStream, err := client.ExecuteWorkflow(ctx)
+		require.NoError(t, err)
+		_, _ = workflowStream.Recv()
+
+		require.Equal(t, "my-custom-client", capturedClientName)
+	})
+
+	t.Run("client name too long, truncated to 255 characters", func(t *testing.T) {
+		config := &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}
+		longClientName := strings.Repeat("a", 300)
+		client, err := NewClient(config, "test-agent/1.0", longClientName)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		var capturedClientName string
+		server.execWorkflowHandler = func(stream pb.DuoWorkflow_ExecuteWorkflowServer) error {
+			md, ok := metadata.FromIncomingContext(stream.Context())
+			require.True(t, ok)
+			clientNames := md.Get("x-gitlab-client-name")
+			require.Len(t, clientNames, 1)
+			capturedClientName = clientNames[0]
+			return nil
+		}
+
+		workflowStream, err := client.ExecuteWorkflow(ctx)
+		require.NoError(t, err)
+		_, _ = workflowStream.Recv()
+
+		require.Len(t, capturedClientName, 255)
+		require.Equal(t, strings.Repeat("a", 255), capturedClientName)
+	})
+}
+
+func TestExecuteWorkflowErrorPreservesGRPCStatus(t *testing.T) {
+	// Point at a port with nothing listening so the connection attempt fails
+	// immediately with codes.Unavailable.
+	config := &api.DuoWorkflowServiceConfig{
+		URI:     "localhost:1", // port 1 is reserved and always refused
+		Headers: map[string]string{},
+		Secure:  false,
+	}
+	client, err := NewClient(config, "test-agent/1.0", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.ExecuteWorkflow(context.Background())
+	require.Error(t, err)
+
+	// The wrapped error must carry the original gRPC status so callers can
+	// inspect it (e.g. status.Code(err) == codes.Unavailable).
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	// The wrapping message must be present.
+	require.ErrorContains(t, err, "failed to open workflow stream")
+}
+
+func TestTrackSelfHostedExecuteWorkflowErrorPreservesGRPCStatus(t *testing.T) {
+	config := &api.DuoWorkflowServiceConfig{
+		URI:     "localhost:1",
+		Headers: map[string]string{},
+		Secure:  false,
+	}
+	client, err := NewClient(config, "test-agent/1.0", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.TrackSelfHostedExecuteWorkflow(context.Background())
+	require.Error(t, err)
+
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	require.ErrorContains(t, err, "failed to open self-hosted tracking stream")
 }
 
 func createTestClient(t *testing.T, server *testServer) *Client {
@@ -143,7 +267,7 @@ func createTestClient(t *testing.T, server *testServer) *Client {
 		Headers: map[string]string{"test": "header"},
 		Secure:  false,
 	}
-	client, err := NewClient(config, "visual-studio-code/0.0.1")
+	client, err := NewClient(config, "visual-studio-code/0.0.1", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client

@@ -158,9 +158,8 @@ describe('GlobalSearchModal', () => {
     findGlobalSearchInput().find('[data-testid="search-input-field"]');
 
   describe('template', () => {
-    beforeEach(() => {
-      useMockLocationHelper();
-    });
+    useMockLocationHelper();
+
     describe('always renders', () => {
       beforeEach(() => {
         createComponent();
@@ -289,9 +288,9 @@ describe('GlobalSearchModal', () => {
                 template: `
                   <div>
                     <input
+                      v-bind="$attrs"
                       :value="value"
                       ref="input"
-                      v-bind="$attrs"
                       v-on="$listeners"
                       data-testid="search-input-field"
                       @input="$emit('input', $event.target.value)"
@@ -467,6 +466,15 @@ describe('GlobalSearchModal', () => {
             findGlobalSearchInput().vm.$emit('input', MOCK_SEARCH);
 
             submitSearch();
+            expect(visitUrl).toHaveBeenCalledWith(MOCK_SEARCH_QUERY);
+          });
+
+          it('will submit a search when the form is submitted without a keydown event', () => {
+            createComponent();
+            findGlobalSearchInput().vm.$emit('input', MOCK_SEARCH);
+
+            wrapper.find('form').trigger('submit');
+
             expect(visitUrl).toHaveBeenCalledWith(MOCK_SEARCH_QUERY);
           });
         });

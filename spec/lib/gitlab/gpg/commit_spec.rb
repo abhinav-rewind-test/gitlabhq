@@ -40,13 +40,11 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
       it 'returns the cached signature on second call' do
         gpg_commit = described_class.new(commit)
 
-        expect_next_instance_of(Gitlab::Gpg::Signature) do |signature|
-          expect(signature).to receive(:using_keychain).once.and_call_original
-        end
+        gpg_commit.signature
 
-        2.times do
-          gpg_commit.signature
-        end
+        expect(Gitlab::Gpg).not_to receive(:using_tmp_keychain)
+
+        gpg_commit.signature
       end
     end
 
@@ -279,6 +277,75 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
 
           it_behaves_like 'returns the cached signature on second call'
         end
+
+        context 'signing key has been revoked' do
+          before do
+            revoked_signature = instance_double(GPGME::Signature, fingerprint: GpgHelpers::User1.fingerprint,
+              valid?: false, revoked_key?: true)
+            allow(GPGME::Crypto).to receive(:new).and_return(crypto)
+            allow(crypto).to receive(:verify).and_yield(revoked_signature)
+          end
+
+          it 'returns a revoked_key signature' do
+            expect(described_class.new(commit).signature).to have_attributes(
+              commit_sha: commit_sha,
+              project: project,
+              gpg_key: gpg_key,
+              gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
+              gpg_key_user_name: GpgHelpers::User1.names.first,
+              gpg_key_user_email: GpgHelpers::User1.emails.first,
+              verification_status: 'revoked_key'
+            )
+          end
+
+          it_behaves_like 'returns the cached signature on second call'
+        end
+
+        context 'signing key has expired' do
+          before do
+            expired_key_signature = instance_double(GPGME::Signature, fingerprint: GpgHelpers::User1.fingerprint,
+              valid?: false, revoked_key?: false, expired_key?: true)
+            allow(GPGME::Crypto).to receive(:new).and_return(crypto)
+            allow(crypto).to receive(:verify).and_yield(expired_key_signature)
+          end
+
+          it 'returns an expired_key signature' do
+            expect(described_class.new(commit).signature).to have_attributes(
+              commit_sha: commit_sha,
+              project: project,
+              gpg_key: gpg_key,
+              gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
+              gpg_key_user_name: GpgHelpers::User1.names.first,
+              gpg_key_user_email: GpgHelpers::User1.emails.first,
+              verification_status: 'expired_key'
+            )
+          end
+
+          it_behaves_like 'returns the cached signature on second call'
+        end
+
+        context 'signature is invalid but key is neither revoked nor expired' do
+          before do
+            invalid_signature = instance_double(GPGME::Signature, fingerprint: GpgHelpers::User1.fingerprint,
+              valid?: false, revoked_key?: false, expired_key?: false)
+            allow(GPGME::Crypto).to receive(:new).and_return(crypto)
+            allow(crypto).to receive(:verify).and_yield(invalid_signature)
+          end
+
+          it 'returns an unverified signature' do
+            expect(described_class.new(commit).signature).to have_attributes(
+              commit_sha: commit_sha,
+              project: project,
+              gpg_key: gpg_key,
+              gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
+              gpg_key_user_name: GpgHelpers::User1.names.first,
+              gpg_key_user_email: GpgHelpers::User1.emails.first,
+              verification_status: 'unverified'
+            )
+          end
+
+          it_behaves_like 'returns the cached signature on second call'
+        end
       end
 
       context 'user does not match the key uid' do
@@ -364,24 +431,6 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
         )
       end
 
-      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
-        before do
-          stub_feature_flags(check_for_mailmapped_commit_emails: false)
-        end
-
-        it 'returns a valid signature' do
-          expect(described_class.new(commit).signature).to have_attributes(
-            commit_sha: commit_sha,
-            project: project,
-            gpg_key: nil,
-            gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
-            gpg_key_user_name: nil,
-            gpg_key_user_email: nil,
-            verification_status: 'verified_system'
-          )
-        end
-      end
-
       it_behaves_like 'returns the cached signature on second call'
     end
   end
@@ -414,22 +463,6 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
         expect { described_class.new(commit).update_signature!(stored_signature) }.to(
           change { signature.reload.committer_email }.from(nil).to(user_email)
         )
-      end
-
-      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
-        before do
-          stub_feature_flags(check_for_mailmapped_commit_emails: false)
-        end
-
-        it 'does not update gpg_key_user_email with signature_data author_email' do
-          signature
-
-          stored_signature = CommitSignatures::GpgSignature.find_by_commit_sha(commit_sha)
-          stored_signature.update!(committer_email: nil)
-
-          expect { described_class.new(commit).update_signature!(stored_signature) }.to(
-            not_change { signature.reload.committer_email })
-        end
       end
     end
   end

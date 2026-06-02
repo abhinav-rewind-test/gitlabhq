@@ -3,23 +3,27 @@ import VueApollo from 'vue-apollo';
 import initMrNotes from 'ee_else_ce/mr_notes';
 import { start as startCodeReviewMessaging } from '~/code_review/signals';
 import diffsEventHub from '~/diffs/event_hub';
-import { EVT_MR_DIFF_GENERATED } from '~/diffs/constants';
+import { EVT_MR_DIFF_GENERATED, EVT_MR_PREPARED } from '~/diffs/constants';
 import initSidebarBundle from '~/sidebar/sidebar_bundle';
 import { apolloProvider } from '~/graphql_shared/issuable_client';
 import { parseBoolean } from '~/lib/utils/common_utils';
 import { initMrMoreDropdown } from '~/mr_more_dropdown';
 import { pinia } from '~/pinia/instance';
 import ReviewDrawer from '~/batch_comments/components/review_drawer.vue';
+import { observable } from '~/lib/utils/observable';
+import { initRapidDiffsToggle } from '~/rapid_diffs/app/init_rapid_diffs_toggle';
+import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
+import { useMergeRequestDiscussions } from '~/merge_request/stores/merge_request_discussions';
 import initShow from './init_merge_request_show';
 import getStateQuery from './queries/get_state.query.graphql';
 
 Vue.use(VueApollo);
 
-const tabData = Vue.observable({
+const tabData = observable('mr_page_tab_data', {
   tabs: [],
 });
 
-const initMrStickyHeader = () => {
+const initMrStickyHeader = (store) => {
   const el = document.getElementById('js-merge-sticky-header');
 
   if (el && !CSS.supports('container-type: scroll-state')) {
@@ -67,6 +71,7 @@ const initMrStickyHeader = () => {
         isFluidLayout: parseBoolean(isFluidLayout),
         blocksMerge: parseBoolean(blocksMerge),
         sourceProjectPath,
+        store,
       },
       render(h) {
         return h('sticky-header', {
@@ -104,6 +109,31 @@ const initReviewDrawer = () => {
   });
 };
 
+const initStackedDropdown = () => {
+  const el = document.querySelector('.js-stack-dropdown');
+
+  if (!el || !window.gon?.features?.stackedMergeRequests) return;
+
+  const { defaultBranch } = el.dataset;
+
+  // eslint-disable-next-line no-new
+  new Vue({
+    el,
+    name: 'MergeRequestStackDropdown',
+    pinia,
+    apolloProvider,
+    components: {
+      StackDropdown: () => import('~/merge_requests/components/stack_dropdown.vue'),
+    },
+    provide: {
+      defaultBranch,
+    },
+    render(h) {
+      return h('stack-dropdown');
+    },
+  });
+};
+
 export function initMrPage(createRapidDiffsApp) {
   initMrNotes(createRapidDiffsApp);
   initShow();
@@ -111,7 +141,7 @@ export function initMrPage(createRapidDiffsApp) {
   startCodeReviewMessaging({ signalBus: diffsEventHub });
 
   const changesCountBadge = document.querySelector('.js-changes-tab-count');
-  const commitsCountBadge = document.querySelector('.js-commits-count .gl-badge-content');
+  const commitsCountBadge = document.querySelector('.js-commits-count');
   diffsEventHub.$on(EVT_MR_DIFF_GENERATED, (mergeRequestDiffGenerated) => {
     const { diffStatsSummary: { fileCount = null } = {}, commitCount } = mergeRequestDiffGenerated;
 
@@ -132,9 +162,20 @@ export function initMrPage(createRapidDiffsApp) {
     }
   });
 
+  if (createRapidDiffsApp) {
+    diffsEventHub.$once(EVT_MR_PREPARED, () => {
+      window.location.reload();
+    });
+  }
+
   requestIdleCallback(() => {
+    initRapidDiffsToggle();
     initSidebarBundle();
-    initMrStickyHeader();
+    const stickyHeaderStore = createRapidDiffsApp
+      ? useMergeRequestDiscussions(pinia)
+      : useMrNotes(pinia);
+    initMrStickyHeader(stickyHeaderStore);
     initReviewDrawer();
+    initStackedDropdown();
   });
 }

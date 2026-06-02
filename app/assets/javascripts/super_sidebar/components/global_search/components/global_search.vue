@@ -2,7 +2,7 @@
 import { GlSearchBoxByType, GlModal } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions, mapGetters } from 'vuex';
-import { debounce, clamp } from 'lodash';
+import { debounce, clamp } from 'lodash-es';
 import { InternalEvents } from '~/tracking';
 import { Mousetrap, addStopCallback } from '~/lib/mousetrap';
 import { visitUrl } from '~/lib/utils/url_utility';
@@ -469,6 +469,7 @@ export default {
       role="search"
       :aria-label="$options.i18n.SEARCH_OR_COMMAND_MODE_PLACEHOLDER"
       class="gl-relative gl-w-full gl-rounded-lg gl-pb-0"
+      @submit.prevent="submitSearch"
     >
       <div class="gl-relative">
         <div

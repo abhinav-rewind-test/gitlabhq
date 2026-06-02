@@ -14,7 +14,6 @@ import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
 import { sanitize } from '~/lib/dompurify';
 import { TYPENAME_MERGE_REQUEST } from '~/graphql_shared/constants';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import StatusBadge from '~/issuable/components/status_badge.vue';
 import ImportedBadge from '~/vue_shared/components/imported_badge.vue';
@@ -24,6 +23,8 @@ import TodoWidget from '~/sidebar/components/todo_toggle/sidebar_todo_widget.vue
 import SubscriptionsWidget from '~/sidebar/components/subscriptions/sidebar_subscriptions_widget.vue';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
 import SubmitReviewButton from '~/batch_comments/components/submit_review_button.vue';
+import RapidDiffsToggle from '~/rapid_diffs/app/rapid_diffs_toggle.vue';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { badgeState } from '~/merge_requests/badge_state';
 import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
 import { useNotes } from '~/notes/store/legacy_notes';
@@ -67,12 +68,13 @@ export default {
     TodoWidget,
     SubscriptionsWidget,
     ClipboardButton,
+    RapidDiffsToggle,
   },
   directives: {
     SafeHtml,
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [glFeatureFlagsMixin()],
+  mixins: [glFeatureFlagMixin()],
   inject: {
     defaultBranchName: { default: '' },
     projectPath: { default: null },
@@ -128,9 +130,6 @@ export default {
     isSignedIn() {
       return isLoggedIn();
     },
-    isNotificationsTodosButtons() {
-      return this.glFeatures.notificationsTodosButtons;
-    },
     isForked() {
       return this.projectPath !== this.sourceProjectPath;
     },
@@ -174,7 +173,7 @@ export default {
 
 <template>
   <gl-intersection-observer
-    class="merge-request-sticky-header-wrapper gl-relative gl-top-8"
+    class="merge-request-sticky-header-wrapper panel-top-offset-panel-header-height gl-relative"
     @appear="setStickyHeaderVisible(false)"
     @disappear="setStickyHeaderVisible(true)"
   >
@@ -253,9 +252,9 @@ export default {
             </gl-sprintf>
           </div>
         </div>
-        <div class="gl-flex gl-w-full gl-justify-between">
+        <div class="gl-flex gl-w-full gl-min-w-0 gl-items-center gl-justify-between">
           <ul
-            class="merge-request-tabs nav-tabs nav nav-links gl-m-0 gl-flex gl-flex-nowrap gl-border-b-0 gl-p-0"
+            class="merge-request-tabs nav-tabs nav nav-links gl-m-0 gl-flex gl-min-w-0 gl-flex-nowrap gl-border-b-0 gl-p-0"
           >
             <li
               v-for="(tab, index) in tabs"
@@ -275,11 +274,12 @@ export default {
               </gl-link>
             </li>
           </ul>
-          <div class="gl-flex gl-flex-wrap gl-items-center gl-gap-3">
+          <div class="gl-flex gl-shrink-0 gl-flex-nowrap gl-items-center gl-gap-3">
+            <rapid-diffs-toggle v-if="glFeatures.rapidDiffsOnMrShow && activeTab === 'diffs'" />
             <discussion-counter
               :blocks-merge="blocksMerge"
               :can-resolve-discussion="canResolveDiscussion"
-              hide-options
+              compact
             />
             <template v-if="isSignedIn">
               <todo-widget
@@ -289,7 +289,6 @@ export default {
                 issuable-type="merge_request"
               />
               <subscriptions-widget
-                v-if="isNotificationsTodosButtons"
                 :iid="issuableIid"
                 :full-path="projectPath"
                 issuable-type="merge_request"

@@ -13,12 +13,12 @@ module Ci
 
         drop(
           pending_builds(BUILD_PENDING_OUTDATED_TIMEOUT.ago),
-          failure_reason: :stuck_or_timeout_failure
+          failure_reason: :stuck_pending_with_matching_runners
         )
 
-        drop_stuck(
-          pending_builds(BUILD_PENDING_STUCK_TIMEOUT.ago),
-          failure_reason: :stuck_or_timeout_failure
+        drop_stuck_from_queue(
+          pending_builds_queue(BUILD_PENDING_STUCK_TIMEOUT.ago),
+          failure_reason: :stuck_pending_no_matching_runners
         )
       end
 
@@ -34,6 +34,10 @@ module Ci
           .created_at_before(timeout)
           .updated_at_before(timeout)
           .order(created_at: :asc, project_id: :asc)
+      end
+
+      def pending_builds_queue(timeout)
+        Ci::PendingBuild.where(created_at: ...timeout)
       end
       # rubocop: enable CodeReuse/ActiveRecord
     end

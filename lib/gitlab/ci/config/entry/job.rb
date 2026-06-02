@@ -37,7 +37,7 @@ module Gitlab
               validates :run, json_schema: {
                 base_directory: 'app/validators/json_schemas',
                 detail_errors: true,
-                filename: 'run_steps',
+                filename: 'ci_run_steps',
                 hash_conversion: true
               }
             end
@@ -63,10 +63,6 @@ module Gitlab
             end
 
             validate on: :composed do
-              if config.is_a?(Hash) && config.key?(:inputs) && !Gitlab::Ci::Config::FeatureFlags.enabled?(:ci_job_inputs)
-                errors.add(:config, "contains unknown keys: inputs")
-              end
-
               next unless inputs_defined?
 
               inputs_spec = inputs_value || {}

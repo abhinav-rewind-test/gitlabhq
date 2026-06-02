@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Understand repository size calculation, limits, and methods to reduce Git repository storage.
 title: Repository size
 ---
@@ -28,7 +28,7 @@ This calculation is similar to executing `du --summarize --bytes` on your reposi
 ## Size and storage limits
 
 Administrators can set a [repository size limit](../../../administration/settings/account_and_limit_settings.md#repository-size-limit)
-for GitLab Self-Managed. For GitLab SaaS, size limits are [pre-defined](../../gitlab_com/_index.md#account-and-limit-settings).
+for GitLab Self-Managed. For GitLab.com, size limits are [pre-defined](../../gitlab_com/_index.md#account-and-limit-settings).
 
 When a project reaches its size limit, certain operations like pushing, creating merge requests,
 and uploading LFS objects are restricted.
@@ -120,7 +120,7 @@ This process:
 
 Use this method to remove internal Git references and unreferenced objects from your repository.
 Do not use this method to remove sensitive data.
-Instead use [Remove blobs](#remove-blobs).
+To remove sensitive data, use the [remove blobs method](#remove-blobs).
 
 This process:
 
@@ -140,7 +140,7 @@ Prerequisites:
 
 To clean up a repository:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. Go to **Settings** > **Repository**.
 1. Expand **Repository maintenance**.
 1. Upload the list of objects to remove. For example, the `commit-map` file in the `filter-repo` directory.
@@ -208,8 +208,8 @@ Prerequisites:
 
 To remove blobs from your repository:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Repository maintenance**.
 1. Select **Remove blobs**.
 1. Enter a list of blob IDs to remove, each ID on its own line.
@@ -217,10 +217,10 @@ To remove blobs from your repository:
 1. On the confirmation dialog, enter your project path.
 1. Select **Yes, remove blobs**.
 1. Wait for the blob removal to complete before continuing:
-   - If [email notifications](../../../user/profile/notifications.md) are enabled,
+   - If [email notifications](../../profile/notifications.md) are enabled,
      wait until you receive an email stating that the repository history rewrite is completed.
    - If email notifications are not enabled, wait at least 5 minutes.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand the section labeled **Advanced**.
 1. Select **Run housekeeping**. Wait at least 30 minutes for the operation to complete.
 1. In the same **Settings** > **General** > **Advanced** section, select **Prune unreachable objects**.
@@ -236,7 +236,7 @@ To remove blobs from your repository:
 #### Get a list of object IDs
 
 To remove blobs, you need a list of objects to remove.
-To get these IDs, use the `ls-tree` command or use the [Repositories API list repository tree](../../../api/repositories.md#list-all-repository-trees-in-a-project) endpoint.
+To get these IDs, use the `ls-tree` command or the [list repository tree API endpoint](../../../api/repositories.md#list-all-repository-trees-in-a-project).
 The following instructions use the `ls-tree` command.
 
 Prerequisites:
@@ -306,7 +306,7 @@ This approach:
 For more information, see [secret push protection](../../application_security/secret_detection/secret_push_protection/_index.md).
 
 Alternatively, to completely delete specific files from a repository, see
-[Remove blobs](#remove-blobs).
+[remove blobs](#remove-blobs).
 
 Prerequisites:
 
@@ -314,15 +314,15 @@ Prerequisites:
 
 To redact text from your repository:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Repository maintenance**.
 1. Select **Redact text**.
 1. On the drawer, enter the text to redact. Regexes and glob patterns are accepted.
 1. Select **Redact matching strings**.
 1. On the confirmation dialog, enter your project path.
 1. Select **Yes, redact matching strings**.
-1. On the left sidebar, select **Settings** > **General**.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Advanced**.
 1. Select **Run housekeeping**. Wait at least 30 minutes for the operation to complete.
 1. In the same **Settings** > **General** > **Advanced** section, select **Prune unreachable objects**.
@@ -390,20 +390,15 @@ If the blob removal fails, GitLab sends an email notification to the initiator w
 
 Possible errors and solutions:
 
-- `validating object ID: invalid object ID`:
-
-  The object ID list contains a syntax error or an incorrect object ID. To resolve this:
-
-    1. Regenerate the [object IDs list](#get-a-list-of-object-ids).
-    1. Re-run the [blob removal steps](#remove-blobs).
-
-- `source repository checksum altered`:
-
-  This occurs when someone pushes a commit during the blob removal process. To resolve this:
-
-    1. Temporarily block all pushes to the repository.
-    1. Re-run the [blob removal steps](#remove-blobs).
-    1. Re-enable pushes after the process completes successfully.
+- `validating object ID: invalid object ID`: The object ID list contains a syntax error or an incorrect object ID. To
+  resolve this:
+  1. Regenerate the [object IDs list](#get-a-list-of-object-ids).
+  1. Re-run the [blob removal steps](#remove-blobs).
+- `source repository checksum altered`: This occurs when someone pushes a commit during the blob removal process. To
+  resolve this:
+  1. Temporarily block all pushes to the repository.
+  1. Re-run the [blob removal steps](#remove-blobs).
+  1. Re-enable pushes after the process completes successfully.
 
 ### Repository size limit reached
 

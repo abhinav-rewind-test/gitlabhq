@@ -1,7 +1,7 @@
 ---
 stage: Security Risk Management
 group: Security Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Vulnerabilities API
 description: Manage GitLab vulnerabilities with REST API (deprecated). Supports retrieve, confirm, resolve, dismiss, and revert operations. Use GraphQL instead.
 ---
@@ -225,9 +225,9 @@ Example response:
 }
 ```
 
-## Revert a vulnerability to detected state
+## Revert a vulnerability to the detected state
 
-Reverts a specified vulnerability to detected state. Returns status code `304` if the vulnerability is already in detected state.
+Reverts a specified vulnerability to the detected state. Returns status code `304` if the vulnerability is already in the detected state.
 
 If an authenticated user does not have permission to
 [change vulnerability status](../user/permissions.md#project-application-security),
@@ -239,7 +239,7 @@ POST /vulnerabilities/:id/revert
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer or string | yes | The ID of a vulnerability to revert to detected state |
+| `id` | integer or string | yes | The ID of a vulnerability to revert to the detected state |
 
 ```shell
 curl --request POST \
@@ -424,7 +424,7 @@ Example response:
 }
 ```
 
-### GraphQL - Revert vulnerability to detected state
+### GraphQL - Revert vulnerability to the detected state
 
 Use [`Mutation.vulnerabilityRevertToDetected`](graphql/reference/_index.md#mutationvulnerabilityreverttodetected).
 

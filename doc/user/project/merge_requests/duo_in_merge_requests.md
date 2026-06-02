@@ -1,12 +1,12 @@
 ---
 stage: AI-powered
 group: AI Coding
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use AI-assisted features for relevant information about a merge request.
 title: GitLab Duo in merge requests
 ---
 
-{{< alert type="disclaimer" />}}
+> [!disclaimer]
 
 GitLab Duo is designed to provide contextually relevant information during the lifecycle of a merge request.
 
@@ -62,33 +62,45 @@ Data usage: The diff of changes between the source branch's head and the target 
 GitLab Duo can review your merge request for potential errors and provide feedback on alignment to
 standards.
 
-When you request a review from `@GitLabDuo`, one of the following features runs:
+When you request a review from GitLab Duo, it automatically runs one of two code review features
+based on your add-on:
 
-- [Code Review Flow](../../duo_agent_platform/flows/foundational_flows/code_review.md): The new flow
-  available through the GitLab Duo Agent Platform. Uses GitLab Credits.
-- [GitLab Duo Code Review (Classic)](../../gitlab_duo/code_review_classic.md): The classic code
-  review functionality.
+| Detail                | [Code Review Flow](../../duo_agent_platform/flows/foundational_flows/code_review.md) | [GitLab Duo Code Review](../../gitlab_duo/code_review.md) |
+|-----------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| Reviewer | `@GitLabDuo`                                                                         | `@GitLabDuo`                                              |
+| Type                  | Agentic                                                                              | Non-agentic                                               |
+| Add-on                | None required. Uses GitLab Credits.                                                  | GitLab Duo Enterprise                                     |
+| Context awareness     | Enhanced understanding of repository structure and cross-file dependencies           | Focused on the merge request and the file diffs within it. |
+| Analysis              | Multi-step agentic reasoning                                                         | Single-pass                                               |
+| Session creation     | {{< yes >}}                                                                          | {{< no >}}                                                |
+| Automatic reviews     | {{< yes >}}                                                                          | {{< yes >}}                                               |
+| Custom instructions   | {{< yes >}}                                                                          | {{< yes >}}                                               |
+| Custom comments       | {{< yes >}}                                                                          | {{< yes >}}                                               |
 
-The review feature that runs depends on the add-on of the user that starts the GitLab Duo review:
+### Determine which review feature runs
 
-- Manual review requests: The user who requests the review.
-- Automatic reviews: The user who authors the merge request.
-- Merge requests that start in draft: The user who marks the MR as ready.
+The code review feature that runs depends on the user that initiates the GitLab Duo review.
 
-Because the review feature is based on the requesting user's add-on, both features can run in the
+If the user has a GitLab Duo Pro Enterprise seat, GitLab Duo Core Review runs. If not, Code Review Flow runs.
+
+When Code Review Flow runs, credit usage is attributed to the initiating user.
+
+| Review trigger                          | Initiating user                      |
+|-----------------------------------------|--------------------------------------|
+| Review requested manually               | The user who requests the review.    |
+| Merge request created (not a draft)     | The merge request author.            |
+| Draft merge request marked as ready     | The merge request author.            |
+
+Because the review feature is based on the initiating user's add-on, both features can run in the
 same project.
 
-### How the review features compare
+To determine which feature runs a review, check the merge request's activity feed. Code Review
+Flow starts a review session when it runs. If no review session appears, GitLab Duo Code Review runs
+the review.
 
-While you interact with both review features the same way, Code Review Flow offers enhanced
-capabilities compared to GitLab Duo Code Review (Classic):
+![Merge request activity feed showing a review session started by GitLab Duo.](img/gitlab_duo_code_review_flow_session_v18_10.png)
 
-- Improved context awareness: Better understanding of repository structure and cross-file
-  dependencies.
-- Agentic capabilities: Multi-step reasoning for more thorough analysis.
-- Modern architecture: Built on the scalable GitLab Duo Agent Platform.
-
-Both features support automatic reviews, custom instructions, and custom comments.
+After the review completes, you can also look for a Code Review Flow session in [sessions for your project](../../duo_agent_platform/sessions/_index.md#view-sessions-for-your-project).
 
 ## Summarize a code review
 
@@ -120,7 +132,7 @@ Both features support automatic reviews, custom instructions, and custom comment
 
 When you've completed your review of a merge request and are ready to [submit your review](reviews/_index.md#submit-a-review), use GitLab Duo Code Review Summary to generate a summary of your comments.
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find the merge request you want to review.
 1. When you are ready to submit your review, select **Finish review**.
 1. Select **Add Summary**.
@@ -167,7 +179,7 @@ Data usage: When you use this feature, the following data is sent to the large l
 When preparing to merge your merge request, edit the proposed merge commit message
 by using GitLab Duo Merge Commit Message Generation.
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests** and find your merge request.
 1. Select the **Edit commit message** checkbox on the merge widget.
 1. Select **Generate commit message**.
@@ -184,6 +196,7 @@ Data usage: When you use this feature, the following data is sent to the large l
 
 - [Control GitLab Duo availability](../../gitlab_duo/turn_on_off.md)
 - [All GitLab Duo features](../../gitlab_duo/_index.md)
+- [Resolve merge conflicts with GitLab Duo](../../project/merge_requests/conflicts.md#resolve-conflicts-with-gitlab-duo)
 
 ## Troubleshooting
 

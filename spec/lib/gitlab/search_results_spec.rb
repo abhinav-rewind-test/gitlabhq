@@ -6,10 +6,10 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
   include ProjectForksHelper
   include SearchHelpers
 
-  let_it_be(:user) { create(:user, username: 'foobar') }
-  let_it_be(:project) { create(:project, name: 'foo') }
-  let_it_be(:issue) { create(:issue, project: project, title: 'foo') }
-  let_it_be(:milestone) { create(:milestone, project: project, title: 'foo') }
+  let_it_be(:user, freeze: false) { create(:user, username: 'foobar') }
+  let_it_be(:project, freeze: false) { create(:project, name: 'foo') }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project, title: 'foo') }
+  let_it_be(:milestone, freeze: false) { create(:milestone, project: project, title: 'foo') }
 
   let(:merge_request) { create(:merge_request, source_project: project, title: 'foo') }
   let(:query) { 'foo' }
@@ -113,6 +113,30 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
       end
     end
 
+    describe '#error_type' do
+      it 'returns nil for any scope' do
+        expect(results.error_type('projects')).to be_nil
+      end
+    end
+
+    describe '#error' do
+      it 'returns nil for any scope' do
+        expect(results.error('projects')).to be_nil
+      end
+    end
+
+    describe '#failed?' do
+      it 'returns false for any scope' do
+        expect(results.failed?('projects')).to be false
+      end
+    end
+
+    describe '#server_error?' do
+      it 'returns false' do
+        expect(results.server_error?).to be false
+      end
+    end
+
     context 'when count_limit is lower than total amount' do
       before do
         allow(results).to receive(:count_limit).and_return(1)
@@ -192,45 +216,57 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
       end
 
       context 'with filtering' do
-        let_it_be(:closed_result) { create(:closed_merge_request, source_project: project, title: 'foo') }
-        let_it_be(:opened_result) { create(:reopened_merge_request, source_project: project, title: 'foo') }
-        let_it_be(:archived_project) { create(:project, :public, :archived) }
-        let_it_be(:unarchived_project) { create(:project, :public) }
-        let_it_be(:archived_result) { create(:merge_request, source_project: archived_project, title: 'foo') }
-        let_it_be(:unarchived_result) { create(:merge_request, source_project: unarchived_project, title: 'foo') }
-        let_it_be(:query) { 'foo' }
+        let_it_be(:closed_result, freeze: false) do
+          create(:closed_merge_request, source_project: project, title: 'foo')
+        end
+
+        let_it_be(:opened_result, freeze: false) do
+          create(:reopened_merge_request, source_project: project, title: 'foo')
+        end
+
+        let_it_be(:archived_project, freeze: false) { create(:project, :public, :archived) }
+        let_it_be(:unarchived_project, freeze: false) { create(:project, :public) }
+        let_it_be(:archived_result, freeze: false) do
+          create(:merge_request, source_project: archived_project, title: 'foo')
+        end
+
+        let_it_be(:unarchived_result, freeze: false) do
+          create(:merge_request, source_project: unarchived_project, title: 'foo')
+        end
+
+        let_it_be(:query, freeze: false) { 'foo' }
 
         include_examples 'search results filtered by state'
         include_examples 'search results filtered by archived'
       end
 
       context 'with ordering' do
-        let_it_be(:old_result) do
+        let_it_be(:old_result, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b1', title: 'sorted old',
             created_at: 1.month.ago)
         end
 
-        let_it_be(:new_result) do
+        let_it_be(:new_result, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b2', title: 'sorted recent',
             created_at: 1.day.ago)
         end
 
-        let_it_be(:very_old_result) do
+        let_it_be(:very_old_result, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b3', title: 'sorted very old',
             created_at: 1.year.ago)
         end
 
-        let_it_be(:old_updated) do
+        let_it_be(:old_updated, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b4', title: 'updated old',
             updated_at: 1.month.ago)
         end
 
-        let_it_be(:new_updated) do
+        let_it_be(:new_updated, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b5', title: 'updated recent',
             updated_at: 1.day.ago)
         end
 
-        let_it_be(:very_old_updated) do
+        let_it_be(:very_old_updated, freeze: false) do
           create(:reopened_merge_request, source_project: project, source_branch: 'b6', title: 'updated very old',
             updated_at: 1.year.ago)
         end
@@ -265,13 +301,19 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
       end
 
       context 'with filtering' do
-        let_it_be(:closed_result) { create(:issue, :closed, project: project, title: 'foo closed') }
-        let_it_be(:opened_result) { create(:issue, :opened, project: project, title: 'foo open') }
-        let_it_be(:confidential_result) { create(:issue, :confidential, project: project, title: 'foo confidential') }
-        let_it_be(:unarchived_project) { project }
-        let_it_be(:archived_project) { create(:project, :public, :archived) }
-        let_it_be(:unarchived_result) { create(:issue, project: unarchived_project, title: 'foo unarchived') }
-        let_it_be(:archived_result) { create(:issue, project: archived_project, title: 'foo archived') }
+        let_it_be(:closed_result, freeze: false) { create(:issue, :closed, project: project, title: 'foo closed') }
+        let_it_be(:opened_result, freeze: false) { create(:issue, :opened, project: project, title: 'foo open') }
+        let_it_be(:confidential_result, freeze: false) do
+          create(:issue, :confidential, project: project, title: 'foo confidential')
+        end
+
+        let_it_be(:unarchived_project, freeze: false) { project }
+        let_it_be(:archived_project, freeze: false) { create(:project, :public, :archived) }
+        let_it_be(:unarchived_result, freeze: false) do
+          create(:issue, project: unarchived_project, title: 'foo unarchived')
+        end
+
+        let_it_be(:archived_result, freeze: false) { create(:issue, project: archived_project, title: 'foo archived') }
 
         include_examples 'search results filtered by state'
         include_examples 'search results filtered by confidential'
@@ -279,17 +321,41 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
       end
 
       context 'with ordering' do
-        let_it_be(:old_result) { create(:issue, project: project, title: 'sorted old', created_at: 1.month.ago) }
-        let_it_be(:new_result) { create(:issue, project: project, title: 'sorted recent', created_at: 1.day.ago) }
-        let_it_be(:very_old_result) { create(:issue, project: project, title: 'sorted old2', created_at: 1.year.ago) }
+        let_it_be(:old_result, freeze: false) do
+          create(:issue, project: project, title: 'sorted old', created_at: 1.month.ago)
+        end
 
-        let_it_be(:old_updated) { create(:issue, project: project, title: 'updated old', updated_at: 1.month.ago) }
-        let_it_be(:new_updated) { create(:issue, project: project, title: 'updated recent', updated_at: 1.day.ago) }
-        let_it_be(:very_old_updated) { create(:issue, project: project, title: 'updated old2', updated_at: 1.year.ago) }
+        let_it_be(:new_result, freeze: false) do
+          create(:issue, project: project, title: 'sorted recent', created_at: 1.day.ago)
+        end
 
-        let_it_be(:less_popular_result) { create(:issue, project: project, title: 'less popular', upvotes_count: 10) }
-        let_it_be(:popular_result) { create(:issue, project: project, title: 'popular', upvotes_count: 100) }
-        let_it_be(:non_popular_result) { create(:issue, project: project, title: 'non popular', upvotes_count: 1) }
+        let_it_be(:very_old_result, freeze: false) do
+          create(:issue, project: project, title: 'sorted old2', created_at: 1.year.ago)
+        end
+
+        let_it_be(:old_updated, freeze: false) do
+          create(:issue, project: project, title: 'updated old', updated_at: 1.month.ago)
+        end
+
+        let_it_be(:new_updated, freeze: false) do
+          create(:issue, project: project, title: 'updated recent', updated_at: 1.day.ago)
+        end
+
+        let_it_be(:very_old_updated, freeze: false) do
+          create(:issue, project: project, title: 'updated old2', updated_at: 1.year.ago)
+        end
+
+        let_it_be(:less_popular_result, freeze: false) do
+          create(:issue, project: project, title: 'less popular', upvotes_count: 10)
+        end
+
+        let_it_be(:popular_result, freeze: false) do
+          create(:issue, project: project, title: 'popular', upvotes_count: 100)
+        end
+
+        let_it_be(:non_popular_result, freeze: false) do
+          create(:issue, project: project, title: 'non popular', upvotes_count: 1)
+        end
 
         include_examples 'search results sorted' do
           let(:results_created) do
@@ -314,9 +380,9 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
       let(:query) { 'Test' }
 
       describe 'filtering' do
-        let_it_be(:group) { create(:group, name: 'my-group') }
-        let_it_be(:unarchived_result) { create(:project, :public, group: group, name: 'Test1') }
-        let_it_be(:archived_result) { create(:project, :archived, :public, group: group, name: 'Test2') }
+        let_it_be(:group, freeze: false) { create(:group, name: 'my-group') }
+        let_it_be(:unarchived_result, freeze: false) { create(:project, :public, group: group, name: 'Test1') }
+        let_it_be(:archived_result, freeze: false) { create(:project, :archived, :public, group: group, name: 'Test2') }
 
         it_behaves_like 'search results filtered by archived'
 
@@ -324,7 +390,7 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
           expect(results.objects('projects')).to eq([unarchived_result])
         end
 
-        context 'when the query is Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+        context 'when the query is Search::Params::MIN_TERM_LENGTH characters long' do
           let(:query) { 'Te' }
 
           it 'returns the project' do
@@ -332,7 +398,7 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
           end
         end
 
-        context 'when the query is less than Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+        context 'when the query is less than Search::Params::MIN_TERM_LENGTH characters long' do
           let(:query) { 'T' }
 
           it 'does not return the project' do
@@ -353,9 +419,9 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
     describe '#users' do
       subject(:user_search_result) { results.objects('users') }
 
-      let_it_be(:another_user) { create(:user, username: 'barfoo') }
-      let_it_be(:parent_group) { create(:group) }
-      let_it_be(:group) { create(:group, parent: parent_group) }
+      let_it_be(:another_user, freeze: false) { create(:user, username: 'barfoo') }
+      let_it_be(:parent_group, freeze: false) { create(:group) }
+      let_it_be(:group, freeze: false) { create(:group, parent: parent_group) }
 
       it 'does not call the UsersFinder when the current_user is not allowed to read users list' do
         allow(Ability).to receive(:allowed?).and_return(false)
@@ -440,7 +506,7 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
             end
 
             context 'when the current_user belongs to a child of the group' do
-              let_it_be(:child_group) { create(:group, parent: group) }
+              let_it_be(:child_group, freeze: false) { create(:group, parent: group) }
 
               before_all do
                 child_group.add_developer(user)
@@ -453,8 +519,8 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
           end
 
           context 'when another user is a guest of a private group' do
-            let_it_be(:public_parent_group) { create(:group, :public) }
-            let_it_be(:private_group) { create(:group, :private, parent: public_parent_group) }
+            let_it_be(:public_parent_group, freeze: false) { create(:group, :public) }
+            let_it_be(:private_group, freeze: false) { create(:group, :private, parent: public_parent_group) }
 
             before_all do
               private_group.add_guest(another_user)
@@ -499,23 +565,35 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
   end
 
   describe 'confidential issues' do
-    let_it_be(:project_1) { create(:project, :internal) }
-    let_it_be(:project_2) { create(:project, :internal) }
-    let_it_be(:project_3) { create(:project, :internal) }
-    let_it_be(:project_4) { create(:project, :internal) }
-    let_it_be(:query) { 'foo' }
-    let_it_be(:limit_projects) { Project.id_in([project_1.id, project_2.id, project_3.id]) }
-    let_it_be(:author) { create(:user) }
-    let_it_be(:assignee) { create(:user) }
-    let_it_be(:non_member) { create(:user) }
-    let_it_be(:member) { create(:user) }
-    let_it_be(:admin) { create(:admin) }
-    let_it_be(:issue) { create(:issue, project: project_1, title: 'foo') }
-    let_it_be(:hidden_issue1) { create(:issue, :confidential, project: project_1, title: 'foo', author: author) }
-    let_it_be(:hidden_issue2) { create(:issue, :confidential, title: 'foo', project: project_1, assignees: [assignee]) }
-    let_it_be(:hidden_issue3) { create(:issue, :confidential, project: project_2, title: 'foo', author: author) }
-    let_it_be(:hidden_issue4) { create(:issue, :confidential, project: project_3, title: 'foo', assignees: [assignee]) }
-    let_it_be(:hidden_issue5) { create(:issue, :confidential, project: project_4, title: 'foo') }
+    let_it_be(:project_1, freeze: false) { create(:project, :internal) }
+    let_it_be(:project_2, freeze: false) { create(:project, :internal) }
+    let_it_be(:project_3, freeze: false) { create(:project, :internal) }
+    let_it_be(:project_4, freeze: false) { create(:project, :internal) }
+    let_it_be(:query, freeze: false) { 'foo' }
+    let_it_be(:limit_projects, freeze: false) { Project.id_in([project_1.id, project_2.id, project_3.id]) }
+    let_it_be(:author, freeze: false) { create(:user) }
+    let_it_be(:assignee, freeze: false) { create(:user) }
+    let_it_be(:non_member, freeze: false) { create(:user) }
+    let_it_be(:member, freeze: false) { create(:user) }
+    let_it_be(:admin, freeze: false) { create(:admin) }
+    let_it_be(:issue, freeze: false) { create(:issue, project: project_1, title: 'foo') }
+    let_it_be(:hidden_issue1, freeze: false) do
+      create(:issue, :confidential, project: project_1, title: 'foo', author: author)
+    end
+
+    let_it_be(:hidden_issue2, freeze: false) do
+      create(:issue, :confidential, title: 'foo', project: project_1, assignees: [assignee])
+    end
+
+    let_it_be(:hidden_issue3, freeze: false) do
+      create(:issue, :confidential, project: project_2, title: 'foo', author: author)
+    end
+
+    let_it_be(:hidden_issue4, freeze: false) do
+      create(:issue, :confidential, project: project_3, title: 'foo', assignees: [assignee])
+    end
+
+    let_it_be(:hidden_issue5, freeze: false) { create(:issue, :confidential, project: project_4, title: 'foo') }
 
     it 'does not list confidential issues for non project members' do
       results = described_class.new(non_member, query, limit_projects)
@@ -601,18 +679,33 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
   end
 
   context 'for milestones' do
-    let_it_be(:archived_project) { create(:project, :public, :archived) }
-    let_it_be(:private_project_1) { create(:project, :private) }
-    let_it_be(:private_project_2) { create(:project, :private) }
-    let_it_be(:internal_project) { create(:project, :internal) }
-    let_it_be(:public_project_1) { create(:project, :public) }
-    let_it_be(:public_project_2) { create(:project, :public, :issues_disabled, :merge_requests_disabled) }
-    let_it_be(:hidden_milestone_1) { create(:milestone, project: private_project_2, title: 'milestone 1') }
-    let_it_be(:hidden_milestone_2) { create(:milestone, project: public_project_2, title: 'milestone 2') }
-    let_it_be(:hidden_milestone_3) { create(:milestone, project: archived_project, title: 'Milestone 3') }
-    let_it_be(:milestone_1) { create(:milestone, :closed, project: private_project_1, title: 'milestone 4') }
-    let_it_be(:milestone_2) { create(:milestone, project: internal_project, title: 'milestone 5') }
-    let_it_be(:milestone_3) { create(:milestone, project: public_project_1, title: 'milestone 6') }
+    let_it_be(:archived_project, freeze: false) { create(:project, :public, :archived) }
+    let_it_be(:private_project_1, freeze: false) { create(:project, :private) }
+    let_it_be(:private_project_2, freeze: false) { create(:project, :private) }
+    let_it_be(:internal_project, freeze: false) { create(:project, :internal) }
+    let_it_be(:public_project_1, freeze: false) { create(:project, :public) }
+    let_it_be(:public_project_2, freeze: false) do
+      create(:project, :public, :issues_disabled, :merge_requests_disabled)
+    end
+
+    let_it_be(:hidden_milestone_1, freeze: false) do
+      create(:milestone, project: private_project_2, title: 'milestone 1')
+    end
+
+    let_it_be(:hidden_milestone_2, freeze: false) do
+      create(:milestone, project: public_project_2, title: 'milestone 2')
+    end
+
+    let_it_be(:hidden_milestone_3, freeze: false) do
+      create(:milestone, project: archived_project, title: 'Milestone 3')
+    end
+
+    let_it_be(:milestone_1, freeze: false) do
+      create(:milestone, :closed, project: private_project_1, title: 'milestone 4')
+    end
+
+    let_it_be(:milestone_2, freeze: false) { create(:milestone, project: internal_project, title: 'milestone 5') }
+    let_it_be(:milestone_3, freeze: false) { create(:milestone, project: public_project_1, title: 'milestone 6') }
 
     let(:unarchived_result) { milestone_1 }
     let(:archived_result) { hidden_milestone_3 }
@@ -633,64 +726,59 @@ RSpec.describe Gitlab::SearchResults, feature_category: :global_search do
 
   describe '#formatted_count' do
     context 'when scope is work_items' do
-      context 'when work_items_search_enabled? is false' do
-        before do
-          stub_feature_flags(search_scope_work_item: false)
-        end
+      it 'formats limited issues count' do
+        allow(results).to receive(:limited_issues_count).and_return(42)
 
-        it 'returns "0"' do
-          expect(results.formatted_count('work_items')).to eq('0')
-        end
+        expect(results.formatted_count('work_items')).to eq('42')
       end
 
-      context 'when work_items_search_enabled? is true' do
-        before do
-          stub_feature_flags(search_scope_work_item: true)
-        end
+      it 'returns count limit message when count exceeds limit' do
+        allow(results).to receive(:limited_issues_count).and_return(100)
 
-        it 'formats limited issues count' do
-          allow(results).to receive(:limited_issues_count).and_return(42)
-
-          expect(results.formatted_count('work_items')).to eq('42')
-        end
-
-        it 'returns count limit message when count exceeds limit' do
-          allow(results).to receive(:limited_issues_count).and_return(100)
-
-          expect(results.formatted_count('work_items')).to eq('99+')
-        end
+        expect(results.formatted_count('work_items')).to eq('99+')
       end
     end
   end
 
   describe '#collection_for' do
     context 'when scope is work_items' do
-      context 'when work_items_search_enabled? is false' do
-        before do
-          stub_feature_flags(search_scope_work_item: false)
-        end
+      it 'returns work_items collection' do
+        work_items_collection = instance_double(WorkItems)
+        allow(results).to receive(:work_items).and_return(work_items_collection)
 
-        it 'returns Issue.none' do
-          result = results.send(:collection_for, 'work_items')
+        result = results.send(:collection_for, 'work_items')
 
-          expect(result).to eq(Issue.none)
-          expect(result).to be_empty
-        end
+        expect(result).to eq(work_items_collection)
+      end
+    end
+
+    context 'when filtering work_items by work_item_type_ids' do
+      let(:task_type) { WorkItems::TypesFramework::Provider.new.find_by_base_type(:task) }
+
+      let!(:task_work_item) { create(:work_item, :task, project: project, title: 'foo task') }
+      let!(:issue_work_item) { create(:work_item, project: project, title: 'foo issue') }
+
+      before_all do
+        project.add_developer(user)
       end
 
-      context 'when work_items_search_enabled? is true' do
-        before do
-          stub_feature_flags(search_scope_work_item: true)
-        end
+      it 'filters by work_item_type_ids when present in filters' do
+        filtered_results = described_class.new(
+          user, query, limit_projects,
+          filters: { work_item_type_ids: [task_type.id] }
+        )
 
-        it 'returns work_items collection' do
-          work_items_collection = instance_double(WorkItems)
-          allow(results).to receive(:work_items).and_return(work_items_collection)
+        expect(filtered_results.objects('work_items')).to include(task_work_item)
+        expect(filtered_results.objects('work_items')).not_to include(issue_work_item)
+      end
 
-          result = results.send(:collection_for, 'work_items')
+      it 'returns all work items when work_item_type_ids filter is empty' do
+        filtered_results = described_class.new(
+          user, query, limit_projects,
+          filters: {}
+        )
 
-          expect(result).to eq(work_items_collection)
-        end
+        expect(filtered_results.objects('work_items')).to include(task_work_item, issue_work_item)
       end
     end
   end

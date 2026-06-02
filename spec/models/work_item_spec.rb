@@ -102,18 +102,6 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
     it "returns the items with widget iteration enabled" do
       expect(with_enabled_widget_definition).not_to include(issue)
     end
-
-    context "when the FF for system defined types is disabled" do
-      before do
-        stub_feature_flags(work_item_system_defined_type: false)
-        # Ensure that the widget definition does not exists.
-        WorkItems::WidgetDefinition.where(widget_type: "iteration", work_item_type: issue.work_item_type).delete_all
-      end
-
-      it "returns the items with widget iteration enabled" do
-        expect(with_enabled_widget_definition).not_to include(issue)
-      end
-    end
   end
 
   describe '.with_parent_ids' do
@@ -142,8 +130,8 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
 
   describe '.with_group_level_and_project_issues_enabled' do
     let_it_be(:group) { create(:group) }
-    let_it_be(:project_with_issues) { create(:project, group: group) }
-    let_it_be(:project_without_issues) { create(:project, group: group) }
+    let_it_be(:project_with_issues, freeze: false) { create(:project, group: group) }
+    let_it_be(:project_without_issues, freeze: false) { create(:project, group: group) }
 
     let_it_be(:group_work_item) { create(:work_item, namespace: group) }
     let_it_be(:project_with_issues_work_item) { create(:work_item, :issue, project: project_with_issues) }
@@ -368,12 +356,12 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
   end
 
   describe '#supports_assignee?' do
-    Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter::WIDGETS_FOR_TYPE.each_pair do |base_type, widgets|
+    WorkItems::TypesFramework::SystemDefined::Type::BASE_TYPES.pluck(:base_type).each do |base_type|
       specify do
-        work_item = build(:work_item, base_type)
-        supports_assignee = widgets.include?(:assignees)
-
-        skip if !Gitlab.ee? && [:epic, :requirement, :objective, :test_case, :key_result].include?(base_type)
+        work_item = build(:work_item, base_type.to_sym)
+        widgets = WorkItems::TypesFramework::SystemDefined::Definitions
+          .const_get(base_type.camelize, false).widgets
+        supports_assignee = widgets.include?('assignees')
 
         expect(work_item.supports_assignee?).to eq(supports_assignee)
       end
@@ -381,12 +369,12 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
   end
 
   describe '#supports_time_tracking?' do
-    Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter::WIDGETS_FOR_TYPE.each_pair do |base_type, widgets|
+    WorkItems::TypesFramework::SystemDefined::Type::BASE_TYPES.pluck(:base_type).each do |base_type|
       specify do
-        work_item = build(:work_item, base_type)
-        supports_time_tracking = widgets.include?(:time_tracking)
-
-        skip if !Gitlab.ee? && [:epic, :requirement, :objective, :test_case, :key_result].include?(base_type)
+        work_item = build(:work_item, base_type.to_sym)
+        widgets = WorkItems::TypesFramework::SystemDefined::Definitions
+          .const_get(base_type.camelize, false).widgets
+        supports_time_tracking = widgets.include?('time_tracking')
 
         expect(work_item.supports_time_tracking?).to eq(supports_time_tracking)
       end
@@ -449,22 +437,13 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
       end
     end
 
-    context "when using the work_item_type model" do
+    context "when using the system defined work_item_type model" do
       before do
-        stub_feature_flags(work_item_system_defined_type: false)
+        allow(custom_type_without_widgets).to receive(:widget_definitions).and_return([])
       end
 
-      let_it_be(:custom_type_without_widgets) do
-        create(:work_item_type, :task) do |work_item_type|
-          work_item_type.widget_definitions
-            .where(widget_type: %w[assignees labels start_and_due_date current_user_todos development])
-            .delete_all
-
-          work_item_type
-        end
-      end
-
-      let_it_be(:custom_work_item_type) { create(:work_item_type, :issue) }
+      let_it_be(:custom_type_without_widgets, freeze: false) { build(:work_item_system_defined_type, :task) }
+      let_it_be(:custom_work_item_type) { build(:work_item_system_defined_type) }
 
       it_behaves_like "supports quick action commands"
     end
@@ -582,7 +561,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
     end
 
     context 'with title containing preceding or trailing spaces' do
-      let_it_be(:work_item) { build(:work_item, project: reusable_project, title: " some title ") }
+      let_it_be(:work_item, freeze: false) { build(:work_item, project: reusable_project, title: " some title ") }
 
       it 'removes spaces from title' do
         work_item.save!
@@ -599,8 +578,8 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
       let_it_be(:project) { create(:project) }
 
       context 'when parent and child are confidential' do
-        let_it_be(:parent) { create(:work_item, confidential: true, project: project) }
-        let_it_be(:child) { create(:work_item, :task, confidential: true, project: project) }
+        let_it_be(:parent, freeze: false) { create(:work_item, confidential: true, project: project) }
+        let_it_be(:child, freeze: false) { create(:work_item, :task, confidential: true, project: project) }
         let_it_be(:link) { create(:parent_link, work_item: child, work_item_parent: parent) }
 
         it 'does not allow to make child non-confidential' do
@@ -619,8 +598,8 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
       end
 
       context 'when parent and child are non-confidential' do
-        let_it_be(:parent) { create(:work_item, project: project) }
-        let_it_be(:child) { create(:work_item, :task, project: project) }
+        let_it_be(:parent, freeze: false) { create(:work_item, project: project) }
+        let_it_be(:child, freeze: false) { create(:work_item, :task, project: project) }
         let_it_be(:link) { create(:parent_link, work_item: child, work_item_parent: parent) }
 
         it 'does not allow to make parent confidential' do
@@ -640,7 +619,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
       end
 
       context 'when creating new child' do
-        let_it_be(:child) { build(:work_item, project: project) }
+        let_it_be(:child, freeze: false) { build(:work_item, project: project) }
 
         it 'does not allow to set confidential parent' do
           child.work_item_parent = create(:work_item, confidential: true, project: project)
@@ -709,16 +688,18 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
   end
 
   describe '#allowed_work_item_type_change' do
-    let_it_be(:all_types) { WorkItems::Type::BASE_TYPES.keys }
+    context "when using the WorkItems::TypesFramework::SytemDefined::Type model" do
+      let_it_be(:all_types) { ::WorkItems::TypesFramework::Provider.new.all }
 
-    it 'is possible to change between all types', :aggregate_failures do
-      all_types.each do |type|
-        work_item = build(:work_item, type, project: reusable_project)
+      it 'is possible to change between all types', :aggregate_failures do
+        all_types.each do |type|
+          work_item = build(:work_item, work_item_type: type, project: reusable_project)
 
-        (all_types - [type]).each do |new_type|
-          work_item.work_item_type_id = create(:work_item_type, new_type).id
+          (all_types - [type]).each do |new_type|
+            work_item.work_item_type_id = new_type
 
-          expect(work_item).to be_valid, "#{type} to #{new_type}"
+            expect(work_item).to be_valid, "#{type} to #{new_type}"
+          end
         end
       end
     end
@@ -761,7 +742,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
 
   describe '#validate_child_restrictions' do
     let_it_be(:project) { create(:project) }
-    let_it_be(:parent_work_item) { create(:work_item, :issue, project: project) }
+    let_it_be_with_refind(:parent_work_item) { create(:work_item, :issue, project: project) }
     let_it_be(:task_child) { create(:work_item, :task, project: project) }
 
     context 'when there are no child links' do
@@ -810,7 +791,9 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
 
     let_it_be(:work_item_link_a) { create(:work_item_link, source: authorized_item_a, target: authorized_item_b) }
     let_it_be(:work_item_link_b) { create(:work_item_link, source: authorized_item_a, target: unauthorized_item) }
-    let_it_be(:work_item_link_c) { create(:work_item_link, source: authorized_item_a, target: authorized_item_c) }
+    let_it_be(:work_item_link_c, freeze: false) do
+      create(:work_item_link, source: authorized_item_a, target: authorized_item_c)
+    end
 
     before_all do
       authorized_project.add_guest(user)
@@ -899,7 +882,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
 
   context 'work item participants' do
     context 'project level work item' do
-      let_it_be(:work_item) { create(:work_item, project: reusable_project) }
+      let_it_be(:work_item, freeze: false) { create(:work_item, project: reusable_project) }
 
       it 'has participants' do
         expect(work_item.participants).to match_array([work_item.author])
@@ -907,7 +890,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
     end
 
     context 'group level work item' do
-      let_it_be(:work_item) { create(:work_item, namespace: reusable_group) }
+      let_it_be(:work_item, freeze: false) { create(:work_item, namespace: reusable_group) }
 
       it 'has participants' do
         expect(work_item.participants).to match_array([work_item.author])
@@ -916,7 +899,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
   end
 
   describe '#due_date' do
-    let_it_be(:work_item) { create(:work_item, :issue) }
+    let_it_be(:work_item, freeze: false) { create(:work_item, :issue) }
 
     context 'when work_item have no dates_source fallbacks to work_item due_date' do
       before do
@@ -937,7 +920,7 @@ RSpec.describe WorkItem, feature_category: :portfolio_management do
   end
 
   describe '#start_date' do
-    let_it_be(:work_item) { create(:work_item, :issue) }
+    let_it_be(:work_item, freeze: false) { create(:work_item, :issue) }
 
     context 'when work_item have no dates_source fallbacks to work_item start_date' do
       before do

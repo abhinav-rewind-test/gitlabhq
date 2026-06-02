@@ -115,6 +115,7 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
       expect(json_response['terraform_state_encryption_enabled']).to eq(true)
       expect(json_response['iframe_rendering_enabled']).to be(false)
       expect(json_response['iframe_rendering_allowlist']).to eq([])
+      expect(json_response['email_otp_enabled']).to be(false)
       expect(json_response['authn_data_retention_cleanup_enabled']).to eq(false)
       expect(json_response['allow_s3_compatible_storage_for_offline_transfer']).to eq(false)
     end
@@ -161,6 +162,16 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
         expect(json_response['iframe_rendering_allowlist']).to match_array(['example.com', 'videos.example.com:443'])
         expect(json_response['iframe_rendering_allowlist_raw']).to eq(raw)
         expect(ApplicationSetting.current.iframe_rendering_allowlist).to match_array(['example.com', 'videos.example.com:443'])
+      end
+    end
+
+    context 'email_otp_enabled setting' do
+      it 'updates email_otp_enabled' do
+        put api('/application/settings', admin), params: { email_otp_enabled: true }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['email_otp_enabled']).to be(true)
+        expect(ApplicationSetting.current.email_otp_enabled?).to be(true)
       end
     end
 
@@ -231,6 +242,8 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
             diff_max_patch_bytes: 300_000,
             diff_max_files: 2000,
             diff_max_lines: 50000,
+            diff_max_versions: 500,
+            diff_max_commits: 500_000,
             default_branch_protection: ::Gitlab::Access::PROTECTION_DEV_CAN_MERGE,
             default_branch_protection_defaults: ::Gitlab::Access::BranchProtection.protected_after_initial_push.stringify_keys,
             local_markdown_version: 3,
@@ -241,6 +254,7 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
             snippet_size_limit: 5,
             issues_create_limit: 300,
             raw_blob_request_limit: 300,
+            raw_blob_request_limit_unauthenticated: 400,
             spam_check_endpoint_enabled: true,
             spam_check_endpoint_url: 'grpc://example.com/spam_check',
             spam_check_api_key: 'SPAM_CHECK_API_KEY',
@@ -331,6 +345,8 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
         expect(json_response['diff_max_patch_bytes']).to eq(300_000)
         expect(json_response['diff_max_files']).to eq(2000)
         expect(json_response['diff_max_lines']).to eq(50000)
+        expect(json_response['diff_max_versions']).to eq(500)
+        expect(json_response['diff_max_commits']).to eq(500_000)
         expect(json_response['default_branch_protection']).to eq(Gitlab::Access::PROTECTION_DEV_CAN_MERGE)
         expect(json_response['default_branch_protection_defaults']).to eq(::Gitlab::Access::BranchProtection.protected_after_initial_push.stringify_keys)
         expect(json_response['local_markdown_version']).to eq(3)
@@ -341,6 +357,7 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
         expect(json_response['snippet_size_limit']).to eq(5)
         expect(json_response['issues_create_limit']).to eq(300)
         expect(json_response['raw_blob_request_limit']).to eq(300)
+        expect(json_response['raw_blob_request_limit_unauthenticated']).to eq(400)
         expect(json_response['spam_check_endpoint_enabled']).to be_truthy
         expect(json_response['spam_check_endpoint_url']).to eq('grpc://example.com/spam_check')
         expect(json_response['spam_check_api_key']).to eq('SPAM_CHECK_API_KEY')
@@ -393,6 +410,27 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
         expect(json_response['authn_data_retention_cleanup_enabled']).to eq(true)
         expect(json_response['allow_s3_compatible_storage_for_offline_transfer']).to eq(true)
       end
+    end
+
+    it 'does not allow zero diff_max_versions' do
+      put api("/application/settings", admin), params: { diff_max_versions: 0 }
+
+      expect(response).to have_gitlab_http_status(:bad_request)
+    end
+
+    it 'does not allow zero diff_max_commits' do
+      put api("/application/settings", admin), params: { diff_max_commits: 0 }
+
+      expect(response).to have_gitlab_http_status(:bad_request)
+    end
+
+    it "updates valid_runner_registrars as the sole parameter" do
+      put api("/application/settings", admin),
+        params: { valid_runner_registrars: ['project'] }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response['valid_runner_registrars']).to eq(['project'])
+      expect(ApplicationSetting.current.valid_runner_registrars).to eq(['project'])
     end
 
     it "updates default_branch_protection_defaults from the default_branch_protection param" do
@@ -540,11 +578,11 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
 
       it 'does not allow unrestricted key lengths' do
         types = %w[dsa_key_restriction
-                   ecdsa_key_restriction
-                   ecdsa_sk_key_restriction
-                   ed25519_key_restriction
-                   ed25519_sk_key_restriction
-                   rsa_key_restriction]
+          ecdsa_key_restriction
+          ecdsa_sk_key_restriction
+          ed25519_key_restriction
+          ed25519_sk_key_restriction
+          rsa_key_restriction]
 
         types.each do |type|
           put api("/application/settings", admin), params: { type => 0 }
@@ -1336,7 +1374,7 @@ RSpec.describe API::Settings, 'Settings', :do_not_mock_admin_mode_setting, featu
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response['vscode_extension_marketplace_enabled']).to eq(true)
         expect(json_response['vscode_extension_marketplace'])
-          .to eq({ "enabled" => true, "extension_host_domain" => "cdn.web-ide.gitlab-static.net" })
+          .to eq({ "enabled" => true, "extension_host_domain" => "cdn.web-ide.gitlab-static.net", "single_origin_fallback_enabled" => true })
       end
     end
   end

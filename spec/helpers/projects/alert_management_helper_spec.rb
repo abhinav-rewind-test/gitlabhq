@@ -5,18 +5,11 @@ require 'spec_helper'
 RSpec.describe Projects::AlertManagementHelper, feature_category: :incident_management do
   include Gitlab::Routing.url_helpers
 
-  let_it_be(:project, reload: true) { create(:project) }
+  let_it_be_with_reload(:project) { create(:project) }
   let_it_be(:current_user) { create(:user) }
 
   let(:project_path) { project.full_path }
   let(:project_id) { project.id }
-
-  before do
-    # TODO: When removing the feature flag,
-    # we won't need the tests for the issues listing page, since we'll be using
-    # the work items listing page.
-    stub_feature_flags(work_item_planning_view: false)
-  end
 
   describe '#alert_management_data' do
     let(:user_can_enable_alert_management) { true }
@@ -48,7 +41,7 @@ RSpec.describe Projects::AlertManagementHelper, feature_category: :incident_mana
     end
 
     context 'with http integration' do
-      let_it_be(:integration) { create(:alert_management_http_integration, project: project) }
+      let_it_be(:integration, freeze: false) { create(:alert_management_http_integration, project: project) }
 
       context 'when integration is active' do
         it 'enables alert management' do

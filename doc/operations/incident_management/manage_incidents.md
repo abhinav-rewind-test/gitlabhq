@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Create, assign, update, and resolve incidents in GitLab, and change escalation policies.
 title: Manage incidents
 ---
@@ -37,7 +37,11 @@ You can create an incident manually or automatically.
 To add an incident to an [iteration](../../user/group/iterations/_index.md):
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues** or **Monitor** > **Incidents**, then select your incident to view it.
+1. Go to your incident:
+   - For incidents in the issues list, select **Plan** > **Work items**,
+     then filter by **Type** = **Incident**.
+   - For incidents in the monitor list, select **Monitor** > **Incidents**.
+1. Select your incident.
 1. In the right sidebar, in the **Iteration** section, select **Edit**.
 1. From the dropdown list, select the iteration to add this incident to.
 1. Select any area outside the dropdown list.
@@ -53,22 +57,22 @@ Prerequisites:
 To create an incident from the **Incidents** page:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Incidents**.
+1. In the left sidebar, select **Monitor** > **Incidents**.
 1. Select **Create incident**.
 
-### From the Issues page
+### From the Work items page
 
 Prerequisites:
 
 - You must have the Reporter, Developer, Maintainer, or Owner role for the project.
 
-To create an incident from the **Issues** page:
+To create an incident from the **Work items** page:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Plan** > **Issues**, and select **New issue**.
+1. In the left sidebar, select **Plan** > **Work items**, and select **New item**.
 1. From the **Type** dropdown list, select **Incident**. Only fields relevant to
    incidents are available on the page.
-1. Select **Create issue**.
+1. Select **Create incident**.
 
 ### From an alert
 
@@ -82,7 +86,7 @@ Prerequisites:
 To create an incident from an alert:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Alerts**.
+1. In the left sidebar, select **Monitor** > **Alerts**.
 1. Select your desired alert.
 1. Select **Create incident**.
 
@@ -123,7 +127,7 @@ Prerequisites:
 To set up a webhook with PagerDuty:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Monitor**
+1. In the left sidebar, select **Settings** > **Monitor**
 1. Expand **Incidents**.
 1. Select the **PagerDuty integration** tab.
 1. Turn on the **Active** toggle.
@@ -139,7 +143,7 @@ check if a GitLab incident is created from the incident.
 To view a list of the [incidents](incidents.md#incidents-list):
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Monitor** > **Incidents**.
+1. In the left sidebar, select **Monitor** > **Incidents**.
 
 To view an incident's [details page](incidents.md#incident-details), select it from the list.
 
@@ -281,7 +285,7 @@ Prerequisites:
 To configure the setting:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Monitor**.
+1. In the left sidebar, select **Settings** > **Monitor**.
 1. Expand the **Incidents** section.
 1. Select the **Automatically close associated incident** checkbox.
 1. Select **Save changes**.

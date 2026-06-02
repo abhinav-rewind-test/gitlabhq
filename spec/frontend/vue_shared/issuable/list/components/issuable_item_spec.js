@@ -11,13 +11,7 @@ import WorkItemTypeIcon from '~/work_items/components/work_item_type_icon.vue';
 import WorkItemRelationshipIcons from '~/work_items/components/shared/work_item_relationship_icons.vue';
 import IssuableAssignees from '~/issuable/components/issue_assignees.vue';
 import { localeDateFormat } from '~/lib/utils/datetime/locale_dateformat';
-import * as utils from '~/work_items/utils';
-import {
-  WORK_ITEM_TYPE_NAME_INCIDENT,
-  WORK_ITEM_TYPE_NAME_ISSUE,
-  WORK_ITEM_TYPE_NAME_TEST_CASE,
-  WORK_ITEM_TYPE_NAME_TICKET,
-} from '~/work_items/constants';
+import { WORK_ITEM_TYPE_NAME_ISSUE } from '~/work_items/constants';
 import { mockBlockedByLinkedItem as mockLinkedItems } from 'jest/work_items/mock_data';
 import { mockIssuable, mockDraftIssuable, mockRegularLabel } from '../mock_data';
 
@@ -59,6 +53,9 @@ const createComponent = ({
     stubs: {
       GlSprintf,
       WorkItemRelationshipIcons,
+      WorkItemPrefetch: {
+        template: `<div data-testid="issuable-prefetch-trigger"><slot :prefetchWorkItem="() => {}" :clearPrefetching="() => {}"></slot></div>`,
+      },
     },
     mocks: {
       $apollo: {
@@ -204,6 +201,29 @@ describe('IssuableItem', () => {
 
         expect(wrapper.vm.assignees).toStrictEqual(mockIssuable.assignees);
       });
+
+      describe('when features.assignees is present', () => {
+        let mockAssignees;
+
+        beforeEach(() => {
+          mockAssignees = [mockAuthor];
+          wrapper = createComponent({
+            issuable: {
+              ...mockIssuable,
+              assignees: undefined,
+              features: {
+                assignees: { assignees: { nodes: mockAssignees } },
+              },
+            },
+          });
+        });
+
+        it('returns features.assignees over widgets[].assignees', () => {
+          expect(wrapper.findComponent(IssuableAssignees).props('assignees')).toEqual(
+            expect.arrayContaining(mockAssignees),
+          );
+        });
+      });
     });
 
     describe('timestamp', () => {
@@ -211,7 +231,7 @@ describe('IssuableItem', () => {
         wrapper = createComponent();
 
         expect(findTimestampWrapper().attributes('title')).toBe(
-          localeDateFormat.asDateTimeFull.format(mockIssuable.updatedAt),
+          localeDateFormat.asDateTimeFullWithWeekday.format(mockIssuable.updatedAt),
         );
       });
 
@@ -222,7 +242,7 @@ describe('IssuableItem', () => {
         });
 
         expect(findTimestampWrapper().attributes('title')).toBe(
-          localeDateFormat.asDateTimeFull.format(closedAt),
+          localeDateFormat.asDateTimeFullWithWeekday.format(closedAt),
         );
       });
 
@@ -232,7 +252,7 @@ describe('IssuableItem', () => {
         });
 
         expect(findTimestampWrapper().attributes('title')).toBe(
-          localeDateFormat.asDateTimeFull.format(mockIssuable.updatedAt),
+          localeDateFormat.asDateTimeFullWithWeekday.format(mockIssuable.updatedAt),
         );
       });
     });
@@ -472,7 +492,7 @@ describe('IssuableItem', () => {
 
       expect(createdAtEl.exists()).toBe(true);
       expect(createdAtEl.attributes('title')).toBe(
-        localeDateFormat.asDateTimeFull.format(mockIssuable.createdAt),
+        localeDateFormat.asDateTimeFullWithWeekday.format(mockIssuable.createdAt),
       );
       expect(createdAtEl.text()).toBe(wrapper.vm.createdAt);
     });
@@ -600,7 +620,9 @@ describe('IssuableItem', () => {
         const statusBadgeWrapper = statusEl.find('button');
 
         expect(statusBadge.exists()).toBe(true);
-        expect(statusBadgeWrapper.attributes('title')).toBe('January 1, 2000 at 12:00:00 AM GMT');
+        expect(statusBadgeWrapper.attributes('title')).toBe(
+          'Saturday, January 1, 2000 at 12:00:00 AM GMT',
+        );
       });
 
       it('does not render a tooltip if the issuable doesn\t have a mergedAt value', () => {
@@ -677,7 +699,7 @@ describe('IssuableItem', () => {
       const timestampEl = wrapper.findByTestId('issuable-timestamp');
 
       expect(timestampEl.attributes('title')).toBe(
-        localeDateFormat.asDateTimeFull.format(mockIssuable.updatedAt),
+        localeDateFormat.asDateTimeFullWithWeekday.format(mockIssuable.updatedAt),
       );
       expect(timestampEl.text()).toBe(wrapper.vm.formattedTimestamp);
     });
@@ -700,7 +722,7 @@ describe('IssuableItem', () => {
         const timestampEl = wrapper.findByTestId('issuable-timestamp');
 
         expect(timestampEl.attributes('title')).toBe(
-          localeDateFormat.asDateTimeFull.format(closedAt),
+          localeDateFormat.asDateTimeFullWithWeekday.format(closedAt),
         );
         expect(timestampEl.text()).toBe(wrapper.vm.formattedTimestamp);
       });
@@ -900,38 +922,28 @@ describe('IssuableItem', () => {
     });
   });
 
-  describe('when item is of unsupported work item type', () => {
+  describe('when item has useIssueView config set to true', () => {
     const fullPath = 'gitlab-org/gitlab';
 
-    describe.each`
-      type                              | workItemTypeName                 | itemType       | authorUsername
-      ${'Work item incident'}           | ${WORK_ITEM_TYPE_NAME_INCIDENT}  | ${undefined}   | ${undefined}
-      ${'Work item Service Desk issue'} | ${WORK_ITEM_TYPE_NAME_TICKET}    | ${undefined}   | ${'support-bot'}
-      ${'Work item test case'}          | ${WORK_ITEM_TYPE_NAME_TEST_CASE} | ${undefined}   | ${undefined}
-      ${'Work item ticket'}             | ${WORK_ITEM_TYPE_NAME_TICKET}    | ${undefined}   | ${undefined}
-      ${'Legacy incident'}              | ${'Incident'}                    | ${'INCIDENT'}  | ${undefined}
-      ${'Legacy Service Desk issue'}    | ${'Issue'}                       | ${'ISSUE'}     | ${'support-bot'}
-      ${'Legacy test case'}             | ${'TestCase'}                    | ${'TEST_CASE'} | ${undefined}
-    `('when item is $type', ({ workItemTypeName, itemType, authorUsername }) => {
-      it('uses redirect on row click', async () => {
-        const item = {
-          ...mockIssuable,
-          workItemType: { name: workItemTypeName },
-          ...(itemType && { type: itemType }),
-          ...(authorUsername && { author: { ...mockAuthor, username: authorUsername } }),
-        };
-
-        wrapper = createComponent({
-          preventRedirect: true,
-          showCheckbox: false,
-          issuable: { ...item, namespace: { fullPath } },
-        });
-
-        await findIssuableItemWrapper().trigger('click');
-
-        expect(wrapper.emitted('select-issuable')).not.toBeDefined();
-        expect(visitUrl).toHaveBeenCalledWith(item.webUrl);
+    it('uses redirect on row click', async () => {
+      mockWorkItemConfigGetter.mockReturnValue({
+        ...defaultWorkItemConfig,
+        useIssueView: true,
       });
+
+      wrapper = createComponent({
+        preventRedirect: true,
+        showCheckbox: false,
+        issuable: { ...mockIssuable, namespace: { fullPath } },
+        provide: {
+          getWorkItemTypeConfiguration: mockWorkItemConfigGetter,
+        },
+      });
+
+      await findIssuableItemWrapper().trigger('click');
+
+      expect(wrapper.emitted('select-issuable')).not.toBeDefined();
+      expect(visitUrl).toHaveBeenCalledWith(mockIssuable.webUrl);
     });
   });
 
@@ -955,10 +967,8 @@ describe('IssuableItem', () => {
   });
 
   describe('Navigation guards for issues and work items SPA', () => {
-    describe('when canRouterNav should not be called', () => {
+    describe('when useIssueView is true', () => {
       beforeEach(async () => {
-        jest.spyOn(utils, 'canRouterNav');
-
         mockWorkItemConfigGetter.mockReturnValue({
           ...defaultWorkItemConfig,
           useIssueView: true,
@@ -971,13 +981,16 @@ describe('IssuableItem', () => {
             ...mockIssuable,
             workItemType: { name: WORK_ITEM_TYPE_NAME_ISSUE },
           },
+          provide: {
+            getWorkItemTypeConfiguration: mockWorkItemConfigGetter,
+          },
         });
 
         await findIssuableItemWrapper().trigger('click');
       });
 
-      it('does not call canRouterNav when useIssueView is true for an issue', () => {
-        expect(utils.canRouterNav).not.toHaveBeenCalled();
+      it('does not open in drawer when useIssueView is true for an issue', () => {
+        expect(wrapper.emitted('select-issuable')).not.toBeDefined();
       });
     });
   });

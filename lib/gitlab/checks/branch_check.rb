@@ -56,7 +56,7 @@ module Gitlab
         logger.log_timed(LOG_MESSAGES[:protected_branch_checks]) do
           return unless ProtectedBranch.protected?(project, branch_name) # rubocop:disable Cop/AvoidReturnFromBlocks
 
-          if forced_push? && !ProtectedBranch.allow_force_push?(project, branch_name)
+          if forced_push? && !allow_force_push?
             raise GitAccess::ForbiddenError, ERROR_MESSAGES[:force_push_protected_branch]
           end
         end
@@ -127,8 +127,14 @@ module Gitlab
       def empty_project_push_message
         <<~MESSAGE
 
-        A default branch (e.g. main) does not yet exist for #{project.full_path}
-        Ask a project Owner or Maintainer to create a default branch:
+        You cannot push the initial commit because the default branch is
+        protected and your role does not allow it.
+
+        To resolve this, either:
+        - Ask a Maintainer to push the initial commit.
+        - Contact an Owner or administrator for help.
+
+        Find a Maintainer, Owner, or administrator at:
 
           #{project_members_url}
 
@@ -147,9 +153,15 @@ module Gitlab
         Gitlab::Checks::ForcePush.force_push?(project, oldrev, newrev)
       end
 
+      def allow_force_push?
+        ProtectedBranch.allow_force_push?(project, branch_name)
+      end
+
       def safe_commit_for_new_protected_branch?
         ProtectedBranch.any_protected?(project, project.repository.branch_names_contains_sha(newrev))
       end
     end
   end
 end
+
+Gitlab::Checks::BranchCheck.prepend_mod

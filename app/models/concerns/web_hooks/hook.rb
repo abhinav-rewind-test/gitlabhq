@@ -8,6 +8,23 @@ module WebHooks
 
     SECRET_MASK = '************'
     MAX_PARAM_LENGTH = 8192
+    SIGNING_TOKEN_PREFIX = 'whsec_'
+    # Format of a signing token with 32 encoded bytes.
+    # Base64.strict_encode64(SecureRandom.bytes(32)).length # => 44 (43 chars + 1 padding "=")
+    SIGNING_TOKEN_FORMAT = %r{\A#{SIGNING_TOKEN_PREFIX}[A-Za-z0-9+/]{43}=\z}
+    MAX_CUSTOM_HEADER_NAME_LENGTH = 255
+
+    TEMPLATE_PARSE_LIMITS = {
+      max_depth: 32,
+      max_array_size: 100,
+      max_hash_size: 100,
+      max_total_elements: 500,
+      max_json_size_bytes: 4096
+    }.freeze
+
+    DANGEROUS_EXPONENT_RE = Gitlab::UntrustedRegexp.new('\d+(\.\d+)?[eE][+-]?\d{4,}')
+
+    CUSTOM_TEMPLATE_INTERPOLATION_REGEX = Gitlab::UntrustedRegexp.new('{{(?P<field>.+?)}}')
 
     # See app/validators/json_schemas/web_hooks_url_variables.json
     VARIABLE_REFERENCE_RE = /\{([A-Za-z]+[0-9]*(?:[._-][A-Za-z0-9]+)*)\}/
@@ -16,6 +33,10 @@ module WebHooks
       include Sortable
       include WebHooks::AutoDisabling
       include Gitlab::EncryptedAttribute
+
+      prevent_from_serialization :signing_token
+
+      encrypts :signing_token
 
       attr_encrypted :token,
         mode: :per_attribute_iv,
@@ -54,6 +75,8 @@ module WebHooks
       }
 
       validates :token, length: { maximum: MAX_PARAM_LENGTH }, format: { without: /\n/ }
+      validates :signing_token, format: { with: SIGNING_TOKEN_FORMAT }, allow_nil: true
+      validate :signing_token_decodable, if: -> { signing_token.present? && errors[:signing_token].empty? }
 
       after_initialize :initialize_url_variables
       after_initialize :initialize_custom_headers
@@ -70,10 +93,16 @@ module WebHooks
       validates :url_variables, json_schema: { filename: 'web_hooks_url_variables' }
       validate :no_missing_url_variables
       validates :interpolated_url, public_url: true, if: ->(hook) { hook.url_variables? && hook.errors.empty? }
-      validates :custom_headers, json_schema: { filename: 'web_hooks_custom_headers' }
+      validate :validate_custom_header_name_length
+      validates :custom_headers, json_schema: { filename: 'web_hooks_custom_headers' },
+        unless: ->(hook) { hook.errors[:custom_headers].present? }
       validates :custom_webhook_template, length: { maximum: 4096 }
+      validate :validate_custom_webhook_template_numeric_safety
       validates :name, length: { maximum: 255 }
       validates :description, length: { maximum: 2048 }
+
+      validates :filter,
+        json_schema: { filename: 'filter', size_limit: 8.kilobytes }
 
       enum :branch_filter_strategy, {
         wildcard: 0,
@@ -156,6 +185,12 @@ module WebHooks
 
       private
 
+      def signing_token_decodable
+        Base64.strict_decode64(signing_token.delete_prefix(SIGNING_TOKEN_PREFIX))
+      rescue ArgumentError
+        errors.add(:signing_token, _('is not a valid base64-encoded string'))
+      end
+
       def reset_token
         self.token = nil if url_changed? && !encrypted_token_changed?
       end
@@ -227,6 +262,40 @@ module WebHooks
 
       def set_branch_filter_nil
         self.push_events_branch_filter = nil
+      end
+
+      def validate_custom_webhook_template_numeric_safety
+        return if custom_webhook_template.blank?
+
+        if DANGEROUS_EXPONENT_RE.match?(custom_webhook_template)
+          errors.add(:custom_webhook_template, 'contains a numeric value that is too large')
+          return
+        end
+
+        sanitized = CUSTOM_TEMPLATE_INTERPOLATION_REGEX.replace_gsub(custom_webhook_template) { '0' }
+        parsed = Gitlab::Json.safe_parse(sanitized, parse_limits: TEMPLATE_PARSE_LIMITS)
+        return unless parsed
+
+        Gitlab::Json::LimitedEncoder.check_numbers!(parsed)
+      rescue Gitlab::Json::LimitedEncoder::NumberLimitExceeded
+        errors.add(:custom_webhook_template, 'contains a numeric value that is too large')
+      rescue JSON::ParserError
+        errors.add(:custom_webhook_template, 'exceeds allowed JSON complexity limits')
+      end
+
+      def validate_custom_header_name_length
+        return if custom_headers.blank?
+
+        custom_headers.each_key do |key|
+          next unless key.length > MAX_CUSTOM_HEADER_NAME_LENGTH
+
+          errors.add(
+            :custom_headers,
+            format(_('key is too long (maximum is %{max_length} characters)'),
+              max_length: MAX_CUSTOM_HEADER_NAME_LENGTH)
+          )
+          break
+        end
       end
     end
   end

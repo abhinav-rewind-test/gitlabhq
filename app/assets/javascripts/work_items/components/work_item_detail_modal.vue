@@ -13,7 +13,7 @@ export default {
   components: {
     GlAlert,
     GlModal,
-    WorkItemDetail: () => import('./work_item_detail.vue'),
+    WorkItemDetail: () => import('ee_else_ce/work_items/components/work_item_detail.vue'),
   },
   provide: {
     preventRouterNav: true,
@@ -40,7 +40,7 @@ export default {
       default: '',
     },
   },
-  emits: ['workItemDeleted', 'close', 'update-modal'],
+  emits: ['work-item-deleted', 'close', 'update-modal'],
   data() {
     return {
       error: undefined,
@@ -75,7 +75,7 @@ export default {
             throw new Error(data.workItemDelete.errors[0]);
           }
 
-          this.$emit('workItemDeleted', this.workItemId);
+          this.$emit('work-item-deleted', this.workItemId);
           this.hide();
         })
         .catch((error) => {

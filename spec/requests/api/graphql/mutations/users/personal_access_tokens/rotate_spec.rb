@@ -17,6 +17,14 @@ RSpec.describe 'Rotate a personal access token', feature_category: :system_acces
     post_graphql_mutation(mutation, current_user: current_user, token: { personal_access_token: request_token })
   end
 
+  it 'passes creation_source api to the service' do
+    expect(::PersonalAccessTokens::RotateService).to receive(:new)
+      .with(anything, anything, anything, hash_including(creation_source: PersonalAccessToken::CREATION_SOURCE_API))
+      .and_call_original
+
+    mutation_request
+  end
+
   it 'rotates the specified personal access token', :aggregate_failures do
     expect { mutation_request }.to change { token_owner.reload.personal_access_tokens.count }.by(1)
     expect(token.reload).to be_revoked
@@ -39,7 +47,7 @@ RSpec.describe 'Rotate a personal access token', feature_category: :system_acces
     end
   end
 
-  context 'when current user does not have manage_user_personal_access_token permission on the token' do
+  context 'when current user does not have rotate_personal_access_token permission on the token' do
     let_it_be(:current_user) { create(:user) }
     let_it_be(:request_token) { create(:personal_access_token, user: current_user) }
 
@@ -76,6 +84,15 @@ RSpec.describe 'Rotate a personal access token', feature_category: :system_acces
       expect { mutation_request }.not_to change { token_owner.reload.personal_access_tokens.count }
       expect(token.reload).not_to be_revoked
       expect_graphql_errors_to_include("`granular_personal_access_tokens` feature flag is disabled.")
+    end
+  end
+
+  describe 'granular PAT authorization' do
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :rotate_personal_access_token do
+      let(:user) { current_user }
+      let(:boundary_object) { :user }
+      let(:authz_mutation) { graphql_mutation(:personalAccessTokenRotate, input, 'errors') }
+      let(:request) { post_graphql_mutation(authz_mutation, token: { personal_access_token: pat }) }
     end
   end
 

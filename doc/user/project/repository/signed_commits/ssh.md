@@ -1,9 +1,9 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: Sign commits in your GitLab repository with SSH keys.
-title: Sign commits with SSH keys
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Sign commits and tags in your GitLab repository with SSH keys.
+title: Sign commits and tags with SSH keys
 ---
 
 {{< details >}}
@@ -13,9 +13,9 @@ title: Sign commits with SSH keys
 
 {{< /details >}}
 
-When you sign commits with SSH keys, GitLab uses the SSH public keys associated
-with your GitLab account to cryptographically verify the commit signature.
-If successful, GitLab displays a **Verified** label on the commit.
+When you sign commits or tags with SSH keys, GitLab uses the SSH public keys
+associated with your GitLab account to cryptographically verify the signature.
+If successful, GitLab displays a **Verified** label on the commit or tag.
 
 For GitLab to consider a commit verified:
 
@@ -23,7 +23,7 @@ For GitLab to consider a commit verified:
   with a [usage type](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)
   of **Authentication & Signing** or **Signing**.
 - The committer email address in your Git configuration must match a
-  [verified email address](../../../../user/profile/_index.md#change-your-primary-email)
+  [verified email address](../../../profile/_index.md#change-your-primary-email)
   associated with your GitLab account.
 
 If the signature is valid but the committer email does not match a verified
@@ -34,9 +34,9 @@ and signing commit signatures as long as their usage type is **Authentication & 
 It can be verified on the page for [adding an SSH key to your GitLab account](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account).
 
 For more information about managing the SSH keys associated with your GitLab account, see
-[Use SSH keys to communicate with GitLab](../../../ssh.md).
+[use SSH keys to communicate with GitLab](../../../ssh.md).
 
-## Configure Git to sign commits with your SSH key
+## Configure Git to sign commits and tags with your SSH key
 
 After you [create an SSH key](../../../ssh.md#generate-an-ssh-key-pair) and
 [add it to your GitLab account](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account)
@@ -79,8 +79,8 @@ Prerequisites:
 
 - You've [created an SSH key](../../../ssh.md#generate-an-ssh-key-pair).
 - You've [added the key](../../../ssh.md#add-an-ssh-key-to-your-gitlab-account) to your GitLab account.
-- You've [configured Git to sign commits](#configure-git-to-sign-commits-with-your-ssh-key) with your SSH key.
-- Your Git `user.email` matches a [verified email address](../../../../user/profile/_index.md#change-your-primary-email)
+- You've [configured Git to sign commits](#configure-git-to-sign-commits-and-tags-with-your-ssh-key) with your SSH key.
+- Your Git `user.email` matches a [verified email address](../../../profile/_index.md#change-your-primary-email)
   associated with your GitLab account.
 
 To sign a commit:
@@ -102,7 +102,38 @@ To sign a commit:
 1. Push to GitLab.
 1. Check that your commits [are verified](#verify-commits).
    Signature verification uses the `allowed_signers` file to associate emails and SSH keys.
-   For help configuring this file, read [Verify commits locally](#verify-commits-locally).
+   For help configuring this file, see [verify commits locally](#verify-commits-locally).
+
+## Sign and verify tags
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/384473) in GitLab 18.3 [with a flag](../../../../administration/feature_flags/_index.md) named `render_ssh_signed_tags_verification_status`. Disabled by default.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/issues/561452) in GitLab 18.11.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/596049) in GitLab 19.1. Feature flag `render_ssh_signed_tags_verification_status` removed.
+
+{{< /history >}}
+
+After you [configure Git to sign commits and tags](#configure-git-to-sign-commits-and-tags-with-your-ssh-key)
+with your SSH key, you can sign your tags:
+
+1. When you create a Git tag, add the `-s` flag:
+
+   ```shell
+   git tag -s v1.1.1 -m "My signed tag"
+   ```
+
+1. Push to GitLab and verify your tags are signed with this command:
+
+   ```shell
+   git tag --verify v1.1.1
+   ```
+
+1. Optional. To sign tags automatically without the `-s` flag, run:
+
+   ```shell
+   git config --global tag.gpgsign true
+   ```
 
 ## Verify commits
 
@@ -114,43 +145,46 @@ with an SSH key can also be verified locally.
 
 To verify commits locally, create an
 [allowed signers file](https://man7.org/linux/man-pages/man1/ssh-keygen.1.html#ALLOWED_SIGNERS)
-for Git to associate SSH public keys with users:
+for Git to associate SSH public keys with users.
+This example uses `~/.ssh/allowed_signers`, but you can specify a different path.
+Use the same path in the following steps.
 
-1. Create an allowed signers file:
+1. Create an SSH directory:
 
    ```shell
-   touch allowed_signers
+   mkdir -p ~/.ssh
    ```
 
-1. Configure the `allowed_signers` file in Git:
+1. Create an allowed signers file.
 
    ```shell
-   git config gpg.ssh.allowedSignersFile "$(pwd)/allowed_signers"
+   touch ~/.ssh/allowed_signers
    ```
 
-1. Add your entry to the allowed signers file. Use this command to add your
-   email address and public SSH key to the `allowed_signers` file. Replace `<MY_KEY>`
-   with the name of your key, and `~/.ssh/allowed_signers`
-   with the location of your project's `allowed_signers` file:
+1. Configure Git to use the file:
 
    ```shell
-   # Modify this line to meet your needs.
+   git config gpg.ssh.allowedSignersFile "$HOME/.ssh/allowed_signers"
+   ```
+
+1. Add your entry to the allowed signers file. Replace `<MY_KEY>` with the name of your key.
+   If you chose a different path in step 1, replace `~/.ssh/allowed_signers` with that path:
+
+   ```shell
    # Declaring the `git` namespace helps prevent cross-protocol attacks.
    echo "$(git config --get user.email) namespaces=\"git\" $(cat ~/.ssh/<MY_KEY>.pub)" >> ~/.ssh/allowed_signers
    ```
 
-   The resulting entry in the `allowed_signers` file contains your email address, key type,
-   and key contents, like this:
+   The resulting entry contains your email address, key type, and key contents:
 
    ```plaintext
    example@gitlab.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAmaTS47vRmsKyLyK1jlIFJn/i8wdGQ3J49LYyIYJ2hv
    ```
 
-1. Repeat the previous step for each user who you want to verify signatures for.
-   Consider checking this file in to your Git repository if you want to locally
-   verify signatures for many different contributors.
+1. Repeat this step for each additional user you want to verify.
+   If you collaborate with other contributors, consider checking this file into your Git repository.
 
-1. Use `git log --show-signature` to view the signature status for the commits:
+1. Use `git log --show-signature` to view the signature status for commits:
 
    ```shell
    $ git log --show-signature
@@ -165,7 +199,7 @@ for Git to associate SSH public keys with users:
 
 ## Signed commits with removed SSH keys
 
-You can revoke or delete your SSH keys used to sign commits. For more information see [Remove an SSH key](../../../ssh.md#remove-an-ssh-key).
+You can revoke or delete your SSH keys used to sign commits. For more information, see [remove an SSH key](../../../ssh.md#remove-an-ssh-key).
 
 Removing your SSH key can impact any commits signed with the key:
 

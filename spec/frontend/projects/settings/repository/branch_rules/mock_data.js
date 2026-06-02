@@ -13,6 +13,7 @@ export const accessLevelsMockResponse = [
       __typename: 'PushAccessLevel',
       accessLevel: 40,
       accessLevelDescription: 'Developers',
+      deployKey: null,
     },
   },
   {
@@ -21,6 +22,31 @@ export const accessLevelsMockResponse = [
       __typename: 'PushAccessLevel',
       accessLevel: 40,
       accessLevelDescription: 'Maintainers',
+      deployKey: null,
+    },
+  },
+];
+
+export const accessLevelsWithDeployKeyMockResponse = [
+  {
+    __typename: 'PushAccessLevelEdge',
+    node: {
+      __typename: 'PushAccessLevel',
+      accessLevel: 0,
+      accessLevelDescription: 'No one',
+    },
+  },
+  {
+    __typename: 'PushAccessLevelEdge',
+    node: {
+      __typename: 'PushAccessLevel',
+      accessLevel: 40,
+      accessLevelDescription: 'Key name',
+      deployKey: {
+        id: '14',
+        title: 'Key name',
+        __typename: 'AccessLevelDeployKey',
+      },
     },
   },
 ];
@@ -163,6 +189,7 @@ export const createBranchRuleMockResponse = {
 export const appProvideMock = {
   projectPath: 'some/project/path',
   branchRulesPath: 'settings/repository/branch_rules',
+  canCreateBranchRule: true,
 };
 
 export const branchRuleProvideMock = {

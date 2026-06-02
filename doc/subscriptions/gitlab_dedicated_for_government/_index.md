@@ -1,7 +1,7 @@
 ---
 stage: GitLab Dedicated
 group: US Public Sector Services
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Single-tenant SaaS solution for government agencies and regulated industries.
 title: GitLab Dedicated for Government
 ---
@@ -14,22 +14,38 @@ title: GitLab Dedicated for Government
 {{< /details >}}
 
 GitLab Dedicated for Government is a single-tenant SaaS solution designed for
-government agencies and organizations in regulated industries.
+government agencies and organizations in regulated industries. GitLab manages
+all infrastructure, operations, and compliance requirements, so your teams can
+focus on development.
 
-It provides the following:
+Your instance has the following capabilities:
 
-- [FedRAMP Moderate authorized](https://marketplace.fedramp.gov/products/FR2411959145?cache=true) with Authority to Operate (ATO)
-- Isolated infrastructure in a dedicated AWS account deployed on [AWS GovCloud](https://docs.aws.amazon.com/govcloud-us/latest/UserGuide/whatis.html) in the US-West region
-- GitLab manages all operations and compliance requirements with government-specialized teams and processes
-- Access to complete DevSecOps platform capabilities while maintaining FedRAMP compliance
+- The complete GitLab Ultimate feature set and DevSecOps platform
+- Isolated infrastructure in a dedicated AWS account deployed on
+  [AWS GovCloud](https://docs.aws.amazon.com/govcloud-us/latest/UserGuide/whatis.html)
+  in the US-West region
+- High availability and disaster recovery
 
-This offering removes the complexity of compliance infrastructure management so your teams can focus on development.
+## Compliance certifications
+
+GitLab Dedicated for Government is authorized under the following programs,
+so your agency can procure and deploy without additional compliance reviews:
+
+[FedRAMP Moderate](https://marketplace.fedramp.gov/products/FR2411959145?cache=true)
+: Meets federal security requirements for cloud services, with Authority to Operate (ATO).
+
+[GovRAMP](https://govramp.org/product-list/) (Package ID: SR25098)
+: Meets state and local government security requirements for cloud services.
+
+[TX-RAMP](https://dir.texas.gov/information-security/texas-risk-and-authorization-management-program-tx-ramp) Level 2 (TX-RAMP ID: TX1549412)
+: Meets Texas state security requirements for cloud services.
 
 ## Security architecture
 
 Your instance includes the following security controls:
 
-- FedRAMP Moderate compliance with continuous monitoring aligned to federal requirements
+- FedRAMP Moderate and GovRAMP compliance with continuous monitoring aligned to
+  federal and state requirements
 - Data sovereignty guaranteed through AWS GovCloud infrastructure in the US-West region
 - Isolated infrastructure in a dedicated AWS account separate from all other tenants
 - Encryption standards that meet FIPS requirements for data at rest and in transit
@@ -37,8 +53,10 @@ Your instance includes the following security controls:
 
 ### Data residency and infrastructure isolation
 
-To meet US data residency requirements, your instance is deployed
-on [AWS GovCloud](https://docs.aws.amazon.com/govcloud-us/latest/UserGuide/whatis.html) in the US-West region.
+To meet US data residency requirements, your instance is deployed on
+[AWS GovCloud](https://docs.aws.amazon.com/govcloud-us/latest/UserGuide/whatis.html) in the US-West region.
+The GitLab instance runs exclusively on AWS GovCloud. Your own workloads and adjacent systems can run on any platform,
+including GCP or Azure, and integrate with your instance.
 
 All customer data, including repositories, databases, artifacts, and backups, remains within the AWS GovCloud boundary.
 Your environment includes all infrastructure necessary to host the GitLab application with complete isolation from GitLab.com.
@@ -56,10 +74,8 @@ Your environment is protected through multiple layers of security controls:
 
 ## Available features
 
-GitLab Dedicated for Government provides the complete GitLab Ultimate feature set
-with the exception of [unavailable features](#unavailable-features).
-
-These features are designed to work within FedRAMP compliance and government security frameworks.
+GitLab Dedicated for Government provides the complete GitLab Ultimate feature set.
+These features are designed to work within FedRAMP and GovRAMP compliance and government security frameworks.
 
 ### Availability and scalability
 
@@ -67,7 +83,7 @@ Your instance leverages modified versions of the
 [cloud native hybrid reference architectures](../../administration/reference_architectures/_index.md#cloud-native-hybrid)
 with high availability enabled.
 
-When [onboarding](../../administration/dedicated/create_instance/_index.md#step-2-create-your-gitlab-dedicated-instance),
+When [onboarding](../../administration/dedicated/create_instance/_index.md#create-your-instance),
 GitLab matches you to the closest reference architecture size based on your number of users.
 
 > [!note]
@@ -105,9 +121,20 @@ you can [configure your own email service](../../administration/dedicated/config
 [Advanced search](../../user/search/advanced_search.md) capabilities are included.
 You can search across your entire GitLab instance including code, work items, merge requests, and more.
 
+### GitLab Duo
+
+[GitLab Duo](../../user/gitlab_duo/_index.md) AI features are authorized under GovRAMP
+and available to state, local, and education agencies with no additional compliance review.
+Available features include:
+
+- [GitLab Duo Code Suggestions](../../user/project/repository/code_suggestions/_index.md)
+- [GitLab Duo Vulnerability Explanation](../../user/application_security/analyze/duo.md)
+- [GitLab Duo Vulnerability Resolution](../../user/application_security/remediate/duo.md)
+- [GitLab Duo Chat](../../user/gitlab_duo_chat/_index.md)
+
 ## Unavailable features
 
-To maintain FedRAMP certification and meet government security requirements,
+To maintain FedRAMP and GovRAMP certification and meet government security requirements,
 some GitLab features are not available in GitLab Dedicated for Government.
 
 ### Authentication, security, and networking
@@ -133,14 +160,18 @@ some GitLab features are not available in GitLab Dedicated for Government.
 | [Server-side Git hooks](../../administration/server_hooks.md)      | Use [push rules](../../user/project/repository/push_rules.md) or [webhooks](../../user/project/integrations/webhooks.md) |
 | Features configured outside of the GitLab user interface           | Contact support |
 
+### Application features
+
+GitLab Pages is not available when a custom domain is configured.
+When you configure a custom domain, the original `tenant_name.gitlab-dedicated.com`
+domain is no longer available, which prevents GitLab Pages from functioning.
+
 ### Operational features
 
 The following operational features are not available:
 
 - Geo
 - Self-serve purchasing and configuration
-- Support for deploying to non-AWS cloud providers, such as GCP or Azure
-- Pre-production environments
 
 ### Feature flags
 
@@ -184,5 +215,5 @@ GitLab works to restore service as quickly as possible while ensuring data integ
 
 ## Contact sales
 
-Ready to get started? [Contact our sales team](https://about.gitlab.com/sales/dedicated/)
+Ready to get started? [Contact our sales team](https://about.gitlab.com/sales/)
 to discuss your requirements and learn how we can support your organization's compliance and security needs.

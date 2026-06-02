@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Integrate GitLab with GitGuardian to get alerts for policy violations and security issues before they can be exploited.
 title: GitGuardian
 ---
@@ -18,6 +18,7 @@ title: GitGuardian
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/435706) in GitLab 16.9 [with a flag](../../../administration/feature_flags/_index.md) named `git_guardian_integration`. Enabled by default. Disabled on GitLab.com.
 - [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/438695#note_2226917025) in GitLab 17.7.
 - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/176391) in GitLab 17.8. Feature flag `git_guardian_integration` removed.
+- `api_url` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/599742) in GitLab 19.1.
 
 {{< /history >}}
 
@@ -67,10 +68,16 @@ After you have created and copied your API token, configure GitLab to reject com
 
 To enable the integration for your project:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Settings** > **Integrations**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Settings** > **Integrations**.
 1. Select **GitGuardian**.
 1. In **Enable integration**, select the **Active** checkbox.
+1. Optional. In the **API endpoint** text box, enter the base URL of your GitGuardian instance:
+   - For GitGuardian EU SaaS, enter `https://api.eu1.gitguardian.com`.
+   - For self-hosted GitGuardian, enter your instance URL (for example, `https://gitguardian.example.com`).
+
+   If you leave this blank, GitLab uses the default US SaaS endpoint ( `https://api.gitguardian.com`).
+
 1. In **API token**, [paste the token value from GitGuardian](#create-a-gitguardian-api-token).
 1. Optional. Select **Test settings**.
 1. Select **Save changes**.

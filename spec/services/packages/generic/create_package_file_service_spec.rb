@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :package_registry do
   let_it_be(:namespace) { create(:group) }
   let_it_be(:project) { create(:project, group: namespace) }
-  let_it_be(:package_settings) { create(:namespace_package_setting, namespace: namespace) }
+  let_it_be(:package_settings, freeze: false) { create(:namespace_package_setting, namespace: namespace) }
   let_it_be(:user) { create(:user) }
   let_it_be(:pipeline) { create(:ci_pipeline, user: user) }
   let_it_be(:file_name) { 'myfile.tar.gz.1' }
@@ -45,8 +45,8 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
 
     before do
       FileUtils.touch(temp_file)
-      expect(::Packages::Generic::FindOrCreatePackageService).to receive(:new).with(project, user, package_params).and_return(package_service)
-      expect(package_service).to receive(:execute).and_return(ServiceResponse.success(payload: { package: package }))
+      allow(::Packages::Generic::FindOrCreatePackageService).to receive(:new).with(project, user, package_params).and_return(package_service)
+      allow(package_service).to receive(:execute).and_return(ServiceResponse.success(payload: { package: package }))
     end
 
     after do
@@ -87,6 +87,7 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
     end
 
     context 'with a status' do
+      let(:package) { create(:generic_package, project: project) }
       let(:params) { super().merge(status: 'hidden') }
       let(:package_params) { super().merge(status: 'hidden') }
 
@@ -106,7 +107,7 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
     end
 
     context 'with existing package' do
-      let_it_be(:duplicate_file) { create(:package_file, package: package, file_name: file_name) }
+      let_it_be(:duplicate_file, freeze: false) { create(:package_file, package: package, file_name: file_name) }
 
       it { expect { response }.to change { ::Packages::PackageFile.for_projects(project).count }.by(1) }
 
@@ -162,8 +163,8 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
           before do
             FileUtils.touch(temp_file2)
             FileUtils.touch(temp_file3)
-            expect(::Packages::Generic::FindOrCreatePackageService).to receive(:new).with(project, user, package_params).and_return(package_service).twice
-            expect(package_service).to receive(:execute).and_return(ServiceResponse.success(payload: { package: package })).twice
+            expect(::Packages::Generic::FindOrCreatePackageService).to receive(:new).with(project, user, package_params).and_return(package_service).exactly(3).times
+            expect(package_service).to receive(:execute).and_return(ServiceResponse.success(payload: { package: package })).exactly(3).times
           end
 
           after do
@@ -182,6 +183,14 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
       end
     end
 
+    context 'when the package is protected' do
+      before do
+        allow(service).to receive(:find_or_create_package).and_raise(::Packages::PackageProtectedError)
+      end
+
+      it { is_expected.to eq(::Packages::CreatePackageService::ERROR_RESPONSE_PACKAGE_PROTECTED) }
+    end
+
     context 'when unexpected error is raised' do
       before do
         allow(service).to receive(:create_package_file).and_raise(StandardError, 'Custom error')
@@ -190,6 +199,83 @@ RSpec.describe Packages::Generic::CreatePackageFileService, feature_category: :p
       it 'returns error instead of service response' do
         expect { response }.to raise_error(StandardError, 'Custom error')
       end
+    end
+
+    context 'when a race condition causes ActiveRecord::RecordNotUnique on the first attempt' do
+      let(:always_raise_unique_violation) { false }
+      let(:call_counter) { { count: 0 } }
+
+      before do
+        allow(service).to receive(:find_or_create_package).and_wrap_original do |original, *args|
+          call_counter[:count] += 1
+          raise ::ActiveRecord::RecordNotUnique if always_raise_unique_violation || call_counter[:count] == 1
+
+          original.call(*args)
+        end
+      end
+
+      it_behaves_like 'allows creating the file'
+
+      context 'when ActiveRecord::RecordNotUnique persists on retry' do
+        let(:always_raise_unique_violation) { true }
+
+        it_behaves_like 'returning an error service response',
+          message: 'ActiveRecord::RecordNotUnique',
+          reason: :package_already_exists
+      end
+    end
+
+    context 'when a race condition causes ActiveRecord::RecordInvalid with name taken on the first attempt' do
+      let(:always_raise_record_invalid) { false }
+      let(:call_counter) { { count: 0 } }
+
+      before do
+        allow(service).to receive(:find_or_create_package).and_wrap_original do |original, *args|
+          call_counter[:count] += 1
+
+          if always_raise_record_invalid || call_counter[:count] == 1
+            record = ::Packages::Generic::Package.new
+            record.errors.add(:name, :taken)
+            raise ::ActiveRecord::RecordInvalid, record
+          end
+
+          original.call(*args)
+        end
+      end
+
+      it_behaves_like 'allows creating the file'
+
+      context 'when ActiveRecord::RecordInvalid with name taken persists on retry' do
+        let(:always_raise_record_invalid) { true }
+
+        it_behaves_like 'returning an error service response',
+          message: 'Validation failed: Name has already been taken',
+          reason: :invalid_parameter
+      end
+    end
+
+    context 'when ActiveRecord::RecordInvalid is raised for a non-uniqueness reason' do
+      before do
+        allow(service).to receive(:find_or_create_package).and_wrap_original do |_original, *_args|
+          record = ::Packages::Generic::Package.new
+          record.errors.add(:name, :blank)
+          raise ::ActiveRecord::RecordInvalid, record
+        end
+      end
+
+      it_behaves_like 'returning an error service response',
+        message: 'Validation failed: Name can\'t be blank',
+        reason: :invalid_parameter
+    end
+
+    context 'when ActiveRecord::RecordInvalid is raised without a record' do
+      before do
+        allow(service).to receive(:find_or_create_package).and_raise(ActiveRecord::RecordInvalid)
+      end
+
+      it_behaves_like 'returning an error service response',
+        message: 'Record invalid',
+        reason: :invalid_parameter
     end
   end
 end

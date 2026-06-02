@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Learn how to write GitLab CI/CD `script` sections and improve job logs with special syntax or configuration.
 title: Scripts and job logs
 ---
@@ -17,7 +17,7 @@ You can use special syntax in [`script`](_index.md#script) sections to:
 
 - [Split long commands](#split-long-commands) into multiline commands.
 - [Use color codes](#add-color-codes-to-script-output) to make job logs easier to review.
-- [Create custom collapsible sections](../jobs/job_logs.md#custom-collapsible-sections)
+- [Create custom collapsible sections](../jobs/job_logs.md#create-custom-collapsible-sections)
   to simplify job log output.
 
 ## Use special characters with `script`

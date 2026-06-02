@@ -20,6 +20,8 @@ export const MASK_ITEM_VALUE_HIDDEN = '************';
 
 export const CUSTOM_HEADER_KEY_PATTERN = /^[A-Za-z]+[0-9]*(?:[._-][A-Za-z0-9]+)*$/;
 
+export const MAXIMUM_CUSTOM_HEADER_NAME_LENGTH = 255;
+
 export const TRIGGER_CONFIG = [
   {
     key: 'tagPushEvents',
@@ -31,25 +33,27 @@ export const TRIGGER_CONFIG = [
     key: 'noteEvents',
     inputName: 'hook[note_events]',
     label: s__('WebhooksTrigger|Comments'),
-    helpText: s__('WebhooksTrigger|A comment is made or edited on an issue or merge request.'),
+    helpText: s__('WebhooksTrigger|A comment is made or edited on an work item or merge request.'),
   },
   {
     key: 'confidentialNoteEvents',
     inputName: 'hook[confidential_note_events]',
     label: s__('WebhooksTrigger|Confidential comments'),
-    helpText: s__('WebhooksTrigger|A comment is made or edited on a confidential issue.'),
+    helpText: s__('WebhooksTrigger|A comment is made or edited on a confidential work item.'),
   },
   {
     key: 'issuesEvents',
     inputName: 'hook[issues_events]',
-    label: s__('WebhooksTrigger|Issues events'),
-    helpText: s__('WebhooksTrigger|An issue is created, updated, closed, or reopened.'),
+    label: s__('WebhooksTrigger|Work item events'),
+    helpText: s__('WebhooksTrigger|A work item is created, updated, closed, or reopened.'),
   },
   {
     key: 'confidentialIssuesEvents',
     inputName: 'hook[confidential_issues_events]',
-    label: s__('WebhooksTrigger|Confidential issues events'),
-    helpText: s__('WebhooksTrigger|A confidential issue is created, updated, closed, or reopened.'),
+    label: s__('WebhooksTrigger|Confidential work items events'),
+    helpText: s__(
+      'WebhooksTrigger|A confidential work item is created, updated, closed, or reopened.',
+    ),
   },
   {
     key: 'mergeRequestsEvents',

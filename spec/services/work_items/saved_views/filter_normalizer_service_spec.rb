@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe WorkItems::SavedViews::FilterNormalizerService, feature_category: :portfolio_management do
   let_it_be(:group) { create(:group) }
   let_it_be(:subgroup) { create(:group, parent: group) }
-  let_it_be(:project) { create(:project, group: subgroup) }
+  let_it_be(:project, freeze: false) { create(:project, group: subgroup) }
   let_it_be(:current_user) { create(:user, developer_of: [group, project]) }
 
   let_it_be(:user1) { create(:user, username: 'alice') }
@@ -155,6 +155,42 @@ RSpec.describe WorkItems::SavedViews::FilterNormalizerService, feature_category:
         end
       end
 
+      context 'with wildcard Any' do
+        let(:filter_data) { { label_name: ['Any'] } }
+
+        it 'stores as label_wildcard_id instead of resolving to IDs' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload[:label_wildcard_id]).to eq('Any')
+          expect(result.payload).not_to have_key(:label_ids)
+        end
+      end
+
+      context 'with wildcard None' do
+        let(:filter_data) { { label_name: ['None'] } }
+
+        it 'stores as label_wildcard_id instead of resolving to IDs' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload[:label_wildcard_id]).to eq('None')
+          expect(result.payload).not_to have_key(:label_ids)
+        end
+      end
+
+      context 'with wildcard Any alongside regular label names' do
+        let(:filter_data) { { label_name: %w[Any bug] } }
+
+        it 'stores wildcard in label_wildcard_id and resolves remaining labels to IDs' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload[:label_wildcard_id]).to eq('Any')
+          expect(result.payload[:label_ids]).to eq([group_label.id])
+        end
+      end
+
       context 'with unioned label_names' do
         let(:filter_data) { { or: { label_names: %w[bug feature] } } }
 
@@ -227,7 +263,7 @@ RSpec.describe WorkItems::SavedViews::FilterNormalizerService, feature_category:
     end
 
     context 'with release tag' do
-      let_it_be(:release) { create(:release, project: project, tag: 'v1.0.0') }
+      let_it_be(:release, freeze: false) { create(:release, project: project, tag: 'v1.0.0') }
       let(:filter_data) { { release_tag: ['v1.0.0'] } }
 
       it 'converts release tags to release IDs' do
@@ -498,14 +534,59 @@ RSpec.describe WorkItems::SavedViews::FilterNormalizerService, feature_category:
     end
 
     context 'with negated parent_ids' do
-      let(:filter_data) { { not: { parent_ids: ['gid://gitlab/WorkItem/1', 'gid://gitlab/WorkItem/2'] } } }
+      let(:filter_data) { { not: { parent_ids: %w[gid://gitlab/WorkItem/1 gid://gitlab/WorkItem/2] } } }
 
       it 'normalizes negated parent_ids' do
         result = service.execute
 
         expect(result).to be_success
         expect(result.payload.dig(:not,
-          :parent_ids)).to match_array(['gid://gitlab/WorkItem/1', 'gid://gitlab/WorkItem/2'])
+          :parent_ids)).to match_array(%w[gid://gitlab/WorkItem/1 gid://gitlab/WorkItem/2])
+      end
+    end
+
+    context 'with work_item_type_ids' do
+      let(:filter_data) { { work_item_type_ids: %w[1 2 3] } }
+
+      it 'converts values to integers' do
+        result = service.execute
+
+        expect(result).to be_success
+        expect(result.payload[:work_item_type_ids]).to eq([1, 2, 3])
+      end
+
+      context 'with negated work_item_type_ids' do
+        let(:filter_data) { { not: { work_item_type_ids: %w[4 5] } } }
+
+        it 'converts negated values to integers' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload.dig(:not, :work_item_type_ids)).to eq([4, 5])
+        end
+      end
+
+      context 'with both positive and negated work_item_type_ids' do
+        let(:filter_data) { { work_item_type_ids: %w[1], not: { work_item_type_ids: %w[2] } } }
+
+        it 'converts both to integers' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload[:work_item_type_ids]).to eq([1])
+          expect(result.payload.dig(:not, :work_item_type_ids)).to eq([2])
+        end
+      end
+
+      context 'when values are already integers' do
+        let(:filter_data) { { work_item_type_ids: [1, 2] } }
+
+        it 'preserves integer values' do
+          result = service.execute
+
+          expect(result).to be_success
+          expect(result.payload[:work_item_type_ids]).to eq([1, 2])
+        end
       end
     end
   end

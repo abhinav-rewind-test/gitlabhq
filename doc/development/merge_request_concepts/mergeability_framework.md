@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 description: Developer information explaining the process to add a new mergeability check
 title: Mergeability framework
 ---
@@ -47,8 +47,8 @@ The mergeability checks live under `app/services/merge_requests/mergeability/`.
          end
 
          def skip?
-           # Here we can check for the param or return false if its not skippable
-           # Skippablility of an MR is related to merge when checks pass functionality
+           # Here we can check for the param or return false if it's not skippable
+           # Skippability of an MR is related to merge when checks pass functionality
            params[:skip_ci_check].present?
          end
 

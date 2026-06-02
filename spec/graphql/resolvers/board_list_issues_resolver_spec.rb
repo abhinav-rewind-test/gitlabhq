@@ -63,6 +63,14 @@ RSpec.describe Resolvers::BoardListIssuesResolver do
         expect(result).to contain_exactly(incident)
       end
 
+      it 'filters issues by work item type ids' do
+        incident = create(:incident, project: project, labels: [label], relative_position: 15)
+        incident_type_id = incident.work_item_type.to_global_id.model_id
+        result = resolve_board_list_issues(args: { filters: { work_item_type_ids: [incident_type_id] } })
+
+        expect(result).to contain_exactly(incident)
+      end
+
       it 'generates an error if both assignee_username and assignee_wildcard_id are present' do
         expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ArgumentError) do
           resolve_board_list_issues(args: { filters: { assignee_username: ['username'], assignee_wildcard_id: 'NONE' } })
@@ -95,7 +103,7 @@ RSpec.describe Resolvers::BoardListIssuesResolver do
 
   describe '#resolve' do
     context 'when project boards' do
-      let_it_be(:label) { create(:label, project: user_project) }
+      let_it_be(:label, freeze: false) { create(:label, project: user_project) }
       let_it_be(:label2) { create(:label, project: user_project) }
       let_it_be(:label3) { create(:label, project: user_project) }
       let_it_be(:board) { create(:board, resource_parent: user_project) }
@@ -111,7 +119,7 @@ RSpec.describe Resolvers::BoardListIssuesResolver do
     end
 
     context 'when group boards' do
-      let_it_be(:label) { create(:group_label, group: group) }
+      let_it_be(:label, freeze: false) { create(:group_label, group: group) }
       let_it_be(:label2) { create(:group_label, group: group) }
       let_it_be(:label3) { create(:group_label, group: group) }
       let_it_be(:board) { create(:board, resource_parent: group) }

@@ -14,12 +14,11 @@ import { s__, __ } from '~/locale';
 import axios from '~/lib/utils/axios_utils';
 import { visitUrl } from '~/lib/utils/url_utility';
 import { confirmJobConfirmationMessage } from '~/ci/pipeline_details/graph/utils';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
 export default {
   name: 'JobSidebarRetryButton',
   i18n: {
-    retryWithModifiedValue: s__('Job|Retry job with modified value'),
+    retryWithModifiedValue: s__('Job|Retry job with modified values'),
   },
   components: {
     GlButtonGroup,
@@ -31,7 +30,6 @@ export default {
     GlModal: GlModalDirective,
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [glFeatureFlagMixin()],
   inject: ['canSetPipelineVariables'],
   props: {
     modalId: {
@@ -45,6 +43,11 @@ export default {
     isManualJob: {
       type: Boolean,
       required: true,
+    },
+    hasInputs: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
     confirmationMessage: {
       type: String,
@@ -70,7 +73,7 @@ export default {
   computed: {
     ...mapGetters(['hasForwardDeploymentFailure']),
     showRetryWithModifiedValues() {
-      return (this.isManualJob && this.canSetPipelineVariables) || this.glFeatures.ciJobInputs;
+      return (this.isManualJob && this.canSetPipelineVariables) || this.hasInputs;
     },
   },
   methods: {

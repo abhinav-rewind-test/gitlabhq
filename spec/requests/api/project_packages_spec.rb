@@ -114,7 +114,7 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
       end
 
       context 'project is private' do
-        let_it_be(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
 
         context 'for unauthenticated user' do
           it_behaves_like 'rejects packages access', :project, :no_type, :not_found
@@ -333,6 +333,31 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
         end
       end
 
+      context 'with creator_id' do
+        let_it_be(:creator) { create(:user) }
+        let_it_be(:package_with_creator) { create(:npm_package, project: project, creator: creator) }
+        let(:package_url) { "/projects/#{project.id}/packages/#{package_with_creator.id}" }
+
+        it 'includes creator_id' do
+          get api(package_url, user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['creator_id']).to eq(creator.id)
+        end
+      end
+
+      context 'without creator' do
+        let_it_be(:package_without_creator) { create(:npm_package, project: project, creator: nil) }
+        let(:package_url) { "/projects/#{project.id}/packages/#{package_without_creator.id}" }
+
+        it 'returns null creator_id when creator is nil' do
+          get api(package_url, user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['creator_id']).to be_nil
+        end
+      end
+
       context 'with build info' do
         let_it_be(:package1) { create(:npm_package, :with_build, project: project) }
         let_it_be(:job) { create(:ci_build, :running, user: user, project: project) }
@@ -443,7 +468,7 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
       end
 
       context 'project is private' do
-        let_it_be(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
 
         it 'returns 404 for non authenticated user' do
           get api(package_url)
@@ -880,7 +905,7 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
       end
 
       context 'project is private' do
-        let_it_be(:project) { create(:project, :private) }
+        let_it_be(:project, freeze: false) { create(:project, :private) }
 
         before do
           expect(::Packages::Maven::Metadata::SyncWorker).not_to receive(:perform_async)
@@ -980,12 +1005,9 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
           end
 
           shared_examples 'deleting package protected' do
-            it_behaves_like 'returning response status', :forbidden
-            it do
-              subject
-
-              expect(json_response).to include('message' => "403 Forbidden - Package is deletion protected.")
-            end
+            it_behaves_like 'returning response status with message',
+              status: :forbidden,
+              message: 'Package is deletion protected.'
 
             it { expect { subject }.not_to change { ::Packages::Package.pending_destruction.count } }
 
@@ -1031,12 +1053,12 @@ RSpec.describe API::ProjectPackages, feature_category: :package_registry do
           end
 
           context 'for package with unsupported package type for package protection rule' do
-            let_it_be(:golang_package) { create(:golang_package, project: project, name: "#{project.root_namespace.path}/golang.org/x/pkg") }
+            let_it_be(:rubygems_package) { create(:rubygems_package, project:) }
 
             let(:headers) { headers_pat_project_maintainer }
 
             subject do
-              delete api("/projects/#{project.id}/packages/#{golang_package.id}"), headers: headers
+              delete api("/projects/#{project.id}/packages/#{rubygems_package.id}"), headers: headers
               response
             end
 

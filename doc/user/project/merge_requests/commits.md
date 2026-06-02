@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Code Review
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Understand how to read the display of commits in a merge request.
 title: Commits
 ---
@@ -14,7 +14,7 @@ title: Commits
 {{< /details >}}
 
 A commit records and sends the source code changes to the [repository](../repository/_index.md).
-For more information, see [Recording Changes to the Repository](https://git-scm.com/book/en/v2/Git-Basics-Recording-Changes-to-the-Repository).
+For more information, see [recording changes to the repository](https://git-scm.com/book/en/v2/Git-Basics-Recording-Changes-to-the-Repository).
 
 ## Commit changes using the command line
 
@@ -57,7 +57,7 @@ You can add multiple commits before pushing your changes.
 
   Add extra security by [signing your commits](../repository/signed_commits/_index.md).
 
-For additional information, see [Stage, commit, and push changes](../../../topics/git/commit.md).
+For more information, see [stage, commit, and push changes](../../../topics/git/commit.md).
 
 ## Merge request commits
 
@@ -72,7 +72,7 @@ From this tab, you can review commit messages and copy a commit's SHA when you n
 
 To see the commits included in a merge request:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**, then select your merge request.
 1. To show a list of the commits in the merge request, newest first, select **Commits** .
    To read more about the commit, select **Toggle commit description** ({{< icon name="ellipsis_h" >}})
@@ -99,7 +99,7 @@ if another merge request:
 
 To add previously merged commits to a merge request for more context:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**, then select your merge request.
 1. Select **Commits**.
 1. Scroll to the end of the list of commits, and select **Add previously merged commits**.
@@ -107,7 +107,7 @@ To add previously merged commits to a merge request for more context:
 1. Select **Save changes**.
 
 Previously merged commits are referred to as **Context Commits** in
-the [API](../../../api/merge_request_context_commits.md).
+the [merge request context commits API](../../../api/merge_request_context_commits.md).
 
 ### Add a comment to a commit
 
@@ -117,7 +117,7 @@ the [API](../../../api/merge_request_context_commits.md).
 
 To add discussion to a specific commit:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Commits**.
 1. Below the commits, in the **Comment** field, enter a comment.
 1. Save your comment as either a standalone comment, or a thread:
@@ -128,7 +128,7 @@ To add discussion to a specific commit:
 
 To view the changes between previously merged commits:
 
-1. On the top bar, select **Search or go to** and find your project.
+1. In the top bar, select **Search or go to** and find your project.
 1. In the left sidebar, select **Code** > **Merge requests**, then select your merge request.
 1. Select **Changes**.
 1. By **Compare** ({{< icon name="file-tree" >}}), select the commits to compare:

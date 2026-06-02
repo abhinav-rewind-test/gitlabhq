@@ -35,8 +35,8 @@ module Gitlab
           def set_total_time_from_xml(root, test_suite)
             return unless root
 
-            if root.dig('testsuites', 'time')
-              test_suite.total_time = root['testsuites']['time'].to_f
+            if dig_into_testsuites(root, 'time')
+              test_suite.total_time = dig_into_testsuites(root, 'time').to_f
               return
             end
 
@@ -51,7 +51,7 @@ module Gitlab
           def collect_all_testsuites(root)
             testsuites = []
 
-            testsuites.concat(Array.wrap(root.dig('testsuites', 'testsuite')))
+            testsuites.concat(Array.wrap(dig_into_testsuites(root, 'testsuite')))
             testsuites.concat(Array.wrap(root['testsuite']))
 
             testsuites.compact
@@ -97,23 +97,27 @@ module Gitlab
           end
 
           def create_test_case(data, test_suite, job)
-            system_out = data.key?('system_out') ? "System Out:\n\n#{data['system_out']}" : nil
-            system_err = data.key?('system_err') ? "System Err:\n\n#{data['system_err']}" : nil
+            system_out_content = Array.wrap(data['system_out']).join("\n\n")
+            system_out = system_out_content.present? ? "System Out:\n\n#{system_out_content}" : nil
+
+            system_err_content = Array.wrap(data['system_err']).join("\n\n")
+            system_err = system_err_content.present? ? "System Err:\n\n#{system_err_content}" : nil
 
             if data.key?('failure')
               status = ::Gitlab::Ci::Reports::TestCase::STATUS_FAILED
               system_output = [data['failure'], system_out, system_err].compact.join("\n\n")
-              attachment = attachment_path(data['system_out'])
+              attachment = attachment_path(system_out_content)
             elsif data.key?('error')
               status = ::Gitlab::Ci::Reports::TestCase::STATUS_ERROR
               system_output = [data['error'], system_out, system_err].compact.join("\n\n")
-              attachment = attachment_path(data['system_out'])
+              attachment = attachment_path(system_out_content)
             elsif data.key?('skipped')
               status = ::Gitlab::Ci::Reports::TestCase::STATUS_SKIPPED
               system_output = data['skipped']
             else
               status = ::Gitlab::Ci::Reports::TestCase::STATUS_SUCCESS
-              system_output = nil
+              system_output = system_out
+              attachment = attachment_path(system_out_content)
             end
 
             ::Gitlab::Ci::Reports::TestCase.new(
@@ -131,6 +135,11 @@ module Gitlab
 
           def suite_name(parent, test_suite)
             parent.dig('testsuite', 'name') || test_suite.name
+          end
+
+          def dig_into_testsuites(root, *params)
+            node = root&.dig('testsuites')
+            node.is_a?(Hash) ? node.dig(*params) : nil
           end
 
           def attachment_path(data)

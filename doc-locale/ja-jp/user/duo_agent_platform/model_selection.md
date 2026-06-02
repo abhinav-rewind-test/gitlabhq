@@ -1,27 +1,65 @@
 ---
 stage: AI-powered
 group: Custom Models
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: GitLab Duo機能の大規模言語モデルを設定する。
-title: エージェントプラットフォームモデルの選択
+title: エージェントプラットフォームAIモデル
 ---
 
 {{< details >}}
 
 - プラン: Premium、Ultimate
-- 提供形態: GitLab.com
+- 提供形態: GitLab.com、GitLab Self-Managed、GitLab Dedicated
 
 {{< /details >}}
 
-すべてのGitLab Duo機能には、GitLabが選択したデフォルトの大規模言語モデルがあります。
+すべてのGitLab Duo機能はデフォルトのモデルを使用します。GitLabは、パフォーマンスを最適化するためにデフォルトのモデルを更新する場合があります。一部の機能では、別のモデルを選択でき、そのモデルは変更するまで維持されます。
 
-GitLabは、機能のパフォーマンスを最適化するために、このデフォルトモデルを更新できます。そのため、ユーザーが何も操作しなくても、機能のモデルが変更される場合があります。
+## デフォルトモデル {#default-models}
 
-各機能にデフォルトモデルを使用したくない場合、または特定の要件がある場合は、利用可能な他のサポート対象モデルの配列から選択できます。
+この表は、Agent Platformの各機能で使用されるデフォルトモデルを示しています。
 
-機能に特定のモデルを選択した場合、別のモデルを選択するまで、その機能はそのモデルを使用します。
+| 機能 | モデル |
+|-------|--------------|
+| GitLab Duo Agentic Chat | Claude Sonnet 4.6 Vertex |
+| コードレビューフロー | Claude Sonnet 4.6 Vertex |
+| その他すべてのエージェント | Claude Sonnet 4.5 Vertex |
+
+## サポートされているモデル {#supported-models}
+
+この表は、Agent Platformの機能で選択できるモデルを示しています。
+
+| モデル                | GitLab Duo Agentic Chat | コードレビューフロー | その他すべてのエージェント |
+|----------------------|-------------------------|------------------|------------------|
+| Claude Sonnet 4      | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Sonnet 4.5    | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Sonnet 4.6    | {{< yes >}}             | {{< yes >}}      | {{< yes >}}      |
+| Claude Haiku 4.5     | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.5      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.6      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| Claude Opus 4.7      | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5                | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.1              | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.2              | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.5 <sup>1</sup> | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5 Codex          | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.2 Codex        | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.3 Codex        | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5 Mini           | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.4 Mini         | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+| GPT-5.4 Nano         | {{< yes >}}             | {{< no >}}       | {{< yes >}}      |
+
+**脚注**: 
+
+1. このモデルは、[ベンダー側の制限されたデータ保持](../gitlab_duo/data_usage.md#data-retention)の対象となります。
 
 ## 機能のモデルを選択する {#select-a-model-for-a-feature}
+
+{{< details >}}
+
+- 提供形態: GitLab.com
+
+{{< /details >}}
 
 {{< history >}}
 
@@ -32,7 +70,9 @@ GitLabは、機能のパフォーマンスを最適化するために、この�
 - GitLab 18.5で[一般提供](https://gitlab.com/groups/gitlab-org/-/epics/18818)になりました。機能フラグ`ai_model_switching`が有効になりました。
 - GitLab 18.6で機能フラグ`duo_agent_platform_model_selection`が[有効](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/212051)になりました。
 - GitLab 18.7で機能フラグ`ai_model_switching`が[削除](https://gitlab.com/gitlab-org/gitlab/-/issues/526307)されました。
-- 機能フラグ`duo_agent_platform_model_selection`はGitLab 18.9で[削除されました](https://gitlab.com/gitlab-org/gitlab/-/issues/218591)。
+- 機能フラグ`duo_agent_platform_model_selection`は、GitLab 18.9で[削除](https://gitlab.com/gitlab-org/gitlab/-/issues/218591)されました。
+- LLMは、GitLab 19.1でコードレビューフローのためにClaude Sonnet 4.6 Vertexに[更新されました](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/236876)。
+- GitLab 19.1で、コードレビューフロー向けにGitLab Duoコードレビューから[個別のモデル選択](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/236876)が導入され、**Agentic Code Review**設定が使用されるようになりました。
 
 {{< /history >}}
 
@@ -42,50 +82,20 @@ GitLabは、機能のパフォーマンスを最適化するために、この�
 
 - グループのオーナーロールを持っている。
 - モデルを選択するグループがトップレベルグループである。
-- GitLab 18.3以降で、複数のGitLab Duoネームスペースに属している場合は、[デフォルトのネームスペースを割り当てる](../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace)必要があります。
+- GitLab 18.3以降で、複数のGitLab Duoネームスペースに属している場合は、[デフォルトのネームスペースを割り当てる](../profile/preferences.md#set-a-default-gitlab-duo-namespace)必要があります。
 
 機能のモデルを選択するには:
 
 1. 上部のバーで、**検索または移動先**を選択して、グループを見つけます。
-1. **設定** > **GitLab Duo**を選択します。
+1. 左サイドバーで、**設定** > **GitLab Duo**を選択します。
 1. **機能を設定**を選択します。
 1. **GitLab Duo Agent Platform**セクションに移動します。
 1. ドロップダウンリストからモデルを選択します。
 1. オプション。セクション内のすべての機能にモデルを適用するには、**すべてに適用**を選択します。
 
-{{< alert type="note" >}}
+IDEでは、GitLab Duo Agentic Chatのモデル選択は、接続タイプがWebSocketに設定されている場合にのみ適用されます。
 
-- IDEでは、GitLab Duo Chat（エージェント）のモデル選択は、接続タイプがWebSocketに設定されている場合にのみ適用されます。
-
-- GitLab Duo Chat（エージェント）で使用されているOpenAIモデルは実験的なサポートを提供し、GPT-5、GPT-5 mini、GPT-5-Codexが対象です。この[イシュー](https://gitlab.com/gitlab-org/gitlab/-/issues/572864)で、GitLab Duo Chat（エージェント）でのOpenAIモデルの使用に関するフィードバックをお寄せください。
-
-{{< /alert >}}
-
-## デフォルトモデル {#default-models}
-
-この表は、エージェントプラットフォームの各機能のデフォルトモデルを一覧表示しています。
-
-| 機能 | モデル |
-|-------|--------------|
-| GitLab Duo Chat（エージェント） | Claude Haiku 4.5 |
-| その他のすべてのエージェント | Claude Sonnet 4.5 Vertex |
-
-## サポートされているモデル {#supported-models}
-
-この表は、エージェントプラットフォームの機能で選択できるモデルを一覧表示しています。
-
-| モデル | Agentic Chat | その他のすべてのエージェント |
-|-------|--------------|------------------|
-| Claude Sonnet 4 | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4 Vertex | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4.5 | {{< yes >}} | {{< yes >}} |
-| Claude Sonnet 4.5 Vertex | {{< yes >}} | {{< yes >}} |
-| Claude Haiku 4.5 | {{< yes >}} | {{< yes >}} |
-| Claude Opus 4.5 | {{< yes >}} | {{< yes >}} |
-| GPT-5 | {{< yes >}} | {{< yes >}} |
-| GPT-5 Codex | {{< yes >}} | {{< yes >}} |
-| GPT-5 Mini | {{< yes >}} | {{< yes >}} |
-| GPT-5.2 | {{< yes >}} | {{< yes >}} |
+GitLab Duo CLIのモデルを指定するには、[モデルを選択](../gitlab_duo_cli/_index.md#select-a-model)を参照してください。
 
 ## トラブルシューティング {#troubleshooting}
 
@@ -99,11 +109,8 @@ GitLab Duo AIネイティブ機能に特定のモデルを選択していて、�
 
 ### デフォルトのGitLab Duoネームスペースが設定されていない {#no-default-gitlab-duo-namespace}
 
-選択したモデルでGitLab Duo機能を使用すると、デフォルトのGitLab Duoネームスペースが選択されていないことを示すエラーが表示される場合があります。例:
+選択したモデルでGitLab Duo機能を使用しているときに、デフォルトのGitLab Duoネームスペースを設定する必要があることを示すエラーが発生する場合があります。
 
-- GitLab Duoコード提案では、`Error 422: No default Duo group found. Select a default Duo group in your user preferences and try again.`が表示される場合があります
-- GitLab Duo Chatでは、`Error G3002: I'm sorry, you have not selected a default GitLab Duo namespace. Please go to GitLab and in user Preferences - Behavior, select a default namespace for GitLab Duo.`が表示される場合があります
+この問題は、複数のGitLab Duoネームスペースに属している場合や、GitLabリモートが設定されていないプロジェクトでローカルに作業している場合に発生します。
 
-このイシューは、複数のGitLab Duoネームスペースに属しているにもかかわらず、デフォルトのネームスペースとして1つを選択していない場合に発生します。
-
-これを解決するには、[デフォルトのGitLab Duoネームスペースを設定](../../user/profile/preferences.md#set-a-default-gitlab-duo-namespace)します。
+これを解決するには、[デフォルトのGitLab Duoネームスペースを設定](../profile/preferences.md#set-a-default-gitlab-duo-namespace)します。

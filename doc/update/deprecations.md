@@ -1,7 +1,7 @@
 ---
 stage: none
 group: none
-info: "See the Technical Writers assigned to Development Guidelines: https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-development-guidelines"
+info: "To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>"
 toc: false
 title: Deprecations and removals by version
 ---
@@ -20,7 +20,7 @@ For advanced searching and filtering of this deprecation information, try
 [REST API deprecations](../api/rest/deprecations.md) are documented separately.
 
 {{< icon name="rss" >}} **To be notified of upcoming breaking changes**,
-add this URL to your RSS feed reader: `https://about.gitlab.com/breaking-changes.xml`
+add this URL to your RSS feed reader: `https://docs.gitlab.com/releases/breaking-changes.xml`
 
 <!-- vale off -->
 <!--
@@ -28,22 +28,224 @@ DO NOT EDIT THIS PAGE DIRECTLY
 
 This page is automatically generated from the template located at
 `data/deprecations/templates/_deprecation_template.md.erb`, using
-the YAML files in `/data/deprecations` by the rake task
+the YAML files in `/data/deprecations` by the Rake task
 located at `lib/tasks/gitlab/docs/compile_deprecations.rake`,
 
 For deprecation authors (usually Product Managers and Engineering Managers):
 
 - To add a deprecation, use the example.yml file in `/data/deprecations/templates` as a template.
-- For more information about authoring deprecations, check the the deprecation item guidance:
-  https://handbook.gitlab.com/handbook/marketing/blog/release-posts/#update-the-deprecations-doc
+- For more information about authoring deprecations, check the deprecation item guidance:
+  <https://handbook.gitlab.com/handbook/marketing/blog/release-posts/#update-the-deprecations-doc>
 
 For deprecation reviewers (Technical Writers only):
 
 - To update the deprecation doc, run: `bin/rake gitlab:docs:compile_deprecations`
 - To verify the deprecations doc is up to date, run: `bin/rake gitlab:docs:check_deprecations`
 - For more information about updating the deprecation doc, see the deprecation doc update guidance:
-  https://handbook.gitlab.com/handbook/marketing/blog/release-posts/#update-the-deprecations-doc
+  <https://handbook.gitlab.com/handbook/marketing/blog/release-posts/#update-the-deprecations-doc>
 -->
+
+## GitLab 20.0
+
+### Compliance pipelines
+
+- Announced in GitLab 17.3
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/epics/11275).
+
+Currently, there are two ways to ensure that compliance- or security-related jobs are run in a project pipeline:
+
+- [Compliance pipelines](https://docs.gitlab.com/user/compliance/compliance_pipelines/).
+- [Security policies](https://docs.gitlab.com/user/application_security/policies/).
+
+To provide a single place for ensuring required jobs are run in all pipelines for a project, we have deprecated
+compliance pipelines in GitLab 17.3 and will remove the feature in GitLab 20.0.
+
+Customers should migrate from compliance pipelines to the new
+[pipeline execution policy type](https://docs.gitlab.com/user/application_security/policies/pipeline_execution_policies/)
+as soon as possible.
+
+For more information, see the relevant:
+
+- [Migration guide](https://docs.gitlab.com/user/compliance/compliance_pipelines/#pipeline-execution-policies-migration).
+- [Blog post](https://about.gitlab.com/blog/why-gitlab-is-deprecating-compliance-pipelines-in-favor-of-security-policies/).
+
+### Dependency Proxy for packages is deprecated
+
+- Announced in GitLab 19.1
+- Removal in GitLab 20.0
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/601255).
+
+The Dependency Proxy for packages is deprecated and will be removed in a future release. This feature has been replaced by the **Maven virtual registry**, which provides improved performance, better upstream proxying and caching capabilities, and deeper integration with GitLab's package management workflows.
+
+**Action required:** Migrate your package manager configuration from the Dependency Proxy for packages endpoints to the Maven virtual registry. See the [Maven virtual registry documentation](https://docs.gitlab.com/user/packages/virtual_registry/maven/) for setup instructions.
+
+### Design Management deprecated
+
+- Announced in GitLab 18.6
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/work_items/20375).
+
+In GitLab 20.0, GitLab will begin deprecation of Design Management. Design Management allows users to upload design assets such as wireframes and mockups to GitLab issues for collaboration. We've made this decision after careful consideration of existing usage and estimated customer impact. The ongoing maintenance required for Design Management outweighed the current usage, and we're focusing our efforts on solutions that better align with modern designer workflows. In GitLab 20.0 and later, users will no longer be able to upload new designs. Existing designs will remain available in read-only mode until GitLab 21.0, giving users time to save their designs as needed. GitLab is exploring alternatives that better integrate with the tools designers already use.
+
+### Enforce keyset pagination on audit event API
+
+- Announced in GitLab 17.8
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/382338).
+
+The Audit Event APIs for instances, groups, and projects currently support optional keyset pagination. In GitLab 20.0
+we will enforce keyset pagination on these APIs.
+
+### Legacy group-level audit event streaming destination GraphQL APIs
+
+- Announced in GitLab 18.10
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/work_items/12339).
+
+The following group-level GraphQL APIs for audit event streaming destinations are deprecated and will be removed in GitLab 20.0.
+
+Deprecated mutations:
+
+- `externalAuditEventDestinationCreate` — use `groupAuditEventStreamingDestinationsCreate` instead.
+- `externalAuditEventDestinationDestroy` — use `groupAuditEventStreamingDestinationsDelete` instead.
+- `externalAuditEventDestinationUpdate` — use `groupAuditEventStreamingDestinationsUpdate` instead.
+- `googleCloudLoggingConfigurationCreate` — use `groupAuditEventStreamingDestinationsCreate` with `gcpLogging` category instead.
+- `googleCloudLoggingConfigurationDestroy` — use `groupAuditEventStreamingDestinationsDelete` instead.
+- `googleCloudLoggingConfigurationUpdate` — use `groupAuditEventStreamingDestinationsUpdate` instead.
+- `auditEventsAmazonS3ConfigurationCreate` — use `groupAuditEventStreamingDestinationsCreate` with `amazonS3` category instead.
+- `auditEventsAmazonS3ConfigurationDelete` — use `groupAuditEventStreamingDestinationsDelete` instead.
+- `auditEventsAmazonS3ConfigurationUpdate` — use `groupAuditEventStreamingDestinationsUpdate` instead.
+- `auditEventsStreamingHeadersCreate` — configure headers by using the streaming destination configuration using `groupAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingHeadersDestroy` — configure headers by using the streaming destination configuration using `groupAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingHeadersUpdate` — configure headers by using the streaming destination configuration using `groupAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingDestinationEventsAdd` — use `auditEventsGroupDestinationEventsAdd` instead.
+- `auditEventsStreamingDestinationEventsRemove` — use `auditEventsGroupDestinationEventsRemove` instead.
+- `auditEventsStreamingHttpNamespaceFiltersAdd` — use `auditEventsGroupDestinationNamespaceFilterCreate` instead.
+- `auditEventsStreamingHttpNamespaceFiltersDelete` — use `auditEventsGroupDestinationNamespaceFilterDelete` instead.
+
+Deprecated group fields:
+
+- `Group.externalAuditEventDestinations` — use `Group.externalAuditEventStreamingDestinations` instead.
+- `Group.googleCloudLoggingConfigurations` — use `Group.externalAuditEventStreamingDestinations` with `gcpLogging` category instead.
+- `Group.amazonS3Configurations` — use `Group.externalAuditEventStreamingDestinations` with `amazonS3` category instead.
+
+The new unified streaming destination APIs support all destination categories (HTTP, Google Cloud Logging, Amazon S3) through a single set of endpoints with a `category` parameter.
+
+### Legacy instance-level audit event streaming destination GraphQL APIs
+
+- Announced in GitLab 18.10
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/work_items/12339).
+
+The following instance-level GraphQL APIs for audit event streaming destinations are deprecated and will be removed in GitLab 20.0.
+
+Deprecated mutations:
+
+- `instanceExternalAuditEventDestinationCreate` — use `instanceAuditEventStreamingDestinationsCreate` instead.
+- `instanceExternalAuditEventDestinationDestroy` — use `instanceAuditEventStreamingDestinationsDelete` instead.
+- `instanceExternalAuditEventDestinationUpdate` — use `instanceAuditEventStreamingDestinationsUpdate` instead.
+- `instanceGoogleCloudLoggingConfigurationCreate` — use `instanceAuditEventStreamingDestinationsCreate` with `gcpLogging` category instead.
+- `instanceGoogleCloudLoggingConfigurationDestroy` — use `instanceAuditEventStreamingDestinationsDelete` instead.
+- `instanceGoogleCloudLoggingConfigurationUpdate` — use `instanceAuditEventStreamingDestinationsUpdate` instead.
+- `auditEventsInstanceAmazonS3ConfigurationCreate` — use `instanceAuditEventStreamingDestinationsCreate` with `amazonS3` category instead.
+- `auditEventsInstanceAmazonS3ConfigurationDelete` — use `instanceAuditEventStreamingDestinationsDelete` instead.
+- `auditEventsInstanceAmazonS3ConfigurationUpdate` — use `instanceAuditEventStreamingDestinationsUpdate` instead.
+- `auditEventsStreamingInstanceHeadersCreate` — configure headers by using the streaming destination configuration using `instanceAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingInstanceHeadersDestroy` — configure headers by using the streaming destination configuration using `instanceAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingInstanceHeadersUpdate` — configure headers by using the streaming destination configuration using `instanceAuditEventStreamingDestinationsUpdate`.
+- `auditEventsStreamingDestinationInstanceEventsAdd` — use `auditEventsInstanceDestinationEventsAdd` instead.
+- `auditEventsStreamingDestinationInstanceEventsRemove` — use `auditEventsInstanceDestinationEventsRemove` instead.
+
+Deprecated query fields:
+
+- `instanceExternalAuditEventDestinations` — use `auditEventsInstanceStreamingDestinations` instead.
+- `instanceGoogleCloudLoggingConfigurations` — use `auditEventsInstanceStreamingDestinations` with `gcpLogging` category instead.
+- `auditEventsInstanceAmazonS3Configurations` — use `auditEventsInstanceStreamingDestinations` with `amazonS3` category instead.
+
+The new unified streaming destination APIs support all destination categories (HTTP, Google Cloud Logging, Amazon S3) through a single set of endpoints with a `category` parameter.
+
+### Support for NGINX Ingress, HAProxy, and Traefik charts
+
+- Announced in GitLab 18.9
+- Removal in GitLab 20.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590799).
+
+The GitLab Helm chart bundles several Ingress controllers as an alternative to
+the default Envoy Gateway which uses the Kubernetes Gateway API.
+
+These bundled Ingress controllers, namely NGINX Ingress, HAProxy, and
+Traefik will be dropped from the GitLab Helm chart and GitLab Operator.
+Using Ingresses will still be supported by the GitLab Helm chart and GitLab Operator,
+but a external Ingress controller must be deployed to do so.
+
+We recommend to migrate to the bundled Envoy Gateway and Gateway API.
+Alternatively, you can deploy and configure an
+[external Ingress controller and class](https://docs.gitlab.com/charts/charts/globals/#configure-ingress-settings).
+
+## GitLab 19.5
+
+### Bitbucket Cloud issue and wiki import
+
+- Announced in GitLab 19.1
+- Removal in GitLab 19.5 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/601061).
+
+Atlassian is [sunsetting Bitbucket Cloud Issues and Wikis](https://community.atlassian.com/forums/Bitbucket-articles/Announcing-sunset-of-Bitbucket-Issues-and-Wikis/ba-p/3193882)
+on August 20, 2026. After that date, the underlying API endpoints are removed
+and GitLab can no longer import issues or wikis from Bitbucket Cloud.
+
+In GitLab 19.3, the Bitbucket Cloud importer is planned to handle the API
+removal gracefully and skip issues and wikis. In GitLab 19.5, the import
+code for issues and wikis is planned to be removed.
+
+Users who need their Bitbucket issue data should complete imports before the
+August 20, 2026 due date, or use the
+[CSV import](https://docs.gitlab.com/user/project/issues/csv_import/)
+after exporting from Bitbucket. For wikis, clone the Bitbucket wiki repository
+locally before the due date.
+
+## GitLab 19.3
+
+### The `glab duo ask` command
+
+- Announced in GitLab 19.0
+- Removal in GitLab 19.3 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/597732).
+
+The `glab duo ask` command in the GitLab CLI is deprecated in GitLab 19.0
+and will be removed in GitLab 19.3. The command generates Git commands from
+natural language descriptions.
+
+Use [`glab duo cli`](https://docs.gitlab.com/cli/duo/cli/) instead for AI-powered assistance in the CLI.
+
+## GitLab 19.1
+
+### Elasticsearch 7.x no longer supported for advanced search
+
+- Announced in GitLab 18.10
+- Removal in GitLab 19.1 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/583544).
+
+The [maintenance term for Elasticsearch 7.x](https://www.elastic.co/support/eol) ended on 2026-01-15.
+For GitLab Self-Managed, administrators must upgrade their Elasticsearch instance to use advanced search.
+
+### Linux package support for Amazon Linux 2
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.1 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590802).
+
+In GitLab 19.1, we are removing Amazon Linux 2 (AL2) package builds for the Linux package.
+
+Amazon Linux 2 reaches end of life in June 2026 and will no longer receive security updates after that date.
+In accordance with our [Linux package supported platforms policy](https://docs.gitlab.com/install/package/#supported-platforms),
+we drop package builds once a vendor stops supporting the operating system, with at least a six-month announcement period.
+
+If you currently run GitLab on Amazon Linux 2, you must migrate to Amazon Linux 2023 (AL2023) or another
+[supported operating system](https://docs.gitlab.com/install/package/#supported-platforms) before upgrading to GitLab 19.1.
+Amazon provides [migration documentation](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/using-features.migration-al.generic.from-al2.html)
+to help you move from AL2 to AL2023.
 
 ## GitLab 19.0
 
@@ -67,25 +269,6 @@ To migrate to the `azure_v2` driver:
 
 For more information about updating your storage driver configuration, see [use object storage](https://docs.gitlab.com/administration/packages/container_registry/#use-object-storage).
 
-### Compliance pipelines
-
-- Announced in GitLab 17.3
-- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/epics/11275).
-
-Currently, there are two ways to ensure compliance- or security-related jobs are run in a project pipeline:
-
-- [Compliance pipelines](https://docs.gitlab.com/user/group/compliance_pipelines/).
-- [Security policies](https://docs.gitlab.com/user/application_security/policies/).
-
-To provide a single place for ensuring required jobs are run in all pipelines for a project, we have deprecated
-compliance pipelines in GitLab 17.3 and will remove the feature in GitLab 19.0.
-
-Customers should migrate from compliance pipelines to the new
-[pipeline execution policy type](https://docs.gitlab.com/user/application_security/policies/pipeline_execution_policies/)
-as soon as possible.
-For details, see the [migration guide](https://docs.gitlab.com/user/group/compliance_pipelines/#pipeline-execution-policies-migration) and [blog post](https://about.gitlab.com/blog/why-gitlab-is-deprecating-compliance-pipelines-in-favor-of-security-policies/).
-
 ### Container Registry AWS S3 Signature Version 2 support
 
 - Announced in GitLab 17.8
@@ -108,23 +291,6 @@ To migrate:
 
 If you encounter any issues after making these changes, try regenerating your AWS credentials.
 
-### Design Management deprecated
-
-- Announced in GitLab 18.6
-- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-com/Product/-/issues/14413).
-
-In GitLab 19.0, GitLab will begin deprecation of Design Management. Design Management allows users to upload design assets such as wireframes and mockups to GitLab issues for collaboration. We've made this decision after careful consideration of existing usage and estimated customer impact. The ongoing maintenance required for Design Management outweighed the current usage, and we're focusing our efforts on solutions that better align with modern designer workflows. In GitLab 19.0 and later, users will no longer be able to upload new designs. Existing designs will remain available in read-only mode until GitLab 20.0, giving users time to save their designs as needed. GitLab is exploring alternatives that better integrate with the tools designers already use.
-
-### Enforce keyset pagination on audit event API
-
-- Announced in GitLab 17.8
-- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/382338).
-
-The Audit Event APIs for instances, groups, and projects currently support optional keyset pagination. In GitLab 18.0
-we will enforce keyset pagination on these APIs.
-
 ### Enforce page limit for unauthenticated Projects API requests
 
 - Announced in GitLab 18.9
@@ -142,6 +308,72 @@ Workflows requiring access to more data must use keyset-based pagination paramet
 **Why it matters**
 
 This limit ensures consistent service quality and performance across GitLab.com by managing resource utilization effectively.
+
+### Linux package support for SUSE distributions
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590801).
+
+We are ending support for SUSE distributions in GitLab 19.0. This affects:
+
+- openSUSE Leap 15.6
+- SUSE Linux Enterprise Server 12.5
+- SUSE Linux Enterprise Server 15.6
+
+openSUSE Leap 15.6 is approaching end-of-life. While SUSE Linux Enterprise Server remains supported by SUSE via
+long-term service, adoption among GitLab customers is too low to make continued support commercially viable.
+
+Customers on SUSE distributions that use the Linux package will not be able to upgrade GitLab past version `18.11.x`.
+
+For customers on one of these distributions, we recommend migrating to a
+[Docker deployment of GitLab](https://docs.gitlab.com/install/docker/installation/) on your existing distribution.
+This avoids having to migrate to a different Linux distribution to continue to receive GitLab upgrades.
+
+**Update**: Due to [RPM package size constraints on SLES 12.5](https://gitlab.com/gitlab-org/omnibus-gitlab/-/work_items/9716),
+[Mattermost](https://docs.gitlab.com/update/deprecations/#mattermost-bundled-with-linux-package) and
+[Spamcheck](https://docs.gitlab.com/update/deprecations/#spamcheck-support-in-the-linux-package-and-gitlab-helm-chart)
+were removed from SLES 12.5 packages in GitLab 18.11 ahead of their planned removal from all distributions
+in GitLab 19.0.
+
+### Linux package support for Ubuntu 20.04
+
+- Announced in GitLab 17.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/8915).
+
+Ubuntu standard support for Ubuntu 20.04 [ended in May 2025](https://wiki.ubuntu.com/Releases).
+
+In accordance with our [Linux package supported platforms policy](https://docs.gitlab.com/install/package/#supported-platforms),
+we drop package builds once a vendor stops supporting the operating system.
+
+From GitLab 19.0, we will no longer provide packages for the Ubuntu 20.04 distribution for Linux package installs.
+GitLab 18.11 will be the last GitLab version with Linux packages for Ubuntu 20.04.
+
+If you currently run GitLab on Ubuntu 20.04, you must upgrade to Ubuntu 22.04 or another
+[supported operating system](https://docs.gitlab.com/install/package/#supported-platforms) before upgrading to GitLab
+19.0. Canonical provides an [upgrade guide](https://documentation.ubuntu.com/server/how-to/software/upgrade-your-release/)
+to help you migrate.
+
+### Mattermost bundled with Linux package
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590798).
+
+In GitLab 19.0, we plan to remove bundled Mattermost from the Linux package.
+
+Mattermost was first bundled with GitLab in 2015 as an open source team messaging solution, with GitLab SSO included
+to support the integration. Since then, Mattermost has significantly matured its own packaging and deployment
+options, and adoption of the bundled Mattermost among GitLab customers has remained relatively low.
+
+With Mattermost v11, [Mattermost has deprecated GitLab SSO from their free offering](https://forum.mattermost.com/t/mattermost-v11-changes-in-free-offerings/25126).
+Given this change, the maturity of Mattermost standalone deployment options, and the low adoption in our customer
+base, we are removing Mattermost from the Linux package.
+
+If you currently use Mattermost bundled with GitLab, refer to
+[Migrating from GitLab Omnibus to Mattermost Standalone](https://docs.mattermost.com/administration-guide/onboard/migrate-gitlab-omnibus.html)
+in the Mattermost documentation for migration instructions and available Mattermost editions.
 
 ### Resource owner password credentials grant is deprecated
 
@@ -192,6 +424,120 @@ don't need to do anything.
 If you're on GitLab Self-Managed or GitLab Dedicated, to find out if you're impacted, see
 [issue 569345](https://gitlab.com/gitlab-org/gitlab/-/work_items/569345#am-i-impacted).
 
+### Spamcheck support in the Linux package and GitLab Helm chart
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590796).
+
+In GitLab 19.0, we are removing [Spamcheck](https://docs.gitlab.com/administration/reporting/spamcheck/) from the
+Linux package and GitLab Helm chart.
+
+Spamcheck is a service to combat spam on public-facing GitLab instances. By its nature, this feature is primarily
+relevant to large public instances, which represents an edge case in our customer base.
+
+Given the low adoption and the availability of standalone deployment options, we are removing Spamcheck from the
+Linux package and GitLab Helm chart. Customers not using Spamcheck will not be impacted by this change.
+The removal will reduce package size and dependency footprint (and thus security) for the majority of customers.
+
+If you currently use the bundled Spamcheck, you can deploy it separately by using
+[Docker](https://gitlab.com/gitlab-org/gl-security/security-engineering/security-automation/spam/spamcheck).
+
+No data migration is required. Configuration guidance is available in the linked documentation.
+
+### Support for NGINX Ingress
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590800).
+
+The GitLab Helm chart currently bundles NGINX Ingress as the default networking component. With
+NGINX Ingress reaching end-of-life in March 2026, we are transitioning to Gateway API with Envoy
+Gateway.
+
+Starting with GitLab 19.0, Gateway API and the bundled Envoy Gateway become the default configuration.
+If migration to Envoy Gateway isn't feasible for your deployment, you can explicitly re-enable the
+bundled NGINX Ingress, which remains available until its planned removal in GitLab 20.0.
+
+This change does not impact the NGINX in the Linux package, or GitLab Helm chart and GitLab Operator instances
+that use an externally managed Ingress or Gateway API controller.
+
+We will provide best-effort security maintenance for our forked NGINX Ingress chart and builds until
+the full removal. To ensure a smooth transition, we recommend planning your migration to the provided
+Gateway API solution or an externally managed Ingress controller. For step-by-step instructions, see the
+[Envoy Gateway migration guide](https://docs.gitlab.com/charts/installation/migration/envoy_gateway_migration/).
+
+### Support for PostgreSQL 16
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/589774).
+
+GitLab follows an
+[annual upgrade cadence for PostgreSQL](https://handbook.gitlab.com/handbook/engineering/data-engineering/database-excellence/database-frameworks/postgresql-upgrade-cadence/).
+
+Support for PostgreSQL 16 is scheduled for removal in GitLab 19.0.
+In GitLab 19.0, PostgreSQL 17 becomes the minimum required PostgreSQL version.
+
+PostgreSQL 17 is available as of GitLab 18.9, and you can upgrade at any time before the removal of PostgreSQL 16 in GitLab 19.0.
+
+If you are running a single PostgreSQL instance you installed by using the Linux package, an automatic upgrade may
+be attempted with 18.11. Make sure you have enough disk space to accommodate the upgrade.
+
+For more information, see [Upgrade packaged PostgreSQL server](https://docs.gitlab.com/omnibus/settings/database/#upgrade-packaged-postgresql-server).
+
+### Support for Redis 6
+
+- Announced in GitLab 18.10
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/585839).
+
+In GitLab 19.0, we plan to remove support for Redis 6 as part of our commitment to maintaining a secure and
+supportable infrastructure stack.
+
+Before upgrading to GitLab 19.0, you must be running either:
+
+- Redis 7.2.
+- Valkey 7.2, which is available in beta from GitLab 18.9 with general availability planned for GitLab 19.0.
+
+The bundled Redis included with the Linux package has used Redis 7 since GitLab 16.2 and is not affected.
+Only GitLab Self-Managed instances using an external Redis 6 deployment must migrate.
+
+See the following resources for migrating an external Redis 6 deployment:
+
+- **AWS ElastiCache**: ElastiCache for Redis 7.2 is not available on AWS. Migrate to
+  [Amazon ElastiCache for Valkey 7.2](https://aws.amazon.com/elasticache/valkey/).
+  For available upgrade paths, see [AWS ElastiCache documentation](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/supported-engine-versions.html).
+- **GCP Memorystore**: Upgrade your Redis 6 instance to Redis 7.2 or Valkey 7.2. For available upgrade paths, see
+  [GCP Memorystore documentation](https://cloud.google.com/memorystore/docs/redis/supported-versions).
+- **Azure Cache for Redis**: A managed Redis 7.2 or Valkey 7.2 option is not currently available on Azure. You can
+  self-host Redis 7.2 or Valkey 7.2 on Azure VMs or AKS. You can also use the GitLab Linux package installation method,
+  which will support Valkey 7.2 with general availability planned for GitLab 19.0.
+- **Self-hosted**: Upgrade your Redis 6 instance to Redis 7.2 or Valkey 7.2.
+
+For more information, see the [requirements documentation](https://docs.gitlab.com/install/requirements/).
+
+### Support for bundled PostgreSQL, Redis, and MinIO in GitLab Helm chart
+
+- Announced in GitLab 18.9
+- Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/work_items/590797).
+
+The GitLab Helm chart bundles a Bitnami PostgreSQL, Bitnami Redis, and
+a fork of the official MinIO chart to make setting up GitLab easier. Because of several
+changes to licensing, project maintenance, and public image availability these,
+components will be removed from the GitLab Helm chart and GitLab Operator with no replacement.
+
+These charts are currently enabled by default but are explicitly documented as not
+recommended for production usage. Their sole purpose was to enable quick setup
+proof of concept and test environments.
+
+If you are running an instance with the bundled PostgreSQL, Redis, or MinIO, please
+check the [migration guide](https://docs.gitlab.com/charts/installation/migration/bundled_chart_migration/).
+
+The Redis and PostgreSQL provided by the Linux package are not impacted by this
+change.
+
 ### The `ci_job_token_scope_enabled` projects API attribute is deprecated
 
 - Announced in GitLab 16.4
@@ -220,11 +566,11 @@ These changes affect you if your pipelines use the [`auto-build-image`](https://
 
 To continue to use `heroku/builder:22` after GitLab 19.0, set `AUTO_DEVOPS_BUILD_IMAGE_CNB_BUILDER` to `heroku/builder:22`.
 
-### Trending tab in Explore > Projects is deprecated
+### Trending tab in Explore projects page is deprecated
 
 - Announced in GitLab 18.8
 - Removal in GitLab 19.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/583607).
+- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/work_items/18493).
 
 The **Trending** tab in **Explore** > **Projects** and its associated GraphQL arguments are deprecated in GitLab 18.8 and will be removed in GitLab 19.0.
 In the month before the GitLab 19.0 release, the ***Trending** tab redirects to the **Active** tab sorted by stars in descending order on GitLab.com.
@@ -268,20 +614,6 @@ Users importing repositories from Bitbucket Server, or from Bitbucket Cloud thro
 
 With the [upcoming default behavior change to the CI/CD job token](https://docs.gitlab.com/update/deprecations/#default-cicd-job-token-ci_job_token-scope-changed) in GitLab 18.0, we are also deprecating the associated `ciJobTokenScopeAddProject` GraphQL mutation in favor of `ciJobTokenScopeAddGroupOrProject`.
 
-## GitLab 18.9
-
-### Linux packages for Ubuntu 20.04
-
-- Announced in GitLab 17.9
-- Removal in GitLab 18.9 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/8915).
-
-Ubuntu standard support for Ubuntu 20.04 [ends in May 2025](https://wiki.ubuntu.com/Releases).
-
-Therefore, from GitLab 18.9, we will no longer provide packages for the Ubuntu 20.04 distribution for Linux package installs.
-GitLab 18.8 will be the last GitLab version with Linux packages for Ubuntu 20.04.
-You should upgrade to Ubuntu 22.04 for continued support.
-
 ## GitLab 18.8
 
 ### Static compliance violations report
@@ -323,7 +655,7 @@ Prometheus 2.x that is bundled with the Linux package is deprecated and will be 
 the latest Prometheus 3.x release in GitLab 18.6.
 
 Prometheus 3 contains some potentially breaking changes such as a new log format and stricter
-header validation. For more information, see the [Prometheus migration guide](https://prometheus.io/docs/prometheus/3.0/migration).
+header validation. For more information, see the [Prometheus migration guide](https://prometheus.io/docs/prometheus/latest/migration/).
 
 This change does not impact GitLab Helm chart installations.
 
@@ -535,7 +867,7 @@ To help identify projects that need access to your project by authenticating wit
 
 From GitLab 17.10 to 18.6, you can use [migration tooling](https://archives.docs.gitlab.com/18.6/ci/jobs/ci_job_token/#auto-populate-a-projects-allowlist) to automatically populate the CI/CD job token allowlist from the job token authentication log. We encourage you to use this migration tool to populate and use the allowlist before [general enforcement of allowlists in GitLab 18.0](https://docs.gitlab.com/update/deprecations/?removal_milestone=18.0#cicd-job-token-authorized-groups-and-projects-allowlist-enforcement). In GitLab 18.0, automatic population and enforcement of the allowlist will occur on GitLab.com as previously announced.
 
-This migration tool will be removed in GitLab 18.6.
+This migration tool [was removed](https://gitlab.com/gitlab-org/gitlab/-/work_items/498305) in GitLab 18.7.
 
 ### CI/CD job token - **Limit access from your project** setting removal
 
@@ -556,7 +888,7 @@ The **Limit access _from_ this project** setting is disabled by default for all 
 In GitLab 16.0 and later, you cannot re-enable this setting after it is disabled in any project.
 Instead, use the **Authorized groups and projects** setting to control job token access to your projects.
 
-### DAST `dast_crawl_extract_element_timeout` and `dast_crawl_search_element_timeout` variables are deprecated
+### DAST `dast_crawl_extract_element_timeout` and `dast_crawl_search_element_timeout` variables
 
 - Announced in GitLab 17.9
 - Removal in GitLab 18.0
@@ -802,7 +1134,7 @@ In GitLab 18.0, we are introducing a new data retention limit for GitLab.com Ult
 - Removal in GitLab 18.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/521663).
 
-GitLab follows an [annual upgrade cadence for PostgreSQL](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/data-access/database-framework/postgresql-upgrade-cadence/).
+GitLab follows an [annual upgrade cadence for PostgreSQL](https://handbook.gitlab.com/handbook/engineering/data-engineering/database-excellence/database-frameworks/postgresql-upgrade-cadence/).
 
 Support for PostgreSQL 14 and 15 is scheduled for removal in GitLab 18.0.
 In GitLab 18.0, PostgreSQL 16 becomes the minimum required PostgreSQL version.
@@ -1390,7 +1722,7 @@ The runner's legacy escape sequence mechanism to handle variable expansion imple
 - Removal in GitLab 17.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/124461).
 
-The parameters, `sign_in_text` and `help_text`, are deprecated in the [Settings API](https://docs.gitlab.com/api/settings/). To add a custom text to the sign-in and sign-up pages, use the `description` field in the [Appearance API](https://docs.gitlab.com/api/appearance/).
+The parameters, `sign_in_text` and `help_text`, are deprecated in the [Settings API](https://docs.gitlab.com/api/settings/). To add a custom text to the sign-in and new user account pages, use the `description` field in the [Appearance API](https://docs.gitlab.com/api/appearance/).
 
 ### Deprecating Windows Server 2019 in favor of 2022
 
@@ -1718,15 +2050,15 @@ Users are advised to upgrade to 3.8.8 or greater.
 - Removal in GitLab 17.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/439687).
 
-- For Linux package (Omnibus) installations, the [`sidekiq['min_concurrency']` and `sidekiq['max_concurrency']`](https://docs.gitlab.com/administration/sidekiq/extra_sidekiq_processes/#manage-thread-counts-explicitly) settings are deprecated in GitLab 16.9 and will be removed in GitLab 17.0.
+For Linux package (Omnibus) installations, the [`sidekiq['min_concurrency']` and `sidekiq['max_concurrency']`](https://docs.gitlab.com/administration/sidekiq/extra_sidekiq_processes/#manage-thread-counts-explicitly) settings are deprecated in GitLab 16.9 and will be removed in GitLab 17.0.
 
-  You can use `sidekiq['concurrency']` in GitLab 16.9 and later to set thread counts explicitly in each process.
+You can use `sidekiq['concurrency']` in GitLab 16.9 and later to set thread counts explicitly in each process.
 
-  The above change only applies to Linux package (Omnibus) installations.
+The above change only applies to Linux package (Omnibus) installations.
 
-- For GitLab Helm chart installations, passing `SIDEKIQ_CONCURRENCY_MIN` and/or `SIDEKIQ_CONCURRENCY_MAX` as `extraEnv` to the `sidekiq` sub-chart is deprecated in GitLab 16.10 and will be removed in GitLab 17.0.
+For GitLab Helm chart installations, passing `SIDEKIQ_CONCURRENCY_MIN` and/or `SIDEKIQ_CONCURRENCY_MAX` as `extraEnv` to the `sidekiq` sub-chart is deprecated in GitLab 16.10 and will be removed in GitLab 17.0.
 
-  You can use the `concurrency` option to set thread counts explicitly in each process.
+You can use the `concurrency` option to set thread counts explicitly in each process.
 
 ### Offset pagination for `/users` REST API endpoint is deprecated
 
@@ -1796,7 +2128,7 @@ In milestone 17.0, we will remove the `pipelines` attribute from the API respons
 - Removal in GitLab 17.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/groups/gitlab-org/-/epics/9065).
 
-GitLab follows an [annual upgrade cadence for PostgreSQL](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/data-access/database-framework/postgresql-upgrade-cadence/).
+GitLab follows an [annual upgrade cadence for PostgreSQL](https://handbook.gitlab.com/handbook/engineering/data-engineering/database-excellence/database-frameworks/postgresql-upgrade-cadence/).
 
 Support for PostgreSQL 13 is scheduled for removal in GitLab 17.0.
 In GitLab 17.0, PostgreSQL 14 becomes the minimum required PostgreSQL version.
@@ -1970,12 +2302,12 @@ If your self-hosted Sentry version is 21.4.1 or earlier, you may not be able to 
 To continue sending errors from your GitLab instance to your Sentry instance, upgrade Sentry to version 21.5.0 or later. For more information,
 see [Sentry documentation](https://develop.sentry.dev/self-hosted/releases/).
 
-NOTE:
-The deprecated support is for
-[GitLab instance error tracking features](https://docs.gitlab.com/omnibus/settings/configuration/#error-reporting-and-logging-with-sentry)
-for administrators. The deprecated support does not relate to
-[GitLab error tracking](https://docs.gitlab.com/operations/error_tracking/#sentry-error-tracking) for
-developers' own deployed applications.
+> [!note]
+> The deprecated support is for
+> [GitLab instance error tracking features](https://docs.gitlab.com/omnibus/settings/configuration/#error-reporting-and-logging-with-sentry)
+> for administrators. The deprecated support does not relate to
+> [GitLab error tracking](https://docs.gitlab.com/operations/error_tracking/#sentry-error-tracking) for
+> developers' own deployed applications.
 
 ### Support for setting custom schema for backup is deprecated
 
@@ -2264,7 +2596,7 @@ Any API calls to change the rate limits for `user_email_lookup_limit` must use `
 - Removal in GitLab 16.6 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/420678).
 
-Starting in 16.6, projects that are **public** or **internal** will no longer authorize job token requests from projects that are **not** on the project's allowlist when [**Limit access to this project**](https://docs.gitlab.com/ci/jobs/ci_job_token/#add-a-group-or-project-to-the-job-token-allowlist) is enabled.
+Starting in 16.6, projects that are **public** or **internal** will no longer authorize job token requests from projects that are not on the project's allowlist when [**Limit access to this project**](https://docs.gitlab.com/ci/jobs/ci_job_token/#add-a-group-or-project-to-the-job-token-allowlist) is enabled.
 
 If you have [public or internal](https://docs.gitlab.com/user/public_access/#change-project-visibility) projects with the **Limit access to this project** setting enabled, you must add any projects which make job token requests to your project's allowlist for continued authorization.
 
@@ -2700,7 +3032,6 @@ GitLab self-monitoring gives instance administrators the tools to monitor the he
 
 - Announced in GitLab 15.8
 - Removal in GitLab 16.0
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-com/Product/-/issues/4895).
 
 The GitLab.com importer was deprecated in GitLab 15.8 and will be removed in GitLab 16.0.
 
@@ -2951,7 +3282,6 @@ We are deprecating the `operations_access_level` field in the Projects API. This
 
 - Announced in GitLab 15.8
 - Removal in GitLab 16.0
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-com/Product/-/issues/5255).
 
 The Rake task for importing bare repositories (`gitlab:import:repos`) is deprecated in GitLab 15.8 and will be removed in GitLab 16.0.
 
@@ -3179,7 +3509,6 @@ This change affects the following REST and GraphQL API endpoints:
 
 - Announced in GitLab 15.7
 - Removal in GitLab 16.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
-- To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-com/Product/-/issues/4894).
 
 The Phabricator task importer is being deprecated. Phabricator itself as a project is no longer actively maintained since June 1, 2021. We haven't observed imports using this tool. There has been no activity on the open related issues on GitLab.
 
@@ -3429,8 +3758,8 @@ In GitLab 15.4, GitLab SAST will no longer use the following analyzers:
 - [Gosec](https://gitlab.com/gitlab-org/security-products/analyzers/gosec) (Go)
 - [Bandit](https://gitlab.com/gitlab-org/security-products/analyzers/bandit) (Python)
 
-NOTE:
-This change was originally planned for GitLab 15.0 and was postponed to GitLab 15.4.
+> [!note]
+> This change was originally planned for GitLab 15.0 and was postponed to GitLab 15.4.
 
 These analyzers will be removed from the [GitLab-managed SAST CI/CD template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Security/SAST.gitlab-ci.yml) and replaced with the [Semgrep-based analyzer](https://gitlab.com/gitlab-org/security-products/analyzers/semgrep).
 Effective immediately, they will receive only security updates; other routine improvements or updates are not guaranteed.
@@ -3987,13 +4316,13 @@ In GitLab 15.0, we will:
 
 If you rely on Java 8 being present in the analyzer environment, you must take action as detailed in the [deprecation issue for this change](https://gitlab.com/gitlab-org/gitlab/-/issues/352549#breaking-change).
 
-### Outdated indices of Advanced Search migrations
+### Outdated indices of advanced search migrations
 
 - Announced in GitLab 14.10
 - Removal in GitLab 15.0 ([breaking change](https://docs.gitlab.com/update/terminology/#breaking-change))
 - To discuss this change or learn more, see the [deprecation issue](https://gitlab.com/gitlab-org/gitlab/-/issues/359133).
 
-As Advanced Search migrations usually require support multiple code paths for a long period of time,
+As advanced search migrations usually require support multiple code paths for a long period of time,
 it's important to clean those up when we safely can. We use GitLab major version upgrades as a safe
 time to remove backward compatibility for indices that have not been fully migrated. See the
 [upgrade documentation](https://docs.gitlab.com/update/#upgrading-to-a-new-major-version) for details.

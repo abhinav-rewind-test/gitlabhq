@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Pull mirroring API
 description: Manage pull mirroring for projects. View mirror details, configure mirroring settings, and start mirror updates.
 ---
@@ -50,7 +50,7 @@ following response attributes:
 | `mirror_overwrites_diverged_branches` | boolean         | If `true`, overwrites diverged branches during mirroring. |
 | `mirror_trigger_builds`               | boolean         | If `true`, triggers builds for mirror updates. |
 | `only_mirror_protected_branches`      | boolean or null | If `true`, only protected branches are mirrored. If not set, the value is `null`. |
-| `update_status`                       | string          | Status of the mirror update process. |
+| `update_status`                       | string          | Status of the mirror update process. Possible values: `none`, `scheduled`, `started`, `finished`, `failed`, or `canceled`. |
 | `url`                                 | string          | URL of the mirrored repository. |
 
 Example request:
@@ -169,7 +169,7 @@ Example response:
 > This change is a breaking change.
 
 If the remote repository is publicly accessible or uses `username:token` authentication, use the API
-to configure pull mirroring when [creating](projects.md#create-a-project) or [updating](projects.md#edit-a-project)
+to configure pull mirroring when [creating](projects.md#create-a-project) or [updating](projects.md#update-a-project)
 a project.
 
 If your HTTP repository is not publicly accessible, you can add the authentication information to the URL. For example,

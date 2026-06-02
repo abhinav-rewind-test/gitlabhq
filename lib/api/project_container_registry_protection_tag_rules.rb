@@ -14,8 +14,9 @@ module API
 
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       resource ':id/registry/protection/tag/rules' do
-        desc 'Gets a list of container protection tag rules for a project.' do
-          detail 'This feature was introduced in GitLab 18.7.'
+        desc 'List all container registry protection tag rules' do
+          detail 'Lists all container registry protection tag rules for a project. This feature was ' \
+            'introduced in GitLab 18.7.'
           success Entities::Projects::ContainerRegistry::Protection::TagRule
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -25,6 +26,8 @@ module API
           tags %w[projects]
           is_array true
         end
+        route_setting :authorization, permissions: :read_container_registry_protection_tag_rule,
+          boundary_type: :project
         get do
           authorize! :admin_container_image, user_project
 
@@ -32,8 +35,9 @@ module API
             with: Entities::Projects::ContainerRegistry::Protection::TagRule
         end
 
-        desc 'Create a container protection tag rule for a project. 5 rule limit per project.' do
-          detail 'This feature was introduced in GitLab 18.8.'
+        desc 'Create a container registry protection tag rule' do
+          detail 'Creates a container registry protection tag rule for a project to control who can push or delete ' \
+            'container tags. This feature was introduced in GitLab 18.8.'
           success Entities::Projects::ContainerRegistry::Protection::TagRule
           failure [
             { code: 400, message: 'Bad Request' },
@@ -57,6 +61,8 @@ module API
             desc: 'Minimum GitLab access level required to delete container tags. ' \
               'For example, Maintainer, Owner, or Admin.'
         end
+        route_setting :authorization, permissions: :create_container_registry_protection_tag_rule,
+          boundary_type: :project
         post do
           authorize! :admin_container_image, user_project
 
@@ -76,8 +82,9 @@ module API
             desc: 'The ID of the container protection tag rule.'
         end
         resource ':protection_rule_id' do
-          desc 'Update a container protection tag rule for a project.' do
-            detail 'This feature was introduced in GitLab 18.9.'
+          desc 'Update a container registry protection tag rule' do
+            detail 'Updates a container registry protection tag rule for a project. This feature was introduced in ' \
+              'GitLab 18.9.'
             success Entities::Projects::ContainerRegistry::Protection::TagRule
             failure [
               { code: 400, message: 'Bad Request' },
@@ -101,6 +108,8 @@ module API
               desc: 'Minimum GitLab access level required to delete container tags. ' \
                 'For example, Maintainer, Owner, or Admin. To unset the value, use an empty string (`""`).'
           end
+          route_setting :authorization, permissions: :update_container_registry_protection_tag_rule,
+            boundary_type: :project
           patch do
             authorize! :admin_container_image, user_project
 
@@ -114,8 +123,9 @@ module API
               with: Entities::Projects::ContainerRegistry::Protection::TagRule
           end
 
-          desc 'Delete container protection tag rule' do
-            detail 'This feature was introduced in GitLab 18.9.'
+          desc 'Delete a container registry protection tag rule' do
+            detail 'Deletes a container registry protection tag rule from a project. This feature was introduced in ' \
+              'GitLab 18.9.'
             success code: 204, message: 'Delete a container protection tag rule'
             failure [
               { code: 400, message: 'Bad Request' },
@@ -125,6 +135,8 @@ module API
             ]
             tags %w[projects]
           end
+          route_setting :authorization, permissions: :delete_container_registry_protection_tag_rule,
+            boundary_type: :project
           delete do
             protection_rule = user_project.container_registry_protection_tag_rules.find(params[:protection_rule_id])
 

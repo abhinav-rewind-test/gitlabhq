@@ -7,29 +7,29 @@ import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import WorkItemDates from 'ee_else_ce/work_items/components/work_item_dates.vue';
 
 import {
-  WIDGET_TYPE_ASSIGNEES,
   WIDGET_TYPE_HEALTH_STATUS,
   WIDGET_TYPE_HIERARCHY,
   WIDGET_TYPE_ITERATION,
-  WIDGET_TYPE_LABELS,
   WIDGET_TYPE_MILESTONE,
   WIDGET_TYPE_PARTICIPANTS,
   WIDGET_TYPE_PROGRESS,
-  WIDGET_TYPE_START_AND_DUE_DATE,
-  WIDGET_TYPE_TIME_TRACKING,
   WIDGET_TYPE_WEIGHT,
   WIDGET_TYPE_COLOR,
-  WIDGET_TYPE_CRM_CONTACTS,
   WORK_ITEM_TYPE_NAME_EPIC,
-  NAME_TO_ENUM_MAP,
   WIDGET_TYPE_CUSTOM_FIELDS,
   WIDGET_TYPE_STATUS,
   STATE_CLOSED,
 } from '../constants';
-import { findHierarchyWidgetDefinition } from '../utils';
+import {
+  findAssigneesWidget,
+  findCrmContactsWidget,
+  findHierarchyWidgetDefinition,
+  findLabelsWidget,
+  findStartAndDueDateWidget,
+  findTimeTrackingWidget,
+} from '../utils';
 import workItemParticipantsQuery from '../graphql/work_item_participants.query.graphql';
 import workItemAllowedParentTypesQuery from '../graphql/work_item_allowed_parent_types.query.graphql';
-
 import WorkItemAssignees from './work_item_assignees.vue';
 import WorkItemLabels from './work_item_labels.vue';
 import WorkItemMilestone from './work_item_milestone.vue';
@@ -123,11 +123,7 @@ export default {
         };
       },
       update(data) {
-        return (
-          findHierarchyWidgetDefinition(data.workItem)?.allowedParentTypes?.nodes.map(
-            (el) => NAME_TO_ENUM_MAP[el.name],
-          ) || []
-        );
+        return findHierarchyWidgetDefinition(data.workItem)?.allowedParentTypes?.nodes ?? [];
       },
       error(e) {
         Sentry.captureException(e);
@@ -135,6 +131,9 @@ export default {
     },
   },
   computed: {
+    useWorkItemFeatures() {
+      return Boolean(this.glFeatures?.workItemFeaturesField);
+    },
     workItemType() {
       return this.workItem.workItemType?.name;
     },
@@ -154,16 +153,16 @@ export default {
       return this.workItemParticipants.count || 0;
     },
     workItemAssignees() {
-      return this.isWidgetPresent(WIDGET_TYPE_ASSIGNEES);
+      return findAssigneesWidget(this.workItem);
     },
     workItemLabels() {
-      return this.isWidgetPresent(WIDGET_TYPE_LABELS);
+      return findLabelsWidget(this.workItem);
     },
     workItemStatus() {
       return this.isWidgetPresent(WIDGET_TYPE_STATUS);
     },
     workItemStartAndDueDate() {
-      return this.isWidgetPresent(WIDGET_TYPE_START_AND_DUE_DATE);
+      return findStartAndDueDateWidget(this.workItem);
     },
     canWorkItemRollUp() {
       return this.workItemType === WORK_ITEM_TYPE_NAME_EPIC;
@@ -184,7 +183,9 @@ export default {
       return this.isWidgetPresent(WIDGET_TYPE_HIERARCHY);
     },
     workItemMilestone() {
-      return this.isWidgetPresent(WIDGET_TYPE_MILESTONE);
+      return this.useWorkItemFeatures
+        ? this.workItem?.features?.milestone || {}
+        : this.isWidgetPresent(WIDGET_TYPE_MILESTONE);
     },
     isParentEnabled() {
       return this.workItemType === WORK_ITEM_TYPE_NAME_EPIC ? this.hasSubepicsFeature : true;
@@ -196,7 +197,7 @@ export default {
       return this.allowedParentTypes.length > 0 && this.workItemHierarchy && this.isParentEnabled;
     },
     workItemTimeTracking() {
-      return this.isWidgetPresent(WIDGET_TYPE_TIME_TRACKING);
+      return findTimeTrackingWidget(this.workItem);
     },
     workItemColor() {
       return this.isWidgetPresent(WIDGET_TYPE_COLOR);
@@ -208,7 +209,7 @@ export default {
       return this.workItem.state === STATE_CLOSED;
     },
     workItemCrmContacts() {
-      const crmContactsWidget = this.isWidgetPresent(WIDGET_TYPE_CRM_CONTACTS);
+      const crmContactsWidget = findCrmContactsWidget(this.workItem);
       return crmContactsWidget && crmContactsWidget.contactsAvailable ? crmContactsWidget : null;
     },
     customFields() {
@@ -275,7 +276,6 @@ export default {
       :parent="workItemParent"
       :has-parent="hasParent"
       :group-path="groupPath"
-      :is-group="isGroup"
       @error="$emit('error', $event)"
     />
     <work-item-weight
@@ -367,9 +367,7 @@ export default {
       v-if="workItemTimeTracking"
       class="work-item-attributes-item"
       :can-update="canUpdateMetadata"
-      :time-estimate="workItemTimeTracking.timeEstimate"
-      :timelogs="workItemTimeTracking.timelogs.nodes"
-      :total-time-spent="workItemTimeTracking.totalTimeSpent"
+      :full-path="fullPath"
       :work-item-id="workItem.id"
       :work-item-iid="workItem.iid"
       :work-item-type="workItemType"

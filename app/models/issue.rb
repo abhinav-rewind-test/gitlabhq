@@ -25,6 +25,7 @@ class Issue < ApplicationRecord
   include EachBatch
   include PgFullTextSearchable
   include Gitlab::DueAtFilterable
+  include WorkItems::TypesFramework::HasType
   include Gitlab::Utils::StrongMemoize
 
   extend ::Gitlab::Utils::Override
@@ -50,9 +51,6 @@ class Issue < ApplicationRecord
   # This should be kept consistent with the enums used for the GraphQL issue list query in
   # https://gitlab.com/gitlab-org/gitlab/-/blob/1379c2d7bffe2a8d809f23ac5ef9b4114f789c07/app/assets/javascripts/issues/list/constants.js#L154-158
   TYPES_FOR_LIST = %w[issue incident test_case task objective key_result ticket].freeze
-
-  # Types of issues that should be displayed on issue board lists
-  TYPES_FOR_BOARD_LIST = %w[issue incident ticket].freeze
 
   # This default came from the enum `issue_type` column. Defined as default in the DB
   DEFAULT_ISSUE_TYPE = :issue
@@ -81,7 +79,6 @@ class Issue < ApplicationRecord
 
   belongs_to :duplicated_to, class_name: 'Issue'
   belongs_to :closed_by, class_name: 'User'
-  belongs_to :work_item_type, class_name: 'WorkItems::Type'
   belongs_to :moved_to, class_name: 'Issue', inverse_of: :moved_from
   has_one :moved_from, class_name: 'Issue', foreign_key: :moved_to_id, inverse_of: :moved_to
 
@@ -130,20 +127,14 @@ class Issue < ApplicationRecord
     inverse_of: :work_item,
     autosave: true
 
-  has_one :work_item_description,
-    class_name: 'WorkItems::Description',
-    inverse_of: :work_item,
-    autosave: true
-
   has_one :work_item_transition, class_name: 'WorkItems::Transition', inverse_of: :work_item
+  has_one :work_item_position, class_name: 'WorkItems::Position', inverse_of: :work_item
 
   alias_method :escalation_status, :incident_management_issuable_escalation_status
 
   accepts_nested_attributes_for :issuable_severity, update_only: true
   accepts_nested_attributes_for :sentry_issue
   accepts_nested_attributes_for :incident_management_issuable_escalation_status, update_only: true
-  accepts_nested_attributes_for :work_item_description
-
   validates :project, presence: true, if: -> { !namespace || namespace.is_a?(Namespaces::ProjectNamespace) }
   validates :namespace, presence: true
   validates :work_item_type, presence: true
@@ -228,19 +219,18 @@ class Issue < ApplicationRecord
 
   scope :preload_associated_models, -> { preload(:assignees, :labels, project: :namespace) }
   scope :with_web_entity_associations, -> do
-    preload(:author, :namespace, :labels, project: [:project_feature, :route, { namespace: :route }])
+    preload(:author, :namespace, :labels, project: [:project_feature, :route, { namespace: :route }, { group: :route }])
   end
 
   scope :preload_awardable, -> { preload(:award_emoji) }
   scope :preload_namespace, -> { preload(:namespace) }
   scope :preload_routables, -> { preload(project: [:route, { namespace: :route }]) }
   scope :preload_namespace_routables, -> { preload(namespace: [:route, { parent: :route }]) }
-  scope :preload_for_rss, -> { preload(:author, :assignees, :labels, :milestone, :work_item_type, :project, { project: :namespace }) }
+  scope :preload_for_rss, -> { preload(:author, :assignees, :labels, :milestone, :project, { project: :namespace }) }
 
   scope :with_alert_management_alerts, -> { joins(:alert_management_alert) }
   scope :with_api_entity_associations, -> {
-    preload(:work_item_type,
-      :timelogs, :closed_by, :assignees, :author, :issuable_severity,
+    preload(:timelogs, :closed_by, :assignees, :author, :issuable_severity,
       :labels, namespace: [{ parent: :route }, :route], milestone: { project: [:route, { namespace: :route }] },
       project: [:project_namespace, :project_feature, :route, { group: :route }, { namespace: :route }],
       duplicated_to: { project: [:project_feature] }
@@ -256,6 +246,9 @@ class Issue < ApplicationRecord
 
     where.not(work_item_type_id: type_ids)
   }
+
+  scope :with_work_item_type_ids, ->(ids) { where(work_item_type_id: ids) }
+  scope :without_work_item_type_ids, ->(ids) { where.not(work_item_type_id: ids) }
 
   scope :public_only, -> { where(confidential: false) }
 
@@ -274,10 +267,10 @@ class Issue < ApplicationRecord
 
     where(
       author: User.support_bot,
-      work_item_type: provider.default_issue_type.id
+      work_item_type_id: provider.default_issue_type.id
     )
     .or(
-      where(work_item_type: provider.find_by_base_type(:ticket).id)
+      where(work_item_type_id: provider.find_by_base_type(:ticket).id)
     )
   }
 
@@ -309,13 +302,7 @@ class Issue < ApplicationRecord
   scope :with_non_null_relative_position, -> { where.not(relative_position: nil) }
   scope :with_projects_matching_search_data, -> { where('issue_search_data.project_id = issues.project_id') }
 
-  scope :with_work_item_type, -> {
-    joins(:work_item_type)
-  }
-
   before_validation :ensure_namespace_id, :ensure_work_item_type, :ensure_namespace_traversal_ids
-  before_validation :ensure_work_item_description, if: :importing?
-
   after_save :ensure_metrics!, unless: :skip_metrics?
   after_commit :expire_etag_cache, unless: :importing?
   after_create_commit :record_create_action, unless: :importing?
@@ -402,7 +389,7 @@ class Issue < ApplicationRecord
 
   def next_object_by_relative_position(ignoring: nil, order: :asc)
     array_mapping_scope = ->(id_expression) do
-      relation = Issue.where(Issue.arel_table[:project_id].eq(id_expression))
+      relation = Issue.where(Issue.arel_table[:namespace_id].eq(id_expression))
 
       if order == :asc
         relation.where(Issue.arel_table[:relative_position].gt(relative_position))
@@ -413,7 +400,7 @@ class Issue < ApplicationRecord
 
     relation = Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder.new(
       scope: Issue.order(relative_position: order, id: order),
-      array_scope: relative_positioning_parent_projects,
+      array_scope: namespace.work_item_positioning_root.self_and_descendant_ids(skope: Namespace).select(:id),
       array_mapping_scope: array_mapping_scope,
       finder_query: ->(_, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
     ).execute
@@ -423,16 +410,8 @@ class Issue < ApplicationRecord
     relation.take
   end
 
-  def relative_positioning_parent_projects
-    if namespace.parent&.user_namespace?
-      Project.id_in(namespace.project).select(:id)
-    else
-      namespace.root_ancestor&.all_projects&.select(:id)
-    end
-  end
-
   def self.relative_positioning_query_base(issue)
-    in_projects(issue.relative_positioning_parent_projects)
+    where(namespace_id: issue.namespace.work_item_positioning_root.self_and_descendant_ids(skope: Namespace))
   end
 
   def self.relative_positioning_parent_column
@@ -694,7 +673,7 @@ class Issue < ApplicationRecord
     true
   end
 
-  # Overriden in EE
+  # Overridden in EE
   def supports_parent?; end
 
   def as_json(options = {})
@@ -706,6 +685,11 @@ class Issue < ApplicationRecord
           methods: [:text_color]
         )
       end
+
+      # Rename `exported_work_item_type` to `work_item_type` in the JSON output.
+      # We use a differently-named method to avoid conflicting with the `HasType#work_item_type` method,
+      # but the exported JSON key must remain `work_item_type` for import compatibility.
+      json['work_item_type'] = json.delete('exported_work_item_type') if json.key?('exported_work_item_type')
     end
   end
 
@@ -722,6 +706,7 @@ class Issue < ApplicationRecord
     return unless project
 
     Projects::OpenIssuesCountService.new(project).delete_cache
+    Projects::OpenWorkItemsCountService.new(project).delete_cache
   end
   # rubocop: enable CodeReuse/ServiceClass
 
@@ -826,7 +811,7 @@ class Issue < ApplicationRecord
   # Persisted records will always have a work_item_type. This method is useful
   # in places where we use a non persisted issue to perform feature checks
   def work_item_type_with_default
-    work_item_type || work_item_type_provider.default_issue_type
+    work_item_type || work_items_types_provider.default_issue_type
   end
 
   def issue_type
@@ -911,33 +896,18 @@ class Issue < ApplicationRecord
   # On the other hand some other Issue types/conditions are only available through
   # WorkItems UI/workflows.
   #
-  # Overriden on EE (For OKRs and Epics)
+  # Overridden in EE (For OKRs and Epics)
   def show_as_work_item?
-    return false if require_legacy_views?
-    return true if group_level?
-    return true if work_item_type&.task?
-
-    resource_parent.work_items_consolidated_list_enabled?
+    !require_legacy_views?
   end
 
   # Legacy views/workflows only
   # - Service Desk were not converted to the work items framework.
   # - Incidents were not converted to the work items framework.
+  #
+  # Overridden in EE for test case check
   def require_legacy_views?
     from_service_desk? || work_item_type&.incident?
-  end
-
-  def ensure_work_item_description
-    return if work_item_description.present?
-
-    build_work_item_description(
-      description: description,
-      description_html: description_html,
-      last_edited_at: last_edited_at,
-      last_edited_by_id: last_edited_by_id,
-      lock_version: lock_version,
-      cached_markdown_version: cached_markdown_version
-    )
   end
 
   def ==(other)
@@ -999,7 +969,7 @@ class Issue < ApplicationRecord
 
   def could_not_move(exception)
     # Symptom of running out of space - schedule rebalancing
-    Issues::RebalancingWorker.perform_async(nil, *project.self_or_root_group_ids)
+    Issues::RebalancingWorker.perform_async(nil, nil, namespace.work_item_positioning_root.id)
   end
 
   def ensure_namespace_id
@@ -1009,17 +979,27 @@ class Issue < ApplicationRecord
   def ensure_work_item_type
     return if work_item_type.present? || work_item_type_id.present? || work_item_type_id_change&.last.present?
 
-    self.work_item_type = work_item_type_provider.default_issue_type
+    self.work_item_type = work_items_types_provider.default_issue_type
   end
 
   def ensure_namespace_traversal_ids
-    self.namespace_traversal_ids = self.namespace&.traversal_ids
+    # For new records and imports, always read traversal_ids fresh from the database to avoid
+    # stale in-memory association caches. This is critical during imports where a single
+    # project object is reused across many records and may have a cached project_namespace
+    # with outdated traversal_ids if a namespace transfer occurred mid-import.
+    # For existing records, the in-memory association is sufficient since the
+    # UpdateNamespaceTraversalIdsWorker corrects any stale values after a transfer.
+    self.namespace_traversal_ids = if new_record? || importing?
+                                     Namespace.where(id: namespace_id).pick(:traversal_ids)
+                                   else
+                                     namespace&.traversal_ids
+                                   end
   end
 
   def allowed_work_item_type_change
     return unless changes[:work_item_type_id]
 
-    involved_types = work_item_type_provider.base_types_by_ids(changes[:work_item_type_id].compact)
+    involved_types = work_items_types_provider.base_types_by_ids(changes[:work_item_type_id].compact)
     disallowed_types = involved_types - CHANGEABLE_BASE_TYPES
 
     return if disallowed_types.empty?
@@ -1038,11 +1018,6 @@ class Issue < ApplicationRecord
   def validate_due_date?
     true
   end
-
-  def work_item_type_provider
-    ::WorkItems::TypesFramework::Provider.new(namespace)
-  end
-  strong_memoize_attr :work_item_type_provider
 end
 
 Issue.prepend_mod_with('Issue')

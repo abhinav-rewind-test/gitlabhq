@@ -27,7 +27,6 @@ module Gitlab
           return find_diff_commit_user if diff_commit_user?
           return find_merge_request_commits_metadata if commits_metadata?
           return find_diff_commit if diff_commit?
-          return find_work_item_type if work_item_type?
           return find_pipeline if pipeline?
 
           super
@@ -174,10 +173,6 @@ module Gitlab
           end
         end
 
-        def label?
-          klass == Label
-        end
-
         def milestone?
           klass == Milestone
         end
@@ -204,10 +199,6 @@ module Gitlab
 
         def diff_commit?
           klass == MergeRequestDiffCommit
-        end
-
-        def work_item_type?
-          klass == ::WorkItems::Type
         end
 
         def pipeline?
@@ -239,20 +230,8 @@ module Gitlab
           epic?
         end
 
-        def find_work_item_type
-          base_type = @attributes['base_type']
-
-          find_with_cache([::WorkItems::Type, base_type]) do
-            if ::WorkItems::Type.base_types.key?(base_type)
-              ::WorkItems::Type.default_by_type(base_type)
-            else
-              ::WorkItems::Type.default_issue_type
-            end
-          end
-        end
-
         def find_pipeline
-          # Here we should referencing only existing pipelines
+          # Here we should be referencing only existing pipelines
           # Only the 'iid' and `project` attributes should be present
           ::Ci::Pipeline.find_by(iid: attributes['iid'], project_id: project.id)
         end

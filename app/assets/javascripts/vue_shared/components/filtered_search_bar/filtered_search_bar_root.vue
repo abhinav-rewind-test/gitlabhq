@@ -106,6 +106,7 @@ export default {
       default: true,
     },
   },
+  emits: ['checked-input', 'onSort', 'onFilter', 'onInput', 'token-complete', 'token-destroy'],
   data() {
     return {
       recentSearchesPromise: null,
@@ -160,7 +161,7 @@ export default {
             // Only include items which aren't already part of history
             if (!knownItems.includes(itemString)) {
               historyItems.push(sanitizedItem);
-              // We're storing string for comparision as doing direct object compare
+              // We're storing string for comparison as doing direct object compare
               // won't work due to object reference not being the same.
               knownItems.push(itemString);
             }
@@ -291,8 +292,10 @@ export default {
       if (this.recentSearchesStorageKey) {
         this.recentSearchesPromise
           .then(() => {
-            if (filterTokens.length) {
-              const resultantSearches = this.recentSearchesStore.addRecentSearch(filterTokens);
+            const nonEmptyFilterTokens = filterTokens.filter((token) => token.value?.data?.trim());
+            if (nonEmptyFilterTokens.length) {
+              const resultantSearches =
+                this.recentSearchesStore.addRecentSearch(nonEmptyFilterTokens);
               this.recentSearchesService.save(resultantSearches);
               this.recentSearches = resultantSearches;
             }
@@ -408,17 +411,25 @@ export default {
       </gl-filtered-search>
     </div>
     <div
+      v-if="
+        selectedSortOption || $scopedSlots['user-preference'] || $scopedSlots['time-range-filter']
+      "
       :class="{
-        'gl-flex gl-items-center gl-justify-between gl-gap-3': $scopedSlots['user-preference'],
+        'gl-flex gl-items-center gl-justify-between gl-gap-3':
+          $scopedSlots['user-preference'] || $scopedSlots['time-range-filter'],
       }"
     >
       <slot name="user-preference"></slot>
+      <slot name="time-range-filter"></slot>
       <gl-sorting
         v-if="selectedSortOption"
         :sort-options="transformedSortOptions"
         :sort-by="sortById"
         :is-ascending="sortDirectionAscending"
-        class="sort-dropdown-container !gl-m-0 gl-w-full @sm/panel:gl-w-auto"
+        :class="[
+          'sort-dropdown-container !gl-m-0 gl-w-full @sm/panel:gl-w-auto',
+          { '!gl-w-auto @lg/panel:gl-w-full': $scopedSlots['time-range-filter'] },
+        ]"
         dropdown-toggle-class="gl-grow"
         dropdown-class="gl-grow"
         sort-direction-toggle-class="!gl-shrink !gl-grow-0"

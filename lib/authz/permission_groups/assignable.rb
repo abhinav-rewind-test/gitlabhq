@@ -2,10 +2,7 @@
 
 module Authz
   module PermissionGroups
-    class Assignable
-      include Authz::Concerns::YamlPermission
-      include Gitlab::Utils::StrongMemoize
-
+    class Assignable < Base
       BASE_PATH = 'config/authz/permission_groups/assignable_permissions'
 
       class << self
@@ -13,8 +10,16 @@ module Authz
           definitions.flat_map(&:permissions).uniq
         end
 
+        def available_permissions
+          available_definitions.flat_map(&:permissions).uniq
+        end
+
         def for_permission(permission)
-          definitions.filter { |a| a.permissions.include?(permission) }
+          definitions.filter { |a| a.permissions.include?(permission.to_sym) }
+        end
+
+        def available_for_permission(permission)
+          available_definitions.filter { |a| a.permissions.include?(permission.to_sym) }
         end
 
         def config_path
@@ -24,10 +29,22 @@ module Authz
         def definitions
           all.values
         end
+
+        def available_definitions
+          definitions.reject(&:deprecated?)
+        end
       end
 
-      def permissions
-        definition[:permissions].map(&:to_sym).uniq
+      def deprecated?
+        definition[:deprecated] == true
+      end
+
+      def available_for
+        Array(definition[:available_for]).map(&:to_sym)
+      end
+
+      def available_for?(consumer)
+        available_for.include?(consumer.to_sym)
       end
 
       def category

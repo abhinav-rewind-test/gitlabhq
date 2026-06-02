@@ -2,8 +2,8 @@
 
 require 'spec_helper'
 
-RSpec.describe Admin::LabelsController, :enable_admin_mode, feature_category: :team_planning do
-  let_it_be(:admin) { create(:admin) }
+RSpec.describe Admin::LabelsController, :enable_admin_mode, :with_current_organization, feature_category: :team_planning do
+  let_it_be(:admin, freeze: false) { create(:admin) }
   let_it_be(:organization1) { create(:organization) }
   let_it_be_with_reload(:label1) { create(:admin_label, organization: current_organization) }
   let_it_be_with_reload(:label2) { create(:admin_label, organization: organization1) }

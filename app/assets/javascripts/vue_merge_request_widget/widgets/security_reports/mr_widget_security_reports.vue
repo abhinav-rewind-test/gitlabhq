@@ -13,7 +13,6 @@ export default {
     GlDisclosureDropdown,
   },
   i18n: {
-    label: s__('ciReport|Security scanning'),
     apiError: s__(
       'SecurityReports|Failed to get security report information. Please reload the page or try again later.',
     ),
@@ -35,6 +34,9 @@ export default {
     // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     reportArtifacts: {
       query: securityReportMergeRequestDownloadPathsQuery,
+      context: {
+        featureCategory: 'vulnerability_management',
+      },
       variables() {
         return {
           projectPath: this.mr.targetProjectFullPath,
@@ -131,8 +133,6 @@ export default {
     :is-collapsible="false"
     :help-popover="$options.widgetHelpPopover"
     :summary="summary"
-    :label="$options.i18n.label"
-    path="security-reports"
     @is-loading="handleIsLoading"
   >
     <template #action-buttons>

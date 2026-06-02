@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authorization
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: IP address restrictions
 ---
 
@@ -30,7 +30,7 @@ Prerequisites:
 - Administrator access.
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Reporting**.
+1. In the left sidebar, select **Settings** > **Reporting**.
 1. Expand **Spam and Anti-bot Protection**.
 1. Update the IP address restrictions settings:
    1. Select the **Limit sign in from multiple IP addresses** checkbox to enable IP address restrictions.

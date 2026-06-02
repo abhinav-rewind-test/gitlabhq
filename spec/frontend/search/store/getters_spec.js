@@ -1,4 +1,4 @@
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import {
   GROUPS_LOCAL_STORAGE_KEY,
   PROJECTS_LOCAL_STORAGE_KEY,
@@ -24,6 +24,8 @@ import {
   MOCK_LABEL_SEARCH_RESULT,
   MOCK_FILTERED_APPLIED_SELECTED_LABELS,
   MOCK_FILTERED_UNSELECTED_LABELS,
+  MOCK_WORK_ITEM_TYPE_AGGREGATION_BUCKETS,
+  MOCK_WORK_ITEM_TYPE_AGGREGATIONS,
 } from '../mock_data';
 
 describe('Global Search Store Getters', () => {
@@ -33,10 +35,10 @@ describe('Global Search Store Getters', () => {
   defaultState.aggregations = MOCK_LABEL_AGGREGATIONS;
   defaultState.aggregations.data.push(SMALL_MOCK_AGGREGATIONS[0]);
 
+  useMockLocationHelper();
+
   beforeEach(() => {
     state = cloneDeep(defaultState);
-
-    useMockLocationHelper();
   });
 
   describe('frequentGroups', () => {
@@ -83,6 +85,21 @@ describe('Global Search Store Getters', () => {
       state.navigation = MOCK_NAVIGATION;
       expect(getters.navigationItems(state)).toStrictEqual(MOCK_NAVIGATION_ITEMS);
     });
+
+    it('returns "-" when count is unavailable', () => {
+      state.navigation = {
+        projects: {
+          label: 'Projects',
+          scope: 'projects',
+          link: '/search?scope=projects&search=et',
+          count: undefined,
+        },
+      };
+
+      const result = getters.navigationItems(state);
+
+      expect(result[0].pill_count).toBe('-');
+    });
   });
 
   describe('labelAggregationBuckets', () => {
@@ -90,6 +107,20 @@ describe('Global Search Store Getters', () => {
       expect(getters.labelAggregationBuckets(state)).toStrictEqual(
         MOCK_LABEL_AGGREGATIONS.data[0].buckets,
       );
+    });
+  });
+
+  describe('workItemTypeAggregationBuckets', () => {
+    it('returns work item type buckets from aggregations', () => {
+      state.aggregations = MOCK_WORK_ITEM_TYPE_AGGREGATIONS;
+      expect(getters.workItemTypeAggregationBuckets(state)).toStrictEqual(
+        MOCK_WORK_ITEM_TYPE_AGGREGATION_BUCKETS,
+      );
+    });
+
+    it('returns empty array when no work item type aggregation exists', () => {
+      state.aggregations = MOCK_LABEL_AGGREGATIONS;
+      expect(getters.workItemTypeAggregationBuckets(state)).toStrictEqual([]);
     });
   });
 

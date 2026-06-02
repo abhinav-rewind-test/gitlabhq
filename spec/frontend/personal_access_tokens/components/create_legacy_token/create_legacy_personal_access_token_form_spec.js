@@ -18,12 +18,16 @@ describe('CreateLegacyPersonalAccessTokenForm', () => {
   const accessTokenCreate = '/-/personal_access_tokens';
   const accessTokenTableUrl = '/-/personal_access_tokens';
 
-  const createComponent = () => {
+  const createComponent = (provide = {}) => {
     wrapper = shallowMountExtended(CreateLegacyPersonalAccessTokenForm, {
       pinia,
       provide: {
+        accessTokenName: '',
+        accessTokenDescription: '',
+        accessTokenScopes: [],
         accessTokenCreate,
         accessTokenTableUrl,
+        ...provide,
       },
     });
   };
@@ -56,6 +60,26 @@ describe('CreateLegacyPersonalAccessTokenForm', () => {
 
   it('renders access token form when token is not created', () => {
     expect(findAccessTokenForm().exists()).toBe(true);
+
+    expect(findAccessTokenForm().props()).toMatchObject({
+      name: '',
+      description: '',
+      scopes: [],
+    });
+  });
+
+  it('renders access token form with pre-filled values', () => {
+    createComponent({
+      accessTokenName: 'My Token',
+      accessTokenDescription: 'My token description',
+      accessTokenScopes: ['api', 'read_user'],
+    });
+
+    expect(findAccessTokenForm().props()).toMatchObject({
+      name: 'My Token',
+      description: 'My token description',
+      scopes: ['api', 'read_user'],
+    });
   });
 
   it('renders created token component when token exists', async () => {
@@ -65,7 +89,10 @@ describe('CreateLegacyPersonalAccessTokenForm', () => {
     await nextTick();
 
     expect(findCreatedToken().exists()).toBe(true);
-    expect(findCreatedToken().props('value')).toBe(tokenValue);
+    expect(findCreatedToken().props()).toMatchObject({
+      token: tokenValue,
+      href: accessTokenTableUrl,
+    });
 
     expect(findAccessTokenForm().exists()).toBe(false);
   });

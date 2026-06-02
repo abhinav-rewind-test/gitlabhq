@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab application limits
 description: Configure limits on an instance.
 ---
@@ -25,7 +25,7 @@ settings that are used in your current GitLab instance.
 Depending on which limits you have configured, you can see:
 
 - SSH host keys information
-- CI/CD limits
+- [CI/CD limits](cicd/limits.md)
 - GitLab Pages limits
 - Package registry limits
 - Rate limits
@@ -36,7 +36,7 @@ information that is relevant to them.
 
 To visit the instance configuration page:
 
-1. On the left sidebar, select **Help** ({{< icon name="question-o" >}}) > **Help**.
+1. In the left sidebar, select **Help** ({{< icon name="question-o" >}}) > **Help**.
 1. On the Help page, select **Check the current instance configuration**.
 
 The direct URL is `<gitlab_url>/help/instance_configuration`. For GitLab.com,
@@ -66,17 +66,18 @@ Read more about [User and IP rate limits](settings/user_and_ip_rate_limits.md).
 
 ### By raw endpoint
 
-This setting limits the request rate per endpoint.
+These settings limit the request rate on raw endpoints.
 
 Read more about [raw endpoint rate limits](settings/rate_limits_on_raw_endpoints.md).
 
-- **Default rate limit**: 300 requests per project, per commit and per file path.
+- **Default rate limit (authenticated and unauthenticated)**: 300 requests per minute, per project and file path.
+- **Default rate limit (unauthenticated)**: 800 requests per minute, per project across all file paths.
 
 ### By protected path
 
 This setting limits the request rate on specific paths.
 
-GitLab rate limits the following paths by default:
+GitLab rate limits the following paths for POST requests by default:
 
 ```plaintext
 '/users/password',
@@ -88,6 +89,12 @@ GitLab rate limits the following paths by default:
 '/unsubscribes/',
 '/import/github/personal_access_token',
 '/admin/session'
+```
+
+GitLab rate limits the following paths for GET requests by default:
+
+```plaintext
+'/users/sign_in_path'
 ```
 
 Read more about [protected path rate limits](settings/protected_paths.md).
@@ -303,23 +310,6 @@ When the number exceeds the limit the page displays an alert and links to a pagi
 
 - **Limit**: 500 issues.
 
-## Number of pipelines per Git push
-
-When pushing multiple changes with a single Git push, like multiple tags or branches,
-only four tag or branch pipelines can be triggered by default. This limit prevents the accidental
-creation of a large number of pipelines when using `git push --all` or `git push --mirror`.
-
-[Merge request pipelines](../ci/pipelines/merge_request_pipelines.md) are limited.
-If the Git push updates multiple merge requests at the same time, a merge request pipeline
-can trigger for every updated merge request before reaching the limit.
-
-The default value is `4` for GitLab Self-Managed and GitLab.com.
-
-To change this limit on your GitLab Self-Managed instance, use the [Admin Area](settings/continuous_integration.md#pipeline-limit-per-git-push).
-
-> [!warning]
-> Increasing this limit is not recommended. It can cause excessive load on your GitLab instance if many changes are pushed simultaneously, potentially creating a flood of pipelines.
-
 ## Retention of activity history
 
 Activity history for projects and individuals' profiles is limited to three years.
@@ -444,7 +434,7 @@ ApplicationSetting.update(max_http_response_xml_structural_chars: 500000)
 
 This setting restricts the maximum allowed object count in CSV HTTP
 responses from outbound requests. The number of objects is estimated based on
-the number of occurrences of `,`, `;`, `\t` and `\n` in the response.
+the number of occurrences of `,`, `;`, `\t`, `\r`, and `\n` in the response.
 
 The default maximum count is 250,000 objects. To disable this limit, set the value to 0.
 
@@ -515,7 +505,7 @@ Some API endpoints have specific JSON validation limits.
 
 **Footnotes**:
 
-1. The Terraform state max size limit can be set by using the [application settings API](../../doc/api/settings.md) to set `max_terraform_state_size_bytes`.
+1. The Terraform state max size limit can be set by using the [application settings API](../api/settings.md) to set `max_terraform_state_size_bytes`.
 
 ### Environment variable configuration
 
@@ -624,7 +614,7 @@ Blocked recursive webhook calls are logged in `auth.log` with the message `"Recu
 
 {{< /history >}}
 
-The number of [placeholder users](../user/import/mapping.md#placeholder-users) created during an import can be limited per top-level namespace.
+The number of [placeholder users](../user/import/mapping/post_migration_mapping.md#placeholder-users) created during an import can be limited per top-level namespace.
 
 The default limit for [GitLab Self-Managed](../subscriptions/manage_subscription.md) is `0` (unlimited).
 
@@ -695,337 +685,7 @@ Plan.default.actual_limits.update!(offset_pagination_limit: 10000)
 
 Set the limit to `0` to disable it.
 
-## CI/CD limits
-
-### Number of jobs in active pipelines
-
-The total number of jobs in active pipelines can be limited per project. This limit is checked
-each time a new pipeline is created. An active pipeline is any pipeline in one of the following states:
-
-- `created`
-- `pending`
-- `running`
-
-If a new pipeline would cause the total number of jobs to exceed the limit, the pipeline
-fails with a `job_activity_limit_exceeded` error.
-
-- On GitLab.com, a limit is
-  [defined for each subscription tier](../user/gitlab_com/_index.md#cicd),
-  and this limit affects all projects with that tier.
-- On GitLab Self-Managed, [Premium or Ultimate](https://about.gitlab.com/pricing/) subscriptions,
-  this limit is defined under a `default` plan that affects all
-  projects. This limit is disabled (`0`) by default.
-
-To set this limit for a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-# If limits don't exist for the default plan, you can create one with:
-# Plan.default.create_limits!
-
-Plan.default.actual_limits.update!(ci_active_jobs: 500)
-```
-
-Set the limit to `0` to disable it.
-
-### Maximum time jobs can run
-
-The default maximum time that jobs can run for is 60 minutes. Jobs that run for
-more than 60 minutes time out.
-
-You can change the maximum time a job can run before it times out:
-
-- At the project-level in the [project's CI/CD settings](../ci/pipelines/settings.md#set-a-limit-for-how-long-jobs-can-run)
-  for a given project. This limit must be between 10 minutes and 1 month.
-- At the [runner level](../ci/runners/configure_runners.md#set-the-maximum-job-timeout).
-  This limit must be 10 minutes or longer.
-
-Regardless of configured timeout limits, GitLab terminates any job that has been inactive for 60 minutes. An inactive job is one that has produced no new logs or trace updates.
-
-### Maximum number of jobs in a pipeline
-
-You can limit the maximum number of jobs in a pipeline. The number
-of jobs in a pipeline is checked at pipeline creation and when new commit statuses are created.
-Pipelines that have too many jobs fail with a `size_limit_exceeded` error.
-
-- On GitLab.com, a limit is
-  [defined for each subscription tier](../user/gitlab_com/_index.md#cicd),
-  and this limit affects all projects with that tier.
-- On GitLab Self-Managed, [Premium or Ultimate](https://about.gitlab.com/pricing/) subscriptions,
-  this limit is defined under a `default` plan that affects all
-  projects. This limit is disabled (`0`) by default.
-
-To change the limit for a GitLab Self-Managed instance, change the `default` plan's limit with the following
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session) command:
-
-```ruby
-# If limits don't exist for the default plan, you can create one with:
-# Plan.default.create_limits!
-
-Plan.default.actual_limits.update!(ci_pipeline_size: 500)
-```
-
-Set the limit to `0` to disable it.
-
-### Maximum number of deployment jobs in a pipeline
-
-You can limit the maximum number of deployment jobs in a pipeline. A deployment is
-any job with an [`environment`](../ci/environments/_index.md) specified. The number
-of deployments in a pipeline is checked at pipeline creation. Pipelines that have
-too many deployments fail with a `deployments_limit_exceeded` error.
-
-The default limit is 500 for all [GitLab Self-Managed and GitLab.com subscriptions](https://about.gitlab.com/pricing/).
-
-To change the limit for a GitLab Self-Managed instance, change the `default` plan's limit with the following
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session) command:
-
-```ruby
-# If limits don't exist for the default plan, you can create one with:
-# Plan.default.create_limits!
-
-Plan.default.actual_limits.update!(ci_pipeline_deployments: 500)
-```
-
-Set the limit to `0` to disable it.
-
-### Limit pipeline hierarchy size
-
-By default, a [pipeline hierarchy](../ci/pipelines/downstream_pipelines.md) can contain up to 1000 downstream pipelines.
-When this limit is exceeded, pipeline creation fails with the error `downstream pipeline tree is too large`.
-
-> [!warning]
-> Increasing this limit is not recommended. The default limit protects your GitLab instance from excessive resource consumption, potential pipeline recursion, and database overload.
->
-> Instead of increasing the limit, restructure your CI/CD configuration by splitting large pipeline hierarchies into smaller pipelines. Consider using `needs` between jobs or dependent stages within a single pipeline.
-
-To modify this limit on your instance use the GitLab UI in the [Admin area](settings/continuous_integration.md#set-cicd-limits) or the [Plan Limits API](../api/plan_limits.md).
-
-You can also run the following command in the GitLab Rails console:
-
-```ruby
-Plan.default.actual_limits.update!(pipeline_hierarchy_size: 500)
-```
-
-This limit is enabled on GitLab.com and cannot be changed.
-
-### Number of CI/CD subscriptions to a project
-
-The total number of subscriptions can be limited per project. This limit is
-checked each time a new subscription is created.
-
-If a new subscription would cause the total number of subscription to exceed the
-limit, the subscription is considered invalid.
-
-- On GitLab.com, a limit is
-  [defined for each subscription tier](../user/gitlab_com/_index.md#cicd),
-  and this limit affects all projects with that tier.
-- On GitLab Self-Managed [Premium or Ultimate](https://about.gitlab.com/pricing/),
-  this limit is defined under a `default` plan that
-  affects all projects. By default, there is a limit of `2` subscriptions.
-
-To set this limit for a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(ci_project_subscriptions: 500)
-```
-
-Set the limit to `0` to disable it.
-
-### Limit the number of pipeline triggers
-
-You can set a limit on the maximum number of pipeline triggers per project. This
-limit is checked every time a new trigger is created.
-
-If a new trigger would cause the total number of pipeline triggers to exceed the
-limit, the trigger is considered invalid.
-
-Set the limit to `0` to disable it. Defaults to `25000` on GitLab Self-Managed.
-
-To set this limit to `100` on a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(pipeline_triggers: 100)
-```
-
-This limit is [enabled on GitLab.com](../user/gitlab_com/_index.md#cicd).
-
-### Number of pipeline schedules
-
-{{< details >}}
-
-- Tier: Premium, Ultimate
-- Offering: GitLab Self-Managed, GitLab Dedicated
-
-{{< /details >}}
-
-The total number of pipeline schedules can be limited per project. This limit is
-checked each time a new pipeline schedule is created. If a new pipeline schedule
-would cause the total number of pipeline schedules to exceed the limit, the
-pipeline schedule is not created.
-
-On GitLab.com, the limit is
-[defined for each subscription tier](../user/gitlab_com/_index.md#cicd),
-and this limit affects all projects with that tier.
-
-On GitLab Self-Managed and GitLab Dedicated, this limit is defined
-under a `default` plan that affects all projects.
-By default, there is a limit of `10` pipeline schedules.
-
-To set this limit, use the [Plan Limits API](../api/plan_limits.md).
-
-For GitLab Self-Managed, you can also use the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-For example, to set the limit to 100:
-
-```ruby
-Plan.default.actual_limits.update!(ci_pipeline_schedules: 100)
-```
-
-### Limit the number of pipelines created by a pipeline schedule each day
-
-You can limit the number of pipelines that each individual pipeline schedule can trigger per day.
-
-Schedules that try to run pipelines more frequently than the limit are slowed to a maximum frequency.
-The frequency is calculated by dividing 1440 (the number minutes in a day) by the
-limit value. For example, for a maximum frequency of:
-
-- Once per minute, the limit must be `1440`.
-- Once per 10 minutes, the limit must be `144`.
-- Once per 60 minutes, the limit must be `24`
-
-The minimum value is `24`, or one pipeline per 60 minutes.
-There is no maximum value.
-
-To set this limit to `1440` on a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(ci_daily_pipeline_schedule_triggers: 1440)
-```
-
-This limit is [enabled on GitLab.com](../user/gitlab_com/_index.md#cicd).
-
-### Limit the number of schedule rules defined for security policy project
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/335659) in GitLab 15.1.
-
-{{< /history >}}
-
-You can limit the total number of schedule rules per security policy project. This limit is
-checked each time policies with schedule rules are updated. If a new schedule rule would
-cause the total number of schedule rules to exceed the limit, the new schedule rule is
-not processed.
-
-By default, GitLab Self-Managed does not limit the number of processable schedule rules.
-
-To set this limit for a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(security_policy_scan_execution_schedules: 100)
-```
-
-This limit is [enabled on GitLab.com](../user/gitlab_com/_index.md#cicd).
-
-### CI/CD variable limits
-
-{{< history >}}
-
-- Group and project variable limits [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/362227) in GitLab 15.7.
-
-{{< /history >}}
-
-The number of [CI/CD variables](../ci/variables/_index.md) that can be defined in project,
-group, and instance settings are all limited for the entire instance. These limits are checked
-each time a new variable is created. If a new variable would cause the total number of variables
-to exceed the respective limit, the new variable is not created.
-
-To update the `default` plan of one of these limits on a GitLab Self-Managed instance, in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session) run the following command:
-
-- [Instance-level CI/CD variable](../ci/variables/_index.md#for-an-instance) limit (default: `25`):
-
-  ```ruby
-  Plan.default.actual_limits.update!(ci_instance_level_variables: 30)
-  ```
-
-- [Group-level CI/CD variable](../ci/variables/_index.md#for-a-group) limit per group (default: `30000`):
-
-  ```ruby
-  Plan.default.actual_limits.update!(group_ci_variables: 40000)
-  ```
-
-- [Project-level CI/CD variable](../ci/variables/_index.md#for-a-project) limit per project (default: `8000`):
-
-  ```ruby
-  Plan.default.actual_limits.update!(project_ci_variables: 10000)
-  ```
-
-### Maximum file size per type of artifact
-
-{{< history >}}
-
-- `ci_max_artifact_size_annotations` limit [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/38337) in GitLab 16.3.
-- `ci_max_artifact_size_jacoco` limit [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/159696) in GitLab 17.3
-- `ci_max_artifact_size_lsif` limit [increased](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/175684) in GitLab 17.8.
-
-{{< /history >}}
-
-Job artifacts defined with [`artifacts:reports`](../ci/yaml/_index.md#artifactsreports)
-that are uploaded by the runner are rejected if the file size exceeds the maximum
-file size limit. The limit is determined by comparing the project's
-[maximum artifact size setting](settings/continuous_integration.md#set-maximum-artifacts-size)
-with the instance limit for the given artifact type, and choosing the smaller value.
-
-Limits are set in megabytes, so the smallest possible value that can be defined is `1 MB`.
-
-Each type of artifact has a size limit that can be set. A default of `0` means there
-is no limit for that specific artifact type, and the project's maximum artifact size
-setting is used:
-
-| Artifact limit name                         | Default value |
-|---------------------------------------------|---------------|
-| `ci_max_artifact_size_accessibility`        | 0             |
-| `ci_max_artifact_size_annotations`          | 0             |
-| `ci_max_artifact_size_api_fuzzing`          | 0             |
-| `ci_max_artifact_size_archive`              | 0             |
-| `ci_max_artifact_size_browser_performance`  | 0             |
-| `ci_max_artifact_size_cluster_applications` | 0             |
-| `ci_max_artifact_size_cobertura`            | 0             |
-| `ci_max_artifact_size_codequality`          | 0             |
-| `ci_max_artifact_size_container_scanning`   | 0             |
-| `ci_max_artifact_size_coverage_fuzzing`     | 0             |
-| `ci_max_artifact_size_dast`                 | 0             |
-| `ci_max_artifact_size_dependency_scanning`  | 0             |
-| `ci_max_artifact_size_dotenv`               | 0             |
-| `ci_max_artifact_size_jacoco`               | 0             |
-| `ci_max_artifact_size_junit`                | 0             |
-| `ci_max_artifact_size_license_management`   | 0             |
-| `ci_max_artifact_size_license_scanning`     | 0             |
-| `ci_max_artifact_size_load_performance`     | 0             |
-| `ci_max_artifact_size_lsif`                 | 200 MB        |
-| `ci_max_artifact_size_metadata`             | 0             |
-| `ci_max_artifact_size_metrics_referee`      | 0             |
-| `ci_max_artifact_size_metrics`              | 0             |
-| `ci_max_artifact_size_network_referee`      | 0             |
-| `ci_max_artifact_size_performance`          | 0             |
-| `ci_max_artifact_size_requirements`         | 0             |
-| `ci_max_artifact_size_requirements_v2`      | 0             |
-| `ci_max_artifact_size_sast`                 | 0             |
-| `ci_max_artifact_size_secret_detection`     | 0             |
-| `ci_max_artifact_size_terraform`            | 5 MB          |
-| `ci_max_artifact_size_trace`                | 0             |
-| `ci_max_artifact_size_cyclonedx`            | 5 MB          |
-
-For example, to set the `ci_max_artifact_size_junit` limit to 10 MB on
-GitLab Self-Managed, run the following in the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(ci_max_artifact_size_junit: 10)
-```
+## GitLab Pages limits
 
 ### Number of files per GitLab Pages website
 
@@ -1044,7 +704,7 @@ Plan.default.actual_limits.update!(pages_file_entries: 100)
 
 ### Number of custom domains per GitLab Pages website
 
-The total number of custom domains per GitLab Pages website is limited to `150` for [GitLab.com](../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage).
+The total number of custom domains per GitLab Pages website is limited to `150` for [GitLab.com](../subscriptions/manage_seats.md#gitlabcom-billing-and-usage).
 
 The default limit for [GitLab Self-Managed](../subscriptions/manage_subscription.md) is `0` (unlimited).
 To set a limit on your instance, use the
@@ -1057,241 +717,6 @@ of parallel Pages deployments permitted for a top-level namespace is 1000.
 
 When a project has a [unique domain](../user/project/pages/_index.md#unique-domains) enabled,
 the project's unique domain is treated as its own top-level namespace with a separate limit of 1000 deployments.
-
-### Number of registered runners for each scope
-
-{{< history >}}
-
-- Runner stale timeout [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/155795) from 3 months to 7 days in GitLab 17.1.
-
-{{< /history >}}
-
-The total number of registered runners is limited for groups and projects. Each time a new runner is registered,
-GitLab checks these limits against runners created or active in the last 7 days.
-A runner's registration fails if it exceeds the limit for the scope determined by the runner registration token.
-If the limit value is set to zero, the limit is disabled.
-
-GitLab.com subscribers have different limits defined per subscription, affecting all projects using that subscription.
-
-Premium and Ultimate limits on GitLab Self-Managed are defined by a default plan that affects all projects:
-
-| Runner scope                    | Default value |
-|---------------------------------|---------------|
-| `ci_registered_group_runners`   | 1000          |
-| `ci_registered_project_runners` | 1000          |
-
-To update these limits, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-# Use ci_registered_group_runners or ci_registered_project_runners
-# depending on desired scope
-Plan.default.actual_limits.update!(ci_registered_project_runners: 100)
-```
-
-### Maximum file size for job logs
-
-The job log file size limit in GitLab is 100 megabytes by default. Any job that exceeds the
-limit is marked as failed, and dropped by the runner.
-
-You can change the limit in the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-Update `ci_jobs_trace_size_limit` with the new value in megabytes:
-
-```ruby
-Plan.default.actual_limits.update!(ci_jobs_trace_size_limit: 125)
-```
-
-GitLab Runner also has an
-[`output_limit` setting](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runners-section)
-that configures the maximum log size in a runner. Jobs that exceed the runner limit
-continue to run, but the log is truncated when it hits the limit.
-
-### Maximum number of active DAST profile schedules per project
-
-Limit the number of active DAST profile schedules per project. A DAST profile schedule can be active or inactive.
-
-You can change the limit in the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-Update `dast_profile_schedules` with the new value:
-
-```ruby
-Plan.default.actual_limits.update!(dast_profile_schedules: 50)
-```
-
-### Maximum size of the CI artifacts archive
-
-This setting is used to restrict YAML sizes for [dynamic child pipelines](../ci/pipelines/downstream_pipelines.md#dynamic-child-pipelines).
-
-The default maximum size of the CI artifacts archive is 5 megabytes.
-
-You can change this limit by using the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-To update the maximum size of the CI artifacts archive,
-update `max_artifacts_content_include_size` with the new value. For example, to set it to 20 MB:
-
-```ruby
-ApplicationSetting.update(max_artifacts_content_include_size: 20.megabytes)
-```
-
-### Maximum size and depth of CI/CD configuration YAML files
-
-{{< history >}}
-
-- Default value for `max_yaml_size_bytes` [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/160826) in GitLab 17.3.
-
-{{< /history >}}
-
-The default maximum size of a single CI/CD configuration YAML file is 2 megabytes and the
-default depth is 100.
-
-You can change these limits in the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-- To update the maximum YAML size, update `max_yaml_size_bytes` with the new value in megabytes:
-
-  ```ruby
-  ApplicationSetting.update(max_yaml_size_bytes: 4.megabytes)
-  ```
-
-  The `max_yaml_size_bytes` value is not directly tied to the size of the YAML file,
-  but rather the memory allocated for the relevant objects.
-
-- To update the maximum YAML depth, update `max_yaml_depth` with the new value in number of lines:
-
-  ```ruby
-  ApplicationSetting.update(max_yaml_depth: 125)
-  ```
-
-### Maximum size of the entire CI/CD configuration
-
-{{< history >}}
-
-- Default value for `max_yaml_size_bytes` [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/160826) in GitLab 17.3.
-- Default value for `ci_max_total_yaml_size_bytes` [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/160826) in GitLab 17.3.
-
-{{< /history >}}
-
-The maximum amount of memory, in bytes, that can be allocated for the full pipeline configuration,
-with all included YAML configuration files.
-
-The default value is calculated by multiplying [`max_yaml_size_bytes`](#maximum-size-and-depth-of-cicd-configuration-yaml-files) (default 2 MB) with [`ci_max_includes`](../api/settings.md#available-settings) (default 150):
-
-- In GitLab 17.2 and earlier: 1 MB × 150 = `157286400` bytes (150 MB).
-- In GitLab 17.3 and later: 2 MB × 150 = `314572800` bytes (314.6 MB).
-
-You can change this limit by using the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-To update the maximum memory that can be allocated for the CI/CD configuration,
-update `ci_max_total_yaml_size_bytes` with the new value. For example, to set it to 20 MB:
-
-```ruby
-ApplicationSetting.update(ci_max_total_yaml_size_bytes: 20.megabytes)
-```
-
-### Limit dotenv variables
-
-You can set a limit on the maximum number of variables inside of a dotenv artifact.
-This limit is checked every time a dotenv file is exported as an artifact.
-
-Set the limit to `0` to disable it. Defaults to `20` on GitLab Self-Managed.
-
-To set this limit to `100` on your instance, run the following command in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(dotenv_variables: 100)
-```
-
-You can also set this limit by using the [GitLab UI](settings/continuous_integration.md#set-cicd-limits) or the
-[Plan limits API](../api/plan_limits.md).
-
-This limit is [enabled on GitLab.com](../user/gitlab_com/_index.md#cicd).
-
-### Limit dotenv file size
-
-You can set a limit on the maximum size of a dotenv artifact. This limit is checked
-every time a dotenv file is exported as an artifact.
-
-Set the limit to `0` to disable it. Defaults to 5 KB.
-
-To set this limit to 5 KB on a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(dotenv_size: 5.kilobytes)
-```
-
-### Limit CI/CD job annotations
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/38337) in GitLab 16.3.
-
-{{< /history >}}
-
-You can set a limit on the maximum number of [annotations](../ci/yaml/artifacts_reports.md#artifactsreportsannotations)
-per CI/CD job.
-
-Set the limit to `0` to disable it. Defaults to `20` on GitLab Self-Managed.
-
-To set this limit to `100` on your instance, run the following command in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(ci_job_annotations_num: 100)
-```
-
-### Limit CI/CD job annotations file size
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/38337) in GitLab 16.3.
-
-{{< /history >}}
-
-You can set a limit on the maximum size of a CI/CD job [annotation](../ci/yaml/artifacts_reports.md#artifactsreportsannotations).
-
-Set the limit to `0` to disable it. Defaults to 80 KB.
-
-To set this limit to 100 KB on a GitLab Self-Managed instance, run the following in the
-[GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session):
-
-```ruby
-Plan.default.actual_limits.update!(ci_job_annotations_size: 100.kilobytes)
-```
-
-### Maximum database partition size for CI/CD tables
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/189131) in GitLab 18.0.
-
-{{< /history >}}
-
-The maximum amount of disk space, in bytes, that can be used by a partition of a partitioned table,
-before new partitions are automatically created. Defaults to 100 GB.
-
-You can change this limit by using the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-To change the limit, update `ci_partitions_size_limit` with the new value. For example, to set it to 20 GB:
-
-```ruby
-ApplicationSetting.update(ci_partitions_size_limit: 20.gigabytes)
-```
-
-### Maximum config value for automatic pipeline cleanup
-
-{{< history >}}
-
-- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/189191) in GitLab 18.0.
-
-{{< /history >}}
-
-Configures the upper limit for [CI/CD pipeline expiry time](../ci/pipelines/settings.md#automatic-pipeline-cleanup).
-Defaults to 1 year.
-
-You can change this limit by using the [GitLab Rails console](operations/rails_console.md#starting-a-rails-console-session).
-To change the limit, update `ci_delete_pipelines_in_seconds_limit_human_readable` with the new value.
-For example, to set it to 3 years:
-
-```ruby
-ApplicationSetting.update(ci_delete_pipelines_in_seconds_limit_human_readable: '3 years')
-```
 
 ## Instance monitoring and metrics
 
@@ -1351,17 +776,15 @@ read the GitLab development documentation about working with diffs.
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/521970) in GitLab 17.10 [with a flag](feature_flags/_index.md) named `merge_requests_diffs_limit`. Disabled by default.
 - [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/521970) in GitLab 17.10.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/537447) in GitLab 19.0. Feature flag `merge_requests_diffs_limit` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
 
 GitLab limits each merge request to 1000 [diff versions](../user/project/merge_requests/versions.md).
 Merge requests that reach this limit cannot be updated further. Instead,
 close the affected merge request and create a new merge request.
+
+To configure this limit, see [diff limits administration](diff_limits.md).
 
 ### Merge request reports size limit
 
@@ -1556,6 +979,22 @@ Issues and merge requests enforce these maximums:
 - Maximum assignees: 200
 - Maximum reviewers: 200
 
+## Maximum number of project push mirrors
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/221965) in GitLab 18.9.
+
+{{< /history >}}
+
+Each project can have a maximum of 10 enabled push mirrors.
+This limit prevents performance issues from excessive concurrent sync jobs.
+
+If you require more mirrors, you can:
+
+- Disable unused mirrors.
+- Consolidate mirrors by combining multiple destinations into a single mirror.
+
 ## CDN-based limits on GitLab.com
 
 In addition to application-based limits, GitLab.com is configured to use Cloudflare's standard DDoS protection and Spectrum to protect Git over SSH. Cloudflare terminates client TLS connections but is not application aware and cannot be used for limits tied to users or groups. Cloudflare page rules and rate limits are configured with Terraform. These configurations are not public because they include security and abuse implementations that detect malicious activities and making them public would undermine those operations.
@@ -1626,7 +1065,6 @@ The Commits and Files APIs enforce maximum size and rate limits on the following
 - `POST /projects/:id/repository/commits` - [Create a commit](../api/commits.md#create-a-commit)
 - `POST /projects/:id/repository/files/:file_path` - [Create a file in a repository](../api/repository_files.md#create-a-file-in-a-repository)
 - `PUT /projects/:id/repository/files/:file_path` - [Update a file in a repository](../api/repository_files.md#update-a-file-in-a-repository)
-
 - **Maximum request size**: Requests that exceed this limit receive
   a `413 Request Entity Too Large` error with the following message: `RequestBody: upload failed: the upload size <size> is over maximum of 314572800 bytes: entity is too large`. The default is 300 MB (314,572,800 bytes).
 - **Rate limit**: 3 requests per 30 seconds for requests above 20 MB.

@@ -9,7 +9,12 @@ RSpec.describe ActiveContext::Databases::Opensearch::Client do
 
   describe '#search' do
     let(:opensearch_client) { instance_double(OpenSearch::Client) }
-    let(:search_response) { { 'hits' => { 'total' => 5, 'hits' => [] } } }
+    let(:search_response) do
+      { 'hits' => { 'total' => 5,
+                    'hits' => [{ '_source' => { 'id' => 1 } }, { '_source' => { 'id' => 2 } },
+                      { '_source' => { 'id' => 3 } }] } }
+    end
+
     let(:query) { ActiveContext::Query.filter(project_id: 1) }
 
     before do
@@ -18,8 +23,32 @@ RSpec.describe ActiveContext::Databases::Opensearch::Client do
       allow(collection).to receive_messages(collection_name: 'test', redact_unauthorized_results!: [[], []])
     end
 
-    it 'calls search on the Opensearch client' do
-      expect(opensearch_client).to receive(:search)
+    it 'calls search on the Opensearch client without _source by default' do
+      expect(opensearch_client).to receive(:search).with(
+        index: 'test',
+        body: hash_not_including(:_source)
+      )
+      client.search(collection: collection, query: query, user: user)
+    end
+
+    context 'when source_fields is provided' do
+      it 'includes _source with the specified fields' do
+        expect(opensearch_client).to receive(:search).with(
+          index: 'test',
+          body: hash_including(_source: { includes: ['content'] })
+        )
+        client.search(collection: collection, query: query, user: user, source_fields: ['content'])
+      end
+    end
+
+    it 'logs search duration and result count' do
+      expect(ActiveContext::Logger).to receive(:info).with(
+        message: 'ActiveContext client search completed',
+        collection: collection,
+        duration_s: be_a(Float),
+        result_count: 3
+      )
+
       client.search(collection: collection, query: query, user: user)
     end
   end

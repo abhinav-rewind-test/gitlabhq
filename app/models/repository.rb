@@ -153,8 +153,8 @@ class Repository
       repo: raw_repository,
       ref: ref,
       path: opts[:path],
-      author: opts[:author],
-      follow: Array(opts[:path]).length == 1 && Feature.disabled?(:remove_file_commit_history_following, type: :ops),
+      author: expand_author_with_user_emails(opts[:author]),
+      follow: determine_follow_option(opts),
       limit: opts[:limit],
       offset: opts[:offset],
       skip_merges: !!opts[:skip_merges],
@@ -200,9 +200,11 @@ class Repository
     ref:,
     query: nil,
     author: nil,
+    path: nil,
     committed_before: nil,
     committed_after: nil,
-    pagination_params: { page_token: nil, limit: 1000 }
+    pagination_params: { page_token: nil, limit: 1000 },
+    literal_pathspec: false
   )
     return empty_commit_collection_with_next_cursor unless exists? && has_visible_content? && ref.present?
 
@@ -211,10 +213,12 @@ class Repository
     response = raw_repository.list_commits(
       ref: ref,
       query: query,
-      author: author,
+      author: expand_author_with_user_emails(author),
+      path: path,
       committed_before: committed_before,
       committed_after: committed_after,
-      pagination_params: pagination_params
+      pagination_params: pagination_params,
+      literal_pathspec: literal_pathspec
     )
 
     Repositories::CommitCollectionWithNextCursor.new(
@@ -651,14 +655,14 @@ class Repository
   cache_method :recent_objects_size, fallback: 0.0
 
   def commit_count
-    root_ref ? raw_repository.count_commits(ref: root_ref) : 0
+    root_ref ? raw_repository.count_commits(revisions: root_ref) : 0
   end
   cache_method :commit_count, fallback: 0
 
   def commit_count_for_ref(ref)
     return 0 unless exists?
 
-    cache.fetch(:"commit_count_#{ref}") { raw_repository.count_commits(ref: ref) }
+    cache.fetch(:"commit_count_#{ref}") { raw_repository.count_commits(revisions: ref) }
   end
 
   delegate :branch_names, to: :raw_repository
@@ -1248,6 +1252,41 @@ class Repository
     )
   end
 
+  # Squashes commits between start_sha and end_sha into a single commit.
+  # Unlike #squash which takes a merge_request, this method takes explicit SHAs.
+  #
+  # NOTE: This method is similar to #squash but takes explicit SHAs instead of
+  # a merge request. If you modify #squash, consider if this method needs the
+  # same changes (e.g., adding caching, metrics, or hooks).
+  #
+  # @param user [User] The user performing the squash
+  # @param start_sha [String] The SHA to use as parent of the squashed commit
+  # @param end_sha [String] The SHA whose tree will be used for the squashed commit
+  # @param message [String] Commit message for the squashed commit
+  # @return [String] The SHA of the new squashed commit
+  def squash_commits(user, start_sha:, end_sha:, message:)
+    raw.squash(
+      user,
+      start_sha: start_sha,
+      end_sha: end_sha,
+      author: user,
+      message: message,
+      sign: sign_commits?
+    )
+  end
+
+  # Returns the initial commit (first commit with no parents) for the given ref
+  #
+  # @param ref [String] The reference to start from (default: default branch)
+  # @return [Commit, nil]
+  def initial_commit(ref = nil)
+    ref ||= root_ref
+    return unless ref
+
+    git_commit = raw_repository.initial_commit(ref)
+    ::Commit.new(git_commit, container) if git_commit
+  end
+
   def submodule_links
     @submodule_links ||= ::Gitlab::SubmoduleLinks.new(self)
   end
@@ -1331,7 +1370,7 @@ class Repository
     patterns = [Gitlab::Git::BRANCH_REF_PREFIX, Gitlab::Git::TAG_REF_PREFIX]
 
     prohibited_refs = raw_repository.list_refs(patterns).select do |ref|
-      ref.name.match(Gitlab::Git::SHA_LIKE_REF)
+      prohibited_ref?(ref.name)
     end
 
     return if prohibited_refs.blank?
@@ -1423,7 +1462,59 @@ class Repository
       end
   end
 
+  # Update ref cache incrementally for a single ref change.
+  # @param ref [String] Full ref path (e.g., "refs/heads/main")
+  # @param deleted [Boolean] Whether the ref was deleted
+  def incremental_ref_cache_update(ref, deleted)
+    return unless Feature.enabled?(:ref_cache_with_rebuild_queue, project)
+
+    if Gitlab::Git.tag_ref?(ref)
+      cache_key = 'tag_names'
+    elsif Gitlab::Git.branch_ref?(ref)
+      cache_key = 'branch_names'
+    else
+      return
+    end
+
+    redis_set_cache.handle_ref_change(cache_key, ref, deleted)
+    clear_memoization(cache_key)
+  end
+
   private
+
+  def expand_author_with_user_emails(author)
+    return author if author.blank?
+
+    users = User.by_name(author).or(User.by_username(author))
+                .with_emails
+                .limit(10)
+
+    return author if users.empty?
+
+    emails = users.flat_map { |user| user.verified_emails(include_private_email: true) }.uniq
+    return author if emails.empty?
+
+    (emails.map { |e| Regexp.escape(e) } + [Regexp.escape(author)]).join('\|')
+  end
+
+  # A ref is prohibited if its name matches a SHA-like pattern
+  # or if, after stripping the refs/heads/ or refs/tags/ prefix,
+  # the branch/tag name fails GitRefValidator validation (e.g. names
+  # starting with refs/heads/ which create ambiguous nested refs
+  # like refs/heads/refs/heads/main).
+  def prohibited_ref?(ref_name)
+    return true if ref_name.match?(Gitlab::Git::SHA_LIKE_REF)
+
+    short_name = Gitlab::Git.ref_name(ref_name)
+    !Gitlab::GitRefValidator.validate(short_name)
+  end
+
+  def determine_follow_option(opts)
+    return false unless Array(opts[:path]).length == 1
+    return opts[:follow] unless opts[:follow].nil?
+
+    Feature.disabled?(:remove_file_commit_history_following, type: :ops)
+  end
 
   def empty_commit_collection_with_next_cursor
     Repositories::CommitCollectionWithNextCursor.new(container, [], nil)

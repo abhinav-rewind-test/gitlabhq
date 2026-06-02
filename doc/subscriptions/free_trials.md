@@ -1,7 +1,7 @@
 ---
 stage: Growth
 group: Acquisition
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Start an Ultimate trial on GitLab.com or GitLab Self-Managed.
 title: Ultimate trials
 ---
@@ -36,8 +36,14 @@ Prerequisites:
 If you're on the Free tier and you start an Ultimate trial, your trial includes 24 [GitLab credits](gitlab_credits.md#included-credits) per user.
 You can use credits to test GitLab Duo Agent Platform features.
 
+For GitLab.com, if you have already [purchased a Monthly Commitment Pool](gitlab_credits.md#for-the-free-tier), you are not allocated additional credits for the trial period.
+Credits used during the trial period are deducted from the pool.
+
 Credits are valid for the duration of the trial (30 days). Unused credits do not carry over if you buy a subscription, or when your trial ends.
 If you use all included credits before your trial ends, you cannot get more credits.
+
+If you have not set a [default GitLab Duo namespace](../user/profile/preferences.md#set-a-default-gitlab-duo-namespace), you cannot use AI features that require proxy endpoint use during your trial.
+This includes external agents and direct `/v1/proxy` API calls (for example, CLIs, IDEs, or custom scripts calling the proxy with a GitLab token). This restriction does not affect Agentic Chat, or custom and foundational agents and flows.
 
 If you already started or completed a trial that did not include credits, you can start a new trial:
 
@@ -55,7 +61,7 @@ You can start a trial even if you have not signed up for a GitLab account yet.
 
 If you don't have a GitLab account, to start a free trial:
 
-1. Go to [https://gitlab.com/-/trial_registrations/new](https://gitlab.com/-/trial_registrations/new).
+1. Go to <https://gitlab.com/-/trial_registrations/new>.
 1. Fill in the form details, and select **Continue**.
 1. Complete the remaining steps and select **Create project**. You are taken to your new project and signed in as the new user you created.
 1. In the left sidebar, at the bottom, a widget displays your trial type and the remaining days in your trial.
@@ -71,8 +77,8 @@ Prerequisites:
 
 To start a trial:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **Billing**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **Billing**.
 1. Select **Start free trial**.
 1. Complete the fields.
 1. Select **Continue**.
@@ -101,7 +107,7 @@ To start a trial:
    The activation code is valid for only one use.
 1. Sign in to GitLab as an administrator.
 1. In the upper-right corner, select **Admin**.
-1. Select **Subscription**.
+1. In the left sidebar, select **Subscription**.
 1. Paste the activation code in **Activation code**.
 1. Read and accept the terms of service.
 1. Select **Activate**.
@@ -112,6 +118,6 @@ The subscription is activated.
 
 You can keep track of your remaining trial period time to help you plan for a subscription upgrade.
 
-1. On the top bar, select **Search or go to** and find your group.
+1. In the top bar, select **Search or go to** and find your group.
 1. In the left sidebar, at the bottom, a widget displays your trial type and the remaining days in your trial.
 1. On GitLab Self-Managed, to access information about features available when you upgrade, select **Learn more**.

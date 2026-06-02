@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Internal analytics
 ---
 
@@ -53,7 +53,7 @@ such as the value of a setting or the count of rows in a database table.
 
 ## Instrumentation
 
-- To create an instrumentation plan, use this [template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Usage+Data+Instrumentation).
+- To create an instrumentation plan, use this [template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?description_template=Usage+Data+Instrumentation).
 - To instrument an event-based metric, see the [internal event tracking quick start guide](internal_event_instrumentation/quick_start.md).
 - To instrument a metric that observes the GitLab instances state, see [the metrics instrumentation](metrics/metrics_instrumentation.md).
 
@@ -88,7 +88,7 @@ On the side there is a filter for metric path which is the `key_path` of your me
 #### Custom charts and dashboards
 
 Within Tableau, more advanced charts, such as this [funnel analysis](https://10az.online.tableau.com/#/site/gitlab/views/SaaSRegistrationFunnel/RegistrationFunnelAnalyses) can be accomplished as well.
-Custom charts and dashboards can be requested from the Product Data Insights team by creating an [issue in their project](https://gitlab.com/gitlab-data/product-analytics/-/issues/new?issuable_template=Ad%20Hoc%20Request).
+Custom charts and dashboards can be requested from the Product Data Insights team by creating an [issue in their project](https://gitlab.com/gitlab-data/product-analytics/-/issues/new?description_template=Ad%20Hoc%20Request).
 
 ### Snowflake
 
@@ -147,7 +147,9 @@ For GitLab there is an essential difference in analytics setup between GitLab.co
 > [!note]
 > Starting with version 18.0, we collect event-level data on both Self-Managed and Dedicated instances, providing more detailed insights into product usage.
 
-For Self-Managed and Dedicated instances on versions prior to 18.0, only pre-computed metrics are available. These metrics are computed once per week on a randomly chosen day and forwarded to our [version app](https://version.gitlab.com) via a process called Service Ping. Only the metrics that were instrumented up to the version the instance is running are available. For example, if a metric is instrumented during the development of version 16.9, it will be available on instances running version 16.9 or later, but not on instances running earlier versions such as 16.8.
+**For GitLab 18.0 and later**: Self-Managed and Dedicated instances collect event-level data, providing the same detailed insights available on GitLab.com.
+
+**For versions prior to 18.0**: Only aggregated metrics are available. These metrics are computed once per week on a randomly chosen day and forwarded to [Version App](https://version.gitlab.com) via a process called Service Ping. Only the metrics that were instrumented up to the version the instance is running are available. For example, if a metric is instrumented during the development of version 16.9, it will be available on instances running version 16.9 or later, but not on instances running earlier versions such as 16.8.
 The received payloads are imported into our Data Warehouse once per day.
 
 ### GitLab.com
@@ -178,8 +180,8 @@ The following diagram illustrates the process:
 
 ## Data flow
 
-On SaaS event records are directly sent to a collection system, called Snowplow, and imported into our data warehouse.
-GitLab Self-Managed and GitLab Dedicated instances record event counts locally. Every week, a process called Service Ping sends the current
+On SaaS and Self-Managed instances (starting with GitLab 18.0), event records are directly sent to a collection system called Snowplow and imported into our data warehouse.
+For Self-Managed instances on versions prior to 18.0, only event counts are recorded locally. Every week, a process called Service Ping sends the current
 values for all pre-defined and active metrics to our data warehouse. For GitLab.com, metrics are calculated directly in the data warehouse.
 
 The following chart aims to illustrate this data flow:
@@ -187,7 +189,7 @@ The following chart aims to illustrate this data flow:
 ```mermaid
 flowchart LR;
     feature-->track
-    track-->|send event record - only on gitlab.com|snowplow
+    track-->|send event record - GitLab.com, Self-Managed 18.0+ and Dedicated 18.0+|snowplow
     track-->|increase metric counts|redis
     database-->service_ping
     redis-->service_ping
@@ -211,7 +213,9 @@ flowchart LR;
 
 ## Data Privacy
 
-GitLab only receives event counts or similarly aggregated information from GitLab Self-Managed instances. User identifiers for individual events on the SaaS version of GitLab are [pseudonymized](https://metrics.gitlab.com/identifiers/).
+**For GitLab 18.0 and later**: GitLab collects event-level data from Self-Managed instances with pseudonymized identifiers to protect privacy.
+
+**For versions prior to 18.0**: GitLab only receives event counts or similarly aggregated information from Self-Managed instances. For the GitLab.com version, user identifiers for individual events are pseudonymized.
 An exact description on what kind of data is being collected through the Internal Analytics system is given in our [handbook](https://handbook.gitlab.com/handbook/legal/privacy/customer-product-usage-information/).
 
 ## Contribution guidelines

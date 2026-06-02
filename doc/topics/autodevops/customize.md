@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Customize Auto DevOps
 ---
 
@@ -113,7 +113,7 @@ You can extend and manage your Auto DevOps configuration with GitLab APIs:
   which include `auto_devops_enabled`, to enable Auto DevOps on projects by default.
 - [Create a new project](../../api/projects.md#create-a-project).
 - [Edit groups](../../api/groups.md#update-group-attributes).
-- [Edit projects](../../api/projects.md#edit-a-project).
+- [Edit projects](../../api/projects.md#update-a-project).
 
 ## Forward CI/CD variables to the build environment
 
@@ -335,7 +335,6 @@ To use an external managed provider:
    disable the installation for `production`.
 
    ![Auto Metrics](img/disable_postgres_v12_4.png)
-
 1. Define the `DATABASE_URL` variable as an environment-scoped variable
    available to your application. This should be a URL in the following format:
 

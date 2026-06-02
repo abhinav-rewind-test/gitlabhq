@@ -3,15 +3,15 @@
 require 'spec_helper'
 
 RSpec.describe Notes::UpdateService, feature_category: :team_planning do
-  let(:group) { create(:group, :public) }
-  let(:project) { create(:project, :public, group: group) }
-  let(:private_group) { create(:group, :private) }
-  let(:private_project) { create(:project, :private, group: private_group) }
-  let(:user) { create(:user) }
-  let(:user2) { create(:user) }
-  let(:user3) { create(:user) }
-  let(:issue) { create(:issue, project: project) }
-  let(:issue2) { create(:issue, project: private_project) }
+  let_it_be(:group, freeze: false) { create(:group, :public) }
+  let_it_be(:project, freeze: false) { create(:project, :public, group: group) }
+  let_it_be(:private_group, freeze: false) { create(:group, :private) }
+  let_it_be(:private_project, freeze: false) { create(:project, :private, group: private_group) }
+  let_it_be(:user, freeze: false) { create(:user) }
+  let_it_be(:user2, freeze: false) { create(:user) }
+  let_it_be(:user3, freeze: false) { create(:user) }
+  let_it_be(:issue, freeze: false) { create(:issue, project: project) }
+  let_it_be(:issue2, freeze: false) { create(:issue, project: private_project) }
   let(:note) { create(:note, project: project, noteable: issue, author: user, note: "Old note #{user2.to_reference}") }
   let(:markdown) do
     <<-MARKDOWN.strip_heredoc
@@ -25,7 +25,7 @@ RSpec.describe Notes::UpdateService, feature_category: :team_planning do
     MARKDOWN
   end
 
-  before do
+  before_all do
     project.add_maintainer(user)
     project.add_developer(user2)
     project.add_developer(user3)
@@ -103,10 +103,9 @@ RSpec.describe Notes::UpdateService, feature_category: :team_planning do
             'redis_hll_counters.issues_edit.g_project_management_issue_comment_edited_weekly'
           ).by(1)
           .and increment_usage_metrics(
-            # Issue creation & update are performed by 2 different users
             'redis_hll_counters.issues_edit.issues_edit_total_unique_counts_monthly',
             'redis_hll_counters.issues_edit.issues_edit_total_unique_counts_weekly'
-          ).by(2)
+          ).by(1)
       end
     end
 
@@ -407,8 +406,47 @@ RSpec.describe Notes::UpdateService, feature_category: :team_planning do
       end
     end
 
+    context 'notifications' do
+      context 'when the note changes to include a new user mention' do
+        it 'sends a notification for the new mention' do
+          expect_next_instance_of(NotificationService::Async) do |async_service|
+            expect(async_service).to receive(:new_mentions_in_note).with(note, [user3], user)
+          end
+
+          update_note({ note: "New note #{user2.to_reference} #{user3.to_reference}" })
+        end
+      end
+
+      context 'when the note does not change mentions' do
+        it 'does not send a notification' do
+          expect(NotificationService).not_to receive(:new)
+
+          update_note({ note: "Old note #{user2.to_reference}" })
+        end
+      end
+
+      context 'when the note text does not change' do
+        it 'does not send a notification' do
+          expect(NotificationService).not_to receive(:new)
+
+          update_note({ note: note.note })
+        end
+      end
+
+      context 'when current_user cannot trigger notifications' do
+        it 'does not send a notification' do
+          blocked_user = create(:user, :blocked)
+          project.add_maintainer(blocked_user)
+
+          expect(NotificationService).not_to receive(:new)
+
+          described_class.new(project, blocked_user, note: "New note #{user2.to_reference} #{user3.to_reference}").execute(note)
+        end
+      end
+    end
+
     context 'for a personal snippet' do
-      let_it_be(:snippet) { create(:personal_snippet, :public) }
+      let_it_be(:snippet, freeze: false) { create(:personal_snippet, :public) }
 
       let(:note) { create(:note, project: nil, noteable: snippet, author: user, note: "Note on a snippet with reference #{issue.to_reference}") }
 
@@ -436,6 +474,12 @@ RSpec.describe Notes::UpdateService, feature_category: :team_planning do
         expect(project).not_to receive(:execute_hooks)
 
         update_note(note: 'new text')
+      end
+
+      it 'does not send notifications' do
+        expect(NotificationService).not_to receive(:new)
+
+        update_note({ note: "Mentioning user #{user2.to_reference}" })
       end
     end
 

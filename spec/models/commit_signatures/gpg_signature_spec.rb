@@ -132,15 +132,13 @@ RSpec.describe CommitSignatures::GpgSignature, feature_category: :source_code_ma
         it 'returns unverified_author_email' do
           expect(signature.verification_status).to eq('unverified_author_email')
         end
+      end
 
-        context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
-          before do
-            stub_feature_flags(check_for_mailmapped_commit_emails: false)
-          end
+      context 'when commit committer email has different case than verified email' do
+        let(:signature_committer_email) { gpg_key.user.email.upcase }
 
-          it 'verification status is unmodified' do
-            expect(signature.verification_status).to eq('verified')
-          end
+        it 'returns verified (case-insensitive match)' do
+          expect(signature.verification_status).to eq('verified')
         end
       end
     end
@@ -194,13 +192,25 @@ RSpec.describe CommitSignatures::GpgSignature, feature_category: :source_code_ma
         end
       end
 
-      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+      context 'when committer email differs in case from verified email' do
         before do
-          stub_feature_flags(check_for_mailmapped_commit_emails: false)
+          allow(project).to receive(:commit).with(commit_sha).and_return(commit)
+          allow(commit).to receive(:committer_email).and_return(signature_committer_email.upcase)
         end
 
-        it 'verification status is unmodified' do
+        it 'returns verified_system (case-insensitive match)' do
           expect(signature.verification_status).to eq('verified_system')
+        end
+      end
+
+      context 'when commit committer email is nil' do
+        before do
+          allow(project).to receive(:commit).with(commit_sha).and_return(commit)
+          allow(commit).to receive(:committer_email).and_return(nil)
+        end
+
+        it 'returns unverified_author_email' do
+          expect(signature.verification_status).to eq('unverified_author_email')
         end
       end
     end

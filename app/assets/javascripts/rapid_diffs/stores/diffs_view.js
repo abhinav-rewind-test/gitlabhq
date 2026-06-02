@@ -17,6 +17,7 @@ export const useDiffsView = defineStore('diffsView', {
     return {
       viewType: INLINE_DIFF_VIEW_TYPE,
       showWhitespace: true,
+      fileByFileMode: false,
       singleFileMode: false,
       updateUserEndpoint: undefined,
       streamUrl: undefined,
@@ -32,11 +33,13 @@ export const useDiffsView = defineStore('diffsView', {
         added_lines: addedLines,
         removed_lines: removedLines,
         diffs_count: diffsCount,
+        real_size: realSize,
       } = data.diffs_stats;
       this.diffsStats = {
         addedLines,
         removedLines,
         diffsCount,
+        realSize,
       };
       if (data.overflow) {
         const {
@@ -86,7 +89,7 @@ export const useDiffsView = defineStore('diffsView', {
       return { view: this.viewType, w: this.showWhitespace ? '0' : '1' };
     },
     totalFilesCount() {
-      return this.diffsStats?.diffsCount;
+      return this.diffsStats?.realSize ?? this.diffsStats?.diffsCount;
     },
   },
 });

@@ -2,16 +2,16 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Users, :aggregate_failures, feature_category: :user_management do
+RSpec.describe API::Users, :with_current_organization, :aggregate_failures, feature_category: :user_management do
   include WorkhorseHelpers
   include PaginationHelpers
   include CryptoHelpers
 
   let_it_be(:admin) { create(:admin) }
-  let_it_be(:user, reload: true) { create(:user, username: 'user.withdot') }
-  let_it_be(:key) { create(:key, user: user) }
-  let_it_be(:gpg_key) { create(:gpg_key, user: user) }
-  let_it_be(:email) { create(:email, user: user) }
+  let_it_be_with_reload(:user) { create(:user, username: 'user.withdot') }
+  let_it_be(:key, freeze: false) { create(:key, user: user) }
+  let_it_be(:gpg_key, freeze: false) { create(:gpg_key, user: user) }
+  let_it_be(:email, freeze: false) { create(:email, user: user) }
   let_it_be(:organization) { create(:organization) }
 
   let(:blocked_user) { create(:user, :blocked) }
@@ -28,7 +28,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
 
   context 'admin notes' do
     let_it_be(:admin) { create(:admin, note: '2019-10-06 | 2FA added | user requested | www.gitlab.com') }
-    let_it_be(:user, reload: true) { create(:user, note: '2018-11-05 | 2FA removed | user requested | www.gitlab.com') }
+    let_it_be_with_reload(:user) { create(:user, note: '2018-11-05 | 2FA removed | user requested | www.gitlab.com') }
 
     describe 'POST /users' do
       let(:path) { '/users' }
@@ -595,7 +595,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
 
     context "when admin" do
       context 'exclude_internal param' do
-        let_it_be(:internal_user) { Users::Internal.alert_bot }
+        let_it_be(:internal_user) { Users::Internal.in_organization(organization).alert_bot }
 
         it 'returns all users when it is not set' do
           get api("/users?exclude_internal=false", admin)
@@ -813,10 +813,28 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
         expect(json_response.size).to eq(0)
       end
     end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'allows searching users by username' do
+        get api(path, oauth_access_token: oauth_token), params: { username: user.username }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to be_an(Array)
+        expect(json_response.first['username']).to eq(user.username)
+      end
+
+      it 'blocks unfiltered user listing without a username parameter' do
+        get api(path, oauth_access_token: oauth_token)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe "GET /users/:id" do
-    let_it_be(:user2, reload: true) { create(:user, username: 'another_user') }
+    let_it_be_with_reload(:user2) { create(:user, username: 'another_user') }
 
     let(:path) { "/users/#{user.id}" }
 
@@ -1091,6 +1109,23 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
       get api("/users/1ASDF", user)
 
       expect(response).to have_gitlab_http_status(:not_found)
+    end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'allows fetching a user by ID' do
+        get api(path, oauth_access_token: oauth_token)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['username']).to eq(user.username)
+      end
+
+      it 'blocks access to user sub-resources' do
+        get api("/users/#{user.id}/keys", oauth_access_token: oauth_token)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
     end
   end
 
@@ -1403,7 +1438,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
     end
   end
 
-  describe "POST /users" do
+  describe "POST /users", :with_current_organization do
     let(:path) { '/users' }
 
     it_behaves_like 'POST request permissions for admin mode' do
@@ -1951,7 +1986,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(json_response['organization']).to eq(expected_organization)
-          expect(user.reload.user_detail_organization).to eq(expected_organization)
+          expect(user.reload.company).to eq(expected_organization)
         end
       end
 
@@ -1960,13 +1995,13 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
           put api(path, admin, admin_mode: true), params: { organization: param_organization }
 
           expect(response).to have_gitlab_http_status(:bad_request)
-          expect(json_response['message']).to eq({ 'user_detail.organization' => ['is too long (maximum is 500 characters)'] })
-          expect(user.reload.user_detail_organization).to eq(expected_organization)
+          expect(json_response['message']).to eq({ 'user_detail.base' => ['Organization is too long (maximum is 500 characters)'] })
+          expect(user.reload.company).to eq(expected_organization)
         end
       end
 
       before_all do
-        user.update!(user_detail_organization: 'Previous org')
+        user.update!(company: 'Previous org')
       end
 
       where(:param_organization, :expected_organization, :example) do
@@ -2749,7 +2784,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
       expect(json_response.first['title']).to eq(key.title)
     end
 
-    it 'returns array of ssh keys with comments replaced with'\
+    it 'returns array of ssh keys with comments replaced with' \
       'a simple identifier of username + hostname' do
       request
 
@@ -3668,7 +3703,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
         end
       end
 
-      it 'returns array of ssh keys with comments replaced with'\
+      it 'returns array of ssh keys with comments replaced with' \
         'a simple identifier of username + hostname' do
         request
 
@@ -4414,7 +4449,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
         end
 
         context 'for an internal user' do
-          let(:user) { Users::Internal.alert_bot }
+          let(:user) { Users::Internal.in_organization(organization).alert_bot }
 
           it 'returns 403' do
             deactivate
@@ -5400,7 +5435,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
     end
   end
 
-  describe 'POST /users/:user_id/personal_access_tokens' do
+  describe 'POST /users/:user_id/personal_access_tokens', :with_current_organization do
     let(:name) { 'new pat' }
     let(:description) { 'new pat description' }
     let(:expires_at) { 3.days.from_now }
@@ -5436,6 +5471,14 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
 
       expect(response).to have_gitlab_http_status(:forbidden)
       expect(json_response['message']).to eq('403 Forbidden')
+    end
+
+    it 'passes creation_source api to the service' do
+      expect(::PersonalAccessTokens::CreateService).to receive(:new)
+        .with(hash_including(params: hash_including(creation_source: PersonalAccessToken::CREATION_SOURCE_API)))
+        .and_call_original
+
+      post api(path, admin, admin_mode: true), params: params
     end
 
     it 'creates a personal access token when authenticated as admin' do
@@ -5475,7 +5518,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
     end
   end
 
-  describe 'POST /user/personal_access_tokens' do
+  describe 'POST /user/personal_access_tokens', :with_current_organization do
     using RSpec::Parameterized::TableSyntax
 
     let(:name) { 'new pat' }
@@ -5498,7 +5541,15 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
       expect(json_response['error']).to eq('name is missing, scopes is missing')
     end
 
-    it_behaves_like 'authorizing granular token permissions', :create_user_personal_access_token do
+    it 'passes creation_source api to the service' do
+      expect(::PersonalAccessTokens::CreateService).to receive(:new)
+        .with(hash_including(params: hash_including(creation_source: PersonalAccessToken::CREATION_SOURCE_API)))
+        .and_call_original
+
+      post api(path, user), params: params.merge(scopes: ['k8s_proxy'])
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_personal_access_token do
       let(:boundary_object) { :user }
       let(:request) do
         post api(path, personal_access_token: pat), params: { name: 'test', scopes: ['k8s_proxy'] }
@@ -5665,7 +5716,7 @@ RSpec.describe API::Users, :aggregate_failures, feature_category: :user_manageme
     end
   end
 
-  describe 'POST /users/:user_id/impersonation_tokens' do
+  describe 'POST /users/:user_id/impersonation_tokens', :with_current_organization do
     let(:name) { 'my new pat' }
     let(:description) { 'my new pat description' }
     let(:expires_at) { '2016-12-28' }
@@ -6093,7 +6144,7 @@ RSpec.describe API::Users, '(API behavior when Current.organization is nil)', fe
   let_it_be(:pat_target_user_no_org_context) { create(:user, username: 'pattarget_no_org_test') }
 
   before do
-    stub_current_organization(nil)
+    allow(Current).to receive(:organization).and_return(nil)
   end
 
   describe 'POST /users (when Current.organization is nil)' do

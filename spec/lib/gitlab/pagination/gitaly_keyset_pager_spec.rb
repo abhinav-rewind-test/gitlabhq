@@ -169,6 +169,125 @@ RSpec.describe Gitlab::Pagination::GitalyKeysetPager, feature_category: :source_
       end
     end
 
+    context 'with Gitlab::Git::Finders::BranchesFinder' do
+      let(:git_finder) { double("git branches finder") }
+      let(:fake_request) { double(url: "#{incoming_api_projects_url}?#{query.to_query}") }
+      let(:branch1) { double 'branch', name: 'branch1' }
+      let(:branch2) { double 'branch', name: 'branch2' }
+      let(:branch3) { double 'branch', name: 'branch3' }
+
+      before do
+        allow(Gitlab::Git::Finders::BranchesFinder).to receive(:===).with(git_finder).and_return(true)
+      end
+
+      context 'with keyset pagination option' do
+        let(:query) { base_query.merge(pagination: 'keyset') }
+
+        before do
+          allow(request_context).to receive(:request).and_return(fake_request)
+          allow(git_finder).to receive(:next_cursor)
+        end
+
+        context 'when next page could be available' do
+          let(:branches) { [branch1, branch2] }
+          let(:next_cursor) { branch2.name }
+          let(:expected_next_page_link) { %(<#{incoming_api_projects_url}?#{query.merge(page_token: next_cursor).to_query}>; rel="next") }
+
+          before do
+            allow(git_finder).to receive(:next_cursor).and_return(next_cursor)
+          end
+
+          it 'calls execute with gitaly_pagination: true and adds link headers' do
+            expect(git_finder).to receive(:execute).with(gitaly_pagination: true).and_return(branches)
+            expect(request_context).to receive(:header).with('Link', expected_next_page_link)
+
+            pager.paginate(git_finder)
+          end
+        end
+
+        context 'when the current page is the last page' do
+          let(:branches) { [branch1] }
+
+          it 'calls execute with gitaly_pagination: true and does not add link headers' do
+            expect(git_finder).to receive(:execute).with(gitaly_pagination: true).and_return(branches)
+            expect(request_context).not_to receive(:header).with('Link', anything)
+
+            pager.paginate(git_finder)
+          end
+        end
+      end
+
+      context 'without keyset pagination option' do
+        context 'when first page is requested' do
+          let(:branches) { [branch1, branch2, branch3] }
+
+          it 'calls execute with gitaly_pagination: true and uses offset headers' do
+            allow(request_context).to receive(:request).and_return(fake_request)
+            allow(project.repository).to receive(:branch_count).and_return(branches.size)
+
+            expect(git_finder).to receive(:execute).with(gitaly_pagination: true).and_return(branches)
+            expect(git_finder).not_to receive(:total)
+            expect(request_context).to receive(:header).with('X-Per-Page', '2')
+            expect(request_context).to receive(:header).with('X-Page', '1')
+            expect(request_context).to receive(:header).with('X-Next-Page', '2')
+            expect(request_context).to receive(:header).with('X-Prev-Page', '')
+            expect(request_context).to receive(:header).with('Link', kind_of(String))
+            expect(request_context).to receive(:header).with('X-Total', '3')
+            expect(request_context).to receive(:header).with('X-Total-Pages', '2')
+
+            pager.paginate(git_finder)
+          end
+        end
+
+        context 'when second page is requested' do
+          let(:base_query) { { per_page: 2, page: 2 } }
+          let(:branches) { [branch3] }
+
+          before do
+            allow(request_context).to receive(:request).and_return(fake_request)
+            allow(project.repository).to receive(:branch_count).and_return(5)
+          end
+
+          it 'returns finder results directly and sets correct pagination headers' do
+            expect(git_finder).to receive(:execute).with(gitaly_pagination: true).and_return(branches)
+
+            result = pager.paginate(git_finder)
+
+            expect(result).to eq([branch3])
+            expect(request_context).to have_received(:header).with('X-Total', '5')
+            expect(request_context).to have_received(:header).with('X-Total-Pages', '3')
+            expect(request_context).to have_received(:header).with('X-Page', '2')
+            expect(request_context).to have_received(:header).with('X-Prev-Page', '1')
+            expect(request_context).to have_received(:header).with('X-Next-Page', '3')
+          end
+        end
+
+        context 'when last page is requested' do
+          let(:base_query) { { per_page: 2, page: 3 } }
+          let(:branch5) { double 'branch', name: 'branch5' }
+          let(:branches) { [branch5] }
+
+          before do
+            allow(request_context).to receive(:request).and_return(fake_request)
+            allow(project.repository).to receive(:branch_count).and_return(5)
+          end
+
+          it 'returns finder results directly and sets correct headers with no next page' do
+            expect(git_finder).to receive(:execute).with(gitaly_pagination: true).and_return(branches)
+
+            result = pager.paginate(git_finder)
+
+            expect(result).to eq([branch5])
+            expect(request_context).to have_received(:header).with('X-Total', '5')
+            expect(request_context).to have_received(:header).with('X-Total-Pages', '3')
+            expect(request_context).to have_received(:header).with('X-Page', '3')
+            expect(request_context).to have_received(:header).with('X-Prev-Page', '2')
+            expect(request_context).to have_received(:header).with('X-Next-Page', '')
+          end
+        end
+      end
+    end
+
     context "with 'none' pagination option" do
       let(:expected_result) { double(:result) }
       let(:query) { { pagination: 'none' } }

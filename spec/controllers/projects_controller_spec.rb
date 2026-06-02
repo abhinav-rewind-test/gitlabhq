@@ -7,10 +7,10 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   include ProjectForksHelper
   using RSpec::Parameterized::TableSyntax
 
-  let_it_be(:project, reload: true) { create(:project, :with_export, service_desk_enabled: false) }
+  let_it_be_with_reload(:project) { create(:project, :with_export, service_desk_enabled: false) }
   let_it_be(:group) { create(:group) }
-  let_it_be(:public_project) { create(:project, :public, namespace: group) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:public_project, freeze: false) { create(:project, :public, namespace: group) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   let(:jpg) { fixture_file_upload('spec/fixtures/rails_sample.jpg', 'image/jpg') }
   let(:txt) { fixture_file_upload('spec/fixtures/doc_sample.txt', 'text/plain') }
@@ -45,8 +45,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         end
       end
 
-      context 'with managable group' do
-        context 'when managable_group_count is 1' do
+      context 'with manageable group' do
+        context 'when manageable_group_count is 1' do
           before do
             group.add_owner(user)
           end
@@ -59,7 +59,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           end
         end
 
-        context 'when managable_group_count is 0' do
+        context 'when manageable_group_count is 0' do
           context 'when create_projects on personal namespace is allowed' do
             before do
               allow(user).to receive(:can_create_project?).and_return(true)
@@ -78,10 +78,10 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
               stub_application_setting(allow_project_creation_for_guest_and_below: false)
             end
 
-            it 'responds with status 404' do
+            it 'responds with status 403' do
               get :new
 
-              expect(response).to have_gitlab_http_status(:not_found)
+              expect(response).to have_gitlab_http_status(:forbidden)
               expect(response).not_to render_template('new')
             end
           end
@@ -114,7 +114,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     include DesignManagementTestHelpers
     render_views
 
-    let_it_be(:project) { create(:project, :public, issues_access_level: ProjectFeature::PRIVATE) }
+    let_it_be(:project, freeze: false) { create(:project, :public, issues_access_level: ProjectFeature::PRIVATE) }
 
     before do
       enable_design_management
@@ -188,16 +188,6 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           expect(response).to render_template('projects/_wiki')
         end
 
-        it 'shows issues list page if wiki is disabled' do
-          project.project_feature.update_attribute(:wiki_access_level, ProjectFeature::DISABLED)
-          create(:issue, project: project)
-
-          get :show, params: { namespace_id: project.namespace, id: project }
-
-          expect(response).to render_template('projects/_issues')
-          expect(assigns(:issuable_meta_data)).not_to be_nil
-        end
-
         it 'shows activity page if wiki and issues are disabled' do
           project.project_feature.update_attribute(:wiki_access_level, ProjectFeature::DISABLED)
           project.project_feature.update_attribute(:issues_access_level, ProjectFeature::DISABLED)
@@ -218,7 +208,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     context "project with empty repo" do
-      let_it_be(:empty_project) { create(:project_empty_repo, :public) }
+      let_it_be(:empty_project, freeze: false) { create(:project_empty_repo, :public) }
 
       before do
         sign_in(user)
@@ -240,7 +230,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     context "project with broken repo" do
-      let_it_be(:empty_project) { create(:project, :public) }
+      let_it_be(:empty_project, freeze: false) { create(:project, :public) }
 
       before do
         sign_in(user)
@@ -281,7 +271,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     context "rendering default project view" do
-      let_it_be(:public_project) { create(:project, :public, :repository) }
+      let_it_be(:public_project, freeze: false) { create(:project, :public, :repository) }
 
       render_views
 
@@ -353,7 +343,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         end
 
         context 'when the project is importing' do
-          let_it_be(:public_project) { create(:project, :public, :import_scheduled) }
+          let_it_be(:public_project, freeze: false) { create(:project, :public, :import_scheduled) }
 
           it 'does not track page views' do
             expect_no_snowplow_event(
@@ -676,7 +666,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
   describe 'POST #archive' do
     let_it_be(:group) { create(:group) }
-    let_it_be(:project) { create(:project, group: group) }
+    let_it_be(:project, freeze: false) { create(:project, group: group) }
 
     before do
       sign_in(user)
@@ -721,7 +711,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
   describe 'POST #unarchive' do
     let_it_be(:group) { create(:group) }
-    let_it_be(:project) { create(:project, :archived, group: group) }
+    let_it_be(:project, freeze: false) { create(:project, :archived, group: group) }
 
     before do
       sign_in(user)
@@ -779,7 +769,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     let(:prune) { nil }
-    let_it_be(:project) { create(:project, group: group) }
+    let_it_be(:project, freeze: false) { create(:project, group: group) }
     let(:housekeeping) { ::Repositories::HousekeepingService.new(project) }
 
     subject { post :housekeeping, params: params }
@@ -994,13 +984,13 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     context 'hashed storage' do
-      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:project, freeze: false) { create(:project, :repository) }
 
       it_behaves_like 'updating a project'
     end
 
     context 'legacy storage' do
-      let_it_be(:project) { create(:project, :repository, :legacy_storage) }
+      let_it_be(:project, freeze: false) { create(:project, :repository, :legacy_storage) }
 
       it_behaves_like 'updating a project'
     end
@@ -1022,34 +1012,14 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         it 'updates when the service allows access' do
           external_service_allow_access(user, project)
 
-          expect { subject }.to change(project, :description)
+          expect { subject }.to change { project.description }
         end
 
         it 'does not update when the service rejects access' do
           external_service_deny_access(user, project)
 
-          expect { subject }.not_to change(project, :description)
+          expect { subject }.not_to change { project.description }
         end
-      end
-    end
-
-    context 'when updating non boolean values on project setting' do
-      it 'updates project settings attributes accordingly' do
-        put :update, params: {
-          namespace_id: project.namespace,
-          id: project.path,
-          project: {
-            project_setting_attributes: {
-              merge_request_title_regex: 'aaa',
-              merge_request_title_regex_description: 'Test description'
-            }
-          }
-        }
-
-        project.reload
-
-        expect(project.merge_request_title_regex).to eq('aaa')
-        expect(project.merge_request_title_regex_description).to eq('Test description')
       end
     end
 
@@ -1172,6 +1142,10 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     let_it_be(:admin) { create(:admin) }
     let_it_be(:new_namespace) { create(:namespace) }
 
+    before do
+      stub_feature_flags(groups_and_projects_async_transfer: false)
+    end
+
     shared_examples 'project namespace is not changed' do |flash_message|
       it 'project namespace is not changed' do
         controller.instance_variable_set(:@project, project)
@@ -1239,6 +1213,82 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
       it_behaves_like 'project namespace is not changed', s_('TransferProject|Project is already in this namespace.')
     end
+
+    context 'when groups_and_projects_async_transfer feature flag is enabled for root ancestor' do
+      let_it_be(:project, freeze: false) { create(:project, group: create(:group)) }
+
+      before do
+        stub_feature_flags(groups_and_projects_async_transfer: true)
+        sign_in(admin)
+      end
+
+      it 'uses async transfer when FF is enabled for the root ancestor group' do
+        expect(Projects::TransferWorker).to receive(:perform_async)
+
+        put :transfer, params: {
+          namespace_id: project.namespace.path, new_namespace_id: new_namespace.id, id: project.path
+        }, format: :js
+
+        expect(response).to redirect_to(edit_project_path(project))
+      end
+    end
+
+    context 'when groups_and_projects_async_transfer feature flag is enabled' do
+      before do
+        stub_feature_flags(groups_and_projects_async_transfer: true)
+        sign_in(admin)
+      end
+
+      it 'enqueues the async transfer worker and redirects' do
+        expect(Projects::TransferWorker).to receive(:perform_async).with(
+          project.id,
+          new_namespace.id,
+          admin.id
+        )
+
+        put :transfer, params: {
+          namespace_id: project.namespace.path, new_namespace_id: new_namespace.id, id: project.path
+        }, format: :js
+
+        expect(response).to redirect_to(edit_project_path(project))
+      end
+
+      it 'transitions the project namespace to transfer_scheduled' do
+        put :transfer, params: {
+          namespace_id: project.namespace.path, new_namespace_id: new_namespace.id, id: project.path
+        }, format: :js
+
+        expect(project.project_namespace.reload.state).to eq('transfer_scheduled')
+      end
+
+      it 'stores transfer metadata in state_metadata' do
+        put :transfer, params: {
+          namespace_id: project.namespace.path, new_namespace_id: new_namespace.id, id: project.path
+        }, format: :js
+
+        metadata = project.project_namespace.reload.state_metadata
+        expect(metadata['transfer_target_parent_id']).to eq(new_namespace.id)
+        expect(metadata['transfer_scheduled_by_user_id']).to eq(admin.id)
+        expect(metadata['transfer_scheduled_at']).to be_present
+      end
+
+      context 'when the state transition fails' do
+        before do
+          project.project_namespace.update_column(:state, Namespace.states[:creation_in_progress])
+        end
+
+        it 'does not enqueue the worker and shows an error' do
+          expect(Projects::TransferWorker).not_to receive(:perform_async)
+
+          put :transfer, params: {
+            namespace_id: project.namespace.path, new_namespace_id: new_namespace.id, id: project.path
+          }, format: :js
+
+          expect(flash[:alert]).to eq('Unable to initiate transfer. The project may already have a transfer in progress.')
+          expect(response).to redirect_to(edit_project_path(project))
+        end
+      end
+    end
   end
 
   describe "#destroy", :enable_admin_mode do
@@ -1258,7 +1308,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         expect(project.reload.self_deletion_scheduled?).to be_truthy
         expect(project.reload.hidden?).to be_falsey
         expect(response).to have_gitlab_http_status(:found)
-        expect(response).to redirect_to(project_path(project))
+        expect(response).to redirect_to(dashboard_projects_path)
         expect(flash[:toast]).to be_nil
       end
     end
@@ -1278,23 +1328,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     context 'when project is already marked for deletion' do
-      let_it_be(:project) { create(:project, group: group, marked_for_deletion_at: Date.current) }
-
-      describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
-        before do
-          stub_application_setting(allow_immediate_namespaces_deletion: false)
-        end
-
-        subject(:request) { delete :destroy, params: { namespace_id: project.namespace, id: project, permanently_delete: true } }
-
-        it 'returns error' do
-          Sidekiq::Testing.fake! do
-            expect { request }.not_to change { ProjectDestroyWorker.jobs.size }
-          end
-
-          expect(response).to have_gitlab_http_status(:not_found)
-        end
-      end
+      let_it_be(:project, freeze: false) { create(:project, group: group, marked_for_deletion_at: Date.current) }
 
       context 'when permanently_delete param is set' do
         it 'deletes project right away' do
@@ -1324,7 +1358,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   end
 
   describe 'POST #restore', feature_category: :groups_and_projects do
-    let_it_be(:project) { create(:project, :aimed_for_deletion, namespace: user.namespace) }
+    let_it_be(:project, freeze: false) { create(:project, :aimed_for_deletion, namespace: user.namespace) }
 
     before do
       sign_in(user)
@@ -1447,7 +1481,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           }, format: :js
 
           expect(forked_project.reload.forked?).to be_falsey
-          expect(flash[:notice]).to eq(s_('The fork relationship has been removed.'))
+          expect(flash[:notice]).to eq(_('The fork relationship has been removed.'))
           expect(response).to redirect_to(edit_project_path(forked_project))
         end
       end
@@ -1476,7 +1510,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   end
 
   describe "GET refs" do
-    let_it_be(:project) { create(:project, :public, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :public, :repository) }
 
     it 'gets a list of branches and tags' do
       get :refs, params: { namespace_id: project.namespace, id: project, sort: 'updated_desc' }
@@ -1648,6 +1682,31 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       end
     end
 
+    context 'with suggestion on merge request' do
+      let(:project) { create(:project, :repository, maintainers: [user]) }
+      let(:merge_request) { create(:merge_request, source_project: project) }
+      let(:diff_refs) { merge_request.diff_refs }
+
+      it 'includes suggestions in response' do
+        post :preview_markdown, params: {
+          namespace_id: project.namespace.full_path,
+          project_id: project.path,
+          text: "```suggestion\nfoo\n```",
+          preview_suggestions: 'true',
+          target_type: 'MergeRequest',
+          target_id: merge_request.iid,
+          file_path: 'files/ruby/popen.rb',
+          line: '10',
+          base_sha: diff_refs.base_sha,
+          head_sha: diff_refs.head_sha,
+          start_sha: diff_refs.start_sha
+        }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['references']['suggestions']).not_to be_empty
+      end
+    end
+
     context 'when path parameter is provided' do
       let(:project_with_repo) { create(:project, :repository) }
       let(:preview_markdown_params) do
@@ -1695,6 +1754,27 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         post :preview_markdown, params: preview_markdown_params
 
         expect(json_response['body']).to include(expanded_path)
+      end
+    end
+
+    context 'when render_quick_actions is true' do
+      let_it_be(:issue) { create(:issue, project: public_project) }
+
+      before do
+        public_project.add_maintainer(user)
+      end
+
+      it 'keeps quick actions in the rendered output' do
+        post :preview_markdown, params: {
+          namespace_id: public_project.namespace,
+          project_id: public_project,
+          text: "Some text\n/assign #{user.to_reference}",
+          target_type: 'Issue',
+          target_id: issue.iid,
+          render_quick_actions: 'true'
+        }
+
+        expect(json_response['body']).to include('/assign')
       end
     end
 
@@ -2053,7 +2133,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   end
 
   context 'GET show.atom' do
-    let_it_be(:public_project) { create(:project, :public) }
+    let_it_be(:public_project, freeze: false) { create(:project, :public) }
     let_it_be(:event) { create(:event, :commented, project: public_project, target: create(:note, project: public_project)) }
     let_it_be(:invisible_event) { create(:event, :commented, project: public_project, target: create(:note, :confidential, project: public_project)) }
 
@@ -2070,13 +2150,21 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       expect(assigns(:events)).to eq([event])
     end
 
-    it 'filters by calling event.visible_to_user?' do
-      get :show, format: :atom, params: { id: public_project, namespace_id: public_project.namespace }
+    context 'with rendered views' do
+      render_views
 
-      expect(response).to have_gitlab_http_status(:success)
-      expect(response).to render_template(:show)
-      expect(response).to render_template(layout: :xml)
-      expect(assigns(:events)).to eq([event])
+      let!(:note_with_line_break) { create(:note, project: public_project, note: "foo\\\nbar") }
+      let!(:event_with_line_break) { create(:event, :commented, project: public_project, target: note_with_line_break) }
+
+      it 'renders note line breaks as self-closing XHTML br tags' do
+        get :show, format: :atom, params: { id: public_project, namespace_id: public_project.namespace }
+
+        expect(response).to have_gitlab_http_status(:success)
+        # Banzai emits self-closing br tags, potentially with attributes like data-sourcepos,
+        # e.g. `<br data-sourcepos="1:4-1:5" />`. Match any self-closing <br .../> form.
+        expect(response.body).to match(%r{<br[^>]*/\s*>})
+        expect(response.body).not_to match(%r{<br>})
+      end
     end
   end
 

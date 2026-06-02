@@ -1,7 +1,7 @@
 ---
 stage: none
 group: Engineering Productivity
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Software design guides
 ---
 
@@ -428,3 +428,12 @@ We want to achieve loose coupling and high cohesion by avoiding the coupling of 
 The result is a more secure system because permissions are consistently applied to the whole action.
 Similarly we don't inadvertently expose admin-level data if defined in a separate model or table.
 We can have a single permission check before reading or writing data that consistently belongs to the same use case.
+
+## Cells compatibility
+
+GitLab is moving to a [Cells architecture](cells/_index.md) where different organizations
+are served by distinct physical instances of GitLab. All new code must be designed
+with Cells compatibility in mind.
+
+For the full set of development principles, see
+[Cells development principles](cells/_index.md#cells-development-principles).

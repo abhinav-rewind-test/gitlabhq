@@ -30,13 +30,28 @@ module API
         optional :regex, type: String, desc: 'Return list of branches matching the regex'
         optional :sort, type: String, desc: 'Return list of branches sorted by the given field', values: %w[name_asc updated_asc updated_desc]
       end
+
+      def build_branches_finder(repository, params)
+        if params[:regex].present? || Feature.disabled?(:use_new_branches_finder_api, user_project)
+          BranchesFinder.new(repository, params)
+        else
+          Gitlab::Git::Finders::BranchesFinder.new(
+            repository.raw_repository,
+            params,
+            include_commits: true
+          )
+        end
+      end
     end
 
     params do
       requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
     end
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
-      desc 'Get a project repository branches' do
+      desc 'List all repository branches' do
+        detail 'Lists all repository branches from a specified project, sorted alphabetically by name. Search by ' \
+          'name, or use regular expressions to find specific branch patterns. Returns detailed information about the ' \
+          'branch, including its protection status, merge status, and commit details.'
         success Entities::Branch
         success code: 200, model: Entities::Branch
         failure [{ code: 404, message: '404 Project Not Found' }]
@@ -57,7 +72,7 @@ module API
         cache_action([user_project, :branches, current_user, declared_params], expires_in: 30.seconds) do
           repository = user_project.repository
 
-          branches_finder = BranchesFinder.new(repository, declared_params(include_missing: false))
+          branches_finder = build_branches_finder(repository, declared_params(include_missing: false))
           branches = Gitlab::Pagination::GitalyKeysetPager.new(self, user_project).paginate(branches_finder)
 
           merged_branch_names = repository.merged_branch_names(branches.map(&:name))
@@ -97,7 +112,8 @@ module API
         head do
           user_project.repository.branch_exists?(params[:branch]) ? no_content! : not_found!
         end
-        desc 'Get a single repository branch' do
+        desc 'Retrieve a repository branch' do
+          detail 'Retrieves a specified project repository branch.'
           success Entities::Branch
           success code: 200, model: Entities::Branch
           failure [{ code: 404, message: 'Branch Not Found' }, { code: 404, message: 'Project Not Found' }]
@@ -181,7 +197,8 @@ module API
       end
       # rubocop: enable CodeReuse/ActiveRecord
 
-      desc 'Create branch' do
+      desc 'Create a repository branch' do
+        detail 'Creates a branch in the repository.'
         success Entities::Branch
         success code: 201, model: Entities::Branch
         failure [{ code: 400, message: 'Failed to create branch' }, { code: 400, message: 'Branch already exists' }]
@@ -208,7 +225,8 @@ module API
         end
       end
 
-      desc 'Delete a branch' do
+      desc 'Delete a repository branch' do
+        detail 'Deletes a specified branch from the repository.'
         success code: 204
         failure [{ code: 404, message: 'Branch Not Found' }]
         tags %w[branches]
@@ -235,6 +253,7 @@ module API
       end
 
       desc 'Delete all merged branches' do
+        detail 'Deletes all branches that are merged into the default branch for a project.'
         success code: 202, message: '202 Accepted'
         failure [{ code: 404, message: '404 Project Not Found' }]
         tags %w[branches]

@@ -26,17 +26,17 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         allow(instance).to receive(:find_user_from_warden).and_return(session_user)
       end
 
-      expect(subject.user([:api])).to eq sessionless_user
+      expect(request_authenticator.user([:api])).to eq sessionless_user
     end
 
     it 'returns session user if no sessionless user found' do
       allow_any_instance_of(described_class).to receive(:find_user_from_warden).and_return(session_user)
 
-      expect(subject.user([:api])).to eq session_user
+      expect(request_authenticator.user([:api])).to eq session_user
     end
 
     it 'returns nil if no user found' do
-      expect(subject.user([:api])).to be_blank
+      expect(request_authenticator.user([:api])).to be_blank
     end
 
     it 'bubbles up exceptions' do
@@ -110,6 +110,52 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
 
       it { is_expected.to be_can_sign_in_bot(user) }
     end
+
+    context 'when the user is a blocked' do
+      context 'when an archive request' do
+        context 'with a project bot' do
+          let(:user) { build(:user, :project_bot, :blocked) }
+
+          before do
+            env['SCRIPT_NAME'] = '/project/-/archive/main/project-main.tar.gz'
+          end
+
+          it { is_expected.not_to be_can_sign_in_bot(user) }
+        end
+
+        context 'with a service account' do
+          let_it_be(:user) { build(:user, :service_account, :blocked) }
+
+          before do
+            env['SCRIPT_NAME'] = '/project/-/archive/main/project-main.tar.gz'
+          end
+
+          it { is_expected.not_to be_can_sign_in_bot(user) }
+        end
+      end
+
+      context 'when an API request' do
+        context 'with a project bot' do
+          let(:user) { build(:user, :project_bot, :blocked) }
+
+          before do
+            env['SCRIPT_NAME'] = '/api/some_resource'
+          end
+
+          it { is_expected.not_to be_can_sign_in_bot(user) }
+        end
+
+        context 'with a service account' do
+          let(:user) { build(:user, :service_account, :blocked) }
+
+          before do
+            env['SCRIPT_NAME'] = '/api/some_resource'
+          end
+
+          it { is_expected.not_to be_can_sign_in_bot(user) }
+        end
+      end
+    end
   end
 
   describe '#find_authenticated_requester' do
@@ -123,7 +169,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           expect(authenticator).not_to receive(:user)
         end
 
-        expect(subject.find_authenticated_requester([:api])).to eq deploy_token
+        expect(request_authenticator.find_authenticated_requester([:api])).to eq deploy_token
       end
     end
 
@@ -134,7 +180,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           expect(authenticator).to receive(:user).with([:api]).and_return(api_user)
         end
 
-        expect(subject.find_authenticated_requester([:api])).to eq api_user
+        expect(request_authenticator.find_authenticated_requester([:api])).to eq api_user
       end
 
       it 'returns nil when no authentication method succeeds' do
@@ -143,8 +189,42 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           expect(authenticator).to receive(:user).with([:api]).and_return(nil)
         end
 
-        expect(subject.find_authenticated_requester([:api])).to be_nil
+        expect(request_authenticator.find_authenticated_requester([:api])).to be_nil
       end
+    end
+  end
+
+  describe '#find_user_for_git_or_lfs_request memoization' do
+    let_it_be(:user) { create(:user) }
+
+    before do
+      env['SCRIPT_NAME'] = '/group/project.git/info/refs'
+    end
+
+    it 'calls find_user_from_basic_auth_password only once across multiple find_authenticated_requester calls' do
+      expect_any_instance_of(described_class)
+        .to receive(:find_user_from_basic_auth_password)
+        .once
+        .and_return(user)
+
+      result1 = request_authenticator.find_authenticated_requester([:api, :rss, :ics])
+      result2 = request_authenticator.find_authenticated_requester([:api])
+
+      expect(result1).to eq(user)
+      expect(result2).to eq(user)
+    end
+
+    it 'memoizes nil result for failed authentication' do
+      expect_any_instance_of(described_class)
+        .to receive(:find_user_from_basic_auth_password)
+        .once
+        .and_return(nil)
+
+      result1 = request_authenticator.find_authenticated_requester([:api])
+      result2 = request_authenticator.find_authenticated_requester([:api])
+
+      expect(result1).to be_nil
+      expect(result2).to be_nil
     end
   end
 
@@ -169,7 +249,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
 
       allow_any_instance_of(described_class).to receive(:find_user_from_web_access_token).and_return(access_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to eq dependency_proxy_user
+      expect(request_authenticator.find_sessionless_user(:api)).to eq dependency_proxy_user
     end
 
     it 'returns access_token user if no dependency_proxy user found' do
@@ -179,13 +259,13 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
 
       allow_any_instance_of(described_class).to receive(:find_user_from_feed_token).and_return(feed_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to eq access_token_user
+      expect(request_authenticator.find_sessionless_user(:api)).to eq access_token_user
     end
 
     it 'returns feed_token user if no access_token user found' do
       allow_any_instance_of(described_class).to receive(:find_user_from_feed_token).and_return(feed_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to eq feed_token_user
+      expect(request_authenticator.find_sessionless_user(:api)).to eq feed_token_user
     end
 
     it 'returns static_object_token user if no feed_token user found' do
@@ -193,7 +273,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_user_from_static_object_token)
         .and_return(static_object_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to eq static_object_token_user
+      expect(request_authenticator.find_sessionless_user(:api)).to eq static_object_token_user
     end
 
     it 'returns job_token user if no static_object_token user found' do
@@ -201,7 +281,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_user_from_job_token)
         .and_return(job_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to eq job_token_user
+      expect(request_authenticator.find_sessionless_user(:api)).to eq job_token_user
     end
 
     it 'returns nil even if basic_auth_access_token is available' do
@@ -209,7 +289,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_user_from_personal_access_token)
         .and_return(basic_auth_access_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to be_nil
+      expect(request_authenticator.find_sessionless_user(:api)).to be_nil
     end
 
     it 'returns nil even if find_user_from_lfs_token is available' do
@@ -217,11 +297,11 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_user_from_lfs_token)
         .and_return(lfs_token_user)
 
-      expect(subject.find_sessionless_user(:api)).to be_nil
+      expect(request_authenticator.find_sessionless_user(:api)).to be_nil
     end
 
     it 'returns nil if no user found' do
-      expect(subject.find_sessionless_user(:api)).to be_nil
+      expect(request_authenticator.find_sessionless_user(:api)).to be_nil
     end
 
     context 'in an API request' do
@@ -234,7 +314,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           .to receive(:find_user_from_personal_access_token)
           .and_return(basic_auth_access_token_user)
 
-        expect(subject.find_sessionless_user(:api)).to eq basic_auth_access_token_user
+        expect(request_authenticator.find_sessionless_user(:api)).to eq basic_auth_access_token_user
       end
     end
 
@@ -248,7 +328,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           .to receive(:find_user_from_lfs_token)
           .and_return(lfs_token_user)
 
-        expect(subject.find_sessionless_user(nil)).to eq lfs_token_user
+        expect(request_authenticator.find_sessionless_user(nil)).to eq lfs_token_user
       end
 
       it 'returns basic_auth_access_token user if no lfs_token user found' do
@@ -256,7 +336,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           .to receive(:find_user_from_personal_access_token)
           .and_return(basic_auth_access_token_user)
 
-        expect(subject.find_sessionless_user(nil)).to eq basic_auth_access_token_user
+        expect(request_authenticator.find_sessionless_user(nil)).to eq basic_auth_access_token_user
       end
 
       it 'returns basic_auth_access_password user if no basic_auth_access_token user found' do
@@ -264,18 +344,42 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           .to receive(:find_user_from_basic_auth_password)
           .and_return(basic_auth_password_user)
 
-        expect(subject.find_sessionless_user(nil)).to eq basic_auth_password_user
+        expect(request_authenticator.find_sessionless_user(nil)).to eq basic_auth_password_user
       end
 
       it 'returns nil if no user found' do
-        expect(subject.find_sessionless_user(nil)).to be_blank
+        expect(request_authenticator.find_sessionless_user(nil)).to be_blank
       end
     end
 
     it 'rescue Gitlab::Auth::AuthenticationError exceptions' do
       allow_any_instance_of(described_class).to receive(:find_user_from_web_access_token).and_raise(Gitlab::Auth::UnauthorizedError)
 
-      expect(subject.find_sessionless_user(:api)).to be_blank
+      expect(request_authenticator.find_sessionless_user(:api)).to be_blank
+    end
+
+    context 'with :editor_extension format' do
+      let_it_be(:pat_user) { create(:user) }
+      let_it_be(:personal_access_token, freeze: false) { create(:personal_access_token, user: pat_user) }
+
+      let_it_be(:oauth_user) { create(:user) }
+      let_it_be(:oauth_access_token) { create(:oauth_access_token, resource_owner: oauth_user) }
+
+      it 'returns user from a personal access token' do
+        env['HTTP_PRIVATE_TOKEN'] = personal_access_token.token
+
+        expect(request_authenticator.find_sessionless_user(:editor_extension)).to eq pat_user
+      end
+
+      it 'returns user from an OAuth token' do
+        env['HTTP_AUTHORIZATION'] = "Bearer #{oauth_access_token.plaintext_token}"
+
+        expect(request_authenticator.find_sessionless_user(:editor_extension)).to eq oauth_user
+      end
+
+      it 'returns nil if no access token provided' do
+        expect(request_authenticator.find_sessionless_user(:editor_extension)).to be_nil
+      end
     end
 
     context 'dependency proxy' do
@@ -284,7 +388,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       let(:token) { build_jwt(dependency_proxy_user).encoded }
       let(:authenticator) { described_class.new(request) }
 
-      subject { authenticator.find_sessionless_user(:api) }
+      subject(:find_sessionless_user) { authenticator.find_sessionless_user(:api) }
 
       before do
         env['SCRIPT_NAME'] = accessed_path
@@ -340,8 +444,8 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         let(:accessed_path) { '/v2/group1/dependency_proxy/containers/alpine/manifests/latest' }
 
         it 'returns nil' do
-          travel_to(Time.zone.now + Auth::DependencyProxyAuthenticationService.token_expire_at + 1.minute) do
-            expect(subject).to eq(nil)
+          travel_to(Time.zone.now + Auth::ContainerProxyAuthenticationService.token_expire_at + 1.minute) do
+            expect(find_sessionless_user).to eq(nil)
           end
         end
       end
@@ -349,12 +453,12 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
   end
 
   describe '#find_personal_access_token_from_http_basic_auth' do
-    let_it_be(:personal_access_token) { create(:personal_access_token) }
+    let_it_be(:personal_access_token, freeze: false) { create(:personal_access_token) }
     let_it_be(:user) { personal_access_token.user }
 
     before do
-      allow(subject).to receive(:has_basic_credentials?).and_return(true)
-      allow(subject).to receive(:user_name_and_password).and_return([user.username, personal_access_token.token])
+      allow(request_authenticator).to receive(:has_basic_credentials?).and_return(true)
+      allow(request_authenticator).to receive(:user_name_and_password).and_return([user.username, personal_access_token.token])
     end
 
     context 'with API requests' do
@@ -363,19 +467,19 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       end
 
       it 'tries to find the user' do
-        expect(subject.user([:api])).to eq user
+        expect(request_authenticator.user([:api])).to eq user
       end
 
       it 'returns nil if the token is revoked' do
         personal_access_token.revoke!
 
-        expect(subject.user([:api])).to be_blank
+        expect(request_authenticator.user([:api])).to be_blank
       end
 
       it 'returns nil if the token does not have API scope' do
         personal_access_token.update!(scopes: ['read_registry'])
 
-        expect(subject.user([:api])).to be_blank
+        expect(request_authenticator.user([:api])).to be_blank
       end
     end
 
@@ -387,33 +491,33 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       it 'does not search for job users' do
         expect(PersonalAccessToken).not_to receive(:find_by_token)
 
-        expect(subject.user([:api])).to be_nil
+        expect(request_authenticator.user([:api])).to be_nil
       end
     end
   end
 
   describe '#find_user_from_job_token' do
     let_it_be(:user) { build(:user) }
-    let_it_be(:job) { build(:ci_build, user: user, status: :running) }
+    let_it_be(:job, freeze: false) { build(:ci_build, user: user, status: :running) }
 
     before do
-      env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = 'token'
+      env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = 'glcbt-token_value'
     end
 
     context 'with API requests' do
       before do
         env['SCRIPT_NAME'] = '/api/endpoint'
-        expect(::Ci::Build).to receive(:find_by_token).with('token').and_return(job)
+        expect(::Ci::Build).to receive(:find_by_token).with('glcbt-token_value').and_return(job)
       end
 
       it 'tries to find the user' do
-        expect(subject.find_sessionless_user(:api)).to eq user
+        expect(request_authenticator.find_sessionless_user(:api)).to eq user
       end
 
       it 'returns nil if the job is not running' do
         job.status = :success
 
-        expect(subject.find_sessionless_user(:api)).to be_blank
+        expect(request_authenticator.find_sessionless_user(:api)).to be_blank
       end
     end
 
@@ -425,7 +529,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       it 'does not search for job users' do
         expect(::Ci::Build).not_to receive(:find_by_token)
 
-        expect(subject.find_sessionless_user(:api)).to be_nil
+        expect(request_authenticator.find_sessionless_user(:api)).to be_nil
       end
     end
   end
@@ -438,11 +542,11 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_runner_from_token)
         .and_return(runner)
 
-      expect(subject.runner).to eq runner
+      expect(request_authenticator.runner).to eq runner
     end
 
     it 'returns nil if no runner is found' do
-      expect(subject.runner).to be_blank
+      expect(request_authenticator.runner).to be_blank
     end
 
     it 'rescue Gitlab::Auth::AuthenticationError exceptions' do
@@ -450,19 +554,19 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
         .to receive(:find_runner_from_token)
         .and_raise(Gitlab::Auth::UnauthorizedError)
 
-      expect(subject.runner).to be_blank
+      expect(request_authenticator.runner).to be_blank
     end
   end
 
   describe '#job_from_token' do
-    let_it_be(:job) { create(:ci_build, :running) }
+    let_it_be(:job, freeze: false) { create(:ci_build, :running) }
 
     it 'returns the job using #find_job_from_job_token' do
       allow_any_instance_of(described_class)
         .to receive(:find_job_from_job_token)
         .and_return(job)
 
-      expect(subject.job_from_token).to eq job
+      expect(request_authenticator.job_from_token).to eq job
     end
 
     it 'rescue Gitlab::Auth::AuthenticationError exceptions' do
@@ -470,7 +574,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
           .to receive(:find_job_from_job_token)
           .and_raise(Gitlab::Auth::UnauthorizedError)
 
-      expect(subject.job_from_token).to be_blank
+      expect(request_authenticator.job_from_token).to be_blank
     end
   end
 
@@ -489,7 +593,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       end
 
       it 'returns correct settings' do
-        expect(subject.send(:route_authentication_setting)).to eql({
+        expect(request_authenticator.send(:route_authentication_setting)).to eql({
           job_token_allowed: expected_job_token_allowed,
           basic_auth_personal_access_token: expected_basic_auth_personal_access_token,
           deploy_token_allowed: expected_deploy_token_allowed
@@ -500,7 +604,7 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
 
   describe '#graphql_authorization_scopes' do
     it 'includes base scopes' do
-      scopes = subject.send(:graphql_authorization_scopes)
+      scopes = request_authenticator.send(:graphql_authorization_scopes)
       expect(scopes).to include(:api, :read_api)
     end
   end
@@ -511,21 +615,21 @@ RSpec.describe Gitlab::Auth::RequestAuthenticator, feature_category: :system_acc
       let(:token) { create(:personal_access_token, user: user, scopes: %w[api read_user]) }
 
       before do
-        allow(subject).to receive(:access_token).and_return(token)
+        allow(request_authenticator).to receive(:access_token).and_return(token)
       end
 
       it 'returns the scopes from the access token as an array' do
-        expect(subject.current_token_scopes).to contain_exactly('api', 'read_user')
+        expect(request_authenticator.current_token_scopes).to contain_exactly('api', 'read_user')
       end
     end
 
     context 'when access token is not present' do
       before do
-        allow(subject).to receive(:access_token).and_return(nil)
+        allow(request_authenticator).to receive(:access_token).and_return(nil)
       end
 
       it 'returns an empty array' do
-        expect(subject.current_token_scopes).to eq([])
+        expect(request_authenticator.current_token_scopes).to eq([])
       end
     end
   end

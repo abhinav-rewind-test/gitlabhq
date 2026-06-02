@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Frontend dependencies
 ---
 
@@ -50,6 +50,9 @@ debt. Here are some acceptable reasons for patching a dependency:
 1. Commit as usual.
 
 ### Updating a patch
+
+> [!note]
+> `@vue/compat` patches require special care. See [this document](https://gitlab.com/gitlab-org/frontend/vuejs-core/-/blob/v3.5.30-gitlab-hybrid/README.md).
 
 Patches are specific to the particular version of the dependency. When that dependency is updated, any patches for it must also be updated.
 

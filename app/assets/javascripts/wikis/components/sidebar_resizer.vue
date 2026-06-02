@@ -16,12 +16,9 @@ export default {
     };
   },
   mounted() {
-    window.addEventListener('resize', this.updateWidths);
-    this.updateWidths();
+    this.applySidebarWidth();
     this.getSidebarContainer().classList.remove('gl-hidden');
-  },
-  beforeDestroy() {
-    window.removeEventListener('resize', this.updateWidths);
+    requestAnimationFrame(this.restoreTransitions);
   },
   methods: {
     getSidebarContainer() {
@@ -30,28 +27,23 @@ export default {
     getSidebar() {
       return document.querySelector('.wiki-sidebar');
     },
-    updateSidebarWidth(width) {
-      const el = this.getSidebarContainer();
-      el.style.width = width;
-    },
     removeTransitions() {
       this.getSidebar().classList.remove('transition-enabled');
     },
     restoreTransitions() {
       this.getSidebar().classList.add('transition-enabled');
     },
-    updateWidths(width) {
+    applySidebarWidth() {
+      this.getSidebarContainer().style.width = `${this.sidebarWidth}px`;
+    },
+    updateWidth(width) {
       this.removeTransitions();
-
-      if (typeof width === 'number') this.sidebarWidth = width;
-
-      this.updateSidebarWidth(`${this.sidebarWidth}px`);
-
+      this.sidebarWidth = width;
+      this.applySidebarWidth();
       requestAnimationFrame(this.restoreTransitions);
     },
     resetSize() {
-      this.sidebarWidth = this.defaultWidth;
-      this.updateWidths();
+      this.updateWidth(this.defaultWidth);
     },
   },
 };
@@ -67,7 +59,7 @@ export default {
     <local-storage-sync
       v-model="sidebarWidth"
       storage-key="wiki_sidebar_width"
-      @input="updateWidths"
+      @input="updateWidth"
     />
     <panel-resizer
       :start-size="sidebarWidth"
@@ -78,7 +70,7 @@ export default {
       class="gl-z-4"
       @resize-start="removeTransitions"
       @resize-end="restoreTransitions"
-      @update:size="updateWidths"
+      @update:size="updateWidth"
     />
   </div>
 </template>

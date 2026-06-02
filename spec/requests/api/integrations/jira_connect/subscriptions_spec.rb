@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Integrations::JiraConnect::Subscriptions, feature_category: :integrations do
+RSpec.describe API::Integrations::JiraConnect::Subscriptions, :with_current_organization, feature_category: :integrations do
   describe 'POST /integrations/jira_connect/subscriptions' do
     subject(:post_subscriptions) { post api('/integrations/jira_connect/subscriptions') }
 
@@ -67,7 +67,7 @@ RSpec.describe API::Integrations::JiraConnect::Subscriptions, feature_category: 
       end
 
       context 'with valid JWT' do
-        let_it_be(:installation) { create(:jira_connect_installation) }
+        let_it_be(:installation) { create(:jira_connect_installation, organization: current_organization) }
         let_it_be(:user) { create(:user) }
 
         let(:claims) { { iss: installation.client_key, qsh: 'context-qsh', sub: 1234 } }
@@ -81,10 +81,54 @@ RSpec.describe API::Integrations::JiraConnect::Subscriptions, feature_category: 
             .to_return(body: jira_user.to_json, status: 200, headers: { 'Content-Type' => 'application/json' })
         end
 
-        it 'returns 401 if the user does not have access to the group' do
-          post_subscriptions
+        context 'when the user cannot read the namespace' do
+          let(:private_group) { create(:group, :private) }
 
-          expect(response).to have_gitlab_http_status(:unauthorized)
+          subject(:post_subscriptions) do
+            post api('/integrations/jira_connect/subscriptions', user),
+              params: { jwt: jwt, namespace_path: private_group.path }
+          end
+
+          it 'returns 404' do
+            post_subscriptions
+
+            expect(response).to have_gitlab_http_status(:not_found)
+            expect(json_response['message']).to include(
+              'Namespace not found. Check the group path and try again.'
+            )
+          end
+        end
+
+        context 'when the user can read the namespace but cannot link it' do
+          before do
+            group.add_developer(user)
+          end
+
+          it 'returns 403' do
+            post_subscriptions
+
+            expect(response).to have_gitlab_http_status(:forbidden)
+            expect(json_response['message']).to include(
+              'You do not have permission to link this namespace. ' \
+                'You must be a Maintainer or Owner of the group.'
+            )
+          end
+        end
+
+        context 'when the namespace path does not exist' do
+          subject(:post_subscriptions) do
+            post api('/integrations/jira_connect/subscriptions', user),
+              params: { jwt: jwt, namespace_path: 'nonexistent-namespace-path' }
+          end
+
+          it 'returns 404' do
+            post_subscriptions
+
+            expect(response).to have_gitlab_http_status(:not_found)
+            expect(json_response['message']).to include(
+              'Namespace not found. Check the group path and try again.'
+            )
+          end
         end
 
         context 'user has access to the group' do
@@ -107,7 +151,7 @@ RSpec.describe API::Integrations::JiraConnect::Subscriptions, feature_category: 
   end
 
   describe 'POST /api/v4/integrations/jira_connect/subscriptions' do
-    let(:installation) { create(:jira_connect_installation) }
+    let(:installation) { create(:jira_connect_installation, organization: current_organization) }
     let(:shared_secret) { installation.shared_secret }
     let(:api_path) { '/api/v4/integrations/jira_connect/subscriptions' }
 

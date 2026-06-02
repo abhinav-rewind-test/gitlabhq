@@ -1,5 +1,5 @@
 <script>
-import { GlButton } from '@gitlab/ui';
+import { GlButton, GlLoadingIcon } from '@gitlab/ui';
 import { createAlert } from '~/alert';
 import { TYPENAME_CI_BUILD, TYPENAME_COMMIT_STATUS } from '~/graphql_shared/constants';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
@@ -9,8 +9,6 @@ import { s__ } from '~/locale';
 import { reportToSentry } from '~/ci/utils';
 import { confirmJobConfirmationMessage } from '~/ci/pipeline_details/graph/utils';
 import PipelineInputsForm from '~/ci/common/pipeline_inputs/pipeline_inputs_form.vue';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-import playJobWithVariablesMutation from '../graphql/mutations/job_play_with_variables.mutation.graphql';
 import playJobWithInputsMutation from '../graphql/mutations/job_play_with_inputs.mutation.graphql';
 import retryJobWithVariablesMutation from '../graphql/mutations/job_retry_with_variables.mutation.graphql';
 import getJobInputsQuery from '../graphql/queries/get_job_inputs.query.graphql';
@@ -25,8 +23,8 @@ export default {
     GlButton,
     JobVariablesForm,
     PipelineInputsForm,
+    GlLoadingIcon,
   },
-  mixins: [glFeatureFlagMixin()],
   inject: ['canSetPipelineVariables', 'projectPath'],
   props: {
     isRetryable: {
@@ -56,9 +54,6 @@ export default {
           id: convertToGraphQLId(TYPENAME_COMMIT_STATUS, this.jobId),
         };
       },
-      skip() {
-        return !this.glFeatures.ciJobInputs;
-      },
       update(data) {
         const job = data?.project?.job;
         return job || { inputs: [], inputsSpec: [] };
@@ -87,6 +82,7 @@ export default {
       return {
         id: convertToGraphQLId(TYPENAME_CI_BUILD, this.jobId),
         variables: this.preparedVariables,
+        inputs: this.updatedInputs,
       };
     },
     runBtnText() {
@@ -94,20 +90,8 @@ export default {
         ? this.$options.i18n.runAgainButtonText
         : this.$options.i18n.runButtonText;
     },
-    showInputsForm() {
-      return this.glFeatures.ciJobInputs && !this.$apollo.queries.job.loading;
-    },
-    playProps() {
-      if (this.glFeatures.ciJobInputs) {
-        return {
-          mutation: playJobWithInputsMutation,
-          variables: { ...this.mutationVariables, inputs: this.updatedInputs },
-        };
-      }
-      return {
-        mutation: playJobWithVariablesMutation,
-        variables: this.mutationVariables,
-      };
+    inputsLoading() {
+      return this.$apollo.queries.job.loading;
     },
   },
   methods: {
@@ -117,11 +101,10 @@ export default {
         .map(({ key, value }) => ({ key, value }));
     },
     async playJob() {
-      const { mutation, variables } = this.playProps;
       try {
         const { data } = await this.$apollo.mutate({
-          mutation,
-          variables,
+          mutation: playJobWithInputsMutation,
+          variables: this.mutationVariables,
         });
         if (data.jobPlay?.errors?.length) {
           createAlert({ message: data.jobPlay.errors[0] });
@@ -137,7 +120,7 @@ export default {
       try {
         const { data } = await this.$apollo.mutate({
           mutation: retryJobWithVariablesMutation,
-          variables: { ...this.mutationVariables, inputs: this.updatedInputs },
+          variables: this.mutationVariables,
         });
         if (data.jobRetry?.errors?.length) {
           createAlert({ message: data.jobRetry.errors[0] });
@@ -180,20 +163,25 @@ export default {
 </script>
 <template>
   <div>
+    <gl-loading-icon v-if="inputsLoading" />
     <pipeline-inputs-form
-      v-if="showInputsForm"
+      v-else
       emit-modified-only
       preselect-all-inputs
       :saved-inputs="job.inputs"
       :initial-inputs="job.inputsSpec"
-      :empty-selection-text="s__('Pipeline|Select inputs to create a new pipeline.')"
+      :empty-selection-text="s__('Pipeline|Select inputs for this run.')"
+      :description-text="
+        s__(
+          'Pipeline|Specify the input values to use in this job. Any inputs left unselected will use their default values.',
+        )
+      "
       @update-inputs="handleInputsUpdated"
     />
 
     <job-variables-form
       v-if="canSetPipelineVariables"
       :job-id="jobId"
-      :is-expanded="!glFeatures.ciJobInputs"
       @update-variables="onVariablesUpdate"
     />
 

@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Sidebars::Projects::Menus::InfrastructureMenu, feature_category: :navigation do
-  let(:project) { build(:project) }
+  let(:project) { build_stubbed(:project) }
   let(:user) { project.first_owner }
   let(:context) { Sidebars::Projects::Context.new(current_user: user, container: project, show_cluster_hint: false) }
 
@@ -31,7 +31,7 @@ RSpec.describe Sidebars::Projects::Menus::InfrastructureMenu, feature_category: 
     describe 'behavior based on access level setting' do
       using RSpec::Parameterized::TableSyntax
 
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
       let(:enabled) { Featurable::PRIVATE }
       let(:disabled) { Featurable::DISABLED }
 

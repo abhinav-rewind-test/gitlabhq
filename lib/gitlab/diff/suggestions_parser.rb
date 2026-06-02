@@ -4,7 +4,7 @@ module Gitlab
   module Diff
     class SuggestionsParser
       # Matches for instance "-1", "+1" or "-1+2".
-      SUGGESTION_CONTEXT = /^(\-(?<above>\d+))?(\+(?<below>\d+))?$/
+      SUGGESTION_CONTEXT = /^(?:\-(?<above>\d+))?(?:\+(?<below>\d+))?$/
 
       CSS   = 'pre.language-suggestion'
       XPATH = Gitlab::Utils::Nokogiri.css_to_xpath(CSS).freeze
@@ -19,7 +19,7 @@ module Gitlab
           html = Banzai.render(text, project: nil,
             no_original_data: true,
             suggestions_filter_enabled: supports_suggestion)
-          doc = Nokogiri::HTML(html)
+          doc = Nokogiri::HTML5(html)
           suggestion_nodes = doc.xpath(XPATH)
 
           return [] if suggestion_nodes.empty?

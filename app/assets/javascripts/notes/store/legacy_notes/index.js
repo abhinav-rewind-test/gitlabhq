@@ -7,7 +7,6 @@ import * as getters from './getters';
 export const useNotes = defineStore('legacyNotes', {
   state() {
     return {
-      discussions: [],
       discussionSortOrder: ASC,
       persistSortOrder: true,
       convertedDisscussionIds: [],
@@ -53,6 +52,7 @@ export const useNotes = defineStore('legacyNotes', {
       descriptionVersions: {},
       isTimelineEnabled: false,
       isFetching: false,
+      fetchNotesPromise: null,
       isPollingInitialized: false,
       mergeRequestFilters: MR_FILTER_OPTIONS.map((f) => f.value),
     };

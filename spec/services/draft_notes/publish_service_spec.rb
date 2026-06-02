@@ -4,7 +4,7 @@ require 'spec_helper'
 RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workflow do
   include RepoHelpers
 
-  let_it_be(:merge_request) { create(:merge_request, reviewers: create_list(:user, 1), assignees: create_list(:user, 1)) }
+  let_it_be(:merge_request, freeze: false) { create(:merge_request, reviewers: create_list(:user, 1), assignees: create_list(:user, 1)) }
   let(:project) { merge_request.target_project }
   let(:user) { merge_request.author }
   let(:commit) { project.commit(sample_commit.id) }
@@ -43,6 +43,14 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
     it 'publishes' do
       expect { publish(draft: drafts.first) }.to change { DraftNote.count }.by(-1).and change { Note.count }.by(1)
       expect(DraftNote.count).to eq(1)
+    end
+
+    it 'propagates the draft line_code to the published note' do
+      draft = drafts.first
+
+      publish(draft: draft)
+
+      expect(merge_request.notes.order(id: :asc).first.line_code).to eq(draft.line_code)
     end
 
     it 'does not skip notification', :sidekiq_might_not_need_inline do
@@ -270,11 +278,36 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
   context 'with no draft notes' do
     let(:merge_request) { create(:merge_request) }
 
-    it 'creates the correct pub-sub event' do
-      expect(::Gitlab::EventStore).to receive(:publish)
-      expect(MergeRequests::DraftNotePublishedEvent).to receive(:new)
+    it 'does not publish a DraftNotePublishedEvent' do
+      expect(::Gitlab::EventStore).not_to receive(:publish)
 
       publish
+    end
+
+    it 'does not track the publish event' do
+      expect(Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter)
+        .not_to receive(:track_publish_review_action)
+
+      publish
+    end
+
+    it 'does not send resolved discussion notifications' do
+      expect(MergeRequests::ResolvedDiscussionNotificationService).not_to receive(:new)
+
+      publish
+    end
+
+    context 'when all discussions are already resolved' do
+      before do
+        allow(merge_request).to receive(:discussions_resolved?).and_return(true)
+      end
+
+      it 'does not send a duplicate resolved discussion notification' do
+        expect(::Gitlab::EventStore).not_to receive(:publish)
+        expect(MergeRequests::ResolvedDiscussionNotificationService).not_to receive(:new)
+
+        publish
+      end
     end
   end
 
@@ -409,6 +442,34 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
       end
 
       publish
+    end
+  end
+
+  context 'when a draft note fails to persist' do
+    let(:unpersisted_note) { DiffNote.new.tap { |n| n.errors.add(:position, 'is incomplete') } }
+
+    before do
+      allow_next_instance_of(Notes::CreateService) do |service|
+        allow(service).to receive(:execute).and_return(unpersisted_note)
+      end
+    end
+
+    context 'when publishing a single draft' do
+      let!(:draft) { create(:draft_note_on_text_diff, merge_request: merge_request, author: user, position: position) }
+
+      it 'logs a warning with details' do
+        expect(Gitlab::AppLogger).to receive(:warn).with(
+          hash_including(
+            message: 'Draft note publish: note not persisted',
+            draft_note_id: draft.id,
+            merge_request_id: merge_request.id,
+            project_id: project.id,
+            errors: ['Position is incomplete']
+          )
+        )
+
+        publish(draft: draft)
+      end
     end
   end
 

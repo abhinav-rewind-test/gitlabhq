@@ -1,7 +1,8 @@
 ---
 stage: Tenant Scale
 group: Tenant Services
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Configure a standalone Redis server with the Linux package. Use this setup for small GitLab installations that do not require Redis replication or failover.
 title: Standalone Redis using the Linux package
 ---
 
@@ -77,22 +78,15 @@ On the instance where GitLab is installed:
 
 ## Use Valkey instead of Redis
 
-{{< details >}}
-
-- Status: Beta
-
-{{< /details >}}
-
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/9113) in GitLab 18.9 as a [beta](../../policy/development_stages_support.md#beta).
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/585839) in GitLab 19.0.
 
 {{< /history >}}
 
 You can use [Valkey](https://valkey.io/) as a drop-in replacement for Redis.
 Valkey uses the same configuration options as Redis.
-
-Using Valkey instead of Redis is a [beta](../../policy/development_stages_support.md#beta) feature.
 
 To use Valkey instead of Redis on a standalone node:
 
@@ -119,6 +113,11 @@ To use Valkey instead of Redis on a standalone node:
 
 The GitLab Rails application configuration remains the same. Configure `gitlab_rails['redis_host']`,
 `gitlab_rails['redis_port']`, and `gitlab_rails['redis_password']` as you would for Redis.
+
+### Known issues
+
+- Because of known [issue 589642](https://gitlab.com/gitlab-org/gitlab/-/issues/589642), the Admin Area reports the Valkey version incorrectly. This issue
+  doesn't affect the version of Valkey installed or how it functions.
 
 ## Troubleshooting
 

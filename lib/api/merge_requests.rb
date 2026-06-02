@@ -8,6 +8,7 @@ module API
     include Helpers::Unidiff
 
     helpers ::API::Helpers::HeadersHelpers
+    helpers ::API::Helpers::MilestonesHelpers
 
     CONTEXT_COMMITS_POST_LIMIT = 20
 
@@ -70,6 +71,7 @@ module API
         add_labels
         remove_labels
         milestone_id
+        milestone
         remove_source_branch
         allow_collaboration
         allow_maintainer_to_push
@@ -98,8 +100,8 @@ module API
         parent_type = args[:project_id] ? :project : :group
         args[:"attempt_#{parent_type}_search_optimizations"] = true
 
-        merge_requests = MergeRequestsFinder.new(current_user, args).execute
-        merge_requests = paginate(merge_requests)
+        finder = MergeRequestsFinder.new(current_user, args)
+        merge_requests = paginate(finder.execute, skip_default_order: finder.group_mr_in_optimization_applied?)
                            .preload(:source_project, :target_project)
 
         return merge_requests if args[:view] == 'simple'
@@ -133,19 +135,82 @@ module API
         ::Ci::PipelinesForMergeRequestFinder.new(mr, current_user).execute
       end
 
-      def automatically_mergeable?(auto_merge, merge_request)
-        available_strategies = AutoMergeService.new(merge_request.project,
-          current_user).available_strategies(merge_request)
-
-        auto_merge && available_strategies.include?(merge_request.default_auto_merge_strategy)
+      def pipeline_allows_merge?(merge_request)
+        (!merge_request.pipeline_creating? && !merge_request.diff_head_pipeline) ||
+          merge_request.diff_head_pipeline_success?
       end
 
-      def immediately_mergeable?(auto_merge, merge_request)
-        if auto_merge
-          merge_request.diff_head_pipeline_success?
+      def execute_merge(merge_request, auto_merge, merge_params)
+        if Feature.enabled?(:fix_merge_api_train_bypass, merge_request.project)
+          execute_merge_with_train_guard(merge_request, auto_merge, merge_params)
         else
-          merge_request.mergeable_state?
+          execute_merge_legacy(merge_request, auto_merge, merge_params)
         end
+      end
+
+      def execute_merge_with_train_guard(merge_request, auto_merge, merge_params)
+        if auto_merge
+          auto_merge_service = AutoMergeService.new(merge_request.target_project, current_user, merge_params)
+          preferred_strategy = auto_merge_service.preferred_strategy(merge_request)
+
+          if preferred_strategy
+            auto_merge_service.execute(merge_request, preferred_strategy)
+          elsif pipeline_allows_merge?(merge_request)
+            execute_immediate_merge!(merge_request, merge_params)
+          else
+            not_allowed!
+          end
+        elsif merge_request.mergeable?
+          execute_immediate_merge!(merge_request, merge_params)
+        else
+          not_allowed!
+        end
+      end
+
+      def execute_merge_legacy(merge_request, auto_merge, merge_params)
+        if auto_merge
+          strategy_available =
+            AutoMergeService
+              .new(merge_request.project, current_user)
+              .available_strategies(merge_request)
+              .include?(merge_request.default_auto_merge_strategy)
+
+          if strategy_available
+            AutoMergeService.new(merge_request.target_project, current_user, merge_params)
+              .execute(merge_request, merge_request.default_auto_merge_strategy)
+          elsif pipeline_allows_merge?(merge_request)
+            execute_immediate_merge!(merge_request, merge_params)
+          else
+            not_allowed!
+          end
+        elsif merge_request.mergeable?
+          execute_immediate_merge!(merge_request, merge_params)
+        else
+          not_allowed!
+        end
+      end
+
+      def execute_immediate_merge!(merge_request, merge_params)
+        render_api_error!('Branch cannot be merged', 422) unless merge_request.mergeable?
+
+        ::MergeRequests::MergeService
+          .new(project: merge_request.target_project, current_user: current_user, params: merge_params)
+          .execute(merge_request)
+
+        render_api_error!('Branch cannot be merged', 422) unless merge_request.merged?
+      end
+
+      def build_merge_params(merge_request)
+        check_sha_param!(params, merge_request)
+
+        merge_request.update(squash: params[:squash]) if params[:squash]
+
+        HashWithIndifferentAccess.new(
+          commit_message: params[:merge_commit_message],
+          squash_commit_message: params[:squash_commit_message],
+          should_remove_source_branch: params[:should_remove_source_branch],
+          sha: params[:sha] || merge_request.diff_head_sha
+        ).merge(ci_params).compact
       end
 
       def serializer_options_for(merge_requests)
@@ -199,6 +264,9 @@ module API
       params do
         use :merge_requests_params
         use :optional_scope_param
+        optional :non_archived, type: Boolean,
+          default: false,
+          desc: 'Returns merge requests from non archived projects only.'
       end
       route_setting :authorization, permissions: :read_merge_request, boundary_type: :user
       get feature_category: :code_review_workflow, urgency: :low do
@@ -280,6 +348,10 @@ module API
             desc: 'Comma-separated label names to remove from a merge request.',
             documentation: { is_array: true }
           optional :milestone_id, type: Integer, desc: 'The global ID of a milestone to assign the merge request to.'
+          optional :milestone, type: String, limit: 255,
+            desc: 'The title of a project or ancestor-group milestone to assign the merge request to. ' \
+              'Mutually exclusive with `milestone_id`.'
+          mutually_exclusive :milestone_id, :milestone
           optional :remove_source_branch, type: Boolean, desc: 'Flag indicating if a merge request should remove the source branch when merging.'
           optional :allow_collaboration, type: Boolean, desc: 'Allow commits from members who can merge to the target branch.'
           optional :allow_maintainer_to_push, type: Boolean, as: :allow_collaboration, desc: '[deprecated] See allow_collaboration'
@@ -356,7 +428,8 @@ module API
           desc: 'The target project of the merge request defaults to the :id of the project.'
         use :optional_params
       end
-      route_setting :mcp, tool_name: :create_merge_request, params: Helpers::MergeRequestsHelpers.create_merge_request_mcp_params
+      route_setting :mcp, tool_name: :create_merge_request, params: Helpers::MergeRequestsHelpers.create_merge_request_mcp_params,
+        annotations: { readOnlyHint: false, destructiveHint: false }, resource_name: "project"
       route_setting :authorization, permissions: :create_merge_request, boundary_type: :project
       post ":id/merge_requests", feature_category: :code_review_workflow, urgency: :low do
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/20770')
@@ -366,6 +439,7 @@ module API
         Labkit::UserExperienceSli.start(:create_merge_request)
 
         mr_params = declared_params(include_missing: false)
+        resolve_milestone_title!(user_project, mr_params)
         mr_params[:force_remove_source_branch] = mr_params.delete(:remove_source_branch)
         mr_params = convert_parameters_from_legacy_format(mr_params)
         validator = ::Gitlab::Auth::ScopeValidator.new(current_user, Gitlab::Auth::RequestAuthenticator.new(request))
@@ -385,6 +459,7 @@ module API
 
       desc 'Delete a merge request' do
         detail 'Only for administrators and project owners. Deletes the merge request in question. '
+        success code: 204
         failure [
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' },
@@ -421,7 +496,7 @@ module API
         ]
         tags %w[merge_requests]
       end
-      route_setting :mcp, tool_name: :get_merge_request, params: [:id, :merge_request_iid]
+      route_setting :mcp, tool_name: :get_merge_request, params: [:id, :merge_request_iid], resource_name: "merge request"
       route_setting :authentication, job_token_allowed: true
       route_setting :authorization, permissions: :read_merge_request,
         boundary_type: :project,
@@ -443,6 +518,7 @@ module API
       desc 'Get single merge request participants' do
         detail 'Get a list of merge request participants.'
         success Entities::UserBasic
+        is_array true
         failure [
           { code: 404, message: 'Not found' }
         ]
@@ -452,7 +528,7 @@ module API
       get ':id/merge_requests/:merge_request_iid/participants', feature_category: :code_review_workflow, urgency: :low do
         merge_request = find_merge_request_with_access(params[:merge_request_iid])
 
-        participants = ::Kaminari.paginate_array(merge_request.visible_participants(current_user))
+        participants = ::Kaminari.paginate_array(merge_request.participants(current_user))
 
         present paginate(participants), with: Entities::UserBasic
       end
@@ -460,6 +536,7 @@ module API
       desc 'Get single merge request reviewers' do
         detail 'Get a list of merge request reviewers.'
         success Entities::MergeRequestReviewer
+        is_array true
         failure [
           { code: 404, message: 'Not found' }
         ]
@@ -477,6 +554,7 @@ module API
       desc 'Get single merge request commits' do
         detail 'Get a list of merge request commits.'
         success Entities::Commit
+        is_array true
         failure [
           { code: 404, message: 'Not found' }
         ]
@@ -486,7 +564,7 @@ module API
         requires :merge_request_iid, type: Integer, desc: 'The internal ID of the merge request.'
         use :pagination
       end
-      route_setting :mcp, tool_name: :get_merge_request_commits, params: [:id, :merge_request_iid, :per_page, :page]
+      route_setting :mcp, tool_name: :get_merge_request_commits, params: [:id, :merge_request_iid, :per_page, :page], resource_name: "merge request"
       route_setting :authorization, permissions: :read_merge_request_commit, boundary_type: :project
       get ':id/merge_requests/:merge_request_iid/commits', feature_category: :code_review_workflow, urgency: :low do
         merge_request = find_merge_request_with_access(params[:merge_request_iid])
@@ -507,6 +585,7 @@ module API
       desc 'List merge request context commits' do
         detail 'Get a list of merge request context commits.'
         success Entities::Commit
+        is_array true
         failure [
           { code: 404, message: 'Not found' }
         ]
@@ -531,7 +610,9 @@ module API
       desc 'Create merge request context commits' do
         detail 'Create a list of merge request context commits.'
         success Entities::Commit
+        is_array true
         failure [
+          { code: 400, message: 'Bad request' },
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
@@ -568,6 +649,7 @@ module API
       end
       desc 'Delete merge request context commits' do
         detail 'Delete a list of merge request context commits.'
+        success code: 204
         failure [
           { code: 400, message: 'Bad request' },
           { code: 401, message: 'Unauthorized' },
@@ -580,7 +662,7 @@ module API
         commit_ids = params[:commits]
         merge_request = find_merge_request_with_access(params[:merge_request_iid])
 
-        authorize!(:destroy_merge_request, merge_request)
+        authorize!(:update_merge_request, merge_request)
         project = merge_request.target_project
         commits = project.repository.commits_by(oids: commit_ids)
 
@@ -618,6 +700,7 @@ module API
       desc 'Get the merge request diffs' do
         detail 'Get a list of merge request diffs.'
         success Entities::Diff
+        is_array true
         failure [
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not found' }
@@ -629,7 +712,7 @@ module API
         use :pagination
         use :with_unidiff
       end
-      route_setting :mcp, tool_name: :get_merge_request_diffs, params: [:id, :merge_request_iid, :per_page, :page]
+      route_setting :mcp, tool_name: :get_merge_request_diffs, params: [:id, :merge_request_iid, :per_page, :page], resource_name: "merge request"
       route_setting :authorization, permissions: :read_merge_request_diff, boundary_type: :project
       get ':id/merge_requests/:merge_request_iid/diffs', feature_category: :code_review_workflow, urgency: :low do
         merge_request = find_merge_request_with_access(params[:merge_request_iid])
@@ -645,6 +728,7 @@ module API
 
       desc 'Get the merge request raw diffs' do
         detail 'Get the raw diffs of a merge request that can used programmatically.'
+        success code: 200
         failure [
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not found' }
@@ -663,6 +747,7 @@ module API
       desc 'Get single merge request pipelines' do
         detail 'Get a list of merge request pipelines.'
         success Entities::Ci::PipelineBasic
+        is_array true
         failure [
           { code: 404, message: 'Not found' }
         ]
@@ -671,7 +756,7 @@ module API
       params do
         requires :merge_request_iid, type: Integer, desc: 'The internal ID of the merge request.'
       end
-      route_setting :mcp, tool_name: :get_merge_request_pipelines, params: [:id, :merge_request_iid, :per_page, :page]
+      route_setting :mcp, tool_name: :get_merge_request_pipelines, params: [:id, :merge_request_iid, :per_page, :page], resource_name: "merge request"
       route_setting :authorization, permissions: :read_merge_request_pipeline, boundary_type: :project
       get ':id/merge_requests/:merge_request_iid/pipelines', urgency: :low, feature_category: :pipeline_composition do
         pipelines = merge_request_pipelines_with_access
@@ -750,6 +835,7 @@ module API
         merge_request = find_merge_request_with_access(params.delete(:merge_request_iid), :update_merge_request)
 
         mr_params = declared_params(include_missing: false)
+        resolve_milestone_title!(user_project, mr_params)
         mr_params[:force_remove_source_branch] = mr_params.delete(:remove_source_branch) if mr_params.has_key?(:remove_source_branch)
         mr_params = convert_parameters_from_legacy_format(mr_params)
         mr_params[:use_specialized_service] = true
@@ -807,42 +893,17 @@ module API
         unauthorized! unless merge_request.can_be_merged_by?(current_user)
 
         auto_merge = to_boolean(params[:merge_when_pipeline_succeeds]) || to_boolean(params[:auto_merge])
-        automatically_mergeable = automatically_mergeable?(auto_merge, merge_request)
-        immediately_mergeable = immediately_mergeable?(auto_merge, merge_request)
 
-        not_allowed! if !immediately_mergeable && !automatically_mergeable
+        merge_params = build_merge_params(merge_request)
 
-        render_api_error!('Branch cannot be merged', 422) unless automatically_mergeable || merge_request.mergeable?(skip_ci_check: automatically_mergeable)
+        execute_merge(merge_request, auto_merge, merge_params)
 
-        check_sha_param!(params, merge_request)
-
-        merge_request.update(squash: params[:squash]) if params[:squash]
-
-        merge_params = HashWithIndifferentAccess.new(
-          commit_message: params[:merge_commit_message],
-          squash_commit_message: params[:squash_commit_message],
-          should_remove_source_branch: params[:should_remove_source_branch],
-          sha: params[:sha] || merge_request.diff_head_sha
-        ).merge(ci_params).compact
-
-        if immediately_mergeable
-          ::MergeRequests::MergeService
-            .new(project: merge_request.target_project, current_user: current_user, params: merge_params)
-            .execute(merge_request)
-        elsif automatically_mergeable
-          AutoMergeService.new(merge_request.target_project, current_user, merge_params)
-            .execute(merge_request, merge_request.default_auto_merge_strategy)
-        end
-
-        if immediately_mergeable && !merge_request.merged?
-          render_api_error!("Branch cannot be merged", 422)
-        else
-          present merge_request, with: Entities::MergeRequest, current_user: current_user, project: user_project
-        end
+        present merge_request, with: Entities::MergeRequest, current_user: current_user, project: user_project
       end
 
       desc 'Returns the up to date merge-ref HEAD commit' do
         detail 'Returns the up to date merge-ref HEAD commit'
+        success code: 200
         failure [
           { code: 400, message: 'Bad request' }
         ]
@@ -861,8 +922,8 @@ module API
         end
       end
 
-      desc 'Cancel Merge When Pipeline Succeeds' do
-        detail 'Cancel merge if "Merge When Pipeline Succeeds" is enabled'
+      desc 'Cancel merge when pipeline succeeds' do
+        detail 'Cancels an automatic merge for a merge request that has been set to merge when the pipeline succeeds.'
         success Entities::MergeRequest
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -883,6 +944,7 @@ module API
 
       desc 'Rebase a merge request' do
         detail 'Automatically rebase the `source_branch` of the merge request against its `target_branch`. This feature was added in GitLab 11.6'
+        success code: 202
         failure [
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not found' },
@@ -906,9 +968,11 @@ module API
       rescue ::MergeRequest::RebaseLockTimeout => e
         render_api_error!(e.message, 409)
       end
+
       desc 'List issues that close on merge' do
         detail 'Get all the issues that would be closed by merging the provided merge request.'
         success Entities::MRNote
+        is_array true
         failure [
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not found' }
@@ -934,6 +998,8 @@ module API
 
       desc 'List issues related to merge request' do
         detail 'Get all the related issues from title, description, commits, comments and discussions of the merge request.'
+        success code: 200
+        is_array true
         failure [
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not found' }

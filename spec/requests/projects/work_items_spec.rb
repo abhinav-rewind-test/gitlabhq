@@ -8,7 +8,7 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
   include_context 'workhorse headers'
 
   let_it_be(:work_item) { create(:work_item) }
-  let_it_be(:current_user) { create(:user) }
+  let_it_be(:current_user, freeze: false) { create(:user) }
   let_it_be(:project) { create(:project) }
 
   let(:file) { fixture_file_upload("spec/fixtures/#{filename}") }
@@ -35,6 +35,59 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
     end
   end
 
+  describe 'GET #new' do
+    let(:new_work_item_url) { new_project_work_item_url(project) }
+
+    before do
+      sign_in(current_user)
+      project.add_developer(current_user)
+    end
+
+    context 'when related_issue is provided' do
+      it 'displays the new work item form' do
+        related_issue = create(:work_item, project: project)
+
+        get new_work_item_url, params: { add_related_issue: related_issue.iid }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.body).to include(<<~RELATED_ISSUE)
+        <div class="params-add-related-issue">
+        #{related_issue.id}
+        </div>
+        RELATED_ISSUE
+      end
+    end
+
+    context 'when related_issue is not accessible' do
+      let(:other_project) { create(:project) }
+      let(:inaccessible_issue) { create(:work_item, project: other_project) }
+
+      it 'renders the form without error' do
+        get new_work_item_url, params: { add_related_issue: inaccessible_issue.iid }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.body).to include(<<~RELATED_ISSUE)
+        <div class="params-add-related-issue">
+
+        </div>
+        RELATED_ISSUE
+      end
+    end
+
+    context 'when related_issue does not exist' do
+      it 'renders the form without error' do
+        get new_work_item_url, params: { add_related_issue: 9999 }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.body).to include(<<~RELATED_ISSUE)
+        <div class="params-add-related-issue">
+
+        </div>
+        RELATED_ISSUE
+      end
+    end
+  end
+
   describe 'GET /:namespace/:project/-/work_items' do
     context 'when the user can read the project' do
       before do
@@ -51,7 +104,7 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
     context 'for work_items_client_side_boards feature flag' do
       before do
         sign_in(current_user)
-        stub_feature_flags(work_items_client_side_boards: current_user, work_item_planning_view: true)
+        stub_feature_flags(work_items_client_side_boards: current_user)
       end
 
       it 'provides the feature flag set to true' do
@@ -63,7 +116,7 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
 
       context 'when disabled' do
         before do
-          stub_feature_flags(work_items_client_side_boards: false, work_item_planning_view: true)
+          stub_feature_flags(work_items_client_side_boards: false)
         end
 
         it 'provides the feature flag set to false' do
@@ -85,17 +138,6 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
         get project_work_items_path(work_item.project)
 
         expect(response).to have_gitlab_http_status(:not_found)
-      end
-    end
-
-    context 'for work_items_nav_badge_callout' do
-      it 'dismisses the callout for authenticated users' do
-        Users::Callout.where(user: current_user, feature_name: 'work_items_nav_badge').delete_all
-        sign_in(current_user)
-
-        expect { get project_work_items_path(work_item.project) }.to change {
-          Users::Callout.where(user: current_user, feature_name: 'work_items_nav_badge').count
-        }.from(0).to(1)
       end
     end
   end
@@ -210,7 +252,7 @@ RSpec.describe 'Work Items', feature_category: :team_planning do
     shared_examples 'handles authorisation' do
       context 'when unauthorized' do
         context 'with non-member' do
-          let_it_be(:current_user) { create(:user) }
+          let_it_be(:current_user, freeze: false) { create(:user) }
 
           before do
             sign_in(current_user)

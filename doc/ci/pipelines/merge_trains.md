@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Use merge trains to queue merge requests and prevent branch conflicts in GitLab CI/CD.
 title: Merge trains
 ---
@@ -114,7 +114,7 @@ Prerequisites:
 To enable merge trains:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. In GitLab 16.4 and earlier, in the **Merge method** section, verify that **Merge commit** is selected.
    In GitLab 16.5 and later, you can use any merge method.
 1. In the **Merge options** section, ensure **Enable merged results pipelines** is enabled
@@ -190,10 +190,10 @@ To add a merge request to a merge train:
 The merge request's merge train status displays under the pipeline widget with a
 message similar to `This merge request is 2 of 3 in queue.`
 
-Each merge train can run a maximum of twenty pipelines in parallel. If you add more than
-twenty merge requests to the merge train, the extra merge requests are queued, waiting
-for pipelines to complete. There is no limit to the number of queued merge requests
-waiting to join the merge train.
+Each merge train can run a [maximum number of pipelines in parallel](#merge-train-parallel-pipeline-limit).
+The default limit is 20. If you add more merge requests to the merge
+train than the limit, the extra merge requests are queued until a
+pipeline completes. The number of queued merge requests is unlimited.
 
 ## Remove a merge request from a merge train
 
@@ -230,7 +230,7 @@ When you merge a merge request immediately:
 > The **merge immediately** option may not be available if your project uses the [fast-forward](../../user/project/merge_requests/methods/_index.md#fast-forward-merge)
 > merge method and the source branch is behind the target branch. See [issue 434070](https://gitlab.com/gitlab-org/gitlab/-/issues/434070) for more details.
 
-### Allow merge trains to be skipped to merge immediately without restarting merge train pipelines
+### Merge immediately without restarting merge train pipelines
 
 {{< details >}}
 
@@ -273,10 +273,10 @@ Prerequisites:
 To enable skipping the train without pipeline restarts:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **Merge requests**.
+1. In the left sidebar, select **Settings** > **Merge requests**.
 1. In the **Merge options** section, ensure the **Enable merged results pipelines**
    and **Enable merge trains** options are enabled.
-1. Select **Allow skipping the merge train**.
+1. Select **Merge immediately without restarting the merge train**.
 1. Select **Save changes**.
 
 To merge a merge request by skipping the merge train, use the [merge requests merge API endpoint](../../api/merge_requests.md#merge-a-merge-request)
@@ -284,6 +284,31 @@ to merge with the attribute `skip_merge_train` set to `true`.
 
 The merge request merges, and the existing merge train pipelines are not canceled
 or restarted.
+
+### Merge train parallel pipeline limit
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/374188) in GitLab 19.0.
+
+{{< /history >}}
+
+By default, each [merge train](../../ci/pipelines/merge_trains.md) can run
+a maximum of 20 pipelines in parallel. When this limit is reached,
+additional merge requests are queued until a pipeline slot is available.
+
+To modify this limit for your project:
+
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **Merge requests**.
+1. In the **Merge options** section, set a value for **Maximum parallel pipelines per merge train**.
+   The minimum value is `1`. A value of `1` processes merge requests sequentially with no parallelism.
+1. Select **Save changes**.
+
+The project limit cannot exceed the [instance limit](../../administration/cicd/limits.md#merge-train-parallel-pipeline-limit).
+
+You can also use the [projects API](../../api/projects.md), or the
+[GraphQL API](../../api/graphql/reference/_index.md#projectcicdsetting).
 
 ## Troubleshooting
 

@@ -70,6 +70,7 @@ RSpec.describe Gitlab::ImportExport::Project::RelationFactory, :use_clean_rails_
         'milestone_events' => false,
         'emoji_events' => false,
         'resource_access_token_events' => false,
+        'resource_deploy_token_events' => false,
         'token' => token
       }
     end
@@ -233,29 +234,15 @@ RSpec.describe Gitlab::ImportExport::Project::RelationFactory, :use_clean_rails_
       expect(created_object.project).to equal(project)
     end
 
-    context 'computing relative position' do
-      context 'when max relative position in the hierarchy is not cached' do
-        it 'has computed new relative_position' do
-          expect(created_object.relative_position).to equal(1026) # 513*2 - ideal distance
-        end
-      end
-
-      context 'when max relative position in the hierarchy is cached' do
-        before do
-          Rails.cache.write("import:#{project.model_name.plural}:#{project.id}:hierarchy_max_issues_relative_position", 10000)
-        end
-
-        it 'has computed new relative_position' do
-          expect(created_object.relative_position).to equal(10000 + 1026) # 513*2 - ideal distance
-        end
-      end
+    it 'sets relative_position to nil so Issues::PlacementWorker can position it after import' do
+      expect(created_object.relative_position).to be_nil
     end
 
     context 'when issue_type is provided in the hash' do
       let(:additional_relation_attributes) { { 'issue_type' => 'task' } }
 
       it 'sets the correct work_item_type' do
-        expect(created_object.work_item_type).to eq(WorkItems::Type.default_by_type(:task))
+        expect(created_object.work_item_type_id).to eq(build(:work_item_system_defined_type, :task).id)
       end
 
       context 'when the provided issue_type is invalid' do
@@ -267,23 +254,40 @@ RSpec.describe Gitlab::ImportExport::Project::RelationFactory, :use_clean_rails_
       end
     end
 
-    context 'when work_item_type is provided in the hash' do
-      let(:incident_type) { WorkItems::Type.default_by_type(:incident) }
-      let(:additional_relation_attributes) { { 'work_item_type' => incident_type } }
+    context 'when work_item_type hash with name is provided' do
+      let(:incident_type) { build(:work_item_system_defined_type, :incident) }
+      let(:additional_relation_attributes) { { 'work_item_type' => { 'name' => incident_type.name } } }
 
       it 'sets the correct work_item_type' do
-        expect(created_object.work_item_type).to eq(incident_type)
+        expect(created_object.work_item_type_id).to eq(incident_type.id)
+      end
+
+      context 'when the provided name does not match any existing type' do
+        let(:additional_relation_attributes) { { 'work_item_type' => { 'name' => 'Non-existent type' } } }
+
+        it 'defaults to the issue type' do
+          expect(created_object.work_item_type_id).to eq(build(:work_item_system_defined_type, :issue).id)
+        end
       end
     end
 
-    context 'when issue_type is provided in the hash as well as a work_item_type' do
-      let(:incident_type) { WorkItems::Type.default_by_type(:incident) }
+    context 'when work_item_type hash with name is provided as well as issue_type' do
+      let(:incident_type) { build(:work_item_system_defined_type, :incident) }
       let(:additional_relation_attributes) do
-        { 'issue_type' => 'task', 'work_item_type' => incident_type }
+        { 'issue_type' => 'task', 'work_item_type' => { 'name' => incident_type.name } }
       end
 
       it 'makes work_item_type take precedence over issue_type' do
-        expect(created_object.work_item_type).to eq(incident_type)
+        expect(created_object.work_item_type_id).to eq(incident_type.id)
+      end
+    end
+
+    context 'when legacy work_item_type hash with base_type is provided (backward compatibility)' do
+      let(:incident_type) { build(:work_item_system_defined_type, :incident) }
+      let(:additional_relation_attributes) { { 'work_item_type' => { 'base_type' => 'incident' } } }
+
+      it 'sets the correct work_item_type' do
+        expect(created_object.work_item_type_id).to eq(incident_type.id)
       end
     end
 
@@ -294,18 +298,20 @@ RSpec.describe Gitlab::ImportExport::Project::RelationFactory, :use_clean_rails_
 
   context 'label object' do
     let(:relation_sym) { :labels }
+    let(:id) { non_existing_record_id }
+    let(:original_project_id) { non_existing_record_id }
     let(:relation_hash) do
       {
-        id: 3,
+        id: id,
         title: "test3",
         color: "#428bca",
-        group_id: project.group.id,
+        group_id: nil,
         created_at: "2016-07-22T08:55:44.161Z",
         updated_at: "2016-07-22T08:55:44.161Z",
         template: false,
         description: "",
-        project_id: project.id,
-        type: "GroupLabel"
+        project_id: original_project_id,
+        type: "ProjectLabel"
       }
     end
 
@@ -315,6 +321,32 @@ RSpec.describe Gitlab::ImportExport::Project::RelationFactory, :use_clean_rails_
 
     it 'has preloaded group' do
       expect(created_object.group).to equal(project.group)
+    end
+
+    it 'associates the label to the new project' do
+      expect(created_object.project_id).to eq(project.id)
+      expect(created_object.type).to eq('ProjectLabel')
+    end
+
+    context 'with group label attributes matching another group on the destination instance' do
+      let_it_be(:group_on_destination) { create(:group) }
+
+      before do
+        relation_hash.merge!(
+          'project_id' => nil,
+          'group_id' => group_on_destination.id,
+          'type' => 'GroupLabel'
+        )
+      end
+
+      it 'does not associate the label to unauthorized groups' do
+        expect(created_object.group_id).to be_nil
+      end
+
+      it 'associates the label to the new project' do
+        expect(created_object.project_id).to eq(project.id)
+        expect(created_object.type).to eq('ProjectLabel')
+      end
     end
   end
 

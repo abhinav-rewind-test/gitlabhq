@@ -10,6 +10,8 @@ module Users
     UNFINISHED_TAG_CLEANUP_CALLOUT = 'unfinished_tag_cleanup_callout'
     PAGES_MOVED_CALLOUT = 'pages_moved_callout'
     REGISTRATION_ENABLED_CALLOUT_ALLOWED_CONTROLLER_PATHS = [/^root/, /^dashboard\S*/, /^admin\S*/].freeze
+    SINGLE_ORIGIN_FALLBACK_CALLOUT_ALLOWED_CONTROLLER_PATHS = [/^root/, /^dashboard\S*/, /^admin\S*/].freeze
+    SINGLE_ORIGIN_FALLBACK_CALLOUT = 'single_origin_fallback_callout'
     WEB_HOOK_DISABLED = 'web_hook_disabled'
     BRANCH_RULES_TIP_CALLOUT = 'branch_rules_tip_callout'
     TRANSITION_TO_JIHU_CALLOUT = 'transition_to_jihu_callout'
@@ -23,8 +25,6 @@ module Users
     end
 
     def render_dashboard_ultimate_trial(user); end
-
-    def render_two_factor_auth_recovery_settings_check; end
 
     def show_suggest_popover?
       !user_dismissed?(SUGGEST_POPOVER_DISMISSED)
@@ -54,8 +54,6 @@ module Users
         controller.controller_path.match?(%r{^admin(/\S*)?$})
     end
 
-    def dismiss_two_factor_auth_recovery_settings_check; end
-
     def web_hook_disabled_dismissed?(object)
       return false unless object.is_a?(::WebHooks::HasWebHooks)
 
@@ -79,14 +77,25 @@ module Users
 
     def show_email_otp_enrollment_callout?
       return false unless current_user
-      return false unless Feature.enabled?(:email_based_mfa, current_user)
+      return false unless current_user.email_otp_available?
       return false if user_dismissed?(EMAIL_OTP_ENROLLMENT_CALLOUT)
       return false unless current_user.email_otp_required_after.present?
+
       # Only show for users who can log in with a password and don't have 2FA
+      return false unless current_user.allow_password_authentication?
       return false if current_user.password_automatically_set? || current_user.two_factor_enabled?
 
-      days_until_enrollment = (current_user.email_otp_required_after.to_date - Date.current).to_i
-      days_until_enrollment.between?(8, 14)
+      current_user.email_otp_required_after > 7.days.from_now &&
+        current_user.email_otp_required_after <= 14.days.from_now
+    end
+
+    def show_single_origin_fallback_callout?
+      controller_path = controller.controller_path
+
+      current_user&.can_admin_all_resources? &&
+        !user_dismissed?(SINGLE_ORIGIN_FALLBACK_CALLOUT) &&
+        SINGLE_ORIGIN_FALLBACK_CALLOUT_ALLOWED_CONTROLLER_PATHS.any? { |path| controller_path.match?(path) } &&
+        WebIde::ExtensionMarketplace.single_origin_fallback_enabled?
     end
 
     private

@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Pipeline status emails
 ---
 
@@ -25,7 +25,7 @@ Prerequisites:
 
 To enable pipeline status emails:
 
-1. In your project or group, on the left sidebar, select **Settings** > **Integrations**.
+1. In your project or group, in the left sidebar, select **Settings** > **Integrations**.
 1. Select **Pipeline status emails**.
 1. Ensure the **Active** checkbox is selected.
 1. In **Recipients**, enter a comma-separated list of email addresses.
@@ -34,5 +34,7 @@ To enable pipeline status emails:
    **Notify only broken pipelines**.
 1. Optional. To receive notifications only when a pipeline's status changes, select
    **Notify only when status changes**.
+1. Optional. To receive notifications for parent and child pipelines, select
+   **Notify child pipelines**.
 1. Select the branches to send notifications for.
 1. Select **Save changes**.

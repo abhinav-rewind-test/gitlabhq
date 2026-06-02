@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Monitor environments across multiple projects, including latest commits, pipeline status, and deployment times.
 title: Environments Dashboard
 ---
@@ -28,7 +28,7 @@ a more systemic problem you need to investigate.
 1. Select **Your work**.
 1. Select **Environments**.
 
-![Environments Dashboard showing two rows of projects with their deployment environments and pipeline status.](img/environments_dashboard_v12_5.png)
+![Environments Dashboard showing two rows of projects with their deployment environments and pipeline status.](img/environments_dashboard_v18_8.png)
 
 The Environments dashboard displays a paginated list of projects that includes
 up to three environments per project.

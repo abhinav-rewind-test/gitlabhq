@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Labels
 description: Project labels, group labels, nested scopes, and filtering.
 ---
@@ -78,7 +78,7 @@ You can also assign and unassign labels with quick actions:
 To view the **project's labels**:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the left sidebar, select **Manage** > **Labels**.
 
 Or:
 
@@ -95,7 +95,7 @@ project or group path where it was created.
 To view the **group's labels**:
 
 1. In the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Labels**.
+1. In the left sidebar, select **Manage** > **Labels**.
 
 Or:
 
@@ -116,14 +116,14 @@ the group's projects.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project or group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project or group.
 
 ### Create a project label
 
 To create a project label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Select **New label**.
 1. In the **Title** field, enter a short, descriptive name for the label. You
    can also use this field to create [scoped, mutually exclusive labels](#scoped-labels).
@@ -146,7 +146,7 @@ Labels you create this way belong to the same project as the issue or merge requ
 
 Prerequisites:
 
-- You must have at least the Planner role for the project.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To do so:
 
@@ -162,8 +162,8 @@ To do so:
 
 To create a group label:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Select **New label**.
 1. In the **Title** field, enter a short, descriptive name for the label. You
    can also use this field to create [scoped, mutually exclusive labels](#scoped-labels).
@@ -193,7 +193,7 @@ Labels you create this way belong to the same group as the epic.
 
 Prerequisites:
 
-- You must have at least the Planner role for the group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the group.
 
 To do so:
 
@@ -202,7 +202,7 @@ To do so:
 1. Select **Create group label**.
 1. Fill in the name field. You can't specify a description if creating a label this way.
    You can add a description later by [editing the label](#edit-a-label).
-1. Select a color by selecting from the available colors,enter input a hex color value for a specific color.
+1. Select a color by selecting from the available colors, or enter a hex color value for a specific color.
 1. Select **Create**.
 
 ## Edit a label
@@ -215,14 +215,14 @@ To do so:
 
 Prerequisites:
 
-- You must have at least the Planner role for the project or group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project or group.
 
 ### Edit a project label
 
 To edit a **project** label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to the label you want to edit, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}), and then select **Edit**.
 1. Select **Save changes**.
 
@@ -230,8 +230,8 @@ To edit a **project** label:
 
 To edit a **group** label:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to the label you want to edit, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}), and then select **Edit**.
 1. Select **Save changes**.
 
@@ -249,22 +249,22 @@ To edit a **group** label:
 
 Prerequisites:
 
-- You must have at least the Planner role for the project.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 ### Delete a project label
 
 To delete a **project** label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to the **Subscribe** button, select ({{< icon name="ellipsis_v" >}}), and then select **Delete**.
 
 ### Delete a group label
 
 To delete a **group** label:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Either:
 
    - Next to the **Subscribe** button, select ({{< icon name="ellipsis_v" >}}).
@@ -278,13 +278,9 @@ To delete a **group** label:
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/4233) in GitLab 18.3 [with a flag](../../administration/feature_flags/_index.md) named `labels_archive`. Disabled by default.
 - [Changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/211744) flag `labels_archive` so it can be turned on and off for a group in GitLab 18.7.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/556700) in GitLab 18.11. Feature flag `labels_archive` removed.
 
 {{< /history >}}
-
-> [!flag]
-> The availability of this feature is controlled by a feature flag.
-> For more information, see the history.
-> This feature is available for testing, but not ready for production use.
 
 You can archive labels that are no longer actively used but need to be preserved
 for historical perspective and search purposes.
@@ -304,12 +300,12 @@ When you archive a label:
 
 Prerequisites:
 
-- You must have at least the Planner role for the project or group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project or group.
 
 To archive a label:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to the label you want to archive, select **Edit** ({{< icon name="pencil" >}}).
 1. Select the **Archived** checkbox.
 1. Select **Save changes**.
@@ -320,8 +316,8 @@ The label is archived and [deprioritized](#set-label-priority).
 
 To view archived labels:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Go to the labels page for your project or group.
 1. Select the **Archived** tab.
 
@@ -329,12 +325,12 @@ To view archived labels:
 
 Prerequisites:
 
-- You must have at least the Planner role for the project or group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project or group.
 
 To unarchive a label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Select the **Archived** tab.
 1. Next to the label you want to unarchive, select **Edit** ({{< icon name="pencil" >}}).
 1. Clear the **Archived** checkbox.
@@ -360,13 +356,13 @@ also merged.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project.
-- You must have at least the Planner role for the project's parent group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project's parent group.
 
 To promote a project label to a group label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to the **Subscribe** button, select the three dots ({{< icon name="ellipsis_v" >}}) and
    select **Promote to group label**.
 
@@ -390,12 +386,12 @@ Prerequisites:
 
 - There must be a group that contains subgroups ("parent group").
 - There must be a subgroup in the parent group, that has a label you want to promote.
-- You must have at least the Planner role for both groups.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for both groups.
 
 To "promote" the label to the parent group:
 
 1. In the parent group, [create a label](#create-a-group-label) with the same name as the original
-   one. We recommend making it a different color so you don't mistake the two while you're doing this.
+   one. You should make it a different color so you don't mistake the two while you're doing this.
 1. In the subgroup, [view its labels](#view-group-labels). You should see the two labels and where
    they come from:
 
@@ -423,13 +419,13 @@ labels from the label list page.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 - The project must have no labels present.
 
 To add the default labels to the project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Select **Generate a default set of labels**.
 
 The following labels are created:
@@ -574,16 +570,16 @@ It's not possible to do it from the group label list.
 
 > [!note]
 > Priority sorting is based on the highest priority label only.
-> [This discussion](https://gitlab.com/gitlab-org/gitlab/-/issues/14523) considers changing this.
+> [Issue 14523](https://gitlab.com/gitlab-org/gitlab/-/issues/14523) considers changing this.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project.
 
 To prioritize a label:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Manage** > **Labels**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Manage** > **Labels**.
 1. Next to a label you want to prioritize, select the star ({{< icon name="star-o" >}}).
 
 ![Labels prioritized](img/labels_prioritized_v13_5.png)
@@ -594,7 +590,7 @@ To change the relative priority of these labels, drag them up and down the list.
 The labels higher in the list get higher priority.
 
 To learn what happens when you sort by priority or label priority, see
-[Sorting and ordering issue lists](issues/sorting_issue_lists.md).
+[sorting and ordering issue lists](issues/sorting_issue_lists.md).
 
 ## Lock labels when a merge request is merged
 
@@ -625,18 +621,47 @@ When you add locked labels to issues or epics, they behave like regular labels.
 
 Prerequisites:
 
-- You must have at least the Planner role for the project or group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for the project or group.
 
 > [!warning]
 > After you set a label as locked, nobody can undo it or delete the label.
 
 To set a label to get locked on merge:
 
-1. On the top bar, select **Search or go to** and find your group or project.
+1. In the top bar, select **Search or go to** and find your group or project.
 1. Select **Manage** > **Labels**.
 1. Next to the label you want to edit, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}), and then select **Edit**.
 1. Select the **Lock label after a merge request is merged** checkbox.
 1. Select **Save changes**.
+
+## Audit events for labels
+
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/415036) in GitLab 18.11.
+
+GitLab records [audit events](../compliance/audit_event_types.md) when you create,
+update, or delete project and group labels. Use these events to track label changes
+for debugging or compliance purposes.
+
+The following label actions generate audit events:
+
+- `label_created`: A project or group label is created.
+- `label_updated`: A project or group label is updated. When the title changes,
+  the audit message includes the old and new title
+  (for example, `Changed label title from Foo to Bar`).
+  For other field changes, the message is generic
+  (for example, `Updated label Foo`).
+- `label_deleted`: A project or group label is deleted.
+
+> [!note]
+> Labels that GitLab creates automatically, for example during Jira imports, do not
+> generate audit events. Only labels created through direct user action are audited.
 
 ## Related topics
 

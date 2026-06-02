@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 title: Polling interval multiplier
 ---
@@ -38,7 +38,7 @@ Prerequisites:
 To adjust the polling interval multiplier:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Settings** > **Preferences**.
+1. In the left sidebar, select **Settings** > **Preferences**.
 1. Expand **Polling interval multiplier**.
 1. Set a value for the polling interval multiplier. This multiplier is applied to all resources at
    once.

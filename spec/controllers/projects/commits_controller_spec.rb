@@ -3,16 +3,16 @@
 require 'spec_helper'
 
 RSpec.describe Projects::CommitsController, feature_category: :source_code_management do
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:repository) { project.repository }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:project, freeze: false) { create(:project, :repository) }
+  let_it_be(:repository, freeze: false) { project.repository }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   before do
     project.add_maintainer(user)
   end
 
   context 'unauthenticated user' do
-    let_it_be(:project) { create(:project, :repository, :public) }
+    let_it_be(:project, freeze: false) { create(:project, :repository, :public) }
 
     context 'GET show' do
       context 'without path' do
@@ -164,6 +164,22 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
 
           it { is_expected.to respond_with(:not_found) }
         end
+      end
+
+      context "valid branch, whitespace-only file that exists" do
+        let_it_be(:project, freeze: false) { create(:project, :repository) }
+        let(:id) { 'master/ ' }
+
+        before do
+          project.add_maintainer(user)
+          project.repository.create_file(
+            user, ' ', 'content',
+            message: 'Add file with space name', branch_name: 'master'
+          )
+          request
+        end
+
+        it { is_expected.to respond_with(:success) }
       end
 
       context 'when branch has only empty commits' do
@@ -390,6 +406,22 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
           expect(Commit).to receive(:preload_markdown_cache!).and_call_original
 
           get :show, params: { namespace_id: project.namespace, project_id: project, id: 'master/README.md' }
+        end
+      end
+
+      context 'when gitaly is unavailable' do
+        before do
+          allow_next_instance_of(Repository) do |repository|
+            allow(repository).to receive(:commits)
+              .and_raise(Gitlab::Git::CommandError, 'Gitaly unavailable')
+          end
+        end
+
+        it 'returns 503 and sets gitaly_unavailable' do
+          get :show, params: { namespace_id: project.namespace, project_id: project, id: 'master' }
+
+          expect(response).to have_gitlab_http_status(:service_unavailable)
+          expect(assigns(:gitaly_unavailable)).to be true
         end
       end
     end

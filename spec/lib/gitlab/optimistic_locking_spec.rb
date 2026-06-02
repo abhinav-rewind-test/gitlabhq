@@ -16,29 +16,15 @@ RSpec.describe Gitlab::OptimisticLocking do
   describe '#retry_lock' do
     let(:name) { 'optimistic_locking_spec' }
 
-    it 'does not change current_scope', :aggregate_failures do
-      instance = Class.new { include Gitlab::OptimisticLocking }.new
-      relation = pipeline.cancelable_statuses
-
-      expected_scope = Ci::Build.current_scope&.to_sql
-
-      instance.send(:retry_lock, relation, name: :test) do
-        expect(Ci::Build.current_scope&.to_sql).to eq(expected_scope)
-      end
-
-      expect(Ci::Build.current_scope&.to_sql).to eq(expected_scope)
-    end
-
     context 'when state changed successfully without retries' do
       subject do
         described_class.retry_lock(pipeline, name: name) do |lock_subject|
-          lock_subject.succeed
+          lock_subject.update_column(:status, 'failed')
         end
       end
 
       it 'does not reload object' do
         expect(pipeline).not_to receive(:reset)
-        expect(pipeline).to receive(:succeed).and_call_original
 
         subject
       end
@@ -52,7 +38,7 @@ RSpec.describe Gitlab::OptimisticLocking do
       it 'adds number of retries to histogram' do
         subject
 
-        expect(histogram).to have_received(:observe).with({}, 0)
+        expect(histogram).to have_received(:observe).with({}, 0).once
       end
     end
 
@@ -119,19 +105,6 @@ RSpec.describe Gitlab::OptimisticLocking do
         expect { subject }.to raise_error(ActiveRecord::StaleObjectError)
 
         expect(histogram).to have_received(:observe).with({}, max_retries)
-      end
-    end
-  end
-
-  describe '#retry_optimistic_lock' do
-    context 'when locking module is mixed in' do
-      let(:unlockable) do
-        Class.new.include(described_class).new
-      end
-
-      it 'is an alias for retry_lock' do
-        expect(unlockable.method(:retry_optimistic_lock))
-          .to eq unlockable.method(:retry_lock)
       end
     end
   end

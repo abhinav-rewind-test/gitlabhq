@@ -1,6 +1,7 @@
 package duoworkflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,19 +12,39 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
+
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/headers"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/log"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/orbit"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/transport"
 
 	pb "gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/clients/gopb/contract"
 
-	"gitlab.com/gitlab-org/gitlab/workhorse/internal/log"
-
-	"gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"gitlab.com/gitlab-org/gitlab/workhorse/internal/transport"
+	"google.golang.org/protobuf/proto"
 )
 
 const gitlabServerName = "gitlab"
+const orbitServerName = "orbit"
+
+type workflowState struct {
+	mu         sync.RWMutex
+	workflowID string
+}
+
+func (s *workflowState) WorkflowID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.workflowID
+}
+
+func (s *workflowState) SetWorkflowID(id string) {
+	s.mu.Lock()
+	s.workflowID = id
+	s.mu.Unlock()
+}
 
 type serverSession struct {
 	name    string
@@ -41,6 +62,7 @@ type mcpManager interface {
 	CallTool(context.Context, *pb.Action) (*pb.ClientEvent, error)
 	Tools() []*pb.McpTool
 	PreApprovedTools() []string
+	SetWorkflowID(string)
 	Close() error
 }
 
@@ -49,12 +71,34 @@ type manager struct {
 	preApprovedTools   []string
 	toolSessionsByName map[string]*toolSession
 	serverSessions     []*serverSession
+	workflow           *workflowState
 }
 
 type roundTripper struct {
+	serverName  string
 	next        http.RoundTripper
 	headers     map[string]string
 	originalReq *http.Request
+	rails       *api.API
+	workflow    *workflowState
+}
+
+type responseCapture struct {
+	statusCode int
+	headers    http.Header
+	body       bytes.Buffer
+}
+
+func (rc *responseCapture) Header() http.Header         { return rc.headers }
+func (rc *responseCapture) Write(b []byte) (int, error) { return rc.body.Write(b) }
+func (rc *responseCapture) WriteHeader(statusCode int)  { rc.statusCode = statusCode }
+
+func (rc *responseCapture) toResponse() *http.Response {
+	return &http.Response{
+		StatusCode: rc.statusCode,
+		Header:     rc.headers,
+		Body:       io.NopCloser(&rc.body),
+	}
 }
 
 type limitedReadCloser struct {
@@ -66,11 +110,21 @@ func (lrc *limitedReadCloser) Close() error {
 	return lrc.closer.Close()
 }
 
+func (t *roundTripper) setWorkflowHeader(r *http.Request) {
+	if t.workflow == nil {
+		return
+	}
+	if wfID := t.workflow.WorkflowID(); wfID != "" {
+		r.Header.Set("X-Duo-Workflow-Session-Id", wfID)
+	}
+}
+
 func (t *roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	for name, value := range t.headers {
 		r.Header.Set(name, value)
 	}
 	r.Header.Set("User-Agent", "GitLab-Workhorse-Mcp-Client")
+	t.setWorkflowHeader(r)
 
 	if t.originalReq != nil {
 		if clientIP, _, splitHostErr := net.SplitHostPort(t.originalReq.RemoteAddr); splitHostErr == nil {
@@ -85,7 +139,29 @@ func (t *roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	resp, err := t.next.RoundTrip(r)
-	if resp != nil && resp.Body != nil {
+	if err != nil {
+		return resp, err
+	}
+
+	// Orbit MCP tool calls return a Gitlab-Workhorse-Send-Data header that
+	// triggers gRPC streaming to GKG. Process it inline since this transport
+	// bypasses the normal senddata middleware.
+	if t.serverName == orbitServerName {
+		if sendData := resp.Header.Get(headers.GitlabWorkhorseSendDataHeader); sendData != "" {
+			sq := orbit.NewSendQuery(t.rails, t.rails.Version)
+			if sq.Match(sendData) {
+				if resp.Body != nil {
+					_, _ = io.Copy(io.Discard, resp.Body)
+					_ = resp.Body.Close()
+				}
+				rc := &responseCapture{statusCode: http.StatusOK, headers: make(http.Header)}
+				sq.Inject(rc, r, sendData)
+				return rc.toResponse(), nil
+			}
+		}
+	}
+
+	if resp.Body != nil {
 		resp.Body = &limitedReadCloser{
 			LimitedReader: io.LimitedReader{
 				R: resp.Body,
@@ -103,11 +179,12 @@ func newMcpManager(rails *api.API, r *http.Request, servers map[string]api.McpSe
 		return nil, fmt.Errorf("the list of server configs is empty")
 	}
 
+	state := &workflowState{}
 	var errs []error
 	var sessions []*serverSession
 
 	for serverName, serverCfg := range servers {
-		session, err := buildSession(rails, r, serverName, serverCfg)
+		session, err := buildSession(rails, r, serverName, serverCfg, state)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to initialize MCP session %s: %v", serverName, err))
 			continue
@@ -119,6 +196,7 @@ func newMcpManager(rails *api.API, r *http.Request, servers map[string]api.McpSe
 	manager := &manager{
 		toolSessionsByName: make(map[string]*toolSession),
 		serverSessions:     sessions,
+		workflow:           state,
 	}
 
 	if err := manager.buildTools(r.Context()); err != nil {
@@ -128,7 +206,7 @@ func newMcpManager(rails *api.API, r *http.Request, servers map[string]api.McpSe
 	return manager, errors.Join(errs...)
 }
 
-func buildSession(rails *api.API, r *http.Request, serverName string, serverCfg api.McpServerConfig) (*serverSession, error) {
+func buildSession(rails *api.API, r *http.Request, serverName string, serverCfg api.McpServerConfig, state *workflowState) (*serverSession, error) {
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
 
 	var t *mcp.StreamableClientTransport
@@ -136,23 +214,33 @@ func buildSession(rails *api.API, r *http.Request, serverName string, serverCfg 
 	var endpoint string
 	var nextTransport http.RoundTripper
 
-	if serverName == gitlabServerName {
-		endpoint = rails.URL.JoinPath("api/v4/mcp").String()
+	internalPaths := map[string]string{
+		gitlabServerName: "api/v4/mcp",
+		orbitServerName:  "api/v4/orbit/mcp",
+	}
+
+	if path, ok := internalPaths[serverName]; ok {
+		endpoint = rails.URL.JoinPath(path).String()
 		nextTransport = rails.Client.Transport
 	} else {
 		endpoint = serverCfg.URL
 		nextTransport = transport.NewRestrictedTransport()
 	}
 
+	rt := &roundTripper{
+		serverName:  serverName,
+		next:        nextTransport,
+		headers:     serverCfg.Headers,
+		originalReq: r,
+		workflow:    state,
+	}
+	if serverName == orbitServerName {
+		rt.rails = rails
+	}
+
 	t = &mcp.StreamableClientTransport{
-		Endpoint: endpoint,
-		HTTPClient: &http.Client{
-			Transport: &roundTripper{
-				next:        nextTransport,
-				headers:     serverCfg.Headers,
-				originalReq: r,
-			},
-		},
+		Endpoint:   endpoint,
+		HTTPClient: &http.Client{Transport: rt},
 		// DisableStandaloneSSE must be true because the GitLab MCP server does not support
 		// SSE (Server-Sent Events). Without this flag, the client attempts an SSE connection
 		// first, which fails and breaks the connection flow.
@@ -206,6 +294,7 @@ func (m *manager) buildTools(ctx context.Context) error {
 					Name:        prefixedName,
 					Description: tool.Description,
 					InputSchema: string(schemaBytes),
+					Trusted:     proto.Bool(s.cfg.Trusted),
 				}
 
 				m.tools = append(m.tools, mcpTool)
@@ -250,6 +339,14 @@ func (m *manager) PreApprovedTools() []string {
 	return m.preApprovedTools
 }
 
+func (m *manager) SetWorkflowID(id string) {
+	if m == nil || m.workflow == nil {
+		return
+	}
+
+	m.workflow.SetWorkflowID(id)
+}
+
 func (m *manager) CallTool(ctx context.Context, action *pb.Action) (*pb.ClientEvent, error) {
 	mcpTool := action.GetRunMCPTool()
 
@@ -278,6 +375,21 @@ func (m *manager) CallTool(ctx context.Context, action *pb.Action) (*pb.ClientEv
 		return nil, fmt.Errorf("CallTool: failed to call MCP tool: %v", err)
 	}
 
+	event := m.buildClientEvent(ctx, action, mcpTool, res)
+
+	log.WithContextFields(ctx, log.Fields{
+		"request_id":           action.GetRequestID(),
+		"name":                 mcpTool.Name,
+		"args_size":            len(action.GetRunMCPTool().Args),
+		"payload_size":         proto.Size(event),
+		"event_type":           fmt.Sprintf("%T", event.Response),
+		"action_response_type": fmt.Sprintf("%T", event.GetActionResponse().GetResponseType()),
+	}).Info("Sending MCP tool response")
+
+	return event, nil
+}
+
+func (m *manager) buildClientEvent(ctx context.Context, action *pb.Action, mcpTool *pb.RunMCPTool, res *mcp.CallToolResult) *pb.ClientEvent {
 	var content string
 	if len(res.Content) == 0 {
 		content = "MCP tool response is empty"
@@ -310,7 +422,7 @@ func (m *manager) CallTool(ctx context.Context, action *pb.Action) (*pb.ClientEv
 				},
 			},
 		},
-	}, nil
+	}
 }
 
 func (m *manager) Close() error {

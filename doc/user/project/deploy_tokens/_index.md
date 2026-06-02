@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Deploy tokens
 description: Repository cloning, token creation, and container registry.
 ---
@@ -61,8 +61,8 @@ A deploy token's scope determines the actions it can perform.
 | `read_repository`        | Read-only access to the repository using `git clone`.                                                        |
 | `read_registry`          | Read-only access to the images in the project's [container registry](../../packages/container_registry/_index.md). |
 | `write_registry`         | Write access (push) to the project's [container registry](../../packages/container_registry/_index.md). You need both read and write access to push images. |
-| `read_virtual_registry`  | If a project is private and authorization is required, grants read-only (pull) access to container images through the [dependency proxy](../../packages/dependency_proxy/_index.md). Available only when the dependency proxy is enabled. |
-| `write_virtual_registry` | If a project is private and authorization is required, grants read (pull), write (push), and delete access to container images through the [dependency proxy](../../packages/dependency_proxy/_index.md). Available only when the dependency proxy is enabled. |
+| `read_virtual_registry`  | Grants read-only (pull) access to container images through the group-level Dependency Proxy and virtual registry. Does not grant direct access to the project’s container registry. Available only when the Dependency Proxy is enabled. |
+| `write_virtual_registry` | Grants write access to the group-level Dependency Proxy cache and implicitly permits pulls through that cache. Does not grant push or delete access to the project’s container registry. Available only when the Dependency Proxy is enabled. |
 | `read_package_registry`  | Read-only access to the project's package registry.                                                          |
 | `write_package_registry` | Write access to the project's package registry.                                                              |
 
@@ -144,8 +144,8 @@ Prerequisites:
 - To create a group deploy token, you must have the Owner role for the group.
 - To create a project deploy token, you must have the Maintainer or Owner role for the project.
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy tokens**.
 1. Select **Add token**.
 1. Complete the fields, and select the desired [scopes](#scope).
@@ -165,8 +165,8 @@ Prerequisites:
 
 To revoke a deploy token:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Settings** > **Repository**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Settings** > **Repository**.
 1. Expand **Deploy tokens**.
 1. In the **Active Deploy Tokens** section, by the token you want to revoke, select **Revoke**.
 
@@ -253,9 +253,9 @@ nuget push mypkg.nupkg -Source GitLab
 ## Pull images from the dependency proxy
 
 You can use a deploy token to pull images from the dependency proxy.
-
 Prerequisites:
 
-- A deploy token with `read_registry` and `write_registry` scopes.
+- For Dependency Proxy: `read_registry` and `write_registry` scopes.
+- For the virtual registry: `read_virtual_registry` and `write_virtual_registry` scopes.
 
 Follow the dependency proxy [authentication instructions](../../packages/dependency_proxy/_index.md).

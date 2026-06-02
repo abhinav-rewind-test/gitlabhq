@@ -426,6 +426,14 @@ module ObjectStorage
       nil
     end
 
+    # Disable sending x-amz-acl headers entirely. Modern S3 buckets default to
+    # "Bucket Owner Enforced" which disables ACLs and rejects requests that
+    # include an x-amz-acl header with AccessControlListNotSupported.
+    # See https://gitlab.com/gitlab-org/gitlab/-/work_items/396349
+    def fog_acl
+      false
+    end
+
     def delete_migrated_file(migrated_file)
       migrated_file.delete
     end
@@ -545,7 +553,7 @@ module ObjectStorage
 
         # TODO:
         # We store file internally and force it to be considered as `cached`
-        # This makes CarrierWave to store file in permament location (copy/delete)
+        # This makes CarrierWave to store file in permanent location (copy/delete)
         # once this object is saved, but not sooner
         @cache_id = "force-to-use-cache" # rubocop:disable Gitlab/ModuleWithInstanceVariables
         @file = file # rubocop:disable Gitlab/ModuleWithInstanceVariables

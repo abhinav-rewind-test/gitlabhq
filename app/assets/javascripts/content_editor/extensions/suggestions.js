@@ -3,7 +3,7 @@ import { VueRenderer } from '@tiptap/vue-2';
 import tippy from 'tippy.js';
 import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
-import { uniqueId } from 'lodash';
+import { uniqueId } from 'lodash-es';
 import { REFERENCE_TYPES } from '~/content_editor/constants/reference_types';
 import {
   prioritizeCommandsWithFrequent,
@@ -17,6 +17,11 @@ import Frontmatter from './frontmatter';
 import Code from './code';
 
 const CODE_NODE_TYPES = [CodeBlockHighlight.name, Diagram.name, Frontmatter.name, Code.name];
+
+const QUOTED_QUICK_ACTION_REFERENCE_TYPES = {
+  [COMMANDS.STATUS]: REFERENCE_TYPES.STATUS,
+  [COMMANDS.TYPE]: REFERENCE_TYPES.TYPE,
+};
 
 function expandRangeToIncludeText(range, text, tiptapEditor) {
   if (!text) return range;
@@ -43,8 +48,11 @@ function createSuggestionPlugin({
   insertionMap = {},
   serializer,
   autocompleteHelper,
+  resolveReferenceType,
   ...options
 }) {
+  let activeReferenceType = referenceType;
+
   return Suggestion({
     editor,
     char,
@@ -86,15 +94,18 @@ function createSuggestionPlugin({
       if (CODE_NODE_TYPES.some((type) => tiptapEditor.isActive(type))) return [];
       const slice = tiptapEditor.state.doc.slice(0, tiptapEditor.state.selection.to);
       const markdownLine = serializer.serialize({ doc: slice.content }).split('\n').pop();
+      const prefixCommand = markdownLine.match(/\/\w+/)?.[0];
+
+      activeReferenceType = resolveReferenceType?.(prefixCommand) || referenceType;
 
       return autocompleteHelper
-        .getDataSource(referenceType, {
-          command: markdownLine.match(/\/\w+/)?.[0],
+        .getDataSource(activeReferenceType, {
+          command: prefixCommand,
           cache,
           limit,
           ...options,
         })
-        .search(query)
+        .search(prefixCommand, query)
         .then((data) => {
           if (!query) {
             return prioritizeCommandsWithFrequent(data);
@@ -110,7 +121,11 @@ function createSuggestionPlugin({
       let isHidden = false;
 
       const onUpdate = (props) => {
-        component?.updateProps({ ...props, loading: false });
+        component?.updateProps({
+          ...props,
+          nodeProps: { referenceType: activeReferenceType },
+          loading: false,
+        });
 
         if (!props.clientRect) return;
 
@@ -126,7 +141,7 @@ function createSuggestionPlugin({
               ...props,
               char,
               nodeType,
-              nodeProps: { referenceType },
+              nodeProps: { referenceType: activeReferenceType },
               loading: true,
             },
             editor: props.editor,
@@ -138,7 +153,7 @@ function createSuggestionPlugin({
 
           popup = tippy('body', {
             getReferenceClientRect: props.clientRect,
-            appendTo: () => document.body,
+            appendTo: () => props.editor.view.dom.parentNode || document.body,
             onHide: () => {
               isHidden = true;
             },
@@ -150,6 +165,24 @@ function createSuggestionPlugin({
             interactive: true,
             trigger: 'manual',
             placement: 'bottom-start',
+            popperOptions: {
+              modifiers: [
+                {
+                  name: 'flip',
+                  enabled: true,
+                  options: {
+                    fallbackPlacements: ['top-start'],
+                  },
+                },
+                {
+                  name: 'preventOverflow',
+                  enabled: true,
+                  options: {
+                    boundary: 'clippingParents',
+                  },
+                },
+              ],
+            },
           });
         },
 
@@ -221,7 +254,10 @@ export default Node.create({
         filterOnBackend: true,
       }),
       createPlugin('*iteration:', 'reference', REFERENCE_TYPES.ITERATION),
-      createPlugin('"', 'reference', REFERENCE_TYPES.STATUS, { limit: 100 }),
+      createPlugin('"', 'reference', REFERENCE_TYPES.STATUS, {
+        limit: 100,
+        resolveReferenceType: (prefixCommand) => QUOTED_QUICK_ACTION_REFERENCE_TYPES[prefixCommand],
+      }),
       createPlugin('%', 'reference', REFERENCE_TYPES.MILESTONE),
       createPlugin(':', 'emoji', REFERENCE_TYPES.EMOJI),
       createPlugin('[[', 'link', REFERENCE_TYPES.WIKI),
@@ -239,9 +275,11 @@ export default Node.create({
           [COMMANDS.ASSIGN_REVIEWER]: '@',
           [COMMANDS.UNASSIGN_REVIEWER]: '@',
           [COMMANDS.REASSIGN_REVIEWER]: '@',
+          [COMMANDS.REQUEST_REVIEW]: '@',
           [COMMANDS.MILESTONE]: '%',
           [COMMANDS.ITERATION]: '*iteration:',
           [COMMANDS.STATUS]: '"',
+          [COMMANDS.TYPE]: '"',
         },
       }),
     ];

@@ -1,10 +1,9 @@
 ---
 stage: Tenant Scale
 group: Geo
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: Back up your self-managed GitLab instance using gitlab-backup command, including database, repositories, and configuration files.
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Back up GitLab
-description: Guide to backing up GitLab instances, covering backup strategies, data types, command options, and scaling considerations.
+description: Back up your GitLab Self-Managed instance.
 ---
 
 {{< details >}}
@@ -138,7 +137,7 @@ for Wiki and Design Repository cases.
 
 Personal and project snippets, and group wiki content, are stored in Git repositories.
 
-Project forks are deduplicated in live a GitLab site using pool repositories.
+Project forks are deduplicated in a GitLab site using pool repositories.
 
 The backup command produces a Git bundle for each repository and tars them all up. This duplicates pool repository data into every fork. In our testing, 100 GB of Git repositories took a little over 2 hours to back up and upload to S3. At around 400 GB of Git data, the backup command is likely not viable for regular backups. For more information, see [alternative backup strategies](#alternative-backup-strategies).
 
@@ -149,7 +148,7 @@ GitLab stores blobs (or files) such as issue attachments or LFS objects into eit
 - The file system in a specific location.
 - An [Object Storage](../object_storage.md) solution. Object Storage solutions can be:
   - Cloud based like Amazon S3 and Google Cloud Storage.
-  - Hosted by you (like MinIO).
+  - Self-hosted S3-compatible object storage.
   - A Storage Appliance that exposes an Object Storage-compatible API.
 
 #### Object storage
@@ -176,10 +175,17 @@ GitLab container registry storage can be configured in either:
 - The file system in a specific location.
 - An Object Storage solution. Object Storage solutions can be:
   - Cloud based like Amazon S3 and Google Cloud Storage.
-  - Hosted by you (like MinIO).
+  - Self-hosted S3-compatible object storage.
   - A Storage Appliance that exposes an Object Storage-compatible API.
 
 The backup command does not back up registry data when they are stored in Object Storage.
+
+#### Metadata database
+
+If you have enabled the [container registry metadata database](https://docs.gitlab.com/charts/charts/registry/metadata_database), you must configure access to the registry database during the backup. Follow the instructions for your GitLab installation to configure the required credentials:
+
+- [Linux packaged instructions](https://docs.gitlab.com/omnibus/settings/backups/#container-registry-metadata-database-backup-credentials)
+- [GitLab Helm chart](https://docs.gitlab.com/charts/charts/gitlab/toolbox/#registry-metadata-database-credentials)
 
 See also:
 
@@ -463,13 +469,13 @@ DECOMPRESS_CMD=tee gitlab-backup restore
 An example of compressing backups with `pigz` using 4 processes:
 
 ```shell
-COMPRESS_CMD="pigz --compress --stdout --fast --processes=4" sudo gitlab-backup create
+sudo COMPRESS_CMD="pigz --stdout --fast --processes 4" gitlab-backup create
 ```
 
 Because `pigz` compresses to the `gzip` format, it is not required to use `pigz` to decompress backups which were compressed by `pigz`. However, it can still have a performance benefit over `gzip`. An example of decompressing backups with `pigz`:
 
 ```shell
-DECOMPRESS_CMD="pigz --decompress --stdout" sudo gitlab-backup restore
+sudo DECOMPRESS_CMD="pigz --decompress --stdout" gitlab-backup restore
 ```
 
 > [!note]
@@ -483,13 +489,13 @@ DECOMPRESS_CMD="pigz --decompress --stdout" sudo gitlab-backup restore
 An example of compressing backups with `zstd` using 4 threads:
 
 ```shell
-COMPRESS_CMD="zstd --compress --stdout --fast --threads=4" sudo gitlab-backup create
+sudo COMPRESS_CMD="zstd --compress --stdout --fast --threads=4" gitlab-backup create
 ```
 
 An example of decompressing backups with `zstd`:
 
 ```shell
-DECOMPRESS_CMD="zstd --decompress --stdout" sudo gitlab-backup restore
+sudo DECOMPRESS_CMD="zstd --decompress --stdout" gitlab-backup restore
 ```
 
 > [!note]
@@ -517,7 +523,7 @@ Depending on your installation type, slightly different components can be skippe
 
 {{< tab title="Linux package (Omnibus) / Docker / Self-compiled" >}}
 
-<!-- source: https://gitlab.com/gitlab-org/gitlab/-/blob/d693aa7f894c7306a0d20ab6d138a7b95785f2ff/lib/backup/manager.rb#L117-133 -->
+<!-- source: <https://gitlab.com/gitlab-org/gitlab/-/blob/d693aa7f894c7306a0d20ab6d138a7b95785f2ff/lib/backup/manager.rb#L117-133> -->
 
 - `db` (database)
 - `repositories` (Git repositories data, including wikis)
@@ -530,13 +536,14 @@ Depending on your installation type, slightly different components can be skippe
 - `registry` (Container registry images)
 - `packages` (Packages)
 - `ci_secure_files` (Project-level secure files)
+- `agent_plan_content` (Agent plan content for work items)
 - `external_diffs` (External merge request diffs)
 
 {{< /tab >}}
 
 {{< tab title="Helm chart (Kubernetes)" >}}
 
-<!-- source: https://gitlab.com/gitlab-org/build/CNG/-/blob/068e146db915efcd875414e04403410b71a2e70c/gitlab-toolbox/scripts/bin/backup-utility#L19 -->
+<!-- source: <https://gitlab.com/gitlab-org/build/CNG/-/blob/068e146db915efcd875414e04403410b71a2e70c/gitlab-toolbox/scripts/bin/backup-utility#L19> -->
 
 - `db` (database)
 - `repositories` (Git repositories data, including wikis)
@@ -548,6 +555,7 @@ Depending on your installation type, slightly different components can be skippe
 - `registry` (Container registry images)
 - `packages` (Package registry)
 - `ci_secure_files` (Project-level Secure Files)
+- `agent_plan_content` (Agent plan content for work items)
 - `external_diffs` (Merge request diffs)
 
 {{< /tab >}}
@@ -735,11 +743,17 @@ toolbox:
 > support incremental backups for all subtasks.
 
 Incremental repository backups can be faster than full repository backups because they only pack changes since the last backup into the backup bundle for each repository.
-The incremental backup archives are not linked to each other: each archive is a self-contained backup of the instance. There must be an existing backup
-to create an incremental backup from.
+Backup archives produced by `gitlab-backup` are portable and self-contained because they contain all the steps needed to restore each repository from the original full backup onward.
 
 To restore an incremental backup to a new GitLab instance (no pre-existing data), you must create the incremental backup from a full backup.
 Do not skip any backup components when creating the base backup.
+
+With server-side repository backups, incremental repository backup files are stored separately in object storage. Each increment depends on all prior steps back to the original full backup.
+
+> [!warning]
+> Do not delete incremental backup files from object storage. If an intermediate file is deleted (for example, through an object storage lifecycle policy), the backup chain is broken and the backup cannot be restored.
+
+For more details, see [Restoring an incremental repository backup](restore_gitlab.md#restoring-an-incremental-repository-backup).
 
 Use the `PREVIOUS_BACKUP=<backup-id>` option to choose the backup to use. By default, a backup file is created
 as documented in the [Backup ID](backup_archive_process.md#backup-id) section. You can override the `<backup-id>` portion of the filename by setting the
@@ -832,7 +846,7 @@ sudo -u git -H bundle exec rake gitlab:backup:create REPOSITORIES_PATHS=group-a,
 {{< tab title="Helm chart (Kubernetes)" >}}
 
 ```shell
-REPOSITORIES_PATHS=group-a SKIP_REPOSITORIES_PATHS=group-a/project_a2 backup-utility --skip db,registry,uploads,artifacts,lfs,packages,external_diffs,terraform_state,ci_secure_files,pages
+REPOSITORIES_PATHS=group-a SKIP_REPOSITORIES_PATHS=group-a/project_a2 backup-utility --skip db,registry,uploads,artifacts,lfs,packages,external_diffs,terraform_state,ci_secure_files,agent_plan_content,pages
 ```
 
 {{< /tab >}}
@@ -1619,7 +1633,6 @@ You can copy Git repository data using any method, as long as writes are prevent
    ```
 
 1. Use a [`tar` pipe to copy the entire repository's directory to another server or location](../operations/moving_repositories.md#use-a-tar-pipe-to-another-server).
-
 1. Use `sftp`, `scp`, `cp`, or any other copying method.
 
 #### Online backup through marking repositories as read-only (experimental)

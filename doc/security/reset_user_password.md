@@ -1,7 +1,8 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Change user passwords using the UI, Rake tasks, Rails console, or API.
 title: Reset user passwords
 ---
 
@@ -25,7 +26,7 @@ You can reset user passwords by using the UI, a Rake task, a Rails console, or t
 To reset a user password in the UI:
 
 1. In the upper-right corner, select **Admin**.
-1. Select **Overview** > **Users**.
+1. In the left sidebar, select **Overview** > **Users**.
 1. Identify a user account to update, select **Edit**.
 1. In the **Password** section, enter and confirm a new password.
 1. Select **Save changes**.

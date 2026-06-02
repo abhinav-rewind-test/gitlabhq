@@ -1,6 +1,6 @@
 <script>
 import DiscussionReplyPlaceholder from './discussion_reply_placeholder.vue';
-import ResolveDiscussionButton from './discussion_resolve_button.vue';
+import ResolveDiscussionButton from './resolve_discussion_button.vue';
 import ResolveWithIssueButton from './discussion_resolve_with_issue_button.vue';
 
 export default {
@@ -34,6 +34,7 @@ export default {
       required: true,
     },
   },
+  emits: ['resolve', 'showReplyForm'],
   computed: {
     resolvableNotes() {
       return this.discussion.notes.filter((x) => x.resolvable);

@@ -1,7 +1,7 @@
 ---
 stage: Analytics
 group: Platform Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Manage GitLab incidents directly from Slack using the GitLab for Slack app, including declaring incidents, using quick actions, and receiving notifications.
 title: Incident management for Slack
 ---
@@ -32,9 +32,7 @@ Use the GitLab for Slack app to:
 - Create GitLab incidents from Slack.
 - Receive incident notifications.
 
-Incident management for Slack is only available for GitLab.com. Some of the functionality
-described might be available for
-[the GitLab Self-Managed Slack app](../../user/project/integrations/slack_slash_commands.md).
+Incident management for Slack is only available for GitLab.com.
 
 To stay up to date, follow [epic 1211](https://gitlab.com/groups/gitlab-org/-/epics/1211).
 
@@ -53,8 +51,6 @@ Prerequisites:
    like `/gitlab <project-alias> issue show <id>`.
    The `<project-alias>` you select must be a project that has the GitLab for Slack app set up. The select dialog has a hard limit of 100 projects.
    For more information, see [issue 377548](https://gitlab.com/gitlab-org/gitlab/-/issues/377548).
-
-After the GitLab for Slack app is configured, you can also use any of the existing [Slack slash commands](../../user/project/integrations/slack_slash_commands.md).
 
 ## Declare an incident
 

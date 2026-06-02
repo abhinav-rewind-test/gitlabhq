@@ -6,8 +6,8 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
   include DragTo
 
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :public, namespace: group) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:project, freeze: false) { create(:project, :public, namespace: group) }
+  let_it_be(:user, freeze: false) { create(:user) }
   let_it_be(:issue) { create(:issue, project: project) }
 
   before_all do
@@ -33,8 +33,8 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
       within_testid('work-item-tree') do
         expect(page).not_to have_selector('[data-testid="add-tree-form"]')
 
-        click_button 'Add'
-        click_button 'New task'
+        find_by_testid('add-tree-child-button').click
+        click_button 'New Task'
 
         expect(page).to have_selector('[data-testid="add-tree-form"]')
 
@@ -47,23 +47,23 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
     context 'with existing task' do
       context 'with confidential issue' do
         let_it_be_with_reload(:issue) { create(:issue, :confidential, project: project) }
-        let_it_be(:task) { create(:work_item, :confidential, :task, project: project) }
+        let_it_be(:task, freeze: false) { create(:work_item, :confidential, :task, project: project) }
 
         it 'adds an existing child task', :aggregate_failures do
           within_testid('work-item-tree') do
-            click_button 'Add'
-            click_button 'Existing task'
+            find_by_testid('add-tree-child-button').click
+            click_button 'Existing Task'
 
-            expect(page).to have_button('Add task', disabled: true)
+            expect(page).to have_button('Add Task', disabled: true)
             find_by_testid('work-item-token-select-input').set(task.title)
             wait_for_all_requests
             click_button task.title
 
-            expect(page).to have_button('Add task', disabled: false)
+            expect(page).to have_button('Add Task', disabled: false)
 
             send_keys :escape
 
-            click_button('Add task')
+            click_button('Add Task')
 
             wait_for_all_requests
 
@@ -74,9 +74,9 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
     end
 
     context 'in work item metadata' do
-      let_it_be(:label) { create(:label, title: 'Label 1', project: project) }
-      let_it_be(:milestone) { create(:milestone, project: project, title: 'v1') }
-      let_it_be(:task) do
+      let_it_be(:label, freeze: false) { create(:label, title: 'Label 1', project: project) }
+      let_it_be(:milestone, freeze: false) { create(:milestone, project: project, title: 'v1') }
+      let_it_be(:task, freeze: false) do
         create(
           :work_item,
           :task,
@@ -95,8 +95,8 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
 
       it 'displays labels, milestone and assignee for work item children', :aggregate_failures do
         within_testid('work-item-tree') do
-          click_button 'Add'
-          click_button 'Existing task'
+          find_by_testid('add-tree-child-button').click
+          click_button 'Existing Task'
 
           find_by_testid('work-item-token-select-input').set(task.title)
           wait_for_all_requests
@@ -104,7 +104,7 @@ RSpec.describe 'Work item children', :js, feature_category: :team_planning do
 
           send_keys :escape
 
-          click_button('Add task')
+          click_button('Add Task')
 
           wait_for_all_requests
         end

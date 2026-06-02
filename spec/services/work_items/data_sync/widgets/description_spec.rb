@@ -10,7 +10,7 @@ RSpec.describe WorkItems::DataSync::Widgets::Description, feature_category: :tea
       last_edited_by: current_user)
   end
 
-  let_it_be(:target_work_item) { create(:work_item) }
+  let_it_be(:target_work_item, freeze: false) { create(:work_item) }
 
   let(:params) { {} }
 
@@ -39,20 +39,6 @@ RSpec.describe WorkItems::DataSync::Widgets::Description, feature_category: :tea
         .and change { target_work_item.description_html }.from("").to(work_item.description_html)
         .and change { target_work_item.last_edited_at }.from(nil).to(last_edited_at)
         .and change { target_work_item.last_edited_by }.from(nil).to(current_user)
-    end
-
-    it 'sets work_item_description record' do
-      callback.before_create
-
-      target_work_item.save!
-
-      expect(target_work_item.work_item_description).to be_persisted
-      expect(target_work_item.reload.work_item_description).to have_attributes(
-        description: target_work_item.description,
-        description_html: target_work_item.description_html,
-        last_edited_at: target_work_item.last_edited_at,
-        last_editing_user: target_work_item.last_edited_by
-      )
     end
   end
 end

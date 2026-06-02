@@ -1,7 +1,7 @@
 ---
 stage: GitLab Delivery
 group: Operate
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Linux cheat sheet
 ---
 
@@ -15,7 +15,7 @@ title: Linux cheat sheet
 This is the GitLab Support Team's collection of information regarding Linux, that they
 sometimes use while troubleshooting. It is listed here for transparency,
 and for users with experience with Linux. If you are currently
-having an issue with GitLab, you may want to check your [support options](https://about.gitlab.com/support/)
+having an issue with GitLab, you may want to check your [support options](https://support.gitlab.com/)
 first, before attempting to use this information.
 
 > [!warning]

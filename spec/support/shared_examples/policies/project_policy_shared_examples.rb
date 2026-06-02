@@ -1,19 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'archived project policies' do
-  let(:feature_write_abilities) do
-    described_class.archived_features.flat_map do |feature|
-      [
-        :"create_#{feature}",
-        :"update_#{feature}",
-        :"admin_#{feature}",
-        :"destroy_#{feature}"
-      ]
-    end + additional_maintainer_permissions
-  end
-
-  let(:other_write_abilities) do
-    described_class.archived_abilities
+  let(:write_abilities) do
+    Authz::PermissionGroups::Internal.get('project:archived').permissions
   end
 
   context 'when the project is archived' do
@@ -22,15 +11,11 @@ RSpec.shared_examples 'archived project policies' do
     end
 
     it 'disables write actions on all relevant project features' do
-      expect_disallowed(*feature_write_abilities)
-    end
-
-    it 'disables some other important write actions' do
-      expect_disallowed(*other_write_abilities)
+      expect_disallowed(*write_abilities)
     end
 
     it 'does not disable other abilities' do
-      expect_allowed(*(regular_abilities - feature_write_abilities - other_write_abilities))
+      expect_allowed(*(regular_abilities - write_abilities))
     end
   end
 end
@@ -109,7 +94,6 @@ RSpec.shared_examples 'deploy token does not get confused with user' do
     expect_disallowed(*guest_permissions)
     expect_disallowed(*reporter_permissions)
     expect_disallowed(*team_member_reporter_permissions)
-    expect_disallowed(*security_manager_permissions)
     expect_disallowed(*developer_permissions)
     expect_disallowed(*maintainer_permissions)
     expect_disallowed(*owner_permissions)
@@ -130,7 +114,6 @@ RSpec.shared_examples 'project policies as guest' do
       specify do
         expect_allowed(*guest_permissions)
         expect_allowed(*public_permissions)
-        expect_disallowed(*security_manager_permissions)
         expect_disallowed(*developer_permissions)
         expect_disallowed(*maintainer_permissions)
         expect_disallowed(*owner_permissions)
@@ -145,7 +128,6 @@ RSpec.shared_examples 'project policies as guest' do
         expect_allowed(*guest_permissions)
         expect_disallowed(*reporter_public_build_permissions)
         expect_disallowed(*team_member_reporter_permissions)
-        expect_disallowed(*security_manager_permissions)
         expect_disallowed(*developer_permissions)
         expect_disallowed(*maintainer_permissions)
         expect_disallowed(*owner_permissions)
@@ -199,7 +181,6 @@ RSpec.shared_examples 'project policies as guest' do
         expect_allowed(*guest_permissions)
         expect_disallowed(*reporter_public_build_permissions)
         expect_disallowed(*team_member_reporter_permissions)
-        expect_disallowed(*security_manager_permissions)
         expect_disallowed(*developer_permissions)
         expect_disallowed(*maintainer_permissions)
         expect_disallowed(*owner_permissions)
@@ -235,7 +216,6 @@ RSpec.shared_examples 'project policies as planner' do
         expect_allowed(*planner_permissions)
         expect_allowed(*(base_reporter_permissions - disallowed_reporter_public_permissions))
         expect_disallowed(*disallowed_reporter_public_permissions)
-        expect_disallowed(*(security_manager_permissions - planner_permissions))
         expect_disallowed(*(developer_permissions - [:create_wiki]))
         expect_disallowed(*(maintainer_permissions - [:admin_wiki]))
         expect_disallowed(*(owner_permissions - [:destroy_issue]))
@@ -253,7 +233,6 @@ RSpec.shared_examples 'project policies as planner' do
         expect_allowed(*(base_reporter_permissions - disallowed_reporter_permissions))
         expect_disallowed(:create_merge_request_in)
         expect_disallowed(*disallowed_reporter_permissions)
-        expect_disallowed(*(security_manager_permissions - planner_permissions))
         expect_disallowed(*(developer_permissions - [:create_wiki]))
         expect_disallowed(*(maintainer_permissions - [:admin_wiki]))
         expect_disallowed(*(owner_permissions - [:destroy_issue]))
@@ -312,7 +291,6 @@ RSpec.shared_examples 'project policies as planner' do
         expect_allowed(*(base_reporter_permissions - disallowed_reporter_permissions))
         expect_disallowed(:create_merge_request_in)
         expect_disallowed(*disallowed_reporter_permissions)
-        expect_disallowed(*(security_manager_permissions - planner_permissions))
         expect_disallowed(*(developer_permissions - [:create_wiki]))
         expect_disallowed(*(maintainer_permissions - [:admin_wiki]))
         expect_disallowed(*(owner_permissions - [:destroy_issue]))
@@ -330,7 +308,6 @@ RSpec.shared_examples 'project policies as reporter' do
       expect_allowed(*guest_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_disallowed(*security_manager_permissions)
       expect_disallowed(*developer_permissions)
       expect_disallowed(*maintainer_permissions)
       expect_disallowed(*owner_permissions)
@@ -354,7 +331,6 @@ RSpec.shared_examples 'project policies as reporter' do
         expect_allowed(*guest_permissions)
         expect_allowed(*reporter_permissions)
         expect_allowed(*team_member_reporter_permissions)
-        expect_disallowed(*security_manager_permissions)
         expect_disallowed(*developer_permissions)
         expect_disallowed(*maintainer_permissions)
         expect_disallowed(*owner_permissions)
@@ -370,7 +346,6 @@ RSpec.shared_examples 'project policies as security_manager' do
 
     specify do
       expect_allowed(*guest_permissions)
-      expect_allowed(*(security_manager_permissions - planner_permissions))
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
       expect_allowed(*security_manager_permissions)
@@ -395,10 +370,9 @@ RSpec.shared_examples 'project policies as security_manager' do
 
       specify do
         expect_allowed(*guest_permissions)
-        expect_allowed(*(security_manager_permissions - planner_permissions))
+        expect_allowed(*security_manager_permissions)
         expect_allowed(*reporter_permissions)
         expect_allowed(*team_member_reporter_permissions)
-        expect_allowed(*security_manager_permissions)
         expect_disallowed(*(developer_permissions - security_manager_permissions))
         expect_disallowed(*(maintainer_permissions - security_manager_permissions))
         expect_disallowed(*(owner_permissions - security_manager_permissions))
@@ -416,7 +390,6 @@ RSpec.shared_examples 'project policies as developer' do
       expect_allowed(*guest_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_allowed(*(developer_permissions - security_manager_permissions))
       expect_allowed(*developer_permissions)
       expect_disallowed(*maintainer_permissions)
       expect_disallowed(*owner_permissions)
@@ -440,7 +413,6 @@ RSpec.shared_examples 'project policies as developer' do
         expect_allowed(*guest_permissions)
         expect_allowed(*reporter_permissions)
         expect_allowed(*team_member_reporter_permissions)
-        expect_allowed(*(developer_permissions - security_manager_permissions))
         expect_allowed(*developer_permissions)
         expect_disallowed(*maintainer_permissions)
         expect_disallowed(*owner_permissions)
@@ -458,7 +430,6 @@ RSpec.shared_examples 'project policies as maintainer' do
       expect_allowed(*guest_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_allowed(*(maintainer_permissions - security_manager_permissions))
       expect_allowed(*developer_permissions)
       expect_allowed(*maintainer_permissions)
       expect_disallowed(*owner_permissions)
@@ -484,7 +455,6 @@ RSpec.shared_examples 'project policies as owner' do
       expect_allowed(*planner_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_allowed(*security_manager_permissions)
       expect_allowed(*developer_permissions)
       expect_allowed(*maintainer_permissions)
       expect_allowed(*owner_permissions)
@@ -510,7 +480,6 @@ RSpec.shared_examples 'project policies as organization owner' do
       expect_allowed(*planner_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_allowed(*security_manager_permissions)
       expect_allowed(*developer_permissions)
       expect_allowed(*maintainer_permissions)
       expect_allowed(*owner_permissions)
@@ -543,7 +512,6 @@ RSpec.shared_examples 'project policies as admin with admin mode' do
       expect_allowed(*planner_permissions)
       expect_allowed(*reporter_permissions)
       expect_allowed(*team_member_reporter_permissions)
-      expect_allowed(*security_manager_permissions)
       expect_allowed(*developer_permissions)
       expect_allowed(*maintainer_permissions)
       expect_allowed(*admin_permissions)

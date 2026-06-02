@@ -1,21 +1,31 @@
 <script>
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { HTTP_STATUS_OK } from '~/lib/utils/http_status';
-import { SEVERITY_ICONS_MR_WIDGET } from '~/ci/reports/codequality_report/constants';
-import { capitalizeFirstCharacter } from '~/lib/utils/text_utility';
+import { s__ } from '~/locale';
+import { joinPaths } from '~/lib/utils/url_utility';
+import {
+  CODE_QUALITY_ROUTE,
+  CLICK_VIEW_REPORT_ON_MERGE_REQUEST_WIDGET,
+  TRACKING_LABEL_BY_ROUTE,
+} from '~/merge_requests/reports/constants';
+import { InternalEvents } from '~/tracking';
 import axios from '~/lib/utils/axios_utils';
 import MrWidget from '~/vue_merge_request_widget/components/widget/widget.vue';
 import { EXTENSION_ICONS } from '~/vue_merge_request_widget/constants';
-import { i18n, codeQualityPrefixes } from './constants';
-
-const translations = i18n;
+import { i18n } from './constants';
+import {
+  codeQualitySummary,
+  transformNewCodeQualityFinding,
+  transformResolvedCodeQualityFinding,
+} from './utils';
 
 export default {
   name: 'WidgetCodeQuality',
   components: {
     MrWidget,
   },
-  i18n: translations,
+  mixins: [InternalEvents.mixin()],
+  i18n,
   props: {
     mr: {
       type: Object,
@@ -31,69 +41,24 @@ export default {
   },
   computed: {
     summary() {
-      const { new_errors, resolved_errors } = this.collapsedData;
-
       if (!this.pollingFinished) {
         return { title: i18n.loading };
       }
       if (this.hasError) {
         return { title: i18n.error };
       }
-      if (
-        this.collapsedData?.new_errors?.length >= 1 &&
-        this.collapsedData?.resolved_errors?.length >= 1
-      ) {
-        return {
-          title: i18n.improvementAndDegradationCopy(
-            i18n.findings(resolved_errors, codeQualityPrefixes.fixed),
-            i18n.findings(new_errors, codeQualityPrefixes.new),
-          ),
-        };
-      }
-      if (this.collapsedData?.resolved_errors?.length >= 1) {
-        return {
-          title: i18n.singularCopy(i18n.findings(resolved_errors, codeQualityPrefixes.fixed)),
-        };
-      }
-      if (this.collapsedData?.new_errors?.length >= 1) {
-        return { title: i18n.singularCopy(i18n.findings(new_errors, codeQualityPrefixes.new)) };
-      }
-      return { title: i18n.noChanges };
+      return {
+        title: codeQualitySummary({
+          newCount: this.collapsedData?.new_errors?.length || 0,
+          resolvedCount: this.collapsedData?.resolved_errors?.length || 0,
+        }),
+      };
     },
     expandedData() {
-      const fullData = [];
-      this.collapsedData?.new_errors?.forEach((e) => {
-        fullData.push({
-          text: e.check_name
-            ? `${capitalizeFirstCharacter(e.severity)} - ${e.check_name} - ${e.description}`
-            : `${capitalizeFirstCharacter(e.severity)} - ${e.description}`,
-          link: {
-            href: e.web_url,
-            text: `${i18n.prependText} ${e.file_path}:${e.line}`,
-          },
-          icon: {
-            name: SEVERITY_ICONS_MR_WIDGET[e.severity],
-          },
-        });
-      });
-
-      this.collapsedData?.resolved_errors?.forEach((e) => {
-        fullData.push({
-          text: e.check_name
-            ? `${capitalizeFirstCharacter(e.severity)} - ${e.check_name} - ${e.description}`
-            : `${capitalizeFirstCharacter(e.severity)} - ${e.description}`,
-          supportingText: `${i18n.prependText} ${e.file_path}:${e.line}`,
-          icon: {
-            name: SEVERITY_ICONS_MR_WIDGET[e.severity],
-          },
-          badge: {
-            variant: 'neutral',
-            text: i18n.fixed,
-          },
-        });
-      });
-
-      return fullData;
+      return [
+        ...(this.collapsedData?.new_errors?.map(transformNewCodeQualityFinding) || []),
+        ...(this.collapsedData?.resolved_errors?.map(transformResolvedCodeQualityFinding) || []),
+      ];
     },
     statusIcon() {
       if (this.collapsedData?.new_errors?.length >= 1) {
@@ -111,6 +76,28 @@ export default {
         return false;
       }
       return true;
+    },
+    hasReportsTab() {
+      return Boolean(this.mr.reportsTabPath);
+    },
+    actionButtons() {
+      if (this.hasReportsTab) {
+        return [
+          {
+            text: s__('MrReports|View report'),
+            href: joinPaths(this.mr.reportsTabPath, CODE_QUALITY_ROUTE),
+            onClick: (action, e) => {
+              e.preventDefault();
+              this.trackEvent(CLICK_VIEW_REPORT_ON_MERGE_REQUEST_WIDGET, {
+                label: TRACKING_LABEL_BY_ROUTE[CODE_QUALITY_ROUTE],
+              });
+              window.history.pushState(null, null, action.href);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            },
+          },
+        ];
+      }
+      return [];
     },
     apiCodeQualityPath() {
       return this.mr.codequalityReportsPath;
@@ -149,6 +136,7 @@ export default {
 
 <template>
   <mr-widget
+    :action-buttons="actionButtons"
     :fetch-collapsed-data="fetchCodeQuality"
     :error-text="$options.i18n.error"
     :has-error="hasError"
@@ -157,8 +145,8 @@ export default {
     :summary="summary"
     :widget-name="$options.name"
     :status-icon-name="statusIcon"
-    :is-collapsible="shouldCollapse"
-    :label="$options.i18n.label"
-    path="code-quality"
+    :is-collapsible="hasReportsTab ? false : shouldCollapse"
+    :expand-button-label="s__('ciReport|Expand Code Quality details')"
+    :collapse-button-label="s__('ciReport|Collapse Code Quality details')"
   />
 </template>

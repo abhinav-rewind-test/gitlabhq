@@ -9,6 +9,12 @@ module Projects
     ValidationError = Class.new(StandardError)
     ApiError = Class.new(StandardError)
 
+    def initialize(project, user = nil, params = {})
+      super
+      @send_move_instructions = @params.delete(:send_move_instructions)
+      @send_move_instructions = true if @send_move_instructions.nil?
+    end
+
     def execute
       build_topics
       ensure_ci_cd_settings
@@ -96,14 +102,7 @@ module Projects
 
     def validate_restrict_user_defined_variables_change
       return unless changing_restrict_user_defined_variables? || changing_pipeline_variables_minimum_override_role?
-
-      if changing_pipeline_variables_minimum_override_role? &&
-          params[:ci_pipeline_variables_minimum_override_role] == 'owner' &&
-          !can?(current_user, :owner_access, project)
-        raise_api_error(s_("UpdateProject|Changing the ci_pipeline_variables_minimum_override_role to the owner role is not allowed"))
-      end
-
-      return if can?(current_user, :change_restrict_user_defined_variables, project)
+      return if can?(current_user, :update_pipeline_variable_override_setting, project)
 
       raise_api_error(s_("UpdateProject|Changing the restrict_user_defined_variables or ci_pipeline_variables_minimum_override_role is not allowed"))
     end
@@ -256,7 +255,12 @@ module Projects
     end
 
     def after_rename_service(project)
-      AfterRenameService.new(project, path_before: project.path_before_last_save, full_path_before: project.full_path_before_last_save)
+      AfterRenameService.new(
+        project,
+        path_before: project.path_before_last_save,
+        full_path_before: project.full_path_before_last_save,
+        send_move_instructions: @send_move_instructions
+      )
     end
 
     def raise_validation_error(message)

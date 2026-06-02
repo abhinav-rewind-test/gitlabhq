@@ -6,10 +6,10 @@ RSpec.describe API::AwardEmoji, feature_category: :shared do
   let_it_be_with_reload(:project) { create(:project, :private) }
   let_it_be(:user)          { create(:user) }
   let_it_be(:issue)         { create(:issue, project: project) }
-  let_it_be(:snippet)       { create(:project_snippet, :public, project: project) }
+  let_it_be(:snippet, freeze: false) { create(:project_snippet, :public, project: project) }
   let_it_be(:award_emoji)   { create(:award_emoji, awardable: issue, user: user) }
   let_it_be(:note)          { create(:note, project: project, noteable: issue) }
-  let_it_be(:snippet_note)  { create(:note, project: project, noteable: snippet) }
+  let_it_be(:snippet_note, freeze: false) { create(:note, project: project, noteable: snippet) }
 
   let(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
   let(:mr_note) { create(:note, project: project, noteable: merge_request) }
@@ -297,7 +297,7 @@ RSpec.describe API::AwardEmoji, feature_category: :shared do
         subject(:perform_request) { get api(request_path, current_user) }
 
         let_it_be(:group) { create(:group) }
-        let_it_be(:project) { create(:project, :public, namespace: group) }
+        let_it_be(:project, freeze: false) { create(:project, :public, namespace: group) }
         let_it_be(:issue) { create(:issue, project: project) }
         let_it_be(:note) { create(:note, :confidential, project: project, noteable: issue, author: user) }
 

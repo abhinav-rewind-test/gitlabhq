@@ -5,12 +5,12 @@ require 'spec_helper'
 RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
   let_it_be(:user)  { create(:user) }
   let_it_be(:group) { create :group }
-  let_it_be(:project) { create(:project, :repository, group: group) }
+  let_it_be(:project, freeze: false) { create(:project, :repository, group: group) }
   let(:params) { {} }
   let(:args) { {} }
   let(:repository) { project.repository }
-  let_it_be(:v1_0_0)     { create(:release, project: project, tag: 'v1.0.0', updated_at: 4.days.ago) }
-  let_it_be(:v1_1_0)     { create(:release, project: project, tag: 'v1.1.0') }
+  let_it_be(:v1_0_0, freeze: false)     { create(:release, project: project, tag: 'v1.0.0', updated_at: 4.days.ago) }
+  let_it_be(:v1_1_0, freeze: false)     { create(:release, project: project, tag: 'v1.1.0') }
 
   shared_examples_for 'when the user is not authorized' do
     it 'returns no releases' do
@@ -62,9 +62,11 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
     it_behaves_like 'when the user is not authorized'
 
     context 'when the user has guest privileges or higher' do
-      before do
+      before_all do
         project.add_guest(user)
+      end
 
+      before do
         v1_0_0.update!(released_at: 2.days.ago, created_at: 1.day.ago)
         v1_1_0.update!(released_at: 1.day.ago, created_at: 2.days.ago)
       end
@@ -106,16 +108,16 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
   end
 
   describe 'when parent is an array of projects' do
-    let_it_be(:project2) { create(:project, :repository, group: group) }
-    let_it_be(:v2_0_0) { create(:release, project: project2, tag: 'v2.0.0') }
-    let_it_be(:v2_1_0) { create(:release, project: project2, tag: 'v2.1.0') }
+    let_it_be(:project2, freeze: false) { create(:project, :repository, group: group) }
+    let_it_be(:v2_0_0, freeze: false) { create(:release, project: project2, tag: 'v2.0.0') }
+    let_it_be(:v2_1_0, freeze: false) { create(:release, project: project2, tag: 'v2.1.0') }
 
     subject { described_class.new([project, project2], user, params).execute(**args) }
 
     it_behaves_like 'when the user is not authorized'
 
     context 'when the user has guest privileges or higher on one project' do
-      before do
+      before_all do
         project.add_guest(user)
       end
 
@@ -127,10 +129,12 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
     end
 
     context 'when the user has guest privileges or higher on all projects' do
-      before do
+      before_all do
         project.add_guest(user)
         project2.add_guest(user)
+      end
 
+      before do
         v1_0_0.update!(released_at: 4.days.ago, created_at: 1.day.ago)
         v1_1_0.update!(released_at: 3.days.ago, created_at: 2.days.ago)
         v2_0_0.update!(released_at: 2.days.ago, created_at: 3.days.ago)
@@ -220,9 +224,9 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
   end
 
   describe 'latest releases' do
-    let_it_be(:project2) { create(:project, :repository, group: group) }
-    let_it_be(:v2_0_0) { create(:release, project: project2) }
-    let_it_be(:v2_1_0) { create(:release, project: project2) }
+    let_it_be(:project2, freeze: false) { create(:project, :repository, group: group) }
+    let_it_be(:v2_0_0, freeze: false) { create(:release, project: project2) }
+    let_it_be(:v2_1_0, freeze: false) { create(:release, project: project2) }
 
     let(:params) { { latest: true } }
 
@@ -238,7 +242,7 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
     it_behaves_like 'when the user is not authorized'
 
     context 'when the user has guest privileges or higher on one project' do
-      before do
+      before_all do
         project.add_guest(user)
       end
 
@@ -248,7 +252,7 @@ RSpec.describe ReleasesFinder, feature_category: :release_orchestration do
     end
 
     context 'when the user has guest privileges or higher on all projects' do
-      before do
+      before_all do
         project.add_guest(user)
         project2.add_guest(user)
       end

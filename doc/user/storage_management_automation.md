@@ -1,7 +1,7 @@
 ---
 stage: Fulfillment
 group: Utilization
-info: This page is maintained by Developer Relations, author @dnsmichi, see https://handbook.gitlab.com/handbook/marketing/developer-relations/developer-advocacy/content/#maintained-documentation
+info: This page is maintained by Developer Relations, author @dnsmichi, see <https://handbook.gitlab.com/handbook/marketing/developer-relations/developer-advocacy/content/#maintained-documentation>
 title: Automate storage management
 ---
 
@@ -25,7 +25,7 @@ For more help with API automation, you can also use the [GitLab community forum 
 
 ## API requirements
 
-To automate storage management, your GitLab.com SaaS or GitLab Self-Managed instance must have access to the [GitLab REST API](../api/api_resources.md).
+To automate storage management, your GitLab.com or GitLab Self-Managed instance must have access to the [GitLab REST API](../api/api_resources.md).
 
 ### API authentication scope
 
@@ -33,10 +33,10 @@ Use the following scopes to [authenticate](../api/rest/authentication.md) with t
 
 - Storage analysis:
   - Read API access with the `read_api` scope.
-  - At least the Developer role on all projects.
+  - The Developer, Maintainer, or Owner role on all projects.
 - Storage clean up:
   - Full API access with the `api` scope.
-  - At least the Maintainer role on all projects.
+  - The Maintainer or Owner role on all projects.
 
 You can use command-line tools or a programming language to interact with the REST API.
 
@@ -97,7 +97,7 @@ see [Efficient DevSecOps workflows: Hands-on `python-gitlab` API automation](htt
 For more information about other API client libraries, see [Third-party clients](../api/rest/third_party_clients.md).
 
 > [!note]
-> Use [GitLab Duo Code Suggestions](duo_agent_platform/code_suggestions/_index.md) or [GitLab Duo Code Suggestions (Classic)](project/repository/code_suggestions/_index.md) to write code more efficiently.
+> Use GitLab Duo Code Suggestions to write code more efficiently.
 
 ## Storage analysis
 
@@ -1289,7 +1289,7 @@ included-job30:
 The example group [`container-package-gen-group`](https://gitlab.com/gitlab-da/playground/container-package-gen-group) provides projects that:
 
 - Use a base image in Dockerfile to build a new image.
-- Include the `Docker.gitlab-ci.yml` template to build images on GitLab.com SaaS.
+- Include the `Docker.gitlab-ci.yml` template to build images on GitLab.com.
 - Configure pipeline schedules to generate new images daily.
 
 Example projects available to fork:

@@ -14,7 +14,7 @@ import {
   GlTabs,
   GlTab,
 } from '@gitlab/ui';
-import { isEqual, isEmpty, omit } from 'lodash';
+import { isEqual, isEmpty, omit } from 'lodash-es';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
 import { PROMO_URL, DOCS_URL } from '~/constants';
@@ -33,6 +33,7 @@ import MappingBuilder from './alert_mapping_builder.vue';
 import AlertSettingsFormHelpBlock from './alert_settings_form_help_block.vue';
 
 export default {
+  name: 'AlertsSettingsForm',
   incidentManagementDocsLink: `${DOCS_URL}/operations/incident_management/integrations.html#configuration`,
   JSON_VALIDATE_DELAY,
   typeSet,

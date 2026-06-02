@@ -30,6 +30,10 @@ class Group < Namespace
 
   README_PROJECT_PATH = 'gitlab-profile'
 
+  # TODO: Needs to be renamed for semantic accuracy or removed once we shift to LocalStorage
+  #  under https://gitlab.com/gitlab-org/gitlab/-/work_items/591706
+  SORTING_PREFERENCE_FIELD = :projects_sort
+
   def self.sti_name
     'Group'
   end
@@ -53,6 +57,8 @@ class Group < Namespace
 
   has_many :users, through: :group_members
   has_many :owners, through: :all_owner_members, source: :user
+  has_many :provisioned_user_details, class_name: 'UserDetail', foreign_key: 'provisioned_by_group_id', inverse_of: :provisioned_by_group
+  has_many :provisioned_users, through: :provisioned_user_details, source: :user
 
   has_many :requesters, -> { where.not(requested_at: nil) }, dependent: :destroy, as: :source, class_name: 'GroupMember' # rubocop:disable Cop/ActiveRecordDependent
   has_many :namespace_requesters, -> { where.not(requested_at: nil).unscope(where: %i[source_id source_type]) },
@@ -141,6 +147,9 @@ class Group < Namespace
 
   has_one :deletion_schedule, class_name: 'GroupDeletionSchedule'
   delegate :deleting_user, :marked_for_deletion_on, to: :deletion_schedule, allow_nil: true
+  delegate :mcp_server_enabled, :mcp_server_enabled=, to: :namespace_settings, allow_nil: true
+
+  scope :with_mcp_server_enabled, -> { joins(:namespace_settings).where(namespace_settings: { mcp_server_enabled: true }) }
 
   scope :aimed_for_deletion, -> { where.associated(:deletion_schedule) }
   scope :self_or_ancestors_aimed_for_deletion, -> { where(self_or_ancestors_deletion_schedule_subquery.exists) }
@@ -151,17 +160,18 @@ class Group < Namespace
   scope :with_deletion_schedule, -> { preload(deletion_schedule: :deleting_user) }
   scope :with_deletion_schedule_only, -> { preload(:deletion_schedule) }
 
-  scope :marked_for_deletion_before, ->(date) do
-    joins(:deletion_schedule)
-      .where('group_deletion_schedules.marked_for_deletion_on <= ?', date)
-  end
-
   scope :marked_for_deletion_on, ->(date) do
     joins(:deletion_schedule)
       .where(group_deletion_schedules: { marked_for_deletion_on: date })
   end
 
   scope :with_integrations, -> { joins(:integrations) }
+  scope :excluding_self_and_ancestors_archived, -> {
+    where(
+      "NOT (namespaces.traversal_ids::bigint[] && ARRAY(?)::bigint[])",
+      NamespaceSetting.where(archived: true).select(:namespace_id)
+    )
+  }
 
   has_one :harbor_integration, class_name: 'Integrations::Harbor'
   has_one :jira_integration, class_name: 'Integrations::Jira'
@@ -247,6 +257,7 @@ class Group < Namespace
   after_commit :update_two_factor_requirement
 
   scope :with_users, -> { includes(:users) }
+  scope :preload_owners, -> { preload(:owners) }
 
   scope :active, -> { self_and_ancestors_active }
   scope :self_and_ancestors_active, -> { self_and_ancestors_non_archived.self_and_ancestors_not_aimed_for_deletion }
@@ -740,6 +751,12 @@ class Group < Namespace
     max_member_access_for_user(user) >= min_access_level
   end
 
+  def member_of_self_or_descendant?(user)
+    return false unless user
+
+    members_with_descendants.exists?(user_id: user)
+  end
+
   def has_owner?(user)
     return false unless user
 
@@ -777,6 +794,10 @@ class Group < Namespace
     return false unless user
 
     all_owners.size == 1 && all_owners.first.user_id == user.id
+  end
+
+  def service_accounts
+    provisioned_users.service_account
   end
 
   # Excludes non-direct owners for top-level group
@@ -1153,33 +1174,31 @@ class Group < Namespace
     feature_flag_enabled_for_self_or_ancestor?(:allow_iframes_in_markdown, type: :wip)
   end
 
-  def work_items_saved_views_enabled?(user = nil)
-    return true if feature_flag_enabled_for_self_or_ancestor?(:work_items_saved_views, type: :wip)
-
-    user.present? && Feature.enabled?(:work_items_saved_views_user, user)
-  end
-
-  def work_items_consolidated_list_enabled?(user = nil)
-    # work_item_planning_view is the feature flag used to determine whether the consolidated list is enabled or not
-    return true if feature_flag_enabled_for_self_or_ancestor?(:work_item_planning_view, type: :wip)
-
-    user.present? && Feature.enabled?(:work_items_consolidated_list_user, user)
+  def sscs_malware_detection_feature_flag_enabled?
+    feature_flag_enabled_for_self_or_ancestor?(:sscs_malware_detection, type: :wip)
   end
 
   def use_work_item_url?
-    return false if feature_flag_enabled_for_self_or_ancestor?(:work_item_legacy_url, type: :gitlab_com_derisk)
-
-    work_items_consolidated_list_enabled?
+    !feature_flag_enabled_for_self_or_ancestor?(:work_item_legacy_url, type: :gitlab_com_derisk)
   end
 
-  # overriden in EE
+  # overridden in EE
   def has_active_hooks?(hooks_scope = :push_hooks)
     false
   end
 
-  # overriden in EE
+  # overridden in EE
   def enterprise_user_settings_available?(user = nil)
     false
+  end
+
+  # SaaS only feature, overridden in EE
+  def mcp_server_setting_available?
+    false
+  end
+
+  def mcp_server_enabled?
+    root? && !!namespace_settings&.mcp_server_enabled?
   end
 
   def supports_lock_on_merge?
@@ -1285,23 +1304,23 @@ class Group < Namespace
   end
 
   def pending_delete?
-    return false unless deletion_schedule
+    return false unless self_deletion_scheduled_deletion_created_on
 
-    deletion_schedule.marked_for_deletion_on.future?
+    self_deletion_scheduled_deletion_created_on.future?
   end
 
   def unarchive_descendants!
-    NamespaceSetting
-      .where(namespace_id: descendant_ids, archived: true)
-      .update_all(archived: false)
+    NamespaceSetting.where(namespace_id: descendant_ids, archived: true).update_all(archived: false)
+    Namespace.where(id: descendant_ids, state: :archived).update_all(state: :ancestor_inherited)
   end
 
   def unarchive_all_projects!
-    Project
+    archived_projects = Project
       .joins(:namespace)
       .where("namespaces.traversal_ids @> '{?}'", id)
-      .where(archived: true)
-      .update_all(archived: false)
+
+    archived_projects.where(archived: true).update_all(archived: false)
+    Namespace.where(id: archived_projects.select(:project_namespace_id), state: :archived).update_all(state: :ancestor_inherited)
   end
 
   private
@@ -1390,7 +1409,16 @@ class Group < Namespace
   # Overriding of Namespaces::AdjournedDeletable method
   override :ancestors_scheduled_for_deletion
   def ancestors_scheduled_for_deletion
-    ancestors(hierarchy_order: :asc).joins(:deletion_schedule)
+    cache_key = "ancestors_scheduled_for_deletion:#{ancestor_ids(hierarchy_order: :desc).join(',')}"
+
+    Gitlab::SafeRequestStore.fetch(cache_key) do
+      ancestors(hierarchy_order: :asc).joins(:deletion_schedule).to_a
+    end
+  end
+
+  override :remove_ancestor_inherited_transitions?
+  def remove_ancestor_inherited_transitions?
+    Feature.enabled?(:remove_group_ancestor_inherited_transitions, self)
   end
 end
 

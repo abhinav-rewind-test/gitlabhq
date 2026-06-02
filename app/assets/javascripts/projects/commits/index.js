@@ -1,29 +1,44 @@
 import Vue from 'vue';
-// eslint-disable-next-line no-restricted-imports
-import Vuex from 'vuex';
 import { encodeSaferUrl, joinPaths, visitUrl } from '~/lib/utils/url_utility';
 import RefSelector from '~/ref/components/ref_selector.vue';
 import AuthorSelectApp from './components/author_select.vue';
-import store from './store';
-
-Vue.use(Vuex);
+import DateRangeSelectApp from './components/date_range_select.vue';
 
 export const mountCommits = (el) => {
   if (!el) {
     return null;
   }
 
-  store.dispatch('setInitialData', el.dataset);
+  const { commitsPath, projectId } = el.dataset;
 
   return new Vue({
     el,
     name: 'AuthorSelectAppRoot',
-    store,
+    provide: {
+      commitsPath,
+      projectId,
+    },
     render(h) {
       return h(AuthorSelectApp, {
         props: {
           projectCommitsEl: document.querySelector('.js-project-commits-show'),
         },
+      });
+    },
+  });
+};
+
+export const mountDateRangeSelect = (el) => {
+  if (!el) return null;
+
+  const { commitsPath } = el.dataset;
+
+  return new Vue({
+    el,
+    name: 'DateRangeSelectRoot',
+    render(h) {
+      return h(DateRangeSelectApp, {
+        props: { commitsPath },
       });
     },
   });

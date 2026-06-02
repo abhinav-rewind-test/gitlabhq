@@ -7,6 +7,7 @@ class Projects::CommitsController < Projects::ApplicationController
   include RendersCommits
   include ParseCommitDate
   include RedirectsForMissingPathOnTree
+  include HandlesGitalyErrors
 
   COMMITS_DEFAULT_LIMIT = 40
   prepend_before_action(only: [:show]) { authenticate_sessionless_user!(:rss) }
@@ -69,14 +70,14 @@ class Projects::CommitsController < Projects::ApplicationController
   end
 
   def validate_path
-    return if @path.blank?
+    return unless path_present?
 
     path_exists = @repository.blob_at(@commit.id, @path) || @repository.tree(@commit.id, @path).entries.present?
     redirect_to_tree_root_for_missing_path(@project, @ref, @path) unless path_exists
   end
 
   def require_auth?
-    current_user.blank? && @path.present? && Feature.enabled?(:require_login_for_commit_tree, @project)
+    current_user.blank? && path_present? && Feature.enabled?(:require_login_for_commit_tree, @project)
   end
 
   def auth_for_path

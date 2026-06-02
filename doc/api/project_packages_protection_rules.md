@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Package Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Documentation for the REST API for Package Protection Rules in GitLab.
 title: Protected packages API
 ---
@@ -24,9 +24,9 @@ title: Protected packages API
 
 Use this API to manage [protection rules for packages](../user/packages/package_registry/package_protection_rules.md).
 
-## List package protection rules
+## List all package protection rules
 
-Gets a list of package protection rules from a project.
+Lists all package protection rules for a specified project.
 
 ```plaintext
 GET /api/v4/projects/:id/packages/protection/rules
@@ -79,7 +79,7 @@ Example response:
 
 ## Create a package protection rule
 
-Create a package protection rule for a project.
+Creates a package protection rule for a specified project.
 
 ```plaintext
 POST /api/v4/projects/:id/packages/protection/rules
@@ -123,7 +123,7 @@ curl --request POST \
 
 ## Update a package protection rule
 
-Update a package protection rule for a project.
+Updates a package protection rule for a specified project.
 
 ```plaintext
 PATCH /api/v4/projects/:id/packages/protection/rules/:package_protection_rule_id
@@ -165,7 +165,7 @@ curl --request PATCH \
 
 ## Delete a package protection rule
 
-Deletes a package protection rule from a project.
+Deletes a package protection rule from a specified project.
 
 ```plaintext
 DELETE /api/v4/projects/:id/packages/protection/rules/:package_protection_rule_id

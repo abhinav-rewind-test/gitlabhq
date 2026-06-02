@@ -1,5 +1,6 @@
 <script>
 import { GlLoadingIcon, GlButton, GlEmptyState } from '@gitlab/ui';
+import EMPTY_SVG from '@gitlab/svgs/dist/illustrations/status/status-nothing-md.svg';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
 import { getProjectRepositoryHealth } from '~/rest_api';
@@ -72,11 +73,12 @@ export default {
       }
     },
   },
+  EMPTY_SVG,
 };
 </script>
 
 <template>
-  <section class="gl-border gl-rounded-lg gl-bg-neutral-10 gl-px-6 gl-py-5 lg:gl-ml-7">
+  <section class="gl-border gl-rounded-lg gl-bg-subtle gl-px-6 gl-py-5 lg:gl-ml-7">
     <template v-if="!projectId">
       <p class="gl-mb-0">{{ s__('UsageQuota|Failed to parse Project ID from Repository.') }}</p>
     </template>
@@ -87,7 +89,7 @@ export default {
       :description="
         s__('UsageQuota|You can generate a new report at any time by clicking the button below.')
       "
-      illustration-name="status-nothing-md"
+      :svg-path="$options.EMPTY_SVG"
     >
       <template #actions>
         <gl-button variant="confirm" @click="fetchRepositoryHealth({ generate: true })">{{

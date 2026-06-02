@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Product Planning
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Roadmap
 description: Epic progress, timelines, milestones, and goals.
 ---
@@ -32,8 +32,8 @@ The epic roadmap offers the following benefits:
 
 To view the roadmap in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Roadmap**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Roadmap**.
 
 The roadmap shows the epics and milestones in a
 group, one of its subgroups, or a project in one of the groups.
@@ -53,7 +53,7 @@ heading to toggle the list of the milestone bars.
 
 ![The roadmap view with epics and milestones.](img/roadmap_view_v14_3.png)
 
-From an epic, you can also [view the roadmap filtered to this epic's descendants](../epics/_index.md#roadmap-in-epics).
+From an epic, you can also [view the roadmap filtered to this epic's descendants](../../work_items/child_items.md#view-child-epics-on-a-roadmap).
 
 ## Sort and filter the roadmap
 
@@ -94,7 +94,7 @@ In the Roadmap view, you can also filter by the epics':
 
 ![Filtering a GitLab epics roadmap by 'Documentation Update' label, showing additional filter options in the dropdown .](img/roadmap_filters_v13_11.png)
 
-From an epic, you can also [view the roadmap filtered to this epic's descendants](../epics/_index.md#roadmap-in-epics).
+From an epic, you can also [view the roadmap filtered to this epic's descendants](../../work_items/child_items.md#view-child-epics-on-a-roadmap).
 
 ### Improve the performance of the roadmap
 
@@ -179,10 +179,10 @@ on the start day (Sunday) of the week. This preset is selected by default.
 
 ### Weeks
 
-![roadmap date range in weeks](img/roadmap_timeline_weeks_v11_11.png)
+![The Weeks date range preset on a roadmap.](img/roadmap_timeline_weeks_v11_11.png)
 
-In the **Weeks** preset, roadmap shows epics and milestones which have start or due dates **falling
-within** or **going through** currently selected date range preset, where **today**
+In the **Weeks** preset, roadmap shows epics and milestones which have start or due dates **falling within**
+or **going through** currently selected date range preset, where **today**
 is shown by the vertical red line in the timeline. The sub-headers underneath the week name on
 the timeline header represent the days of the week.
 
@@ -210,4 +210,4 @@ If an epic is [blocked by another epic](../epics/linked_epics.md#blocking-epics)
 
 When you hover over the blocked icon ({{< icon name="entity-blocked" >}}), a detailed information popover is displayed.
 
-![Blocked epics](img/roadmap_blocked_icon_v15_5.png)
+![The popover displaying detailed information about a blocked epic.](img/roadmap_blocked_icon_v15_5.png)

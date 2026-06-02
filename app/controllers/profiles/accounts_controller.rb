@@ -12,7 +12,7 @@ class Profiles::AccountsController < Profiles::ApplicationController
   end
 
   def unlink
-    provider = params[:provider]
+    provider = normalize_provider(params[:provider])
     identity = find_identity(provider)
 
     return render_404 unless identity
@@ -23,7 +23,7 @@ class Profiles::AccountsController < Profiles::ApplicationController
       flash[:alert] = _("You are not allowed to unlink your primary login account")
     end
 
-    redirect_to profile_account_path
+    redirect_to profile_two_factor_auth_path
   end
 
   def generate_support_pin

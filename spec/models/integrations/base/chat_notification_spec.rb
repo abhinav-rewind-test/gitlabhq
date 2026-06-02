@@ -75,7 +75,7 @@ RSpec.describe Integrations::Base::ChatNotification, feature_category: :integrat
   end
 
   describe '#execute' do
-    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:project, freeze: false) { create(:project, :repository) }
 
     let(:user) { build_stubbed(:user) }
     let(:webhook_url) { 'https://example.gitlab.com/' }
@@ -146,10 +146,10 @@ RSpec.describe Integrations::Base::ChatNotification, feature_category: :integrat
     end
 
     context 'when the data object has a label' do
-      let_it_be(:label) { build(:label, project: project, name: 'Bug') }
-      let_it_be(:label_2) { build(:label, project: project, name: 'Community contribution') }
-      let_it_be(:label_3) { build(:label, project: project, name: 'Backend') }
-      let_it_be(:issue) { create(:labeled_issue, project: project, labels: [label, label_2, label_3]) }
+      let_it_be(:label, freeze: false) { build(:label, project: project, name: 'Bug') }
+      let_it_be(:label_2, freeze: false) { build(:label, project: project, name: 'Community contribution') }
+      let_it_be(:label_3, freeze: false) { build(:label, project: project, name: 'Backend') }
+      let_it_be(:issue, freeze: false) { create(:labeled_issue, project: project, labels: [label, label_2, label_3]) }
       let_it_be(:work_item) { create(:work_item, project: project, labels: [label, label_2, label_3]) }
       let_it_be(:incident) { create(:work_item, :incident, project: project, labels: [label, label_2, label_3]) }
       let_it_be(:note) { create(:note, noteable: issue, project: project) }
@@ -572,26 +572,11 @@ RSpec.describe Integrations::Base::ChatNotification, feature_category: :integrat
 
     let(:integration_with_fields) { integration_with_fields_class.new }
 
-    context 'when pipeline_status_change_notifications feature flag is enabled' do
-      it 'includes the notify_only_when_pipeline_status_changes field' do
-        field_names = integration_with_fields.fields.map(&:name)
+    it 'includes the notify_only_when_pipeline_status_changes field' do
+      field_names = integration_with_fields.fields.map(&:name)
 
-        expect(field_names).to include('notify_only_when_pipeline_status_changes')
-        expect(field_names).to include('other_field')
-      end
-    end
-
-    context 'when pipeline_status_change_notifications feature flag is disabled' do
-      before do
-        stub_feature_flags(pipeline_status_change_notifications: false)
-      end
-
-      it 'excludes the notify_only_when_pipeline_status_changes field' do
-        field_names = integration_with_fields.fields.map(&:name)
-
-        expect(field_names).not_to include('notify_only_when_pipeline_status_changes')
-        expect(field_names).to include('other_field')
-      end
+      expect(field_names).to include('notify_only_when_pipeline_status_changes')
+      expect(field_names).to include('other_field')
     end
   end
 end

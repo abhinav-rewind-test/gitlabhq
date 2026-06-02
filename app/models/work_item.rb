@@ -5,6 +5,8 @@ class WorkItem < Issue
   include Gitlab::InternalEventsTracking
   include Import::HasImportSource
 
+  MAX_OPEN_WORK_ITEMS_COUNT = 10_000
+
   COMMON_QUICK_ACTIONS_COMMANDS = [
     :title, :reopen, :close, :tableflip, :shrug, :type, :promote_to, :checkin_reminder,
     :subscribe, :unsubscribe, :confidential, :award, :react, :move, :clone, :copy_metadata,
@@ -31,7 +33,7 @@ class WorkItem < Issue
 
   scope :inc_relations_for_permission_check, -> {
     includes(
-      :author, :work_item_type, { project: [:project_feature, { namespace: :route }, :group] }, { namespace: [:route] }
+      :author, { project: [:project_feature, { namespace: :route }, :group] }, { namespace: [:route] }
     )
   }
 
@@ -52,12 +54,7 @@ class WorkItem < Issue
   end
 
   scope :with_enabled_widget_definition, ->(type) do
-    if Feature.enabled?(:work_item_system_defined_type, :instance)
-      where(work_item_type_id: ::WorkItems::TypesFramework::SystemDefined::Type.with_widget_definition(type).map(&:id))
-    else
-      joins(work_item_type: :enabled_widget_definitions)
-        .merge(::WorkItems::WidgetDefinition.by_enabled_widget_type(type))
-    end
+    where(work_item_type_id: ::WorkItems::TypesFramework::SystemDefined::Type.with_widget_definition(type).map(&:id))
   end
 
   scope :with_group_level_and_project_issues_enabled, ->(include_group_level_items: true) do
@@ -143,7 +140,6 @@ class WorkItem < Issue
     def link_reference_pattern
       @link_reference_pattern ||= project_or_group_link_reference_pattern(
         'work_items',
-        namespace_reference_pattern,
         Gitlab::Regex.work_item
       )
     end
@@ -256,7 +252,22 @@ class WorkItem < Issue
       Gitlab::SQL::CTE.new(:work_item_ids_cte, id_in(ids))
         .apply_to(all)
         .in_namespaces_with_cte(namespaces)
-        .includes(:work_item_type)
+    end
+
+    # Returns descendant work item IDs for base work items and all their descendants.
+    # This is a generic method for traversing work item hierarchy.
+    def descendant_ids_for(work_item_ids, work_item_type: nil)
+      return [] if work_item_ids.blank?
+
+      base_scope = id_in(work_item_ids)
+      hierarchy = ::Gitlab::WorkItems::WorkItemHierarchy.new(base_scope).base_and_descendants
+
+      if work_item_type
+        work_item_type_id = ::WorkItems::TypesFramework::Provider.new.find_by_base_type(work_item_type).id
+        hierarchy = hierarchy.where(work_item_type_id: work_item_type_id)
+      end
+
+      hierarchy.pluck(:id) # rubocop:disable Database/AvoidUsingPluckWithoutLimit -- Limited number of work items
     end
   end
 
@@ -327,6 +338,10 @@ class WorkItem < Issue
 
   def ancestors
     hierarchy.ancestors(hierarchy_order: :asc)
+  end
+
+  def ancestors_with_order(hierarchy_order: :asc)
+    hierarchy.ancestors(hierarchy_order: hierarchy_order)
   end
 
   def descendants
@@ -470,18 +485,23 @@ class WorkItem < Issue
   def validate_parent_restrictions(parent_link)
     return unless parent_link
 
-    parent_link.work_item.work_item_type_id = work_item_type_id
+    parent_type = parent_link.work_item_parent.work_item_type
 
-    unless parent_link.valid?
-      errors.add(
-        :work_item_type_id,
-        format(
-          _('cannot be changed to %{new_type} when linked to a parent %{parent_type}.'),
-          new_type: work_item_type.name.downcase,
-          parent_type: parent_link.work_item_parent.work_item_type.name.downcase
-        )
+    allowed = ::WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.hierarchy_relationship_allowed?(
+      parent_type_id: parent_type.system_defined_type_id,
+      child_type_id: work_item_type.system_defined_type_id
+    )
+
+    return if allowed
+
+    errors.add(
+      :work_item_type_id,
+      format(
+        _('cannot be changed to %{new_type} when linked to a parent %{parent_type}.'),
+        new_type: work_item_type.name.downcase,
+        parent_type: parent_type.name.downcase
       )
-    end
+    )
   end
 
   def validate_child_restrictions(child_links)
@@ -489,7 +509,7 @@ class WorkItem < Issue
 
     child_type_ids = child_links.joins(:work_item).distinct.pluck('issues.work_item_type_id') # rubocop:disable Database/AvoidUsingPluckWithoutLimit -- Limited number of work item types
     restrictions = ::WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.where(
-      parent_type_id: work_item_type_id,
+      parent_type_id: work_item_type.system_defined_type_id,
       child_type_id: child_type_ids
     )
 

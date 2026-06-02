@@ -63,6 +63,16 @@ RSpec.describe 'ProjectCiCdSettingsUpdate', feature_category: :continuous_integr
       allow(::Gitlab::CurrentSettings).to receive(:enforce_ci_inbound_job_token_scope_enabled?).and_return(false)
     end
 
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :update_ci_cd_setting do
+      let(:boundary_object) { project }
+      let(:mutation) do
+        graphql_mutation(:project_ci_cd_settings_update,
+          { full_path: project.full_path, keep_latest_artifact: false }, 'errors')
+      end
+
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+
     it 'updates ci cd settings', :aggregate_failures do
       post_graphql_mutation(mutation, current_user: user)
 
@@ -101,6 +111,66 @@ RSpec.describe 'ProjectCiCdSettingsUpdate', feature_category: :continuous_integr
         expect(response).to have_gitlab_http_status(:success)
         expect(response_errors).to be_blank
         expect(project.ci_cd_settings.push_repository_for_job_token_allowed).to be(true)
+      end
+    end
+
+    context 'when cross_project_push_for_job_token_allowed requested to be true' do
+      let(:variables) do
+        {
+          full_path: project.full_path,
+          cross_project_push_for_job_token_allowed: true
+        }
+      end
+
+      it 'updates cross_project_push_for_job_token_allowed', :aggregate_failures do
+        post_graphql_mutation(mutation, current_user: user)
+        project.reload
+
+        expect(response).to have_gitlab_http_status(:success)
+        expect(response_errors).to be_blank
+        expect(project.ci_cd_settings.cross_project_push_for_job_token_allowed).to be(true)
+      end
+    end
+
+    context 'when cross_project_push_for_job_token_allowed is not specified' do
+      let(:variables) do
+        {
+          full_path: project.full_path,
+          push_repository_for_job_token_allowed: true
+        }
+      end
+
+      it 'does not change cross_project_push_for_job_token_allowed', :aggregate_failures do
+        project.ci_cd_settings.update!(cross_project_push_for_job_token_allowed: true)
+
+        post_graphql_mutation(mutation, current_user: user)
+        project.reload
+
+        expect(response).to have_gitlab_http_status(:success)
+        expect(response_errors).to be_blank
+        expect(project.ci_cd_settings.cross_project_push_for_job_token_allowed).to be(true)
+      end
+    end
+
+    context 'when cross_project_push_for_job_token_allowed requested to be false' do
+      let(:variables) do
+        {
+          full_path: project.full_path,
+          cross_project_push_for_job_token_allowed: false
+        }
+      end
+
+      before do
+        project.ci_cd_settings.update!(cross_project_push_for_job_token_allowed: true)
+      end
+
+      it 'updates cross_project_push_for_job_token_allowed to false', :aggregate_failures do
+        post_graphql_mutation(mutation, current_user: user)
+        project.reload
+
+        expect(response).to have_gitlab_http_status(:success)
+        expect(response_errors).to be_blank
+        expect(project.ci_cd_settings.cross_project_push_for_job_token_allowed).to be(false)
       end
     end
 
@@ -354,24 +424,21 @@ RSpec.describe 'ProjectCiCdSettingsUpdate', feature_category: :continuous_integr
           expect(response).to have_gitlab_http_status(:success)
         end
 
-        it 'is not allowed for maintainers', :aggregate_failures do
-          expect { post_graphql_mutation(mutation, current_user: maintainer) }.not_to(
+        it 'is allowed for maintainers', :aggregate_failures do
+          expect { post_graphql_mutation(mutation, current_user: maintainer) }.to(
             change { project.reload.ci_pipeline_variables_minimum_override_role }
+              .from('developer')
+              .to('owner')
           )
 
-          expect(response_errors).to(
-            include(
-              'Changing the ci_pipeline_variables_minimum_override_role to the owner role is not allowed'
-            )
-          )
-
+          expect(response_errors).to be_blank
           expect(response).to have_gitlab_http_status(:success)
         end
       end
     end
 
     describe 'resource_group_default_process_mode' do
-      let_it_be(:variables) do
+      let_it_be(:variables, freeze: false) do
         {
           full_path: project.full_path,
           resource_group_default_process_mode: 'OLDEST_FIRST'

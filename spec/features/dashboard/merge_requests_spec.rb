@@ -2,16 +2,18 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_workflow do
+RSpec.describe 'Dashboard Merge Requests', :with_current_organization, :js, feature_category: :code_review_workflow do
   include Features::SortingHelpers
   include FilteredSearchHelpers
   include ProjectForksHelper
+  include ListboxHelpers
 
-  let(:current_user) { create(:user) }
+  seed_internal_bot(:duo_code_review_bot)
+
+  let(:current_user) { create(:user, organization: current_organization) }
   let(:user) { current_user }
-  let(:project) { create(:project) }
-
-  let(:public_project) { create(:project, :public, :repository) }
+  let(:project) { create(:project, organization: current_organization) }
+  let(:public_project) { create(:project, :public, :repository, organization: current_organization) }
   let(:forked_project) { fork_project(public_project, current_user, repository: true) }
   let(:page_path) { merge_requests_dashboard_path(assignee_username: [user.username]) }
 
@@ -33,25 +35,28 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
   it 'disables target branch filter' do
     visit merge_requests_dashboard_path
 
-    expect(page).not_to have_selector('#js-dropdown-target-branch', visible: false)
+    expect(page).not_to have_selector('#js-dropdown-target-branch', visible: :hidden)
   end
 
   it 'disables releases filter' do
     visit merge_requests_dashboard_path
 
-    expect(page).not_to have_selector('#js-dropdown-release', visible: false)
+    expect(page).not_to have_selector('#js-dropdown-release', visible: :hidden)
   end
 
   it 'disables environments filter' do
     visit merge_requests_dashboard_path
 
-    expect(page).not_to have_selector('#js-dropdown-environment', visible: false)
+    expect(page).not_to have_selector('#js-dropdown-environment', visible: :hidden)
   end
 
   context 'new merge request dropdown' do
     let(:project_with_disabled_merge_requests) { create(:project, :merge_requests_disabled) }
 
     before do
+      create(:callout, user: user, feature_name: :merge_request_dashboard_display_preferences_popover)
+      create(:callout, user: user, feature_name: :merge_request_dashboard_show_drafts)
+
       project_with_disabled_merge_requests.add_maintainer(current_user)
       visit merge_requests_dashboard_path
     end
@@ -61,10 +66,10 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
       wait_for_requests
 
       within_testid('new-resource-dropdown') do
-        expect(page).to have_content(project.full_name)
-        expect(page).not_to have_content(project_with_disabled_merge_requests.full_name)
+        expect_listbox_item(project.full_name)
+        expect_no_listbox_item(project_with_disabled_merge_requests.full_name)
 
-        find_button(project.full_name).click
+        select_listbox_item(project.full_name)
 
         expect(page).to have_link("New merge request in #{project.name}")
       end
@@ -90,28 +95,35 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
   end
 
   context 'merge requests exist' do
-    let_it_be(:author_user) { create(:user) }
+    let_it_be(:author_user) { create(:user, organization: current_organization) }
 
     let(:label) { create(:label) }
 
-    let!(:assigned_merge_request) do
-      create(:merge_request,
+    let!(:assigned_merge_request) do # counted as assignee
+      create(
+        :merge_request,
+        title: 'assigned_merge_request',
         assignees: [current_user],
         source_project: project,
-        author: author_user)
+        author: author_user
+      )
     end
 
-    let!(:review_requested_merge_request) do
-      create(:merge_request,
+    let!(:review_requested_merge_request) do # counted as reviewer
+      create(
+        :merge_request,
+        title: 'review_requested_merge_request',
         reviewers: [current_user],
         source_branch: 'review',
         source_project: project,
-        author: author_user)
+        author: author_user
+      )
     end
 
-    let!(:assigned_merge_request_from_fork) do
+    let!(:assigned_merge_request_from_fork) do # counted as assignee
       create(
         :merge_request,
+        title: 'assigned_merge_request_from_fork',
         source_branch: 'markdown',
         assignees: [current_user],
         target_project: public_project,
@@ -120,18 +132,20 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
       )
     end
 
-    let!(:authored_merge_request) do
+    let!(:authored_merge_request) do # counted as author
       create(
         :merge_request,
+        title: 'authored_merge_request',
         source_branch: 'markdown',
         source_project: project,
         author: current_user
       )
     end
 
-    let!(:authored_merge_request_from_fork) do
+    let!(:authored_merge_request_from_fork) do # counted as author
       create(
         :merge_request,
+        title: 'authored_merge_request_from_fork',
         source_branch: 'feature_conflict',
         author: current_user,
         target_project: public_project,
@@ -139,9 +153,10 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
       )
     end
 
-    let!(:labeled_merge_request) do
+    let!(:labeled_merge_request) do # counted as author
       create(
         :labeled_merge_request,
+        title: 'labeled_merge_request',
         source_branch: 'labeled',
         labels: [label],
         author: current_user,
@@ -149,9 +164,10 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
       )
     end
 
-    let!(:detailed_merge_request) do
+    let!(:detailed_merge_request) do # counted as assignee
       create(
         :merge_request,
+        title: 'detailed_merge_request',
         source_branch: 'accessibility_fix',
         assignees: [current_user],
         target_project: public_project,
@@ -162,9 +178,10 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
       )
     end
 
-    let!(:other_merge_request) do
+    let!(:other_merge_request) do # not counted
       create(
         :merge_request,
+        title: 'other_merge_request',
         source_branch: 'fix',
         source_project: project,
         author: author_user
@@ -176,7 +193,7 @@ RSpec.describe 'Dashboard Merge Requests', :js, feature_category: :code_review_w
     end
 
     it 'includes all merge requests count in badge' do
-      expect(page).to have_link('Merge requests 8')
+      expect(page).to have_link('Merge requests 7')
     end
 
     it 'shows assigned merge requests' do

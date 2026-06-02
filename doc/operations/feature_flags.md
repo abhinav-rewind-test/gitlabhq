@@ -1,10 +1,9 @@
 ---
 stage: Verify
 group: Runner Core
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: Create and maintain a custom feature flag for your GitLab application.
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Create and maintain custom feature flags for your application.
 title: Feature flags
-description: Progressive delivery, controlled deployment, and risk reduction.
 ---
 
 {{< details >}}
@@ -45,7 +44,7 @@ with GitLab, so it's up to developers to use a compatible client library and
 To create and enable a feature flag:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Select **New feature flag**.
 1. Enter a name that starts with a letter and contains only lowercase letters, digits, underscores (`_`),
    or dashes (`-`), and does not end with a dash (`-`) or underscore (`_`).
@@ -168,7 +167,7 @@ For example:
 To create a user list:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Select **View user lists**
 1. Select **New user list**.
 1. Enter a name for the list.
@@ -182,7 +181,7 @@ When viewing a list, you can rename it by selecting **Edit** ({{< icon name="pen
 To add users to a user list:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Select **Edit** ({{< icon name="pencil" >}}) next to the list you want to add users to.
 1. Select **Add Users**.
 1. Enter the user IDs as a comma-separated list of values. For example,
@@ -194,7 +193,7 @@ To add users to a user list:
 To remove users from a user list:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Select **Edit** ({{< icon name="pencil" >}}) next to the list you want to change.
 1. Select **Remove** ({{< icon name="remove" >}}) next to the ID you want to remove.
 
@@ -212,7 +211,7 @@ To remove the feature flag from the code during cleanup, find any project refere
 To search for code references of a feature flag:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Edit the feature flag you want to remove.
 1. Select **More actions** ({{< icon name="ellipsis_v" >}}).
 1. Select **Search code references**.
@@ -222,7 +221,7 @@ To search for code references of a feature flag:
 To disable a feature flag for a specific environment:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. For the feature flag you want to disable, select **Edit** ({{< icon name="pencil" >}}).
 1. To disable the flag:
    - For each strategy it applies to, under **Environments**, delete the environment.
@@ -233,7 +232,7 @@ To disable a feature flag for a specific environment:
 To disable a feature flag for all environments:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. For the feature flag you want to disable, slide the Status toggle to **Disabled**.
 
 The feature flag is displayed on the **Disabled** tab.
@@ -248,7 +247,7 @@ Then prepare your application with a client library.
 To get the access credentials that your application needs to communicate with GitLab:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Deploy** > **Feature flags**.
+1. In the left sidebar, select **Deploy** > **Feature flags**.
 1. Select **Configure** to view the following:
    - **API URL**: URL where the client (application) connects to get a list of feature flags.
    - **Instance ID**: Unique token that authorizes the retrieval of the feature flags.
@@ -412,8 +411,8 @@ The feature flag API is considered **Unauthenticated traffic (from a given IP ad
 
 The polling rate is configurable in SDKs. Provided that all clients are requesting from the same IP:
 
-- Request once per minute ... 500 clients can be supported.
-- Request once per 15 sec ... 125 clients can be supported.
+- At one request per minute, supports approximately 500 clients (8 RPS).
+- At one request per 15 sec, supports approximately 125 clients.
 
 For applications looking for more scalable solution, you should use [Unleash Proxy](#unleash-proxy-example).
 On GitLab.com, you should use Unleash Proxy to reduce the chance of being rate limited across endpoints.
@@ -437,6 +436,8 @@ Read the documentation in a SDK project for more information.
 Functionality-wise, there are no differences. Both GitLab.com and GitLab Self-Managed behave the same.
 
 In terms of scalability, it's up to the spec of the GitLab instance.
-For example, GitLab.com uses HA architecture so it can handle many concurrent requests. However, GitLab Self-Managed instances on underpowered machines won't deliver comparable performance.
-See [Reference architectures](../administration/reference_architectures/_index.md)
-for more information.
+GitLab.com uses a highly scaled architecture to handle many concurrent requests.
+
+However, GitLab Self-Managed instances with insufficient capacity based on the [reference architectures](../administration/reference_architectures/_index.md#additional-workloads)
+won't deliver comparable performance and can even be overloaded by feature flag traffic.
+Consider the number of users of your deployed application _in addition_ to your GitLab users.

@@ -9,16 +9,15 @@ import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import {
   FORM_TYPES,
   CHILD_ITEMS_ANCHOR,
-  WORKITEM_TREE_SHOWLABELS_LOCALSTORAGEKEY,
   WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY,
+  WORKITEM_TREE_METADATA_LOCALSTORAGEKEY,
   WORK_ITEM_TYPE_NAME_EPIC,
   WIDGET_TYPE_HIERARCHY,
   DETAIL_VIEW_QUERY_PARAM_NAME,
-  NAME_TO_TEXT_LOWERCASE_MAP,
-  NAME_TO_TEXT_MAP,
+  WORK_ITEM_TYPE_NAME_TICKET,
   WORK_ITEM_TREE_COLLAPSE_TRACKING_ACTION_COLLAPSED,
   WORK_ITEM_TREE_COLLAPSE_TRACKING_ACTION_EXPANDED,
-  WORK_ITEM_TYPE_NAME_TICKET,
+  METADATA_KEYS,
 } from '../../constants';
 import {
   findHierarchyWidget,
@@ -27,6 +26,7 @@ import {
   getToggleFromLocalStorage,
   getItems,
   trackCrudCollapse,
+  getHiddenMetadataKeysFromLocalStorage,
 } from '../../utils';
 import getWorkItemTreeQuery from '../../graphql/work_item_tree.query.graphql';
 import namespaceWorkItemTypesQuery from '../../graphql/namespace_work_item_types.query.graphql';
@@ -117,6 +117,11 @@ export default {
       required: false,
       default: null,
     },
+    activePanel: {
+      type: String,
+      required: false,
+      default: null,
+    },
     parentIteration: {
       type: Object,
       required: false,
@@ -139,7 +144,6 @@ export default {
       formType: null,
       childType: null,
       widgetName: CHILD_ITEMS_ANCHOR,
-      showLabels: true,
       showClosed: true,
       fetchNextPageInProgress: false,
       workItem: {},
@@ -147,8 +151,10 @@ export default {
       workItemTypes: [],
       hierarchyWidget: null,
       draggedItemType: null,
-      showLabelsLocalStorageKey: WORKITEM_TREE_SHOWLABELS_LOCALSTORAGEKEY,
-      showClosedLocalStorageKey: WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY,
+      hiddenMetadataKeys: getHiddenMetadataKeysFromLocalStorage(
+        WORKITEM_TREE_METADATA_LOCALSTORAGEKEY,
+        [METADATA_KEYS.PARENT],
+      ),
     };
   },
   apollo: {
@@ -215,12 +221,12 @@ export default {
       const reorderedChildTypes = childTypes.slice().sort((a, b) => a.id.localeCompare(b.id));
       return reorderedChildTypes.map((type) => {
         const depthLimitByType =
-          this.depthLimitReachedByType?.find((item) => item.workItemType?.name === type.name) || {};
+          this.depthLimitReachedByType?.find((item) => item.workItemType?.id === type.id) || {};
 
         return {
-          name: NAME_TO_TEXT_MAP[type.name],
+          name: type.name,
           atDepthLimit: depthLimitByType.depthLimitReached,
-          items: this.genericActionItems(type.name).map((item) => ({
+          items: this.genericActionItems(type).map((item) => ({
             text: item.title,
             action: item.action,
             extraAttrs: {
@@ -309,24 +315,23 @@ export default {
     window.removeEventListener('popstate', this.checkDrawerParams);
   },
   mounted() {
-    this.showLabels = getToggleFromLocalStorage(this.showLabelsLocalStorageKey);
-    this.showClosed = getToggleFromLocalStorage(this.showClosedLocalStorageKey);
+    this.showClosed = getToggleFromLocalStorage(WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY);
   },
   methods: {
-    genericActionItems(workItemType) {
-      const workItemName = NAME_TO_TEXT_LOWERCASE_MAP[workItemType];
+    genericActionItems(type) {
+      const workItemName = type.name;
       return [
-        ...(workItemType === WORK_ITEM_TYPE_NAME_TICKET
+        ...(type.name === WORK_ITEM_TYPE_NAME_TICKET
           ? []
           : [
               {
                 title: sprintf(s__('WorkItem|New %{workItemName}'), { workItemName }),
-                action: () => this.showAddForm(FORM_TYPES.create, workItemType),
+                action: () => this.showAddForm(FORM_TYPES.create, type),
               },
             ]),
         {
           title: sprintf(s__('WorkItem|Existing %{workItemName}'), { workItemName }),
-          action: () => this.showAddForm(FORM_TYPES.add, workItemType),
+          action: () => this.showAddForm(FORM_TYPES.add, type),
         },
       ];
     },
@@ -344,13 +349,12 @@ export default {
     showModal({ event, child }) {
       this.$emit('show-modal', { event, modalWorkItem: child });
     },
-    toggleShowLabels() {
-      this.showLabels = !this.showLabels;
-      saveToggleToLocalStorage(this.showLabelsLocalStorageKey, this.showLabels);
-    },
     toggleShowClosed() {
       this.showClosed = !this.showClosed;
-      saveToggleToLocalStorage(this.showClosedLocalStorageKey, this.showClosed);
+      saveToggleToLocalStorage(WORKITEM_TREE_SHOWCLOSED_LOCALSTORAGEKEY, this.showClosed);
+    },
+    handleUpdateHiddenMetadataKeys(hiddenKeys) {
+      this.hiddenMetadataKeys = [...hiddenKeys];
     },
     async fetchNextPage() {
       if (this.hasNextPage && !this.fetchNextPageInProgress) {
@@ -399,6 +403,9 @@ export default {
   i18n: {
     noChildItemsOpen: s__('WorkItem|No child items are currently open.'),
   },
+  WORKITEM_TREE_METADATA_LOCALSTORAGEKEY,
+  METADATA_KEYS,
+  defaultHiddenMetadataKeys: [METADATA_KEYS.PARENT],
 };
 </script>
 
@@ -439,17 +446,18 @@ export default {
     </template>
 
     <template #actions>
-      <work-item-actions-split-button v-if="canUpdateChildren" :actions="addItemsActions" />
       <work-item-more-actions
         :work-item-iid="workItemIid"
         :full-path="fullPath"
         :work-item-type="workItemType"
-        :show-labels="showLabels"
         :show-closed="showClosed"
+        :metadata-local-storage-key="$options.WORKITEM_TREE_METADATA_LOCALSTORAGEKEY"
+        :default-hidden-metadata-keys="$options.defaultHiddenMetadataKeys"
         show-view-roadmap-action
-        @toggle-show-labels="toggleShowLabels"
         @toggle-show-closed="toggleShowClosed"
+        @update-hidden-metadata-keys="handleUpdateHiddenMetadataKeys"
       />
+      <work-item-actions-split-button v-if="canUpdateChildren" :actions="addItemsActions" />
     </template>
 
     <template #form>
@@ -470,7 +478,7 @@ export default {
         @error="error = $event"
         @success="hideAddForm"
         @cancel="hideAddForm"
-        @addChild="$emit('addChild')"
+        @add-child="$emit('add-child')"
         @update-in-progress="disableContent = $event"
       />
     </template>
@@ -496,13 +504,14 @@ export default {
           :is-group="isGroup"
           :work-item-id="workItemId"
           :work-item-type="workItemType"
-          :show-labels="showLabels"
           :show-closed="showClosed"
+          :hidden-metadata-keys="hiddenMetadataKeys"
           :disable-content="disableContent"
           :has-indirect-children="hasIndirectChildren"
           :allowed-children-by-type="allowedChildrenByType"
           :dragged-item-type="draggedItemType"
           :active-child-item-id="activeChildItemId"
+          :active-panel="activePanel"
           :parent-id="workItemId"
           :contextual-view-enabled="contextualViewEnabled"
           @drag="draggedItemType = $event"

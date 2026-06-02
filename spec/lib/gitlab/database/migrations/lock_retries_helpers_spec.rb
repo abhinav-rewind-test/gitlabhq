@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Database::Migrations::LockRetriesHelpers do
+RSpec.describe Gitlab::Database::Migrations::LockRetriesHelpers, feature_category: :database do
   let(:model) do
     ActiveRecord::Migration.new.extend(described_class)
   end
@@ -16,7 +16,7 @@ RSpec.describe Gitlab::Database::Migrations::LockRetriesHelpers do
       model.with_lock_retries(env: env, logger: in_memory_logger) {}
 
       buffer.rewind
-      expect(buffer.read).to include("\"class\":\"#{model.class}\"")
+      expect(buffer.read).to include("\"class_name\":\"#{model.class}\"")
     end
 
     where(raise_on_exhaustion: [true, false])

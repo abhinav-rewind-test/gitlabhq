@@ -467,12 +467,23 @@ That's all of the required database changes.
   end
   ```
 
-- [ ] Make sure Geo push events are created. Usually it needs some change in the `app/workers/post_receive.rb` file. Example:
+- [ ] Make sure Geo push events are created by including the new repository type in the `Repository#log_geo_updated_event` method in the `ee/app/models/ee/repository.rb` file:
 
   ```ruby
-  def replicate_cool_widget_changes(cool_widget)
-    if ::Gitlab::Geo.primary?
-      cool_widget.geo_handle_after_update if cool_widget
+  def log_geo_updated_event
+    return unless ::Gitlab::Geo.primary?
+
+    case container
+    when Project, DesignManagement::Repository, CoolWidget # Add the widget class here
+      container.geo_handle_after_update
+    when ProjectWiki
+      project.wiki_repository&.geo_handle_after_update
+    when GroupWiki
+      group.group_wiki_repository&.geo_handle_after_update
+    when Snippet # personal and project
+      container.snippet_repository&.geo_handle_after_update
+    else
+      raise "Cannot log a Geo updated event for #{container.class}"
     end
   end
   ```
@@ -540,6 +551,17 @@ That's all of the required database changes.
     end
   end
   ```
+
+- [ ] For the `cool_widget_registry_oldest_unsynced_time` metric, the code
+      assumes the model responds to `updated_at` to track when the model was last
+      updated. If it responds to another method, add a `self.model_update_last`
+      method inside the `CoolWidgetRegistry` class:
+
+      ```ruby
+      def self.model_updated_last
+        :updated_last_method
+      end
+      ```
 
 - [ ] Update `REGISTRY_CLASSES` in `ee/app/workers/geo/secondary/registry_consistency_worker.rb`.
 - [ ] Add a custom factory name if needed in `def model_class_factory_name` in `ee/spec/support/helpers/ee/geo_helpers.rb`.
@@ -692,6 +714,7 @@ Metrics are gathered by `Geo::MetricsUpdateWorker`, persisted in `GeoNodeStatus`
   - `cool_widgets_verification_failed_count`
   - `cool_widgets_synced_in_percentage`
   - `cool_widgets_verified_in_percentage`
+  - `cool_widgets_oldest_unsynced_time`
 - [ ] Add the same fields to `GET /geo_nodes/status` example response in
   `ee/spec/fixtures/api/schemas/public_api/v4/geo_node_status.json` and `ee/spec/fixtures/api/schemas/public_api/v4/geo_site_status.json`.
 - [ ] Add the following fields to the `Sidekiq metrics` table in `doc/administration/monitoring/prometheus/gitlab_metrics.md`:
@@ -706,8 +729,9 @@ Metrics are gathered by `Geo::MetricsUpdateWorker`, persisted in `GeoNodeStatus`
   | `geo_cool_widgets_verification_total` | Gauge | XX.Y | Number of Cool Widgets to attempt to verify on secondary | `url` |
   | `geo_cool_widgets_verified` | Gauge | XX.Y | Number of Cool Widgets successfully verified on secondary | `url` |
   | `geo_cool_widgets_verification_failed` | Gauge | XX.Y | Number of Cool Widgets that failed verification on secondary | `url` |
+  | `geo_cool_widgets_oldest_unsynced_time` | Gauge | XX.Y | Timestamp of the last update to the oldest unsynchronized object | `url` |
   ```
-- [ ] Run the rake task `geo:dev:ssf_metrics` and commit the changes to `ee/config/metrics/object_schemas/geo_node_usage.json`
+- [ ] Run the rake task `gitlab:geo:dev:ssf_metrics` and commit the changes to `ee/config/metrics/object_schemas/geo_node_usage.json`
 
 Cool Widget replication and verification metrics should now be available in the API, the `Admin > Geo > Sites` view, and Prometheus.
 

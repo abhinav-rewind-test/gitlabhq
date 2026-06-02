@@ -1,6 +1,6 @@
 <script>
 import { GlTooltipDirective, GlLink, GlButton, GlCollapse, GlIcon, GlBadge } from '@gitlab/ui';
-import { difference, get } from 'lodash';
+import { difference, get } from 'lodash-es';
 import { __, s__, sprintf } from '~/locale';
 import { InternalEvents } from '~/tracking';
 import { ASSET_LINK_TYPE, CLICK_EXPAND_ASSETS_ON_RELEASE_PAGE } from '../constants';
@@ -110,6 +110,9 @@ export default {
 
 <template>
   <div>
+    <h3 class="gl-sr-only">
+      {{ __('Assets') }}
+    </h3>
     <gl-button
       data-testid="accordion-button"
       variant="link"

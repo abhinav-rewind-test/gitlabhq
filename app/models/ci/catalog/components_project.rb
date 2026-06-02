@@ -3,9 +3,8 @@
 module Ci
   module Catalog
     # This class represents a project that contains one or more CI/CD components.
-    # It is responsible for retrieving the data of a component file.
+    # It is responsible for resolving component paths and retrieving catalog component data.
     class ComponentsProject
-      TEMPLATE_FILE = 'template.yml'
       TEMPLATES_DIR = 'templates'
       TEMPLATE_PATH_REGEX = '^templates\/[\w-]+(?:\/template)?\.yml$'
       COMPONENTS_LIMIT = 100
@@ -42,31 +41,6 @@ module Ci
         result.spec
       end
 
-      def fetch_component(component_name)
-        return ComponentData.new unless component_name.index('/').nil?
-
-        path = simple_template_path(component_name)
-        content = fetch_content(path)
-
-        if content.nil?
-          path = complex_template_path(component_name)
-          content = fetch_content(path)
-        end
-
-        ComponentData.new(content: content, path: path)
-      end
-
-      # TODO: This may retrieve the wrong component object if a simple and a complex component
-      # have the same name for the given catalog resource version. We should complete
-      # https://gitlab.com/gitlab-org/gitlab/-/issues/450737 to ensure unique component names.
-      def find_catalog_component(component_name)
-        # Multiple versions of a project can have the same sha, so we return the latest one.
-        version = project.catalog_resource_versions.by_sha(sha).latest
-        return unless version
-
-        version.components.template.find_by_name(component_name)
-      end
-
       def find_catalog_components(component_names)
         return [] if component_names.empty?
 
@@ -80,22 +54,6 @@ module Ci
       private
 
       attr_reader :project, :sha
-
-      def fetch_content(component_path)
-        project.repository.blob_data_at(sha, component_path)
-      end
-
-      # A simple template consists of a single file
-      def simple_template_path(component_name)
-        File.join(TEMPLATES_DIR, "#{component_name}.yml")
-      end
-
-      # A complex template is directory-based and may consist of multiple files.
-      # Given a path like "my-org/sub-group/the-project/templates/component"
-      # returns the entry point path: "templates/component/template.yml".
-      def complex_template_path(component_name)
-        File.join(TEMPLATES_DIR, component_name, TEMPLATE_FILE)
-      end
     end
   end
 end

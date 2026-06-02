@@ -23,17 +23,28 @@ RSpec.describe 'Create a new cluster agent token', feature_category: :deployment
 
   context 'without user permissions' do
     it_behaves_like 'a mutation that returns top-level errors',
-      errors: ["The resource that you are attempting to access does not exist "\
+      errors: ["The resource that you are attempting to access does not exist " \
                "or you don't have permission to perform this action"]
 
     it 'does not create a token' do
-      expect { post_graphql_mutation(mutation, current_user: current_user) }.not_to change(Clusters::AgentToken, :count)
+      expect { post_graphql_mutation(mutation, current_user: current_user) }.not_to change { Clusters::AgentToken.count }
     end
   end
 
   context 'with project permissions' do
     before do
       cluster_agent.project.add_maintainer(current_user)
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :create_cluster_agent_token do
+      let(:user) { current_user }
+      let(:boundary_object) { cluster_agent.project }
+      let(:mutation) do
+        graphql_mutation(:cluster_agent_token_create,
+          { cluster_agent_id: cluster_agent.to_global_id.to_s, name: name }, 'errors')
+      end
+
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
     end
 
     it 'creates a new token', :aggregate_failures do

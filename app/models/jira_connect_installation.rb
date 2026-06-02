@@ -12,11 +12,14 @@ class JiraConnectInstallation < ApplicationRecord
   has_many :subscriptions, class_name: 'JiraConnectSubscription'
   belongs_to :organization, class_name: 'Organizations::Organization'
 
-  validates :client_key, presence: true, uniqueness: true
+  validates :client_key, presence: true, uniqueness: { scope: :organization_id }
   validates :shared_secret, presence: true
   validates :base_url, presence: true, public_url: true
   validates :display_url, public_url: true, allow_blank: true
   validates :instance_url, public_url: true, allow_blank: true
+  validate :instance_url_parseable_by_uri, if: :instance_url_changed?
+
+  before_validation :normalize_instance_url
 
   scope :for_project, ->(project) {
     distinct
@@ -65,5 +68,36 @@ class JiraConnectInstallation < ApplicationRecord
 
   def proxy?
     instance_url.present?
+  end
+
+  private
+
+  # Ruby's URI.parse is stricter than Addressable (used by the public_url
+  # validator). Downstream code (e.g. atlassian-jwt) calls URI.parse on the
+  # instance_url, so reject values that will blow up there. Only runs on
+  # change so rows already persisted with a bad value don't fail unrelated
+  # updates - runtime use is guarded by ProxyLifecycleEventService.
+  def instance_url_parseable_by_uri
+    return if instance_url.blank?
+
+    URI.parse(instance_url)
+  rescue URI::InvalidURIError
+    errors.add(:instance_url, _('must be a valid URL'))
+  end
+
+  def normalize_instance_url
+    return if instance_url.blank?
+
+    stripped = instance_url.strip
+    return if stripped.start_with?('http://', 'https://')
+    return if stripped.include?('://')
+
+    # Only prepend https:// when the value starts with a domain-like token (e.g.
+    # "gitlab.example.com" or "gitlab.example.com/path"). Values that don't
+    # match (e.g. "/path", "not-a-url") are left as-is so the public_url
+    # validator surfaces the original input.
+    return unless stripped.match?(/\A[a-zA-Z0-9][a-zA-Z0-9-]*\./)
+
+    self.instance_url = "https://#{stripped}"
   end
 end

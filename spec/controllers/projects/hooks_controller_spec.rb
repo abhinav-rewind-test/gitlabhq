@@ -23,7 +23,7 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
   end
 
   describe '#update' do
-    let_it_be(:hook) { create(:project_hook, project: project) }
+    let_it_be(:hook, freeze: false) { create(:project_hook, project: project) }
 
     let(:params) do
       { namespace_id: project.namespace, project_id: project, id: hook.id }
@@ -111,7 +111,7 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
   end
 
   describe '#edit' do
-    let_it_be(:hook) { create(:project_hook, project: project) }
+    let_it_be(:hook, freeze: false) { create(:project_hook, project: project) }
 
     let(:params) do
       { namespace_id: project.namespace, project_id: project, id: hook.id }
@@ -187,7 +187,7 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
 
       params = { namespace_id: project.namespace, project_id: project, hook: hook_params }
 
-      expect { post :create, params: params }.to change(ProjectHook, :count).by(1)
+      expect { post :create, params: params }.to change { ProjectHook.count }.by(1)
 
       project_hook = ProjectHook.order_id_desc.take
 
@@ -196,6 +196,17 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
       )
       expect(response).to have_gitlab_http_status(:found)
       expect(flash[:alert]).to be_blank
+    end
+
+    context 'with signing_token param' do
+      let(:base_params) { { namespace_id: project.namespace, project_id: project } }
+      let(:valid_signing_token) { "whsec_#{Base64.strict_encode64('a' * 32)}" }
+
+      it 'persists signing_token' do
+        post :create, params: base_params.merge(hook: { url: 'http://example.com', signing_token: valid_signing_token })
+
+        expect(ProjectHook.order_id_desc.first.signing_token).to eq(valid_signing_token)
+      end
     end
 
     it 'alerts the user if the new hook is invalid' do

@@ -5,6 +5,7 @@ import {
   renderDeleteSuccessToast,
   renderLeaveSuccessToast,
   renderRestoreSuccessToast,
+  renderTransferSuccessToast,
   renderUnarchiveSuccessToast,
 } from '~/vue_shared/components/groups_list/utils';
 import {
@@ -15,6 +16,7 @@ import {
   ACTION_EDIT,
   ACTION_LEAVE,
   ACTION_RESTORE,
+  ACTION_TRANSFER,
   ACTION_UNARCHIVE,
 } from '~/vue_shared/components/list_actions/constants';
 import toast from '~/vue_shared/plugins/global_toast';
@@ -68,36 +70,23 @@ describe('availableGraphQLGroupActions', () => {
 
   describe('when user has archiveGroup permission', () => {
     describe.each`
-      description                                                  | featureFlag | archived | isSelfArchived | markedForDeletion | expectedActions
-      ${'group is not archived'}                                   | ${true}     | ${false} | ${false}       | ${false}          | ${[ACTION_COPY_ID, ACTION_ARCHIVE]}
-      ${'group is archived'}                                       | ${true}     | ${true}  | ${true}        | ${false}          | ${[ACTION_COPY_ID, ACTION_UNARCHIVE]}
-      ${'group belongs to an archived group'}                      | ${true}     | ${true}  | ${false}       | ${false}          | ${[ACTION_COPY_ID]}
-      ${'group is scheduled for deletion'}                         | ${true}     | ${false} | ${false}       | ${true}           | ${[ACTION_COPY_ID]}
-      ${'group is not archived but flag is disabled'}              | ${false}    | ${false} | ${false}       | ${false}          | ${[ACTION_COPY_ID]}
-      ${'group is archived but flag is disabled'}                  | ${false}    | ${true}  | ${true}        | ${false}          | ${[ACTION_COPY_ID, ACTION_UNARCHIVE]}
-      ${'group belongs to an archived group but flag is disabled'} | ${false}    | ${true}  | ${false}       | ${false}          | ${[ACTION_COPY_ID]}
-      ${'group is scheduled for deletion but flag is disabled'}    | ${false}    | ${false} | ${false}       | ${true}           | ${[ACTION_COPY_ID]}
-    `(
-      'when $description',
-      ({ featureFlag, archived, isSelfArchived, markedForDeletion, expectedActions }) => {
-        beforeEach(() => {
-          window.gon = {
-            features: { archiveGroup: featureFlag },
-          };
+      description                             | archived | isSelfArchived | markedForDeletion | expectedActions
+      ${'group is not archived'}              | ${false} | ${false}       | ${false}          | ${[ACTION_COPY_ID, ACTION_ARCHIVE]}
+      ${'group is archived'}                  | ${true}  | ${true}        | ${false}          | ${[ACTION_COPY_ID, ACTION_UNARCHIVE]}
+      ${'group belongs to an archived group'} | ${true}  | ${false}       | ${false}          | ${[ACTION_COPY_ID]}
+      ${'group is scheduled for deletion'}    | ${false} | ${false}       | ${true}           | ${[ACTION_COPY_ID]}
+    `('when $description', ({ archived, isSelfArchived, markedForDeletion, expectedActions }) => {
+      it('returns expected actions', () => {
+        const availableActions = availableGraphQLGroupActions({
+          userPermissions: { archiveGroup: true },
+          archived,
+          isSelfArchived,
+          markedForDeletion,
         });
 
-        it('returns expected actions', () => {
-          const availableActions = availableGraphQLGroupActions({
-            userPermissions: { archiveGroup: true },
-            archived,
-            isSelfArchived,
-            markedForDeletion,
-          });
-
-          expect(availableActions).toStrictEqual(expectedActions);
-        });
-      },
-    );
+        expect(availableActions).toStrictEqual(expectedActions);
+      });
+    });
   });
 
   describe('when user has no archiveGroup permission', () => {
@@ -112,27 +101,19 @@ describe('availableGraphQLGroupActions', () => {
 
   describe('when user has removeGroup permission', () => {
     describe.each`
-      description                                    | markedForDeletion | isSelfDeletionScheduled | isSelfDeletionInProgress | allowImmediateNamespacesDeletion | expectedActions
-      ${'group is not marked for deletion'}          | ${false}          | ${false}                | ${false}                 | ${true}                          | ${[ACTION_COPY_ID, ACTION_DELETE]}
-      ${'group is scheduled for deletion'}           | ${true}           | ${true}                 | ${false}                 | ${true}                          | ${[ACTION_COPY_ID, ACTION_RESTORE, ACTION_DELETE_IMMEDIATELY]}
-      ${'group is scheduled but immediate disabled'} | ${true}           | ${true}                 | ${false}                 | ${false}                         | ${[ACTION_COPY_ID, ACTION_RESTORE]}
-      ${'group belongs to a deleted group'}          | ${true}           | ${false}                | ${false}                 | ${true}                          | ${[ACTION_COPY_ID]}
-      ${'group deletion is in progress'}             | ${true}           | ${true}                 | ${true}                  | ${true}                          | ${[]}
+      description                           | markedForDeletion | isSelfDeletionScheduled | isSelfDeletionInProgress | expectedActions
+      ${'group is not marked for deletion'} | ${false}          | ${false}                | ${false}                 | ${[ACTION_COPY_ID, ACTION_DELETE]}
+      ${'group is scheduled for deletion'}  | ${true}           | ${true}                 | ${false}                 | ${[ACTION_COPY_ID, ACTION_RESTORE, ACTION_DELETE_IMMEDIATELY]}
+      ${'group belongs to a deleted group'} | ${true}           | ${false}                | ${false}                 | ${[ACTION_COPY_ID]}
+      ${'group deletion is in progress'}    | ${true}           | ${true}                 | ${true}                  | ${[]}
     `(
       'when $description',
       ({
         markedForDeletion,
         isSelfDeletionScheduled,
         isSelfDeletionInProgress,
-        allowImmediateNamespacesDeletion,
         expectedActions,
       }) => {
-        beforeEach(() => {
-          window.gon = {
-            allow_immediate_namespaces_deletion: allowImmediateNamespacesDeletion,
-          };
-        });
-
         it('returns expected actions', () => {
           const availableActions = availableGraphQLGroupActions({
             userPermissions: { removeGroup: true },
@@ -174,6 +155,26 @@ describe('availableGraphQLGroupActions', () => {
       });
 
       expect(availableActions).not.toContain(ACTION_LEAVE);
+    });
+  });
+
+  describe('when user has transferGroup permission', () => {
+    it('includes transfer action', () => {
+      const availableActions = availableGraphQLGroupActions({
+        userPermissions: { changeGroup: true },
+      });
+
+      expect(availableActions).toContain(ACTION_TRANSFER);
+    });
+  });
+
+  describe('when user has no transferGroup permission', () => {
+    it('does not include transfer action', () => {
+      const availableActions = availableGraphQLGroupActions({
+        userPermissions: { changeGroup: false },
+      });
+
+      expect(availableActions).not.toContain(ACTION_TRANSFER);
     });
   });
 });
@@ -228,6 +229,16 @@ describe('renderUnarchiveSuccessToast', () => {
 
     expect(toast).toHaveBeenCalledWith(
       `Group '${MOCK_GROUP.fullName}' has been successfully unarchived.`,
+    );
+  });
+});
+
+describe('renderTransferSuccessToast', () => {
+  it('calls toast correctly', () => {
+    renderTransferSuccessToast(MOCK_GROUP);
+
+    expect(toast).toHaveBeenCalledWith(
+      `Group '${MOCK_GROUP.fullName}' transfer has been scheduled. Users with the Maintainer or Owner role will be notified when it completes.`,
     );
   });
 });

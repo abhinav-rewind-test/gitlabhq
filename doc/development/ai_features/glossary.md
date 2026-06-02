@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Duo Glossary
 ---
 
@@ -205,6 +205,10 @@ Flows are best used for repeatable, multi-step automations that need to run reli
 consistently across projects. Flows are ideal when a task follows a predictable pattern, such as
 fixing failing pipelines, updating dependencies, or applying policy checks. Flows can be
 executed without continuous human input.
+
+#### Adding new foundational flows
+
+For detailed instructions on how to add new foundational flows to GitLab, see the [foundational flows development guide](foundational_flows.md). Foundational flows are defined in the monolith at `ee/app/models/ai/catalog/foundational_flow.rb` and implemented in GitLab Duo Workflow Service.
 
 ### Agent
 

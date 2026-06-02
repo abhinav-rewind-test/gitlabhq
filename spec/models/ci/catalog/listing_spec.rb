@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
   let_it_be(:user) { create(:user) }
   let_it_be(:namespace) { create(:group) }
-  let_it_be(:public_namespace_project) do
+  let_it_be(:public_namespace_project, freeze: false) do
     create(:project, :public, namespace: namespace, name: 'A public namespace project', star_count: 10, reporters: user)
   end
 
@@ -35,7 +35,7 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
 
     let(:params) { {} }
 
-    let_it_be(:public_resource_a) do
+    let_it_be(:public_resource_a, freeze: false) do
       create(:ci_catalog_resource, :published, project: public_namespace_project,
         last_30_day_usage_count: 100, verification_level: 100)
     end
@@ -331,6 +331,91 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
 
         it 'returns the resources with matching verification level' do
           is_expected.to contain_exactly(public_resource_a, public_resource_b)
+        end
+      end
+    end
+
+    context 'when filtering by group_ids' do
+      let_it_be(:other_namespace) { create(:group) }
+      let_it_be(:other_namespace_project) do
+        create(:project, :public, namespace: other_namespace, reporters: user)
+      end
+
+      let_it_be(:other_namespace_resource) do
+        create(:ci_catalog_resource, :published, project: other_namespace_project)
+      end
+
+      context 'with a single group id' do
+        let(:params) { { group_ids: [namespace.id] } }
+
+        it 'returns only catalog resources whose project namespace matches' do
+          is_expected.to contain_exactly(public_resource_a, private_namespace_resource)
+        end
+      end
+
+      context 'with multiple group ids' do
+        let(:params) { { group_ids: [namespace.id, other_namespace.id] } }
+
+        it 'returns the union of catalog resources across the given namespaces' do
+          is_expected.to contain_exactly(public_resource_a, private_namespace_resource, other_namespace_resource)
+        end
+      end
+
+      context 'with no matching group id' do
+        let(:params) { { group_ids: [non_existing_record_id] } }
+
+        it 'returns no resources' do
+          is_expected.to be_empty
+        end
+      end
+
+      context 'with descendant groups (direct match only)' do
+        let_it_be(:child_namespace) { create(:group, parent: namespace) }
+        let_it_be(:child_project) { create(:project, :public, namespace: child_namespace, reporters: user) }
+        let_it_be(:child_resource) { create(:ci_catalog_resource, :published, project: child_project) }
+
+        let(:params) { { group_ids: [namespace.id] } }
+
+        it 'does not include resources from descendant namespaces' do
+          is_expected.not_to include(child_resource)
+        end
+      end
+
+      context 'when combined with other filters' do
+        context 'with search' do
+          let(:params) { { group_ids: [namespace.id], search: 'public' } }
+
+          it 'returns resources matching both filters' do
+            is_expected.to contain_exactly(public_resource_a)
+          end
+        end
+
+        context 'with scope parameter' do
+          let(:params) { { group_ids: [namespace.id], scope: :namespaces } }
+
+          it 'returns resources matching both filters' do
+            is_expected.to contain_exactly(public_resource_a, private_namespace_resource)
+          end
+        end
+      end
+
+      context 'with nil or empty group_ids' do
+        context 'when nil' do
+          let(:params) { { group_ids: nil } }
+
+          it 'does not filter by group' do
+            is_expected.to contain_exactly(public_resource_a, public_resource_b, private_namespace_resource,
+              internal_resource, other_namespace_resource)
+          end
+        end
+
+        context 'when empty array' do
+          let(:params) { { group_ids: [] } }
+
+          it 'does not filter by group' do
+            is_expected.to contain_exactly(public_resource_a, public_resource_b, private_namespace_resource,
+              internal_resource, other_namespace_resource)
+          end
         end
       end
     end

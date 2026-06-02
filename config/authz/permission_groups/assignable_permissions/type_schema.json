@@ -19,6 +19,10 @@
       "type": "string",
       "description": "Override for the generated resource name"
     },
+    "deprecated": {
+      "type": "boolean",
+      "description": "When true, the permission is hidden from view but continues to function for existing tokens"
+    },
     "boundaries": {
       "type": "array",
       "items": {
@@ -41,12 +45,26 @@
       },
       "minItems": 1,
       "description": "List of raw permissions the assignable permission expands to"
+    },
+    "available_for": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "granular_access_token",
+          "role"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Consumers that may use this permission: granular access tokens, standard roles, and/or custom roles"
     }
   },
   "required": [
     "name",
     "description",
     "permissions",
-    "boundaries"
+    "boundaries",
+    "available_for"
   ]
 }

@@ -218,15 +218,18 @@ func TestSendGitAuditEvent(t *testing.T) {
 
 	api := NewAPI(helper.URLMustParse(ts.URL), "123", http.DefaultTransport)
 	auditRequest := GitAuditEventRequest{
-		Action:   "git-receive-request",
-		Protocol: "http",
-		Repo:     "project-1",
-		Username: "GitLab-Shell",
-		Changes:  "_any",
+		Action:     "git-receive-request",
+		Protocol:   "http",
+		Repo:       "project-1",
+		Username:   "GitLab-Shell",
+		Identifier: "user-123",
+		Changes:    "_any",
 		PackfileStats: &gitalypb.PackfileNegotiationStatistics{
 			Wants: 3,
 			Haves: 23,
 		},
+		WrittenBytes:  1048576,
+		ReceivedBytes: 2048,
 	}
 	err := api.SendGitAuditEvent(context.Background(), auditRequest)
 	require.NoError(t, err)

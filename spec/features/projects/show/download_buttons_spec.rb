@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Projects > Show > Download buttons', feature_category: :groups_and_projects do
+RSpec.describe 'Projects > Show > Download buttons', feature_category: :source_code_management do
   let(:user) { create(:user) }
   let(:role) { :developer }
   let(:status) { 'success' }
@@ -35,6 +35,8 @@ RSpec.describe 'Projects > Show > Download buttons', feature_category: :groups_a
   end
 
   describe 'when checking project main page' do
-    it_behaves_like 'archive download buttons'
+    it_behaves_like 'archive download buttons' do
+      let(:button_test_id) { 'code-dropdown' }
+    end
   end
 end

@@ -6,7 +6,7 @@ module QA
       class Groups < Page::Base
         include Page::Component::GroupsFilter
 
-        view 'app/views/dashboard/_groups_head.html.haml' do
+        view 'app/assets/javascripts/groups/your_work/components/app.vue' do
           element 'new-group-button'
         end
 
@@ -35,5 +35,3 @@ module QA
     end
   end
 end
-
-QA::Page::Dashboard::Groups.prepend_mod_with('Page::Component::DuoChatCallout', namespace: QA)

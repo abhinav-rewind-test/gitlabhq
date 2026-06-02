@@ -5,10 +5,12 @@ module Gitlab
     module Reports
       module Security
         class Report
-          attr_reader :created_at, :type, :findings, :identifiers
+          include Gitlab::Utils::StrongMemoize
+
+          attr_reader :created_at, :type, :findings, :identifiers, :scanners
           attr_accessor :pipeline, :scanned_resources, :errors,
             :analyzer, :version, :schema_validation_status, :warnings,
-            :scan, :scanner
+            :scan, :scanner, :scanner_external_id
 
           delegate :project_id, to: :pipeline
           delegate :project, to: :pipeline
@@ -20,6 +22,7 @@ module Gitlab
             @created_at = created_at
             @findings = []
             @identifiers = {}
+            @scanners = {}
             @scanned_resources = []
             @errors = []
             @warnings = []
@@ -47,6 +50,10 @@ module Gitlab
 
           def add_identifier(identifier)
             identifiers[identifier.key] ||= identifier
+          end
+
+          def add_scanner(scanner)
+            scanners[scanner.external_id] ||= scanner
           end
 
           def add_finding(finding)
@@ -77,8 +84,13 @@ module Gitlab
           def has_signatures?
             findings.any?(&:has_signatures?)
           end
+
+          # Overridden in EE
+          def tracked_context; end
         end
       end
     end
   end
 end
+
+Gitlab::Ci::Reports::Security::Report.prepend_mod

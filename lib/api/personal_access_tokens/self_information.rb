@@ -37,8 +37,8 @@ module API
       end
 
       resource :personal_access_tokens do
-        desc "Get single personal access token" do
-          detail 'Get the details of a personal access token by passing it to the API in a header'
+        desc 'Retrieve a personal access token' do
+          detail 'Retrieves a specified personal access token by passing it to the API in a header.'
           success code: 200, model: Entities::PersonalAccessTokenWithLastUsedIps
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -50,8 +50,9 @@ module API
           present access_token, with: Entities::PersonalAccessTokenWithLastUsedIps
         end
 
-        desc "Return personal access token associations" do
-          detail 'Get groups and projects this personal access token can access by passing it to the API in a header'
+        desc 'List all token associations' do
+          detail 'Lists all groups and projects accessible by the personal access token used to authenticate the ' \
+            'request. Generally, this includes any groups or projects that the user is a member of.'
           success code: 200, model: Entities::PersonalAccessToken
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -60,8 +61,10 @@ module API
           tags %w[access_tokens]
         end
         params do
+          # rubocop:disable API/AccessLevelStringType -- Introduced before the cop
           optional :min_access_level, type: Integer, values: Gitlab::Access.all_values,
             desc: 'Limit by minimum access level of authenticated user'
+          # rubocop:enable API/AccessLevelStringType
           use :pagination
         end
         get 'self/associations' do
@@ -72,8 +75,8 @@ module API
           present access_token_associations, with: Entities::PersonalAccessTokenAssociations, current_user: current_user
         end
 
-        desc "Revoke a personal access token" do
-          detail 'Revoke a personal access token by passing it to the API in a header'
+        desc 'Revoke a personal access token' do
+          detail 'Revokes a personal access token by passing it to the API in a header.'
           success code: 204
           failure [
             { code: 400, message: 'Bad Request' }

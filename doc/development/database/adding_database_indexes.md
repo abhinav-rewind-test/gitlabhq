@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Adding Database Indexes
 ---
 
@@ -198,7 +198,8 @@ Existing queries already work without the added indexes, and
 would not critical to operating the application.
 
 If indexing takes a long time to finish
-(a post-deployment migration should take less than [10 minutes](../migration_style_guide.md#how-long-a-migration-should-take))
+(concurrent operations in a post-deployment migration should take less than
+[20 minutes](query_performance.md#timing-guidelines-for-queries)),
 consider [indexing asynchronously](#create-indexes-asynchronously).
 
 ### Add an index to support new or updated queries
@@ -240,7 +241,7 @@ For GitLab.com, we execute post-deployment migrations throughout a single releas
 After the application code changes are fully deployed,
 The release manager can choose to execute post-deployment migrations at their discretion at a much later time.
 The post-deployment migration executes one time per day pending GitLab.com availability.
-For this reason, you need a [confirmation](https://gitlab.com/gitlab-org/release/docs/-/tree/master/general/post_deploy_migration#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom)
+For this reason, you need a [confirmation](https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/database-migrations/post-deploy-migration/readme.md#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom)
 the post-deployment migrations included in the first MR were executed before merging the second MR.
 
 #### New or updated queries might be slow on a large GitLab instance
@@ -268,7 +269,6 @@ You have two options depending on [how long it takes to create the index](../mig
 1. Single release: if a regular migration can create the required index very fast
    (usually because the table is new or very small) you can create the index in a
    regular migration, and ship the application code change in the same MR and milestone.
-
 1. At least two releases: if the required index takes time to create,
    you must create it in a PDM in one release then wait for the next release to
    make the application code changes that rely on the index.
@@ -295,7 +295,34 @@ Consult the Database team, reviewers, or maintainers to plan the work.
 
 ### All unique indexes needs to be scoped
 
-For more information, see [Unique constraints in Cells](../../development/cells/_index.md#unique-constraints).
+For more information, see [Unique constraints in Cells](../cells/_index.md#unique-constraints).
+
+### Unique indexes on nullable columns
+
+By default, PostgreSQL treats `NULL` values as distinct in unique indexes.
+This means a unique index on `(project_id, name)` allows multiple rows where
+`name IS NULL` for the same `project_id`.
+
+PostgreSQL 15 introduced the [`NULLS NOT DISTINCT`](https://www.postgresql.org/about/featurematrix/detail/unique-nulls-not-distinct/)
+clause for unique indexes. When enabled, PostgreSQL treats `NULL` values as equal,
+so the index permits at most one `NULL` per unique combination.
+
+Use `nulls_not_distinct: true` when you need to enforce full uniqueness
+including `NULL` values:
+
+```ruby
+add_concurrent_index(
+  :vulnerability_finding_links,
+  %i[vulnerability_occurrence_id name url],
+  unique: true,
+  nulls_not_distinct: true,
+  name: "finding_link_occurrence_id_name_url_idx"
+)
+```
+
+This replaces the previous pattern of combining two indexes: one regular unique
+index for non-null rows and a partial unique index with a `WHERE column IS NULL`
+condition. A single `NULLS NOT DISTINCT` index is simpler and uses less disk space.
 
 ## Dropping unused indexes
 
@@ -696,7 +723,7 @@ index creation can proceed at a lower level of risk.
 
 1. Create a merge request containing a post-deployment migration, which prepares
    the index for asynchronous creation.
-1. [Create a follow-up issue](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Synchronous%20Database%20Index)
+1. [Create a follow-up issue](https://gitlab.com/gitlab-org/gitlab/-/issues/new?description_template=Synchronous%20Database%20Index)
    to add a migration that creates the index synchronously.
 1. In the merge request that prepares the asynchronous index, add a comment mentioning the follow-up issue.
 
@@ -750,11 +777,20 @@ so `prepare_async_index` and `prepare_partitioned_async_index` are no-ops for ot
 ### Verify the MR was deployed and the index exists in production
 
 1. Verify that the post-deploy migration was executed on GitLab.com using ChatOps with
-   `/chatops run auto_deploy status <merge_sha>`. If the output returns `db/gprd`,
+   `/chatops gitlab run auto_deploy status <merge_sha>`. If the output returns `db/gprd`,
    the post-deploy migration has been executed in the production database. For more information, see
    [How to determine if a post-deploy migration has been executed on GitLab.com](https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/database-migrations/post-deploy-migration/readme.md#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom).
 1. In the case of an [index created asynchronously](#schedule-the-index-to-be-created), wait
    until the next week so that the index can be created over a weekend.
+   - Async indexes are scheduled to run every 12th minute during weekends (`12 * * * 0,6`). The configuration is set in [chef-repo](https://gitlab.com/gitlab-com/gl-infra/chef-repo/-/blob/77e24f41130d9e6ae716860a2a46559b1d6312e1/roles/gprd-base-deploy-node.json#L84) and [omnibus](https://gitlab.com/gitlab-org/omnibus-gitlab/-/blob/778a97e365b62e48eacde6c283b4fcaa0f240b43/files/gitlab-cookbooks/gitlab/recipes/database_reindexing_enable.rb#L19).
+   - If the index is not created after a weekend, check the status of queued index operations by running the below query in a recent DB thin clone.
+
+     ```postgresql
+     SELECT definition, created_at, attempts, last_error FROM postgres_async_indexes
+     WHERE definition ILIKE 'CREATE%'
+     ORDER BY attempts ASC, id ASC;
+     ```
+
 1. Use [Database Lab](database_lab.md) to check [if creation was successful](database_lab.md#checking-indexes).
    Ensure the output does not indicate the index is `invalid`.
 
@@ -844,7 +880,7 @@ index destruction can proceed at a lower level of risk.
 
 1. Create a merge request containing a post-deployment migration, which prepares
    the index for asynchronous destruction.
-1. [Create a follow-up issue](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Synchronous%20Database%20Index)
+1. [Create a follow-up issue](https://gitlab.com/gitlab-org/gitlab/-/issues/new?description_template=Synchronous%20Database%20Index)
    to add a migration that destroys the index synchronously.
 1. In the merge request that prepares the asynchronous index removal, add a comment mentioning the follow-up issue.
 
@@ -876,7 +912,7 @@ Include the output of the test in the merge request description.
 ### Verify the MR was deployed and the index no longer exists in production
 
 1. Verify that the post-deploy migration was executed on GitLab.com using ChatOps with
-   `/chatops run auto_deploy status <merge_sha>`. If the output returns `db/gprd`,
+   `/chatops gitlab run auto_deploy status <merge_sha>`. If the output returns `db/gprd`,
    the post-deploy migration has been executed in the production database. For more information, see
    [How to determine if a post-deploy migration has been executed on GitLab.com](https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/database-migrations/post-deploy-migration/readme.md#how-to-determine-if-a-post-deploy-migration-has-been-executed-on-gitlabcom).
 1. In the case of an [index removed asynchronously](#schedule-the-index-to-be-removed), wait

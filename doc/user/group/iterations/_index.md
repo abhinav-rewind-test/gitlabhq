@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Iterations
 description: Time-boxed workflow, program increments, cadence, and sprints.
 ---
@@ -43,8 +43,8 @@ Use iterations to plan and execute work in fixed time periods, and help teams ma
 predictable delivery cadence.
 When teams work in sprints, each iteration provides a clear timebox for planning,
 execution, and delivery of work items.
-For more information, see
-[Tutorial: Use GitLab to facilitate Scrum](../../../tutorials/scrum_events/_index.md).
+For more information, see the
+[use GitLab to facilitate Scrum tutorial](../../../tutorials/scrum_events/_index.md).
 
 For example, when running two-week sprints, teams often need to coordinate multiple workstreams.
 The development team tracks implementation in the current sprint, while product managers prepare
@@ -118,12 +118,12 @@ configure iteration cadences to automatically roll over incomplete issues to the
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To create an iteration cadence:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. Select **New iteration cadence**.
 1. Enter the title and description of the iteration cadence.
 
@@ -132,8 +132,8 @@ To create an iteration cadence:
    - Select the automation start date of the iteration cadence. Iterations are scheduled to
      begin on the same day of the week as the day of the week of the start date.
    - From the **Duration** dropdown list, select how many weeks each iteration should last.
-   - From the **Upcoming iterations** dropdown list, select how many upcoming iterations should be
-     created and maintained by GitLab.
+   - From the **Upcoming iterations** dropdown list, select how many future iterations to schedule
+     in addition to the current one.
    - Optional. To move incomplete issues to the next iteration, select the **Enable roll over** checkbox.
      At the end of the current iteration, [Automation Bot](#gitlab-automation-bot-user) moves all open
      issues to the next iteration.
@@ -141,12 +141,12 @@ To create an iteration cadence:
      Administrators can change the instance time zone.
 1. Select **Create cadence**. The cadence list page opens.
 
-To manually manage the created cadence, see [Create an iteration manually](#create-an-iteration-manually).
+To manually manage the created cadence, see [create an iteration manually](#create-an-iteration-manually).
 
 ### View the iterations list
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 
 To view all the iterations in a cadence, ordered by descending date, select that iteration cadence.
 From there you can create a new iteration or select an iteration to get a more detailed view.
@@ -162,12 +162,12 @@ From there you can create a new iteration or select an iteration to get a more d
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To edit an iteration cadence:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. To the right of the cadence you want to edit, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and
    then select **Edit cadence**.
 1. Edit the fields.
@@ -181,8 +181,8 @@ To edit an iteration cadence:
 
 #### Turn on and off automatic scheduling for an iteration cadence
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. To the right of the cadence for which you want to turn on or off automatic scheduling, select the
    vertical ellipsis ({{< icon name="ellipsis_v" >}}) and then select **Edit cadence**.
 1. Select or clear the **Enable automatic scheduling** checkbox.
@@ -230,14 +230,14 @@ to satisfy the requirement that there are at least two upcoming iterations sched
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 Deleting an iteration cadence also deletes all iterations in that cadence.
 
 To delete an iteration cadence:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. To the right of the cadence you want to delete, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and then select **Delete cadence**.
 1. Select **Delete cadence**.
 
@@ -248,7 +248,7 @@ to the next iteration.
 
 Iterations are changed by the special GitLab Automation Bot user, which you can see in the issue
 [system notes](../../project/system_notes.md).
-This user isn't a [billable user](../../../subscriptions/manage_users_and_seats.md#criteria-for-non-billable-users),
+This user isn't a [billable user](../../../subscriptions/manage_seats.md#criteria-for-non-billable-users),
 so it does not count toward the license limit count.
 
 On GitLab.com, this is the `automation-bot1` user.
@@ -267,14 +267,14 @@ If you disable that option, you can create iterations manually.
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 - There must be at least one iteration cadence in the group and
   [automatic scheduling must be disabled](#turn-on-and-off-automatic-scheduling-for-an-iteration-cadence) for the iteration cadence.
 
 To create an iteration:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations**.
 1. To the right of the cadence in which you want create an iteration, select the vertical ellipsis
    ({{< icon name="ellipsis_v" >}}) and then select **Add iteration**.
 1. Complete the fields.
@@ -291,12 +291,12 @@ To create an iteration:
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To edit an iteration:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations** and select an iteration cadence.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations** and select an iteration cadence.
 1. Select the iteration you want edit. The iteration details page opens.
 1. In the upper-right corner, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and then select **Edit**.
 1. Edit the fields:
@@ -314,13 +314,13 @@ To edit an iteration:
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 - [Automatic scheduling must be disabled](#turn-on-and-off-automatic-scheduling-for-an-iteration-cadence) for the iteration cadence.
 
 To delete an iteration:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations** and select an iteration cadence.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations** and select an iteration cadence.
 1. Select the iteration you want edit. The iteration details page opens.
 1. In the upper-right corner, select the vertical ellipsis ({{< icon name="ellipsis_v" >}}) and then select **Delete**.
 1. Select **Delete**.
@@ -338,8 +338,8 @@ Closed iteration reports show the total number of issues completed by the due da
 
 To view an iteration report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations** and select an iteration cadence.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations** and select an iteration cadence.
 1. Select an iteration.
 
 ### Iteration burndown and burnup charts
@@ -382,8 +382,8 @@ understanding of scope attributable to each label.
 
 To group issues by label:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Iterations** and select an iteration cadence.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Iterations** and select an iteration cadence.
 1. Select an iteration.
 1. From the **Group by** dropdown list, select **Label**.
 1. From the **Filter by label** dropdown list, select the labels you want to group by.

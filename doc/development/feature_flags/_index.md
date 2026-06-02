@@ -1,7 +1,7 @@
 ---
 stage: none
 group: unassigned
-info: 'See the Technical Writers assigned to Development Guidelines: https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-development-guidelines'
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Developer documentation about GitLab feature flags.
 title: Feature flags in the development of GitLab
 ---
@@ -29,6 +29,29 @@ or not, see the feature flag lifecycle handbook page.
 ## When to use feature flags
 
 Moved to the ["When to use feature flags"](https://handbook.gitlab.com/handbook/product-development/how-we-work/product-development-flow/feature-flag-lifecycle/#when-to-use-feature-flags) section in the handbook.
+
+### Do not use feature flags in external API consumers
+
+Feature flags are internal implementation details and are not part of the public API contract.
+External API consumers (such as IDE extensions, Duo CLI, and CI integrations) that query feature
+flags via the GraphQL [`metadata.featureFlags`](../../api/graphql/reference/_index.md#metadatafeatureflags)
+field or the deprecated [`featureFlagEnabled`](../../api/graphql/reference/_index.md#queryfeatureflagenabled)
+field face a specific risk: when a flag is removed from the monolith, external consumers may not
+have been updated yet, which can range from a minor UI issue to a customer-impacting incident.
+
+Follow this guidance when working with feature flags in external API consumers:
+
+1. **Prefer API fields or Application Settings.** Where possible, avoid querying a feature flag
+   from an external API consumer. Instead, introduce a dedicated API field or
+   [Application Setting](../application_settings.md) that the consumer can query. These values
+   persist after the flag is removed.
+1. **Implement fail-open behavior.** If a feature flag must be used in an external API consumer,
+   implement a "fail-open" mechanism: after the rollout milestone is finalised, the consumer should
+   default to treating the flag as enabled. Update the consumer as soon as the rollout milestone is
+   confirmed. See [an example in the GitLab Language Server](https://gitlab.com/gitlab-org/editor-extensions/gitlab-lsp/-/merge_requests/2558/diffs).
+1. **Consider user upgrade patterns before removal.** Before removing a flag that is used by an
+   external API consumer, assess how quickly users update their clients and determine the safest
+   timing for removal.
 
 ### Do not use feature flags for long lived settings
 
@@ -113,7 +136,7 @@ GitLab are of the `gitlab_com_derisk` type.
 - `default_enabled`: **Must not** be set to true. This kind of feature flag is meant to lower the risk on GitLab.com, thus there's no need to keep the flag in the codebase after it's been enabled on GitLab.com. `default_enabled: true` will not have any effect for this type of feature flag.
 - Maximum Lifespan: 2 months after it's merged into the default branch
 - Documentation: This type of feature flag doesn't need to be documented in the
-  [All feature flags in GitLab](../../administration/feature_flags/list.md) page given they're short-lived and deployment-related
+  [All feature flags in GitLab](../../administration/feature_flags/list.md) page given they're short-lived and deployment-related.
 - Rollout issue: **Must** have a rollout issue created from the
   [Feature flag Roll Out template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/issue_templates/Feature%20Flag%20Roll%20Out.md)
 
@@ -161,7 +184,7 @@ Once the feature is complete, the feature flag type can be changed to the `gitla
 - `default_enabled`: **Must not** be set to true. If needed, this type can be changed to beta once the feature is complete.
 - Maximum Lifespan: 4 months after it's merged into the default branch
 - Documentation: This type of feature flag doesn't need to be documented in the
-  [All feature flags in GitLab](../../administration/feature_flags/list.md) page given they're mostly hiding unfinished code
+  [All feature flags in GitLab](../../administration/feature_flags/list.md) page given they're mostly hiding unfinished code.
 - Rollout issue: Likely no need for a rollout issues, as `wip` feature flags should be transitioned to
   another type before being enabled
 
@@ -191,7 +214,9 @@ Providing a flag in this case allows engineers and customers to disable the new 
   reason on specific on-premise installations)
 - Maximum Lifespan: 6 months after it's merged into the default branch
 - Documentation: This type of feature flag **must** be documented in the
-  [All feature flags in GitLab](../../administration/feature_flags/list.md) page
+  [All feature flags in GitLab](../../administration/feature_flags/list.md) page.
+  That page is [auto-generated during the docs build](../documentation/site_architecture/automation.md) from the YAML definition files,
+  so no manual edits to that page are needed.
 - Rollout issue: **Must** have a rollout issue
   created from the
   [Feature flag Roll Out template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/.gitlab/issue_templates/Feature%20Flag%20Roll%20Out.md)
@@ -230,6 +255,8 @@ confirm that the `ops` feature flag is still in use.
 - Documentation: This type of feature flag **must** be documented in the
   [All feature flags in GitLab](../../administration/feature_flags/list.md) page as well as be associated with an operational
   runbook describing the circumstances when it can be used.
+  That page is [auto-generated during the docs build](../documentation/site_architecture/automation.md) from the YAML definition files,
+  so no manual edits to that page are needed
 - Rollout issue: Likely no need for a rollout issues, as it is hard to predict when they are enabled or disabled
 
 #### Usage
@@ -417,8 +444,8 @@ To [use ChatOps](../../ci/chatops/_index.md) to output all the feature flags in 
 command. For example:
 
 ```shell
-/chatops run feature list --dev
-/chatops run feature list --staging
+/chatops gitlab run feature list --dev
+/chatops gitlab run feature list --staging
 ```
 
 ## Toggle a feature flag
@@ -1103,16 +1130,16 @@ use a **percentage of time** rollout. For example:
 
 ```shell
 # not running any jobs, deferring all 100% of the jobs
-/chatops run feature set run_sidekiq_jobs_SlowRunningWorker false
+/chatops gitlab run feature set run_sidekiq_jobs_SlowRunningWorker false
 
 # only running 10% of the jobs, deferring 90% of the jobs
-/chatops run feature set run_sidekiq_jobs_SlowRunningWorker 10
+/chatops gitlab run feature set run_sidekiq_jobs_SlowRunningWorker 10
 
 # running 50% of the jobs, deferring 50% of the jobs
-/chatops run feature set run_sidekiq_jobs_SlowRunningWorker 50
+/chatops gitlab run feature set run_sidekiq_jobs_SlowRunningWorker 50
 
 # back to running all jobs normally
-/chatops run feature delete run_sidekiq_jobs_SlowRunningWorker
+/chatops gitlab run feature delete run_sidekiq_jobs_SlowRunningWorker
 ```
 
 ### Dropping Sidekiq jobs
@@ -1122,10 +1149,10 @@ Instead of [deferring jobs](#deferring-sidekiq-jobs), jobs can be entirely dropp
 
 ```shell
 # drop all the jobs
-/chatops run feature set drop_sidekiq_jobs_SlowRunningWorker true
+/chatops gitlab run feature set drop_sidekiq_jobs_SlowRunningWorker true
 
 # process jobs normally
-/chatops run feature delete drop_sidekiq_jobs_SlowRunningWorker
+/chatops gitlab run feature delete drop_sidekiq_jobs_SlowRunningWorker
 ```
 
 > [!note]

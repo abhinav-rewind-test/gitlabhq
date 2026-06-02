@@ -26,7 +26,10 @@
     "emoji_events",
     "custom_webhook_template",
     "resource_access_token_events",
-    "branch_filter_strategy"
+    "resource_deploy_token_events",
+    "branch_filter_strategy",
+    "token_present",
+    "signing_token_present"
   ],
   "optional": [
     "url_variables",
@@ -126,6 +129,9 @@
     "resource_access_token_events": {
       "type": "boolean"
     },
+    "resource_deploy_token_events": {
+      "type": "boolean"
+    },
     "vulnerability_events": {
       "type": "boolean"
     },
@@ -181,6 +187,12 @@
     },
     "branch_filter_strategy": {
       "type": "string"
+    },
+    "token_present": {
+      "type": "boolean"
+    },
+    "signing_token_present": {
+      "type": "boolean"
     }
   },
   "additionalProperties": false

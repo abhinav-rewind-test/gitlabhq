@@ -142,9 +142,8 @@ RSpec.describe '.gitlab/ci/rules.gitlab-ci.yml', :unlimited_max_formatted_output
         '.gitlab_workhorse_secret',
         '.gitlab_suggested_reviewers_secret',
         '.gitlab/changelog_config.yml',
-        '.gitlab/CODEOWNERS',
-        '.gitlab/lint/unused_methods/excluded_methods.yml',
-        '.gitlab/lint/unused_methods/potential_methods_to_remove.yml',
+        'scripts/lint/excluded_methods.yml',
+        'scripts/lint/potential_methods_to_remove.yml',
         '.gitleaksignore',
         '.gitpod.yml',
         '.graphqlrc',
@@ -180,7 +179,6 @@ RSpec.describe '.gitlab/ci/rules.gitlab-ci.yml', :unlimited_max_formatted_output
       Dir.glob('.claude/**/*') +
       Dir.glob('.bundle/**/*') +
       Dir.glob('.github/*') +
-      Dir.glob('.gitlab/duo/**/*') +
       Dir.glob('.gitlab/{issue,merge_request}_templates/**/*') +
       Dir.glob('.gitlab/*.toml') +
       Dir.glob('{,**/}.{DS_Store,gitignore,gitkeep,keep}', File::FNM_DOTMATCH) +
@@ -190,7 +188,6 @@ RSpec.describe '.gitlab/ci/rules.gitlab-ci.yml', :unlimited_max_formatted_output
       Dir.glob('{metrics_server,sidekiq_cluster}/*') +
       Dir.glob('{{,ee/}spec/fixtures,tmp}/**/*', File::FNM_DOTMATCH) +
       Dir.glob('*.md') +
-      Dir.glob('ee/frontend_islands/**/*.md') +
       Dir.glob('public/assets/vite/.vite/**/*') +
       Dir.glob('changelogs/*') +
       Dir.glob('**/node_modules/**/*', File::FNM_DOTMATCH) +

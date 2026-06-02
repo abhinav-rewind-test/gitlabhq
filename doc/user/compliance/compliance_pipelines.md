@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Compliance pipelines (deprecated)
 description: Compliance pipelines (deprecated in 17.3, planned to be removed in 19.0) enables centralized CI/CD control for labeled projects. Replaced by pipeline execution policies.
 ---
@@ -17,7 +17,7 @@ description: Compliance pipelines (deprecated in 17.3, planned to be removed in 
 
 > [!warning]
 > This feature was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/159841) in GitLab 17.3
-> and is planned for removal in 19.0. Use [pipeline execution policy type](../application_security/policies/pipeline_execution_policies.md) instead.
+> and is planned for removal in 20.0. Use [pipeline execution policy type](../application_security/policies/pipeline_execution_policies.md) instead.
 > This change is a breaking change. For more information, see the [migration guide](#pipeline-execution-policies-migration).
 
 Group owners can configure a compliance pipeline in a project separate to other projects. By default, the compliance
@@ -58,8 +58,8 @@ Existing compliance pipelines must be migrated. Customers should migrate from co
 
 To migrate an existing compliance framework to use the pipeline execution policy type:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. [Edit](compliance_frameworks/_index.md#create-edit-or-delete-a-compliance-framework) the existing compliance framework.
 1. In the banner than appears, select **Migrate pipeline to a policy** to create a new policy in the security policies.
 1. Edit the compliance framework again to remove the compliance pipeline.
@@ -101,8 +101,8 @@ To ensure that the correct compliance pipeline is included in a project:
 
 To configure a compliance pipeline:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance Center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. Select **Frameworks** section.
 1. Select **New framework** section, add information of compliance framework including path to the compliance framework configuration. Use the
    `path/file.y[a]ml@group-name/project-name` format. For example:

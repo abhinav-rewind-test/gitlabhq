@@ -83,6 +83,18 @@ namespace :import do
     end
   end
 
+  resource :offline, only: [:show], controller: :offline
+
+  namespace :offline do
+    resource :export, only: [:show], controller: :export do
+      get :history
+    end
+
+    resource :import, only: [:show], controller: :import do
+      get :history
+    end
+  end
+
   resource :manifest, only: [:create, :new], controller: :manifest do
     get :status
     get :realtime_changes

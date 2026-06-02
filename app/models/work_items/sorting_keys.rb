@@ -75,11 +75,20 @@ module WorkItems
       end
 
       def widgets_sorting_keys
-        widget_definition_class.widget_classes
+        ::WorkItems::TypesFramework::SystemDefined::WidgetDefinition
+          .widget_classes
           .map(&:sorting_keys)
           .reduce({}, :merge)
       end
       strong_memoize_attr :widgets_sorting_keys
+
+      def order_by_values
+        all.keys.map do |key|
+          col = key.to_s.sub(/_(?:asc|desc)\z/, '')
+          col.in?(%w[created updated]) ? "#{col}_at" : col
+        end.uniq
+      end
+      strong_memoize_attr :order_by_values
 
       def available?(key, widget_list: [])
         key = key.to_sym
@@ -87,16 +96,6 @@ module WorkItems
 
         DEFAULT_SORTING_KEYS.key?(key) ||
           widget_list.any? { |widget| widget.sorting_keys.key?(key) }
-      end
-
-      private
-
-      def widget_definition_class
-        if Feature.enabled?(:work_item_system_defined_type, :instance)
-          ::WorkItems::TypesFramework::SystemDefined::WidgetDefinition
-        else
-          ::WorkItems::WidgetDefinition
-        end
       end
     end
   end

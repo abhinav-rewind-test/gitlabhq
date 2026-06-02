@@ -2,6 +2,7 @@
 
 module RapidDiffs
   class AppComponent < ViewComponent::Base
+    renders_one :empty_state
     renders_one :before_diffs_list
     renders_one :diffs_list
     renders_one :after_diffs_list
@@ -11,7 +12,7 @@ module RapidDiffs
     delegate :diffs_stream_url, :reload_stream_url, :diffs_stats_endpoint, :diff_files_endpoint, :diff_file_endpoint,
       :sorted?, :diffs_slice, :lazy?, :environment, :linked_file, to: :presenter
 
-    delegate :diff_view, :current_user, to: :helpers
+    delegate :diff_view, to: :helpers
 
     def initialize(presenter, extra_app_data: nil, extra_prefetch_endpoints: [])
       @presenter = presenter
@@ -23,6 +24,10 @@ module RapidDiffs
       return [linked_file] if linked_file
 
       diffs_slice || []
+    end
+
+    def parallel_view?
+      diff_view == :parallel
     end
 
     protected
@@ -39,7 +44,8 @@ module RapidDiffs
         diff_file_endpoint: diff_file_endpoint,
         update_user_endpoint: update_user_endpoint,
         linked_file_data: linked_file_data,
-        lazy: lazy?
+        lazy: lazy?,
+        file_by_file_mode: file_by_file_mode?
       }.merge(@extra_app_data || {})
     end
 
@@ -64,12 +70,12 @@ module RapidDiffs
       !helpers.hide_whitespace?
     end
 
-    def parallel_view?
-      diff_view == :parallel
+    def file_by_file_mode?
+      !!helpers.current_user&.view_diffs_file_by_file
     end
 
     def empty_state_visible?
-      !diffs_stream_url && !lazy? && diff_collection.empty?
+      empty_state? || (!diffs_stream_url && !lazy? && diff_collection.empty?)
     end
 
     def browser_visible?

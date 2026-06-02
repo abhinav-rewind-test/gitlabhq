@@ -166,6 +166,22 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         .to change { upstream_pipeline.reload.duration }.from(nil).to(an_instance_of(Integer))
     end
 
+    context 'when the downstream project belongs to a different organization' do
+      let(:other_organization) { create(:organization) }
+
+      before do
+        downstream_project.namespace.update!(organization: other_organization)
+        downstream_project.project_namespace.update!(organization: other_organization)
+        downstream_project.update!(organization: other_organization)
+      end
+
+      it 'drops the bridge' do
+        expect(subject).to be_error
+        expect(bridge.reload).to be_failed
+        expect(bridge.failure_reason).to eq('downstream_bridge_project_not_found')
+      end
+    end
+
     context 'when the bridge contains `inputs` within its options' do
       let(:stub_ci_yaml) { false }
 
@@ -217,13 +233,11 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
 
         it_behaves_like 'creates a downstream pipeline with the inputs provided'
 
-        it 'tracks the usage of inputs' do
-          expect { subject }.to trigger_internal_events('create_pipeline_with_inputs').with(
-            category: 'Gitlab::Ci::Pipeline::Chain::Metrics',
-            additional_properties: { value: 2, label: 'pipeline', property: 'repository_source' },
-            project: downstream_project,
-            user: user
-          )
+        it 'enqueues PipelineCreationMetricsWorker with inputs count' do
+          expect(Ci::PipelineCreationMetricsWorker)
+            .to receive(:perform_async).with(kind_of(Integer), 2, [], kind_of(Hash))
+
+          subject
         end
       end
 
@@ -724,7 +738,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       it 'returns the error' do
-        expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
+        expect { subject }.not_to change { downstream_project.ci_pipelines.count }
         expect(subject).to be_error
         expect(subject.message).to eq('Can not run a failed bridge')
       end
@@ -806,7 +820,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       let(:config) do
-        <<-EOY
+        <<-YAML
           hello:
             script: echo world
 
@@ -816,7 +830,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
             trigger:
               project: #{downstream_project.full_path}
               branch: master
-        EOY
+        YAML
       end
 
       let(:primary_pipeline) do
@@ -831,7 +845,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       context 'that include the bridge job' do
         it 'creates the downstream pipeline' do
           expect { subject }
-            .to change(downstream_project.ci_pipelines, :count).by(1)
+            .to change { downstream_project.ci_pipelines.count }.by(1)
           expect(subject).to be_error
           expect(subject.message).to eq("Already has a downstream pipeline")
         end
@@ -851,6 +865,37 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
     end
 
+    context 'when downstream pipeline is for a tag' do
+      let(:trigger) do
+        {
+          trigger: {
+            project: downstream_project.full_path,
+            branch: "#{Gitlab::Git::TAG_REF_PREFIX}v1.0.0"
+          }
+        }
+      end
+
+      context 'when user has access to create tags' do
+        it 'creates the downstream pipeline' do
+          expect { subject }.to change { downstream_project.ci_pipelines.count }.by(1)
+          expect(subject).to be_success
+        end
+      end
+
+      context 'when user does not have access to create protected tags' do
+        before do
+          create(:protected_tag, :maintainers_can_create, project: downstream_project, name: 'v*')
+        end
+
+        it 'changes status of the bridge build' do
+          subject
+
+          expect(bridge.reload).to be_failed
+          expect(bridge.failure_reason).to eq 'insufficient_bridge_permissions'
+        end
+      end
+    end
+
     context 'when there is no such branch in downstream project' do
       let(:trigger) do
         {
@@ -862,7 +907,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       it 'does not create a pipeline and drops the bridge' do
-        expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
+        expect { subject }.not_to change { downstream_project.ci_pipelines.count }
         expect(subject).to be_error
         expect(subject.message).to match_array(['Reference not found'])
 
@@ -878,16 +923,16 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       let(:config) do
-        <<-EOY
+        <<-YAML
           hello:
             script: echo world
             only:
               - invalid_branch
-        EOY
+        YAML
       end
 
       it 'does not create a pipeline and drops the bridge' do
-        expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
+        expect { subject }.not_to change { downstream_project.ci_pipelines.count }
         expect(subject).to be_error
         expect(subject.message).to match_array([sanitize_message(Ci::Pipeline.rules_failure_message)])
 
@@ -904,15 +949,15 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       let(:config) do
-        <<-EOY
+        <<-YAML
           test:
             stage: testx
             script: echo 1
-        EOY
+        YAML
       end
 
       it 'creates the pipeline but drops the bridge' do
-        expect { subject }.to change(downstream_project.ci_pipelines, :count).by(1)
+        expect { subject }.to change { downstream_project.ci_pipelines.count }.by(1)
         expect(subject).to be_error
         expect(subject.message).to eq(
           ["test job: chosen stage testx does not exist; available stages are .pre, build, test, deploy, .post"]
@@ -933,21 +978,21 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       let(:config) do
-        <<-EOY
+        <<-YAML
           workflow:
             rules:
               - if: $my_var
 
           regular-job:
             script: 'echo Hello, World!'
-        EOY
+        YAML
       end
 
       context 'when passing the required variable' do
         let(:yaml_variables) { [{ key: 'my_var', value: 'var', public: true }] }
 
         it 'creates the pipeline' do
-          expect { subject }.to change(downstream_project.ci_pipelines, :count).by(1)
+          expect { subject }.to change { downstream_project.ci_pipelines.count }.by(1)
           expect(subject).to be_success
 
           expect(bridge.reload).to be_success
@@ -956,7 +1001,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
 
       context 'when not passing the required variable' do
         it 'does not create the pipeline' do
-          expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
+          expect { subject }.not_to change { downstream_project.ci_pipelines.count }
         end
       end
     end
@@ -1057,7 +1102,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         end
 
         it 'creates the downstream pipeline successfully' do
-          expect { subject }.to change(Ci::Pipeline, :count).by(1)
+          expect { subject }.to change { Ci::Pipeline.count }.by(1)
           expect(subject).to be_success
 
           pipeline = subject.payload
@@ -1088,7 +1133,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         end
 
         it 'creates the downstream pipeline successfully' do
-          expect { subject }.to change(Ci::Pipeline, :count).by(1)
+          expect { subject }.to change { Ci::Pipeline.count }.by(1)
           expect(subject).to be_success
 
           pipeline = subject.payload
@@ -1108,7 +1153,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
           end
 
           it 'creates the downstream pipeline successfully' do
-            expect { subject }.to change(Ci::Pipeline, :count).by(1)
+            expect { subject }.to change { Ci::Pipeline.count }.by(1)
             expect(subject).to be_success
 
             pipeline = subject.payload

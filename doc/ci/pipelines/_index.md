@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: CI/CD pipelines
 description: Configuration, automation, stages, schedules, and efficiency.
 ---
@@ -57,6 +57,8 @@ Pipelines can be configured in many different ways:
   already been merged into the target branch.
 - [Merge trains](merge_trains.md)
   use merged results pipelines to queue merges one after the other.
+- [Workload pipelines](pipeline_types.md#workload-pipeline) run on ephemeral Git
+  references for on-demand pipeline execution without creating temporary branches.
 - [Parent-child pipelines](downstream_pipelines.md#parent-child-pipelines) break down complex pipelines
   into one parent pipeline that can trigger multiple child sub-pipelines, which all
   run in the same project and with the same SHA. This pipeline architecture is commonly used for mono-repos.
@@ -74,9 +76,9 @@ You can also configure specific aspects of your pipelines through the GitLab UI:
 - [Pipeline schedules](schedules.md).
 - [Custom CI/CD variables](../variables/_index.md#for-a-project).
 
-If you use VS Code to edit your GitLab CI/CD configuration, the [GitLab Workflow extension for VS Code](../../editor_extensions/visual_studio_code/_index.md)
+If you use VS Code to edit your GitLab CI/CD configuration, the [GitLab for VS Code extension](../../editor_extensions/visual_studio_code/_index.md)
 helps you [validate your configuration](../../editor_extensions/visual_studio_code/cicd.md#test-gitlab-cicd-configuration)
-and [view your pipeline status](../../editor_extensions/visual_studio_code/cicd.md#view-pipeline-information).
+and [view your pipeline status](../../editor_extensions/visual_studio_code/cicd.md#monitor-and-manage-pipelines).
 
 ### Run a pipeline manually
 
@@ -96,7 +98,7 @@ operation of the pipeline.
 To execute a pipeline manually:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select **New pipeline**.
 1. In the **Run for branch name or tag** field, select the branch or tag to run the pipeline for.
 1. Optional. Enter any:
@@ -138,7 +140,7 @@ The required role depends on what you want to do:
 To view manual pipeline variables:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Select **Display pipeline variables**.
 1. Go to **Build** > **Pipelines** and select a pipeline that was run manually.
 1. Select the **Manual Variables** tab.
@@ -298,7 +300,7 @@ When you skip a pipeline:
 Users with the Owner role for a project can delete a pipeline:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the left sidebar, select **Build** > **Pipelines**.
 1. Select either the pipeline ID (for example `#123456789`) or the pipeline status icon
    (for example **Passed**) of the pipeline to delete.
 1. In the upper right of the pipeline details page, select **Delete**.
@@ -322,9 +324,9 @@ to that specific branch:
 
 - Run manual pipelines (using the [Web UI](#run-a-pipeline-manually) or [pipelines API](#pipelines-api)).
 - Run scheduled pipelines.
-- Run pipelines using triggers.
+- Run pipelines using trigger tokens.
 - Run on-demand DAST scan.
-- Trigger manual actions on existing pipelines.
+- Run manual jobs on existing pipelines.
 - Retry or cancel existing jobs (using the Web UI or pipelines API).
 
 **Variables** marked as **protected** are accessible to jobs that run in pipelines for protected branches. Only assign users the right to merge to protected branches if they have permission to access sensitive information like deployment credentials and tokens.
@@ -366,7 +368,7 @@ Prerequisites:
 To trigger the pipeline when the upstream project is rebuilt:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Pipeline subscriptions**.
 1. Select **Add project**.
 1. Enter the project you want to subscribe to, in the format `<namespace>/<project>`.
@@ -375,7 +377,7 @@ To trigger the pipeline when the upstream project is rebuilt:
 
 The maximum number of upstream pipeline subscriptions is 2 by default, for both the upstream and
 downstream projects. On GitLab Self-Managed, an administrator can change this
-[limit](../../administration/instance_limits.md#number-of-cicd-subscriptions-to-a-project).
+[limit](../../administration/cicd/limits.md#number-of-cicd-subscriptions-to-a-project).
 
 ## How pipeline duration is calculated
 
@@ -429,7 +431,7 @@ running time is:
 To view all the pipelines that ran for your project:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipelines**.
+1. In the left sidebar, select **Build** > **Pipelines**.
 
 You can filter the **Pipelines** page by:
 
@@ -442,10 +444,6 @@ You can filter the **Pipelines** page by:
 Select **Pipeline ID** in the dropdown list in the upper right to display the pipeline IDs
 (unique ID across the instance).
 Select **pipeline IID** to display the pipeline IIDs (internal ID, unique across the project only).
-
-For example:
-
-![A list of pipelines displayed on the Pipelines page, with filters for trigger author, branch name, status, tag, and source.](img/pipeline_list_v16_11.png)
 
 To view the pipelines that relate to a specific merge request, go to the **Pipelines** tab
 in the merge request.
@@ -546,7 +544,7 @@ GitLab provides API endpoints to:
 - Maintain pipeline schedules. For more information, see [Pipeline schedules API](../../api/pipeline_schedules.md).
 - Trigger pipeline runs. For more information, see:
   - [Triggering pipelines through the API](../triggers/_index.md).
-  - [Pipeline triggers API](../../api/pipeline_triggers.md).
+  - [Pipeline trigger tokens API](../../api/pipeline_triggers.md).
 
 ## Ref specs for runners
 
@@ -556,11 +554,12 @@ project repository.
 
 This table lists the refspecs injected for each pipeline type:
 
-| Pipeline type                                                     | Refspecs |
-|-------------------------------------------------------------------|----------|
-| pipeline for branches                                             | `+<sha>:refs/pipelines/<id>` and `+refs/heads/<name>:refs/remotes/origin/<name>` |
-| pipeline for tags                                                 | `+<sha>:refs/pipelines/<id>` and `+refs/tags/<name>:refs/tags/<name>` |
-| [merge request pipeline](merge_request_pipelines.md)              | `+refs/pipelines/<id>:refs/pipelines/<id>` |
+| Pipeline type                                        | Refspecs |
+|------------------------------------------------------|----------|
+| pipeline for branches                                | `+<sha>:refs/pipelines/<id>` and `+refs/heads/<name>:refs/remotes/origin/<name>` |
+| pipeline for tags                                    | `+<sha>:refs/pipelines/<id>` and `+refs/tags/<name>:refs/tags/<name>` |
+| [merge request pipeline](merge_request_pipelines.md) | `+refs/pipelines/<id>:refs/pipelines/<id>` |
+| [pipeline for workload refs](pipeline_types.md#workload-pipeline)  | `+refs/pipelines/<id>:refs/pipelines/<id>` |
 
 The refs `refs/heads/<name>` and `refs/tags/<name>` exist in your
 project repository. GitLab generates the special ref `refs/pipelines/<id>` during a

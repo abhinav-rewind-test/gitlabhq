@@ -5,17 +5,17 @@ module ClickHouseHelpers
 
   def insert_events_into_click_house(events = Event.all)
     # Insert into both events table until legacy table is removed
-    %i[events events_new].each do |clickhouse_table_name|
+    %i[events siphon_events].each do |clickhouse_table_name|
       clickhouse_fixture(clickhouse_table_name, events.map do |event|
         project_namespace = event.project.reload.project_namespace
-        include_organization_on_path = clickhouse_table_name == :events_new
+        include_organization_on_path = clickhouse_table_name == :siphon_events
         path = project_namespace.traversal_path(with_organization: include_organization_on_path)
 
         {
           id: event.id,
           path: path,
           author_id: event.author_id,
-          # The target* getters for Event/PushEvent are overriden. We need to use `read_attribute`
+          # The target* getters for Event/PushEvent are overridden. We need to use `read_attribute`
           # to copy the true value.
           target_id: event.read_attribute(:target_id),
           target_type: event.read_attribute(:target_type),
@@ -56,10 +56,13 @@ module ClickHouseHelpers
 
   def insert_ci_pipelines_to_click_house(pipelines)
     result = clickhouse_fixture(:ci_finished_pipelines, pipelines.map do |pipeline|
+      project = pipeline.project
+
       pipeline.slice(
         %i[id duration status source ref committed_at created_at started_at finished_at]).symbolize_keys
            .merge(
-             path: pipeline.project&.project_namespace&.traversal_path || '0/'
+             path: project&.project_namespace&.traversal_path || '0/',
+             is_default_branch: pipeline.default_branch?
            )
     end)
 

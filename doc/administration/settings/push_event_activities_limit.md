@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 gitlab_dedicated: yes
 description: Configure limits on the number of single push events your instance allows.
 title: Push event activities limit and bulk push events
@@ -36,7 +36,7 @@ If your integrations or external systems must process every pushed ref individua
 
 > [!note]
 > Webhook triggering is controlled separately by the `push_event_hooks_limit` setting.
-> For more information, see [Push event limits](../../user/project/integrations/webhooks.md#push-event-limits).
+> For more information, see [push event limits](../../user/project/integrations/webhooks.md#push-event-limits).
 
 Prerequisites:
 
@@ -44,12 +44,12 @@ Prerequisites:
 
 To set a different **Push event activities limit**, either:
 
-- In the [Application settings API](../../api/settings.md#available-settings), set the
+- In the [application settings API](../../api/settings.md#available-settings), set the
   `push_event_activities_limit`.
 
 - In the GitLab UI:
   1. In the upper-right corner, select **Admin**.
-  1. On the left sidebar, select **Settings** > **Network**.
+  1. In the left sidebar, select **Settings** > **Network**.
   1. Expand **Performance optimization**.
   1. Edit the **Push event activities limit** setting.
   1. Select **Save changes**.

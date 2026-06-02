@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: サービスデスクを使用する
 ---
 
@@ -12,34 +12,34 @@ title: サービスデスクを使用する
 
 {{< /details >}}
 
-サービスデスクを使用して、[イシューを作成](#as-an-end-user-issue-creator)したり、[イシューに対応](#as-a-responder-to-the-issue)したりできます。これらのイシューでは、近所のフレンドリーな[サポートボット](configure.md#support-bot-user)も確認できます。
+サービスデスクを使用して、[チケットを作成](#as-an-end-user-ticket-creator)したり、[応答](#as-a-responder-to-the-ticket)したりできます。これらのチケットでは、使い慣れた[サポートボット](configure.md#support-bot-user)も表示されます。
 
-## サービスデスクのメールアドレスを表示 {#view-service-desk-email-address}
+## サービスデスクメールアドレスの表示 {#view-service-desk-email-address}
 
-プロジェクトのサービスデスクのメールアドレスを確認するには、次の手順に従います:
+プロジェクトのサービスデスクメールアドレスを確認するには:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
-1. 左側のサイドバーで、モニタリングを選択し、プロジェクトを見つけます。**モニタリング** > **サービスデスク**を選択します。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. **モニタリング** > **サービスデスク**を選択します。
 
-メールアドレスは、イシューリストの上部にあります。
+メールアドレスはチケットリストの一番上に表示されます。
 
-## エンドユーザーとして（イシューの作成者） {#as-an-end-user-issue-creator}
+## エンドユーザー（チケット作成者）として {#as-an-end-user-ticket-creator}
 
-サービスデスクイシューを作成するために、エンドユーザーはGitLabのインスタンスについて何も知る必要はありません。指定されたアドレスにメールを送信するだけで、受領確認としてGitLabサポートボットからメールが返信されます:
+サービスデスクチケットを作成するために、エンドユーザーはGitLabインスタンスについて何も知る必要はありません。提供されたメールアドレスにメールを送信するだけで、GitLabサポートボットから受領確認のメールが返信されます:
 
 ```plaintext
 Thank you for your support request! We are tracking your request as ticket `#%{issue_iid}`, and will respond as soon as we can.
 ```
 
-このメールには、エンドユーザーに登録解除のオプションも表示されます。
+このメールは、エンドユーザーに登録解除のオプションも提供します。
 
-登録解除を選択しない場合、イシューに追加された新しいコメントはメールとして送信されます。
+登録解除を選択しない場合、チケットに追加された新しいコメントはすべてメールとして送信されます。
 
-メールで送信されたすべての応答は、イシュー自体に表示されます。
+メールで送信された応答はすべて、チケット自体に表示されます。
 
-詳細については、[外部参加者](external_participants.md)と[メールの処理に使用されるヘッダー](../../../administration/incoming_email.md#accepted-headers)を参照してください。
+詳細については、[外部参加者](external_participants.md)とメールの処理に使用される[ヘッダー](../../../administration/incoming_email.md#accepted-headers)を参照してください。
 
-### GitLab UIでサービスデスクチケットを作成 {#create-a-service-desk-ticket-in-gitlab-ui}
+### GitLab UIでサービスデスクチケットを作成する {#create-a-service-desk-ticket-in-gitlab-ui}
 
 {{< history >}}
 
@@ -48,39 +48,39 @@ Thank you for your support request! We are tracking your request as ticket `#%{i
 
 {{< /history >}}
 
-UIからサービスデスクチケットを作成するには、次の手順に従います:
+UIからサービスデスクチケットを作成するには:
 
 1. [イシューを作成する](../issues/create_issues.md)
 1. クイックアクション`/convert_to_ticket user@example.com`のみを含むコメントを追加します。[GitLabサポートボット](configure.md#support-bot-user)からのコメントが表示されるはずです。
-1. UIがタイプの変更を反映するように、ページをリロードします。
-1. オプション。最初のサービスデスクメールを外部参加者に送信するために、チケットにコメントを追加します。
+1. UIにタイプ変更が反映されるようにページをリロードします。
+1. オプション。外部参加者に初期のサービスデスクメールを送信するために、チケットにコメントを追加します。
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i>チュートリアルについては、[UIとAPIでサービスデスクチケットを作成する（GitLab 16.10）](https://www.youtube.com/watch?v=ibUGNc2wifQ)を参照してください。
+<i class="fa-youtube-play" aria-hidden="true"></i>概要については、[UIとAPIでサービスデスクチケットを作成する方法（GitLab 16.10）](https://www.youtube.com/watch?v=ibUGNc2wifQ)を参照してください。
 <!-- Video published on 2024-03-05 -->
 
-## イシューへのレポーターとして {#as-a-responder-to-the-issue}
+## チケットへの応答者として {#as-a-responder-to-the-ticket}
 
-イシューへのレポーターにとって、すべては他のGitLabイシューと同じように動作します。GitLabには、顧客サポートリクエストを通じて作成されたイシューをレポーターが表示し、それらをフィルタリングまたは操作できる、見慣れた外観のイシュートラッカーが表示されます。
+チケットへの応答者にとって、すべてはGitLabイシューとまったく同じように機能します。GitLabには、応答者が顧客サポートリクエストを通じて作成されたチケットを表示し、フィルタリングまたは操作できる、おなじみのチケットトラッカーが表示されます。
 
-![サービスデスクイシュートラッカー](img/service_desk_issue_tracker_v16_10.png)
+![サービスデスクチケットトラッカー](img/service_desk_issue_tracker_v16_10.png)
 
-エンドユーザーからのメッセージは、特別な[サポートボットユーザー](../../../subscriptions/manage_users_and_seats.md#criteria-for-non-billable-users)からのものとして表示されます。GitLabで通常行うように、コメントを読み書きできます:
+エンドユーザーからのメッセージは、特別な[サポートボットユーザー](../../../subscriptions/manage_seats.md#criteria-for-non-billable-users)からのものとして表示されます。GitLabで通常通りコメントを読み取り、書き込みできます:
 
-- プロジェクトの表示レベル（プライベート、内部、パブリック）は、サービスデスクに影響しません。
-- グループまたはネームスペースを含むプロジェクトへのパスがメールに表示されます。
+- プロジェクトの表示レベル（プライベート、内部、公開）はサービスデスクに影響しません。
+- プロジェクトへのパス（グループまたはネームスペースを含む）は、メールに表示されます。
 
-### サービスデスクイシューを表示 {#view-service-desk-issues}
+### サービスデスクチケットの表示 {#view-service-desk-tickets}
 
-前提要件: 
+前提条件: 
 
-- プロジェクトのレポーターロール以上が必要です。
+- プロジェクトのレポーター、デベロッパー、メンテナー、またはオーナーのロールが必要です。
 
-サービスデスクイシューを表示するには、次の手順に従います:
+サービスデスクチケットを表示するには:
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
-1. 左側のサイドバーで、モニタリングを選択し、プロジェクトを見つけます。**モニタリング** > **サービスデスク**を選択します。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. **モニタリング** > **サービスデスク**を選択します。
 
-#### 再設計されたイシューリスト {#redesigned-issue-list}
+#### 再設計されたチケットリスト {#redesigned-ticket-list}
 
 {{< history >}}
 
@@ -89,20 +89,20 @@ UIからサービスデスクチケットを作成するには、次の手順に
 
 {{< /history >}}
 
-サービスデスクイシューリストは、通常のイシューリストにより近いものになっています。使用可能な機能は次のとおりです:
+サービスデスクのチケットリストは、通常のイシューリストとより一致しています。利用可能な機能は次のとおりです:
 
-- [イシューリストと同じ](../issues/sorting_issue_lists.md)並べ替えおよび順序オプション。
-- [OR演算子](#filter-with-the-or-operator)や[イシューIDによるフィルタリング](#filter-issues-by-id)など、同じフィルター。
+- [イシューリスト](../issues/sorting_issue_lists.md)と同じソートと順序のオプション。
+- [OR演算子](#filter-the-list-of-tickets)や[チケットID](#filter-tickets-by-id)によるフィルタリングを含む、同じフィルター。
 
-サービスデスクイシューリストから新しいイシューを作成するオプションはなくなりました。この決定は、新しいイシューが専用のメールアドレスにメールを送信することで作成されるサービスデスクの性質をより良く反映しています。
+サービスデスクのチケットリストから新しいチケットを作成するオプションはなくなりました。この決定は、専用のメールアドレスにメールを送信することで新しいチケットが作成されるサービスデスクの性質をよりよく反映しています。
 
-##### イシューのリストをフィルタリングする {#filter-the-list-of-issues}
+##### チケットリストのフィルタリング {#filter-the-list-of-tickets}
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
-1. 左側のサイドバーで、モニタリングを選択し、プロジェクトを見つけます。**モニタリング** > **サービスデスク**を選択します。
-1. イシューのリストの上にある**結果を検索またはフィルタリング**を選択します。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. **モニタリング** > **サービスデスク**を選択します。
+1. チケットリストの上にある**結果を検索またはフィルタリング**を選択します。
 1. 表示されるドロップダウンリストで、フィルタリングする属性を選択します。
-1. 属性のフィルタリングに使用する演算子を選択または入力します。次の演算子を使用できます:
+1. 属性のフィルタリングに使用する演算子を選択または入力します。次の演算子を使用できます。
    - `=`: 等しい
    - `!=`: 次のいずれでもない
 1. 属性でフィルタリングするテキストを入力します。一部の属性は、**なし**または**任意**でフィルタリングできます。
@@ -110,22 +110,22 @@ UIからサービスデスクチケットを作成するには、次の手順に
 
 ##### OR演算子でフィルタリングする {#filter-with-the-or-operator}
 
-[OR演算子でのフィルタリング](../issues/managing_issues.md#filter-with-the-or-operator)が有効になっている場合、次の項目で[イシューのリストをフィルタリング](#filter-the-list-of-issues)する際に**次のいずれか: `||`**を使用できます。
+[OR演算子によるフィルタリング](../issues/managing_issues.md#filter-the-list-of-issues)が有効な場合、[チケットのリストをフィルタリング](#filter-the-list-of-tickets)する際に、**is one of: `||`**を使用できます:
 
 - 担当者
 - ラベル
 
-`is one of`は、包括的なORを表します。たとえば、`Assignee is one of Sidney Jones`と`Assignee is one of Zhang Wei`でフィルタリングすると、GitLabは、`Sidney`、`Zhang`、またはその両方が担当者に割り当てられているイシューを表示します。
+`is one of`は、包含的ORを表します。たとえば、`Assignee is one of Sidney Jones`と`Assignee is one of Zhang Wei`でフィルタリングすると、GitLabは`Sidney`、`Zhang`、またはその両方が担当者であるチケットを表示します。
 
-##### IDでイシューをフィルタリングする {#filter-issues-by-id}
+##### IDでチケットをフィルタリング {#filter-tickets-by-id}
 
-1. 左側のサイドバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
-1. 左側のサイドバーで、モニタリングを選択し、プロジェクトを見つけます。**モニタリング** > **サービスデスク**を選択します。
-1. **検索**ボックスに、イシューIDを入力します。たとえば、`#10`というフィルターを入力すると、イシュー10のみが返されます。
+1. 上部のバーで、**検索または移動先**を選択して、プロジェクトを見つけます。
+1. **モニタリング** > **サービスデスク**を選択します。
+1. **検索**ボックスにチケットIDを入力します。たとえば、`#10`を入力すると、チケット10のみが返されます。
 
 ## メールの内容とフォーマット {#email-contents-and-formatting}
 
-### HTMLメールの特別なHTMLフォーマット {#special-html-formatting-in-html-emails}
+### HTMLメールでの特別なHTMLフォーマット {#special-html-formatting-in-html-emails}
 
 {{< history >}}
 
@@ -134,7 +134,7 @@ UIからサービスデスクチケットを作成するには、次の手順に
 
 {{< /history >}}
 
-HTMLメールには、次のようなHTMLフォーマットが表示されます:
+サービスデスクチケットから送信されたHTMLメールには、次のようなHTMLフォーマットが表示されます:
 
 - テーブル
 - 引用ブロック
@@ -146,14 +146,14 @@ HTMLメールには、次のようなHTMLフォーマットが表示されます
 {{< history >}}
 
 - GitLab 15.8で`service_desk_new_note_email_native_attachments`[フラグ](../../../administration/feature_flags/_index.md)とともに[導入](https://gitlab.com/gitlab-org/gitlab/-/issues/11733)されました。デフォルトでは無効になっています。
-- GitLab 15.10の[GitLab.comおよびGitLab Self-Managedで有効になりました](https://gitlab.com/gitlab-org/gitlab/-/issues/386860)。
+- GitLab.comおよびGitLab Self-Managedで[有効](https://gitlab.com/gitlab-org/gitlab/-/issues/386860)になりました（GitLab 15.10）。
 - GitLab 16.6で[一般提供](https://gitlab.com/gitlab-org/gitlab/-/issues/11733)になりました。機能フラグ`service_desk_new_note_email_native_attachments`は削除されました。
 
 {{< /history >}}
 
-コメントに添付ファイルが含まれていて、その合計サイズが10 MB以下の場合、これらの添付ファイルはメールの一部として送信されます。それ以外の場合、メールには添付ファイルへのリンクが含まれています。
+コメントに添付ファイルが含まれており、その合計サイズが10 MB以下の場合は、これらの添付ファイルはメールの一部として送信されます。それ以外の場合、メールには添付ファイルへのリンクが含まれます。
 
-GitLab 15.9以前、コメントへのアップロードはメール内のリンクとして送信されます。
+GitLab 15.9以前では、コメントへのアップロードはメール内のリンクとして送信されます。
 
 ## 通常のイシューをサービスデスクチケットに変換する {#convert-a-regular-issue-to-a-service-desk-ticket}
 
@@ -164,34 +164,34 @@ GitLab 15.9以前、コメントへのアップロードはメール内のリン
 
 {{< /history >}}
 
-クイックアクション`/convert_to_ticket external-issue-author@example.com`を使用して、通常のイシューをサービスデスクチケットに変換します。これにより、指定されたメールアドレスがチケットの外部作成者として割り当てられ、外部参加者のリストに追加されます。彼らは、チケットに関する公開コメントのサービスデスクメールを受信し、これらのメールに返信できます。返信により、チケットに新しいコメントが追加されます。
+クイックアクション`/convert_to_ticket external-ticket-author@example.com`を使用して、通常のイシューをサービスデスクチケットに変換します。これにより、指定されたメールアドレスがチケットの外部作成者として割り当てられ、外部参加者のリストに追加されます。彼らはチケットへの公開コメントに対するサービスデスクメールを受信し、これらのメールに返信できます。返信はチケットに新しいコメントを追加します。
 
-GitLabは、[デフォルトの`thank_you`メール](configure.md#customize-emails-sent-to-external-participants)を送信しません。エンドユーザーにチケットが作成されたことを知らせるために、チケットに公開コメントを追加できます。
+GitLabはデフォルトの[`thank_you`メール](configure.md#customize-emails-sent-to-external-participants)を送信しません。エンドユーザーにチケットが作成されたことを知らせるために、チケットに公開コメントを追加できます。
 
 ## プライバシーに関する考慮事項 {#privacy-considerations}
 
 {{< history >}}
 
-- [変更](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108901) GitLab 15.9の作成者と参加者のメールを表示するために必要な最小限のロール。
+- GitLab 15.9で、作成者と参加者のメールを表示するために必要な最小ロールが[変更](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108901)されました。
 
 {{< /history >}}
 
-サービスデスクイシューは[機密](../issues/confidential_issues.md)であるため、プロジェクトメンバーのみが表示できます。プロジェクトオーナーは[イシューを公開](../issues/confidential_issues.md#in-an-existing-issue)できます。サービスデスクイシューが公開されると、イシューの作成者と参加者のメールアドレスは、プロジェクトのレポーターロール以上の権限を持つサインインしたユーザーに表示されます。
+サービスデスクチケットは[機密](../issues/confidential_issues.md)であるため、プロジェクトメンバーのみに表示されます。プロジェクトオーナーは、[チケットを公開](../issues/confidential_issues.md#in-an-existing-issue)できます。サービスデスクチケットが公開されると、チケット作成者と参加者のメールアドレスは、プロジェクトのレポーター、デベロッパー、メンテナー、またはオーナーロールを持つサインインユーザーに表示されます。
 
-GitLab 15.8以前、サービスデスクイシューが公開されると、イシューの作成者のメールアドレスは、プロジェクトを表示できるすべてのユーザーに公開されます。
+GitLab 15.8以前では、サービスデスクチケットが公開されると、チケット作成者のメールアドレスは、プロジェクトを表示できる全員に開示されます。
 
-プロジェクトの誰でもサービスデスクのメールアドレスを使用して、このプロジェクトにイシューを作成できます。プロジェクトでの**regardless of their role**（彼らのロールに関係なく）。
+プロジェクト内の誰でも、サービスデスクメールアドレスを使用して、プロジェクトでの**regardless of their role**このプロジェクトでチケットを作成できます。
 
-一意の内部メールアドレスは、GitLabインスタンスのプランナーロール以上のプロジェクトメンバーに表示されます。外部ユーザー（イシューの作成者）は、情報メモに表示されている内部メールアドレスを表示できません。
+ユニークな内部メールアドレスは、GitLabインスタンスでプランナーロール以上のプロジェクトメンバーに表示されます。外部ユーザー（チケット作成者）は、情報メモに表示されている内部メールアドレスを見ることはできません。
 
-### サービスデスクイシューの移動 {#moving-a-service-desk-issue}
+### サービスデスクチケットの移動 {#moving-a-service-desk-ticket}
 
 {{< history >}}
 
-- GitLab 15.7で[変更](https://gitlab.com/gitlab-org/gitlab/-/issues/372246): サービスデスクイシューが移動された場合、顧客は引き続き通知を受信します。
+- GitLab 15.7で[変更](https://gitlab.com/gitlab-org/gitlab/-/issues/372246): サービスデスクチケットが移動された場合でも、顧客は引き続き通知を受信します。
 
 {{< /history >}}
 
-GitLabで[通常のイシューを移動](../issues/managing_issues.md#move-an-issue)するのと同じ方法で、サービスデスクイシューを移動できます。
+サービスデスクチケットは、GitLabで[通常のイシューを移動](../issues/managing_issues.md#move-an-issue)するのと同じ方法で移動できます。
 
-サービスデスクイシューがサービスデスクが有効になっている別のプロジェクトに移動された場合、イシューを作成した顧客は引き続きメール通知を受信します。移動されたイシューは最初に閉じられ、次にコピーされるため、顧客は両方のイシューの参加者と見なされます。古いイシューと新しいイシューのすべての通知を受信し続けます。
+サービスデスクチケットがサービスデスクが有効になっている別のプロジェクトに移動された場合、チケットを作成した顧客は引き続きメール通知を受信します。移動されたチケットはまずクローズされてからコピーされるため、顧客は両方のチケットの参加者と見なされます。彼らは古いチケットと新しいチケットの両方で引き続き通知を受信します。

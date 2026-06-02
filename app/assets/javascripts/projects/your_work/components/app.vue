@@ -1,22 +1,27 @@
 <script>
+import { GlButton } from '@gitlab/ui';
+import { exploreProjectsPath } from '~/lib/utils/path_helpers/explore';
+import { newProjectPath } from '~/lib/utils/path_helpers/routes';
 import TabsWithList from '~/groups_projects/components/tabs_with_list.vue';
+import IndexLayout from '~/vue_shared/components/index_layout.vue';
 import {
   FILTERED_SEARCH_TOKEN_LANGUAGE,
   FILTERED_SEARCH_TOKEN_MIN_ACCESS_LEVEL,
-} from '~/groups_projects/constants';
-import { RECENT_SEARCHES_STORAGE_KEY_PROJECTS } from '~/filtered_search/recent_searches_storage_keys';
-import {
   SORT_OPTION_UPDATED,
   SORT_OPTION_CREATED,
-  FILTERED_SEARCH_TERM_KEY,
-  FILTERED_SEARCH_NAMESPACE,
-} from '~/projects/filtered_search_and_sort/constants';
+} from '~/groups_projects/constants';
+import { RECENT_SEARCHES_STORAGE_KEY_PROJECTS } from '~/filtered_search/recent_searches_storage_keys';
 import {
   TIMESTAMP_TYPE_CREATED_AT,
   TIMESTAMP_TYPE_LAST_ACTIVITY_AT,
 } from '~/vue_shared/components/resource_lists/constants';
 import projectCountsQuery from '../graphql/queries/project_counts.query.graphql';
-import { PROJECT_DASHBOARD_TABS, FIRST_TAB_ROUTE_NAMES } from '../constants';
+import {
+  PROJECT_DASHBOARD_TABS,
+  FIRST_TAB_ROUTE_NAMES,
+  FILTERED_SEARCH_TERM_KEY,
+  FILTERED_SEARCH_NAMESPACE,
+} from '../constants';
 
 export default {
   PROJECT_DASHBOARD_TABS,
@@ -51,6 +56,8 @@ export default {
   tabCountsQuery: projectCountsQuery,
   name: 'YourWorkProjectsApp',
   components: {
+    GlButton,
+    IndexLayout,
     TabsWithList,
   },
   props: {
@@ -62,24 +69,51 @@ export default {
       type: Array,
       required: true,
     },
+    canCreateProject: {
+      type: Boolean,
+      required: true,
+    },
+  },
+  methods: {
+    newProjectPath,
+    exploreProjectsPath,
   },
 };
 </script>
 
 <template>
-  <tabs-with-list
-    :tabs="$options.PROJECT_DASHBOARD_TABS"
-    :filtered-search-supported-tokens="$options.filteredSearchSupportedTokens"
-    :filtered-search-term-key="$options.FILTERED_SEARCH_TERM_KEY"
-    :filtered-search-namespace="$options.FILTERED_SEARCH_NAMESPACE"
-    :filtered-search-recent-searches-storage-key="$options.RECENT_SEARCHES_STORAGE_KEY_PROJECTS"
-    :timestamp-type-map="$options.timestampTypeMap"
-    :first-tab-route-names="$options.FIRST_TAB_ROUTE_NAMES"
-    :initial-sort="initialSort"
-    :programming-languages="programmingLanguages"
-    :event-tracking="$options.eventTracking"
-    :tab-counts-query="$options.tabCountsQuery"
-    :tab-counts-query-error-message="__('An error occurred loading the project counts.')"
-    user-preferences-sort-key="projectsSort"
-  />
+  <index-layout :heading="__('Projects')">
+    <template #actions>
+      <gl-button
+        :href="exploreProjectsPath()"
+        variant="confirm"
+        category="tertiary"
+        data-event-tracking="click_explore_projects_on_your_work_projects"
+        >{{ __('Explore projects') }}</gl-button
+      >
+      <gl-button
+        v-if="canCreateProject"
+        :href="newProjectPath()"
+        variant="confirm"
+        data-testid="new-project-button"
+        data-event-tracking="click_new_project_on_your_work_projects"
+        >{{ __('New project') }}</gl-button
+      >
+    </template>
+    <tabs-with-list
+      :tabs="$options.PROJECT_DASHBOARD_TABS"
+      :filtered-search-supported-tokens="$options.filteredSearchSupportedTokens"
+      :filtered-search-term-key="$options.FILTERED_SEARCH_TERM_KEY"
+      :filtered-search-namespace="$options.FILTERED_SEARCH_NAMESPACE"
+      :filtered-search-recent-searches-storage-key="$options.RECENT_SEARCHES_STORAGE_KEY_PROJECTS"
+      :timestamp-type-map="$options.timestampTypeMap"
+      :first-tab-route-names="$options.FIRST_TAB_ROUTE_NAMES"
+      :initial-sort="initialSort"
+      :programming-languages="programmingLanguages"
+      :event-tracking="$options.eventTracking"
+      :tab-counts-query="$options.tabCountsQuery"
+      :tab-counts-query-error-message="__('An error occurred loading the project counts.')"
+      sort-storage-key="projects"
+    />
+  </index-layout>
 </template>

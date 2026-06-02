@@ -1,4 +1,4 @@
-import { isEqual } from 'lodash';
+import { isEqual } from 'lodash-es';
 import { STATUS_CLOSED, STATUS_REOPENED } from '~/issues/constants';
 import { isInMRPage } from '~/lib/utils/common_utils';
 import * as constants from '../constants';
@@ -143,7 +143,7 @@ export default {
           const newDiscussion = {
             ...discussion,
             ...diffData,
-            notes: [n], // override notes array to only have one item to mimick individual_note
+            notes: [n], // override notes array to only have one item to mimic individual_note
           };
           const oldDiscussion = state.discussions.find(
             (existingDiscussion) =>

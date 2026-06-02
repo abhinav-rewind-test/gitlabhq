@@ -30,7 +30,7 @@ RSpec.describe 'Revoke a personal access token', feature_category: :permissions 
     end
   end
 
-  context 'when current user does not have revoke_token permission for the personal access token' do
+  context 'when current user does not have revoke_personal_access_token permission for the personal access token' do
     let_it_be(:current_user) { create(:user) }
 
     it 'does not revoke the specified personal access token', :aggregate_failures do
@@ -51,6 +51,15 @@ RSpec.describe 'Revoke a personal access token', feature_category: :permissions 
       expect { mutation_request }.not_to change { token.reload.revoked? }
 
       expect_graphql_errors_to_include("`granular_personal_access_tokens` feature flag is disabled.")
+    end
+  end
+
+  describe 'granular PAT authorization' do
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :revoke_personal_access_token do
+      let(:user) { current_user }
+      let(:boundary_object) { :user }
+      let(:authz_mutation) { graphql_mutation(:personalAccessTokenRevoke, input, 'errors') }
+      let(:request) { post_graphql_mutation(authz_mutation, token: { personal_access_token: pat }) }
     end
   end
 end

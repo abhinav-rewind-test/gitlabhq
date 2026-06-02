@@ -178,6 +178,34 @@ RSpec.describe Observability::GroupO11ySetting, feature_category: :observability
     end
   end
 
+  describe '#gitlab_observability_export_variable' do
+    let(:setting) { create(:observability_group_o11y_setting, group: group) }
+
+    context 'when the variable exists' do
+      let!(:variable) do
+        create(:ci_group_variable, group: group, key: 'GITLAB_OBSERVABILITY_EXPORT', value: 'metrics,logs,traces')
+      end
+
+      it 'returns the variable' do
+        expect(setting.gitlab_observability_export_variable).to eq(variable)
+      end
+    end
+
+    context 'when the variable does not exist' do
+      it 'returns nil' do
+        expect(setting.gitlab_observability_export_variable).to be_nil
+      end
+    end
+
+    context 'when group is nil' do
+      let(:setting) { build(:observability_group_o11y_setting, group: nil) }
+
+      it 'returns nil' do
+        expect(setting.gitlab_observability_export_variable).to be_nil
+      end
+    end
+  end
+
   describe '#provisioning?' do
     let(:setting) { build(:observability_group_o11y_setting, group: group) }
 
@@ -227,56 +255,91 @@ RSpec.describe Observability::GroupO11ySetting, feature_category: :observability
   describe 'otel endpoints' do
     let(:setting) { build(:observability_group_o11y_setting, group: group) }
 
-    shared_examples 'otel endpoint' do |method, port|
-      context "when o11y_service_name is set" do
+    shared_examples 'otel endpoint' do |method, scheme, port|
+      context "when on GitLab.com" do
         before do
-          setting.o11y_service_name = 'my-service'
+          allow(Gitlab).to receive(:com?).and_return(true)
         end
 
-        it "returns the correct #{method} endpoint" do
-          expect(setting.send(method)).to eq("http://my-service.otel.gitlab-o11y.com:#{port}")
+        context "when o11y_service_name is set" do
+          before do
+            setting.o11y_service_name = 'my-service'
+          end
+
+          it "returns the correct #{method} endpoint" do
+            expect(setting.send(method)).to eq("#{scheme}://my-service.otel.gitlab-o11y.com:#{port}")
+          end
+        end
+
+        context "when o11y_service_name is nil" do
+          before do
+            setting.o11y_service_name = nil
+            allow(setting).to receive(:name_from_url).and_return('service-from-url')
+          end
+
+          it "uses name_from_url as fallback" do
+            expect(setting.send(method)).to eq("#{scheme}://service-from-url.otel.gitlab-o11y.com:#{port}")
+          end
+        end
+
+        context "when both o11y_service_name and name_from_url are nil" do
+          before do
+            setting.o11y_service_name = nil
+            allow(setting).to receive_messages(name_from_url: nil, name_from_group: 'group-path')
+          end
+
+          it "uses name_from_group as fallback" do
+            expect(setting.send(method)).to eq("#{scheme}://group-path.otel.gitlab-o11y.com:#{port}")
+          end
+        end
+
+        context "with special characters in service name" do
+          before do
+            setting.o11y_service_name = 'my-service-with-dashes'
+          end
+
+          it "handles service names with special characters" do
+            expect(setting.send(method)).to eq("#{scheme}://my-service-with-dashes.otel.gitlab-o11y.com:#{port}")
+          end
         end
       end
 
-      context "when o11y_service_name is nil" do
+      context "when not on GitLab.com" do
         before do
-          setting.o11y_service_name = nil
-          allow(setting).to receive(:name_from_url).and_return('service-from-url')
+          allow(Gitlab).to receive(:com?).and_return(false)
         end
 
-        it "uses name_from_url as fallback" do
-          expect(setting.send(method)).to eq("http://service-from-url.otel.gitlab-o11y.com:#{port}")
-        end
-      end
-
-      context "when both o11y_service_name and name_from_url are nil" do
-        before do
-          setting.o11y_service_name = nil
-          allow(setting).to receive_messages(name_from_url: nil, name_from_group: 'group-path')
+        it "returns endpoint derived from o11y_service_url" do
+          setting.o11y_service_url = 'https://my-o11y.example.com'
+          expect(setting.send(method)).to eq("#{scheme}://my-o11y.example.com:#{port}")
         end
 
-        it "uses name_from_group as fallback" do
-          expect(setting.send(method)).to eq("http://group-path.otel.gitlab-o11y.com:#{port}")
-        end
-      end
-
-      context "with special characters in service name" do
-        before do
-          setting.o11y_service_name = 'my-service-with-dashes'
+        it "extracts only the host from o11y_service_url with a path" do
+          setting.o11y_service_url = 'https://my-o11y.example.com/api/v1'
+          expect(setting.send(method)).to eq("#{scheme}://my-o11y.example.com:#{port}")
         end
 
-        it "handles service names with special characters" do
-          expect(setting.send(method)).to eq("http://my-service-with-dashes.otel.gitlab-o11y.com:#{port}")
+        it "raises ArgumentError when o11y_service_url is blank" do
+          setting.o11y_service_url = nil
+          expect { setting.send(method) }.to raise_error(ArgumentError, "o11y_service_url must be present")
         end
       end
     end
 
     describe '#otel_http_endpoint' do
-      include_examples 'otel endpoint', :otel_http_endpoint, 4318
+      include_examples 'otel endpoint', :otel_http_endpoint, 'http', 4318
     end
 
     describe '#otel_grpc_endpoint' do
-      include_examples 'otel endpoint', :otel_grpc_endpoint, 4317
+      include_examples 'otel endpoint', :otel_grpc_endpoint, 'http', 4317
+    end
+
+    describe '#otel_https_endpoint' do
+      include_examples 'otel endpoint', :otel_https_endpoint, 'https', 14318
+    end
+
+    describe '#otel_grpcs_endpoint' do
+      include_examples 'otel endpoint', :otel_grpcs_endpoint, 'https', 14317
     end
   end
 

@@ -12,6 +12,7 @@ module API
     helpers ::API::Helpers::PackagesHelpers
     helpers ::API::Helpers::Packages::BasicAuthHelpers
     helpers ::API::Helpers::Packages::Nuget
+    helpers ::API::Helpers::Packages::Nuget::WarningHeader
     include ::API::Helpers::Authentication
 
     feature_category :package_registry
@@ -333,7 +334,7 @@ module API
             ]
             tags %w[packages]
           end
-          route_setting :authorization, permissions: :authorize_nuget_package, boundary_type: :project
+          route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
           put 'authorize', urgency: :low do
             authorize_nuget_upload
           end
@@ -368,7 +369,7 @@ module API
             ]
             tags %w[packages]
           end
-          route_setting :authorization, permissions: :authorize_nuget_package, boundary_type: :project
+          route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
           put 'symbolpackage/authorize', urgency: :low do
             authorize_nuget_upload
           end
@@ -393,16 +394,10 @@ module API
           delete '*package_name/*package_version', format: false, urgency: :low do
             authorize_destroy_package!(project_or_group)
 
-            destroy_conditionally!(find_package) do |package|
-              ::Packages::MarkPackageForDestructionService.new(container: package, current_user: current_user).execute
-
-              track_package_event(
-                'delete_package',
-                :nuget,
-                category: 'API::NugetPackages',
-                project: package.project,
-                namespace: package.project.namespace
-              )
+            destroy_conditionally!(find_package) do |pkg|
+              result = ::Packages::MarkPackageForDestructionService
+                         .new(container: pkg, current_user: current_user).execute
+              render_api_error!(result.message, result.http_status) if result.error?
             end
           end
 
@@ -438,7 +433,7 @@ module API
               tags %w[packages]
             end
 
-            route_setting :authorization, permissions: :authorize_nuget_package, boundary_type: :project
+            route_setting :authorization, skip_granular_token_authorization: :workhorse_pre_authorization
             put 'authorize', urgency: :low do
               authorize_nuget_upload
             end
@@ -469,7 +464,7 @@ module API
             desc: 'The NuGet package name', regexp: Gitlab::Regex.nuget_package_name_regex,
             documentation: { example: 'mynugetpkg' }
         end
-        route_setting :authorization, skip_granular_token_authorization: true
+        route_setting :authorization, skip_granular_token_authorization: :public_endpoint
         get 'FindPackagesById\(\)', urgency: :low do
           present_odata_entry
         end
@@ -491,7 +486,7 @@ module API
             desc: 'The NuGet package name', regexp: Gitlab::Regex.nuget_package_name_regex,
             documentation: { example: 'mynugetpkg' }
         end
-        route_setting :authorization, skip_granular_token_authorization: true
+        route_setting :authorization, skip_granular_token_authorization: :public_endpoint
         get 'Packages\(\)', urgency: :low do
           present_odata_entry
         end
@@ -512,7 +507,7 @@ module API
           requires :package_version, type: String, allow_blank: false, desc: 'The NuGet package version',
             regexp: Gitlab::Regex.nuget_version_regex, documentation: { example: '1.3.0.17' }
         end
-        route_setting :authorization, skip_granular_token_authorization: true
+        route_setting :authorization, skip_granular_token_authorization: :public_endpoint
         get 'Packages\(Id=\'*package_name\',Version=\'*package_version\'\)', urgency: :low do
           present_odata_entry
         end

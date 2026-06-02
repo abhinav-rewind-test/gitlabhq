@@ -3,7 +3,11 @@
 WebAuthn.configure do |config|
   # This value needs to match `window.location.origin` evaluated by
   # the User Agent during registration and authentication ceremonies.
-  config.origin = Settings.gitlab['base_url']
+  config.allowed_origins = [Settings.gitlab['base_url']]
+
+  # Allows authenticate migrated U2F credentials.
+  # See https://github.com/cedarcode/webauthn-ruby/blob/v3.0.0/docs/u2f_migration.md#authenticate-migrated-u2f-credentials
+  config.legacy_u2f_appid = Settings.gitlab['base_url']
 
   # Relying Party name for display purposes
   # config.rp_name = "Example Inc."

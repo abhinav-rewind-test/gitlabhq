@@ -1,7 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Predefined CI/CD variables available in GitLab pipelines.
 title: Predefined CI/CD variables reference
 ---
 
@@ -44,6 +45,7 @@ Predefined variables become available at three different phases of pipeline exec
 | `CI`                                            | Pre-pipeline | Available for all jobs executed in CI/CD. `true` when available. |
 | `CI_API_V4_URL`                                 | Pre-pipeline | The GitLab API v4 root URL. |
 | `CI_API_GRAPHQL_URL`                            | Pre-pipeline | The GitLab API GraphQL root URL. Introduced in GitLab 15.11. |
+| `CI_BUILD_NETWORK_NAME`                         | Job-only     | The name of the network that the job created. Available only with the Docker executor when [`FF_NETWORK_PER_BUILD`](https://docs.gitlab.com/runner/configuration/feature-flags/#available-feature-flags) is enabled. |
 | `CI_BUILDS_DIR`                                 | Job-only     | The top-level directory where builds are executed. |
 | `CI_COMMIT_AUTHOR`                              | Pre-pipeline | The author of the commit in `Name <email>` format. |
 | `CI_COMMIT_BEFORE_SHA`                          | Pre-pipeline | The previous latest commit present on a branch or tag. Is always `0000000000000000000000000000000000000000` for merge request pipelines, scheduled pipelines, the first commit in pipelines for branches or tags, or when manually running a pipeline. |
@@ -60,9 +62,11 @@ Predefined variables become available at three different phases of pipeline exec
 | `CI_COMMIT_TAG_MESSAGE`                         | Pre-pipeline | The commit tag message. Available only in pipelines for tags. Introduced in GitLab 15.5. |
 | `CI_COMMIT_TIMESTAMP`                           | Pre-pipeline | The timestamp of the commit in the [ISO 8601](https://www.rfc-editor.org/rfc/rfc3339#appendix-A) format. For example, `2022-01-31T16:47:55Z`. [UTC by default](../../administration/timezone.md). |
 | `CI_COMMIT_TITLE`                               | Pre-pipeline | The title of the commit. The full first line of the message. |
+| `CI_COMMIT_USER_LOGIN`                          | Pre-pipeline | The GitLab username of the commit author if the author's profile and email are public and match the commit email, otherwise an empty string. Introduced in GitLab 18.10. |
 | `CI_CONCURRENT_ID`                              | Job-only     | The unique ID of build execution in a single executor. |
 | `CI_CONCURRENT_PROJECT_ID`                      | Job-only     | The unique ID of build execution in a single executor and project. |
 | `CI_CONFIG_PATH`                                | Pre-pipeline | The path to the CI/CD configuration file. Defaults to `.gitlab-ci.yml`. |
+| `CI_CONFIG_REF_URI`                             | Pipeline     | The fully qualified ref path to the top-level pipeline definition, for example `gitlab.example.com/my-group/my-project//.gitlab-ci.yml@refs/heads/main`. Not available when the pipeline source ref cannot be determined. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/593105) in GitLab 19.0. |
 | `CI_DEBUG_TRACE`                                | Pipeline     | `true` if [debug logging (tracing)](variables_troubleshooting.md#enable-debug-logging) is enabled. |
 | `CI_DEBUG_SERVICES`                             | Pipeline     | `true` if [service container logging](../services/_index.md#capturing-service-container-logs) is enabled. Introduced in GitLab 15.7. Requires GitLab Runner 15.7. |
 | `CI_DEFAULT_BRANCH`                             | Pre-pipeline | The name of the project's default branch. |
@@ -117,11 +121,12 @@ Predefined variables become available at three different phases of pipeline exec
 | `CI_PROJECT_NAME`                               | Pre-pipeline | The name of the directory for the project. For example if the project URL is `gitlab.example.com/group-name/project-1`, `CI_PROJECT_NAME` is `project-1`. |
 | `CI_PROJECT_NAMESPACE`                          | Pre-pipeline | The project namespace (username or group name) of the job. |
 | `CI_PROJECT_NAMESPACE_ID`                       | Pre-pipeline | The project namespace ID of the job. Introduced in GitLab 15.7. |
-| `CI_PROJECT_NAMESPACE_SLUG`                     | Pre-pipeline | `$CI_PROJECT_NAMESPACE` in lowercase with characters that are not `a-z` or `0-9` replaced with - and shortened to 63 bytes. |
-| `CI_PROJECT_PATH_SLUG`                          | Pre-pipeline | `$CI_PROJECT_PATH` in lowercase with characters that are not `a-z` or `0-9` replaced with `-` and shortened to 63 bytes. Use in URLs and domain names. |
+| `CI_PROJECT_NAMESPACE_SLUG`                     | Pre-pipeline | `$CI_PROJECT_NAMESPACE` in lowercase, shortened to 63 bytes, and with everything except `0-9` and `a-z` replaced with `-`. No leading / trailing `-`. |
+| `CI_PROJECT_PATH_SLUG`                          | Pre-pipeline | `$CI_PROJECT_PATH` in lowercase, shortened to 63 bytes, and with everything except `0-9` and `a-z` replaced with `-`. No leading / trailing `-`. Use in URLs and domain names. |
 | `CI_PROJECT_PATH`                               | Pre-pipeline | The project namespace with the project name included. |
 | `CI_PROJECT_REPOSITORY_LANGUAGES`               | Pre-pipeline | A comma-separated, lowercase list of the languages used in the repository. For example `ruby,javascript,html,css`. The maximum number of languages is limited to 5. An issue [proposes to increase the limit](https://gitlab.com/gitlab-org/gitlab/-/issues/368925). |
 | `CI_PROJECT_ROOT_NAMESPACE`                     | Pre-pipeline | The root project namespace (username or group name) of the job. For example, if `CI_PROJECT_NAMESPACE` is `root-group/child-group/grandchild-group`, `CI_PROJECT_ROOT_NAMESPACE` is `root-group`. |
+| `CI_PROJECT_ROOT_NAMESPACE_SLUG`                | Pre-pipeline | `$CI_PROJECT_ROOT_NAMESPACE` in lowercase, shortened to 63 bytes, and with everything except `0-9` and `a-z` replaced with `-`. No leading / trailing `-`. Introduced in GitLab 19.0. |
 | `CI_PROJECT_TITLE`                              | Pre-pipeline | The human-readable project name as displayed in the GitLab web interface. |
 | `CI_PROJECT_DESCRIPTION`                        | Pre-pipeline | The project description as displayed in the GitLab web interface. Introduced in GitLab 15.1. |
 | `CI_PROJECT_TOPICS`                             | Pre-pipeline | A comma-separated, lowercase list of [topics](../../user/project/project_topics.md) (limited to the first 20) assigned to the project. Introduced in GitLab 18.3 |

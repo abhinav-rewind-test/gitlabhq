@@ -373,12 +373,15 @@ RSpec.describe Gitlab::Ci::Config::External::Processor, feature_category: :pipel
       it 'propagates the pipeline logger' do
         processor.perform
 
-        process_obs_count = processor
-          .logger
-          .observations_hash
-          .dig('config_file_fetch_component_content_duration_s', 'count')
+        observations = processor.logger.observations_hash
 
-        expect(process_obs_count).to eq(1)
+        expect(observations.dig('config_file_fetch_component_content_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_fetch_content_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_find_project_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_find_sha_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_find_catalog_version_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_matched_version_duration_s', 'count')).to eq(1)
+        expect(observations.dig('config_component_check_access_duration_s', 'count')).to eq(1)
       end
     end
 
@@ -646,6 +649,39 @@ RSpec.describe Gitlab::Ci::Config::External::Processor, feature_category: :pipel
       it 'does not cause infinite recursion' do
         output = processor.perform
         expect(output.keys).to match_array([:image, :job_1, :job_2])
+      end
+
+      context 'when the file with wildcard self-inclusion has sibling includes' do
+        let(:values) do
+          { include: 'parent.yml', image: 'image:1.0' }
+        end
+
+        let(:project_files) do
+          {
+            'parent.yml' => <<~YAML,
+            include:
+              - local: 'includes/all.yml'
+              - local: 'includes/sibling.yml'
+            YAML
+            'includes/all.yml' => <<~YAML,
+            include:
+              - local: 'includes/**/*.yml'
+            YAML
+            'includes/sibling.yml' => <<~YAML,
+            job_sibling:
+              script: echo sibling
+            YAML
+            'includes/d1/job1.yml' => <<~YAML
+            job_1:
+              script: env
+            YAML
+          }
+        end
+
+        it 'does not cause infinite recursion' do
+          output = processor.perform
+          expect(output.keys).to match_array([:image, :job_1, :job_sibling])
+        end
       end
     end
 

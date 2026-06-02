@@ -2,12 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe Import::GitlabGroupsController, feature_category: :importers do
+RSpec.describe Import::GitlabGroupsController, :with_current_organization, feature_category: :importers do
   include WorkhorseHelpers
 
   include_context 'workhorse headers'
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user, freeze: false) { create(:user) }
 
   let(:import_path) { "#{Dir.tmpdir}/gitlab_groups_controller_spec" }
 

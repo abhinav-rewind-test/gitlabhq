@@ -2,6 +2,15 @@
 
 require 'spec_helper'
 
+BulkInsertParentItem = Class.new(ActiveRecord::Base) do
+  self.table_name = :_test_bulk_insert_parent_items
+  self.inheritance_column = :_type_disabled
+
+  def self.name
+    table_name.singularize.camelcase
+  end
+end
+
 RSpec.describe BulkInsertSafe, feature_category: :database do
   before_all do
     ActiveRecord::Schema.define do
@@ -50,15 +59,6 @@ RSpec.describe BulkInsertSafe, feature_category: :database do
     end
   end
 
-  BulkInsertParentItem = Class.new(ActiveRecord::Base) do
-    self.table_name = :_test_bulk_insert_parent_items
-    self.inheritance_column = :_type_disabled
-
-    def self.name
-      table_name.singularize.camelcase
-    end
-  end
-
   let_it_be(:bulk_insert_parent_item) do
     BulkInsertParentItem.create!(name: 'parent')
   end
@@ -77,7 +77,7 @@ RSpec.describe BulkInsertSafe, feature_category: :database do
 
       sha_attribute :sha_value
 
-      enum enum_value: { case_1: 1 }
+      enum :enum_value, { case_1: 1 }
 
       attr_encrypted :secret_value,
         mode: :per_attribute_iv,
@@ -289,7 +289,7 @@ RSpec.describe BulkInsertSafe, feature_category: :database do
           ).and_call_original
 
         expect { bulk_insert_items_with_composite_pk_class.bulk_insert!([new_object]) }.to(
-          change(bulk_insert_items_with_composite_pk_class, :count).from(0).to(1)
+          change { bulk_insert_items_with_composite_pk_class.count }.from(0).to(1)
         )
       end
     end
@@ -308,7 +308,7 @@ RSpec.describe BulkInsertSafe, feature_category: :database do
 
       it 'successfully inserts an item' do
         expect { bulk_insert_item_class.bulk_insert!([new_object]) }.to(
-          change(bulk_insert_item_class, :count).from(0).to(1)
+          change { bulk_insert_item_class.count }.from(0).to(1)
         )
       end
     end

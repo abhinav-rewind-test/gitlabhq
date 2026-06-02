@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Project Management
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Configure Service Desk
 ---
 
@@ -17,7 +17,7 @@ If it's not active, you can do it in the project's settings.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - On GitLab Self-Managed, you must [set up incoming email](../../../administration/incoming_email.md#set-it-up)
   for the GitLab instance. You should use
   [email sub-addressing](../../../administration/incoming_email.md#email-sub-addressing),
@@ -28,8 +28,8 @@ Prerequisites:
 
 To enable Service Desk in your project:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn on the **Activate Service Desk** toggle.
 1. Optional. Complete the fields.
@@ -153,7 +153,7 @@ Instance administrators can add a header, footer or additional text to the GitLa
 them to all emails sent from GitLab. If you're using a custom `thank_you.md`, `new_participant.md` or `new_note.md`, to include
 this content, add `%{SYSTEM_HEADER}`, `%{SYSTEM_FOOTER}`, or `%{ADDITIONAL_TEXT}` to your templates.
 
-For more information, see [System header and footer messages](../../../administration/appearance.md#add-system-header-and-footer-messages) and [custom additional text](../../../administration/settings/email.md#custom-additional-text).
+For more information, see [system header and footer messages](../../../administration/appearance.md#add-system-header-and-footer-messages) and [custom additional text](../../../administration/settings/email.md#custom-additional-text).
 
 ## Use a custom template for Service Desk tickets
 
@@ -174,15 +174,15 @@ Prerequisites:
 
 To use a custom description template with Service Desk:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. From the dropdown list **Template to append to all Service Desk issues**, search or select your template.
 
 ## Support Bot user
 
 Behind the scenes, Service Desk works by the special Support Bot user creating tickets.
-This user isn't a [billable user](../../../subscriptions/manage_users_and_seats.md#criteria-for-non-billable-users),
+This user isn't a [billable user](../../../subscriptions/manage_seats.md#criteria-for-non-billable-users),
 so it does not count toward the license limit count.
 
 In GitLab 16.0 and earlier, comments generated from Service Desk emails show `GitLab Support Bot`
@@ -197,8 +197,8 @@ this name in the `From` header. The default display name is `GitLab Support Bot`
 
 To edit the custom email display name:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Below **Email display name**, enter a new name.
 1. Select **Save changes**.
@@ -211,7 +211,7 @@ To edit the custom email display name:
 
 {{< /history >}}
 
-New tickets are confidential by default, so only project members with at least the Planner role
+New tickets are confidential by default, so only project members with the Planner, Reporter, Developer, Maintainer, or Owner role
 can view them.
 
 In private and internal projects, you can configure GitLab so that new tickets are not confidential by default, and any project member can view them.
@@ -220,12 +220,12 @@ In public projects, this setting is not available because new tickets are always
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To disable this setting:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Clear the **New tickets are confidential by default** checkbox.
 1. Select **Save changes**.
@@ -248,12 +248,12 @@ For a walkthrough, see [a short showcase video](https://youtu.be/163wDM1e43o).
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 
 To enable this setting:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Select the **Reopen issues on a new note from an external participant** checkbox.
 1. Select **Save changes**.
@@ -286,7 +286,7 @@ For an overview, see [a short showcase video](https://youtu.be/_moD5U3xcQs).
 This feature is in [beta](../../../policy/development_stages_support.md#beta).
 A beta feature is not production-ready, but is unlikely to change drastically
 before it's released. We encourage users to try beta features and provide feedback
-in [the feedback issue](https://gitlab.com/gitlab-org/gitlab/-/issues/416637).
+in the [feedback issue](https://gitlab.com/gitlab-org/gitlab/-/issues/416637).
 
 ### Prerequisites
 
@@ -307,20 +307,28 @@ The custom email address you want to use must meet all of the following requirem
   with a 256-bit key.
 - The **SMTP host** must be resolvable from the network of your GitLab instance (on GitLab Self-Managed)
   or the public internet (on GitLab.com).
-- You must have at least the Maintainer role for the project.
+- You must have the Maintainer or Owner role for the project.
 - Service Desk must be configured for the project.
 
 ### Configure a custom email address
 
 Configure and verify a custom email address when you want to send Service Desk emails using your own email address.
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+> [!warning]
+> When you set up email forwarding, use the address in the
+> **Service Desk email address to forward emails to** field in the custom email form
+> (the `incoming+...` address). Do not forward to the alias address (`contact-project+...`)
+> at the top of the Service Desk settings page. Forwarding to the alias
+> address causes `Incorrect forwarding target` verification failures.
+
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk** and find the **Configure a custom email address** section.
-1. Note the presented Service Desk address of this project, and with your email provider
-   (for example, Gmail), set up email forwarding from the custom email address to the
-   Service Desk address.
-1. Back in GitLab, complete the fields.
+1. Copy the email address from the **Service Desk email address to forward emails to** field.
+   This is the `incoming+...` address that you must use as the forwarding target.
+1. In your email provider (for example, Gmail or Microsoft 365), set up email forwarding
+   from your custom email address to the address you copied in the previous step.
+1. Back in GitLab, complete the remaining fields.
 1. Select **Save & test connection**.
 
 The configuration has been saved and the verification of the custom email address is triggered.
@@ -412,16 +420,16 @@ After the custom email address has been verified, administrators can enable or d
 
 To **enable** the custom email address:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn on the **Enable custom email** toggle.
    Service Desk emails to external participants are sent using the SMTP credentials.
 
 To **disable** the custom email address:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn off the **Enable custom email** toggle.
    Because you set up email forwarding, emails to your custom email address continue to be processed and
@@ -479,14 +487,14 @@ The following steps require moving between GitLab and Google Workspace.
 
 In GitLab:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**
 1. Expand **Service Desk**.
 1. Note the email address below **Service Desk email address to forward emails to**.
 
 In Google Workspace:
 
-1. Sign in to the custom email account and open the [Forwarding and POP/IMAP](https://mail.google.com/mail/u/0/#settings/fwdandpop) settings page.
+1. Sign in to the custom email account and open the [**Forwarding and POP/IMAP**](https://mail.google.com/mail/u/0/#settings/fwdandpop) settings.
 1. Select **Add a forwarding address**.
 1. Enter the Service Desk address from the custom email form.
 1. Select **Next**.
@@ -495,10 +503,10 @@ In Google Workspace:
 
 In GitLab:
 
-1. Go to **Issues** of the project and wait for a new issue to be created from the confirmation
-   email from Google.
-1. Open the issue and note the confirmation code.
-1. (Optional) Delete the issue.
+1. Select **Plan** > **Work items**, then filter by **Type** = **Issue**.
+   Wait for a new issue to be created from the confirmation email from Google.
+1. Select the issue and note the confirmation code.
+1. Optional. Delete the issue.
 
 In Google Workspace:
 
@@ -514,8 +522,8 @@ to use with Service Desk.
 
 In GitLab:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**
 1. Expand **Service Desk** and find the custom email settings.
 1. Complete the fields:
    - **Custom email address**: Your custom email address.
@@ -619,8 +627,8 @@ The following steps require moving between GitLab and Microsoft 365 admin center
 
 In GitLab:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**
 1. Expand **Service Desk**.
 1. Note the email address below **Service Desk email address to forward emails to** without the
    sub-address part.
@@ -652,8 +660,8 @@ to use with Service Desk.
 
 In GitLab:
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**
 1. Expand **Service Desk** and find the custom email settings.
 1. Complete the fields:
    - **Custom email address**: Your custom email address.
@@ -818,7 +826,7 @@ The supported configuration items for the encrypted file are:
 {{< tab title="Helm chart (Kubernetes)" >}}
 
 Use a Kubernetes secret to store the Service Desk email password. For more information,
-read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets/#imap-password-for-service-desk-emails).
+see [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets/#imap-password-for-service-desk-emails).
 
 {{< /tab >}}
 
@@ -920,34 +928,34 @@ Graph API instead of IMAP. Set up an OAuth 2.0 application for Microsoft Graph
 1. Edit `/etc/gitlab/gitlab.rb` and add the following lines, substituting
    the values you want:
 
-  ```ruby
-  gitlab_rails['service_desk_email_enabled'] = true
-  gitlab_rails['service_desk_email_address'] = "project_contact+%{key}@example.onmicrosoft.com"
-  gitlab_rails['service_desk_email_email'] = "project_contact@example.onmicrosoft.com"
-  gitlab_rails['service_desk_email_mailbox_name'] = "inbox"
-  gitlab_rails['service_desk_email_log_file'] = "/var/log/gitlab/mailroom/mail_room_json.log"
-  gitlab_rails['service_desk_email_inbox_method'] = 'microsoft_graph'
-  gitlab_rails['service_desk_email_inbox_options'] = {
-    'tenant_id': '<YOUR-TENANT-ID>',
-    'client_id': '<YOUR-CLIENT-ID>',
-    'client_secret': '<YOUR-CLIENT-SECRET>',
-    'poll_interval': 60  # Optional
-  }
-  ```
+   ```ruby
+   gitlab_rails['service_desk_email_enabled'] = true
+   gitlab_rails['service_desk_email_address'] = "project_contact+%{key}@example.onmicrosoft.com"
+   gitlab_rails['service_desk_email_email'] = "project_contact@example.onmicrosoft.com"
+   gitlab_rails['service_desk_email_mailbox_name'] = "inbox"
+   gitlab_rails['service_desk_email_log_file'] = "/var/log/gitlab/mailroom/mail_room_json.log"
+   gitlab_rails['service_desk_email_inbox_method'] = 'microsoft_graph'
+   gitlab_rails['service_desk_email_inbox_options'] = {
+      'tenant_id': '<YOUR-TENANT-ID>',
+      'client_id': '<YOUR-CLIENT-ID>',
+      'client_secret': '<YOUR-CLIENT-SECRET>',
+      'poll_interval': 60  # Optional
+   }
+   ```
 
-  For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
-  configure the `azure_ad_endpoint` and `graph_endpoint` settings. For example:
+   For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
+   configure the `azure_ad_endpoint` and `graph_endpoint` settings. For example:
 
-  ```ruby
-  gitlab_rails['service_desk_email_inbox_options'] = {
-    'azure_ad_endpoint': 'https://login.microsoftonline.us',
-    'graph_endpoint': 'https://graph.microsoft.us',
-    'tenant_id': '<YOUR-TENANT-ID>',
-    'client_id': '<YOUR-CLIENT-ID>',
-    'client_secret': '<YOUR-CLIENT-SECRET>',
-    'poll_interval': 60  # Optional
-  }
-  ```
+   ```ruby
+   gitlab_rails['service_desk_email_inbox_options'] = {
+      'azure_ad_endpoint': 'https://login.microsoftonline.us',
+      'graph_endpoint': 'https://graph.microsoft.us',
+      'tenant_id': '<YOUR-TENANT-ID>',
+      'client_id': '<YOUR-CLIENT-ID>',
+      'client_secret': '<YOUR-CLIENT-SECRET>',
+      'poll_interval': 60  # Optional
+   }
+   ```
 
 {{< /tab >}}
 
@@ -996,8 +1004,8 @@ Graph API instead of IMAP. Set up an OAuth 2.0 application for Microsoft Graph
          key: authToken
    ```
 
-    For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
-configure the `azureAdEndpoint` and `graphEndpoint` settings. These fields are case-sensitive:
+   For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
+   configure the `azureAdEndpoint` and `graphEndpoint` settings. These fields are case-sensitive:
 
    ```yaml
    global:
@@ -1103,8 +1111,8 @@ configure the `azure_ad_endpoint` and `graph_endpoint` settings:
          poll_interval: 60  # Optional
    ```
 
-  For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
-  configure the `azure_ad_endpoint` and `graph_endpoint` settings. For example:
+   For Microsoft Cloud for US Government or [other Azure deployments](https://learn.microsoft.com/en-us/graph/deployments),
+   configure the `azure_ad_endpoint` and `graph_endpoint` settings. For example:
 
    ```yaml
      service_desk_email:
@@ -1142,8 +1150,8 @@ Prerequisites:
 
 - You must have configured a [Service Desk alias email](#configure-service-desk-alias-email).
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Below **Email address suffix**, enter the suffix to use.
 1. Select **Save changes**.

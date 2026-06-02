@@ -18,6 +18,10 @@ module API
     API_EXCEPTION_ENV = 'gitlab.api.exception'
     API_RESPONSE_STATUS_CODE = 'gitlab.api.response_status_code'
     INTEGER_ID_REGEX = /^-?\d+$/
+    GLOBAL_ID_LOG_REGEXES = [
+      %r{^/ai/.*$},
+      %r{^/code_suggestions/.*$}
+    ].freeze
 
     # ai_workflows scope is used by Duo Workflow which is an AI automation tool, requests authenticated by token with
     # this scope are audited to keep track of all actions done by Duo Workflow.
@@ -95,7 +99,11 @@ module API
             boundaries: boundaries_for_endpoint, permissions: permissions_for_endpoint, token: token
           ).execute
 
-          raise Gitlab::Auth::GranularPermissionsError, result.message if result.error?
+          if result.error?
+            not_found! if result.reason == :resource_not_found
+
+            raise Gitlab::Auth::GranularPermissionsError, result.message
+          end
         end
       end
 
@@ -119,7 +127,11 @@ module API
     end
 
     def save_current_user_in_env(user)
-      env[API_USER_ENV] = { user_id: user.id, username: user.username }
+      env[API_USER_ENV] = { user_id: user.id, username: user.username, user_is_bot: user.respond_to?(:bot?) && user.bot? }
+
+      if GLOBAL_ID_LOG_REGEXES.any? { |re| re.match?(env["api.endpoint"]&.namespace) }
+        env[API_USER_ENV][:global_user_id] = Gitlab::GlobalAnonymousId.user_id(user)
+      end
     end
 
     def sudo?
@@ -163,7 +175,7 @@ module API
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
-    # Can be overriden by API endpoints
+    # Can be overridden by API endpoints
     def find_project_scopes
       Project.without_deleted.not_hidden
     end
@@ -276,32 +288,57 @@ module API
 
     # find_namespace returns the namespace regardless of user access level on the namespace
     # rubocop: disable CodeReuse/ActiveRecord
-    def find_namespace(id)
+    def find_namespace(id, allow_project_namespaces: false)
       if INTEGER_ID_REGEX.match?(id.to_s)
         # We need to stick to an up-to-date replica or primary db here in order to properly observe the namespace
         # recently created by GitlabSubscriptions::Trials::UltimateCreateService.
         # See https://gitlab.com/gitlab-org/customers-gitlab-com/-/issues/9808
         ::Namespace.sticking.find_caught_up_replica(:namespace, id)
 
-        Namespace.without_project_namespaces.find_by(id: id)
+        scope = allow_project_namespaces ? Namespace : Namespace.without_project_namespaces
+        scope.find_by(id: id)
       else
-        find_namespace_by_path(id)
+        find_namespace_by_path(id, allow_project_namespaces: allow_project_namespaces)
       end
+    end
+
+    def find_namespace_by_path(path, allow_project_namespaces: false)
+      scope = allow_project_namespaces ? Namespace : Namespace.without_project_namespaces
+      namespace = scope.find_by_full_path(path)
+
+      return namespace if namespace
+      return unless allow_project_namespaces
+
+      Project.find_by_full_path(path)&.project_namespace
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
     # find_namespace! returns the namespace if the current user can read the given namespace
     # Otherwise, returns a not_found! error
-    def find_namespace!(id)
-      check_namespace_access(find_namespace(id))
+    def find_namespace!(id, allow_project_namespaces: false)
+      namespace = find_namespace(id, allow_project_namespaces: allow_project_namespaces)
+
+      if namespace.is_a?(::Namespaces::ProjectNamespace)
+        return namespace if can?(current_user, read_project_ability, namespace)
+        return unauthorized! if authenticate_non_public?
+
+        return not_found!('Project')
+      end
+
+      check_namespace_access(namespace)
     end
 
-    def find_namespace_by_path(path)
-      Namespace.without_project_namespaces.find_by_full_path(path)
-    end
+    def find_namespace_by_path!(path, allow_project_namespaces: false)
+      namespace = find_namespace_by_path(path, allow_project_namespaces: allow_project_namespaces)
 
-    def find_namespace_by_path!(path)
-      check_namespace_access(find_namespace_by_path(path))
+      if namespace.is_a?(::Namespaces::ProjectNamespace)
+        return namespace if can?(current_user, read_project_ability, namespace)
+        return unauthorized! if authenticate_non_public?
+
+        return not_found!('Project')
+      end
+
+      check_namespace_access(namespace)
     end
 
     def find_branch!(branch_name)
@@ -327,7 +364,7 @@ module API
       ::IssuesFinder.new(
         current_user,
         project_id: project.id,
-        issue_types: ::WorkItems::TypesFilter.allowed_types_for_issues
+        issue_types: ::WorkItems::TypesFramework::Provider.unfiltered_base_types_for_issues
       ).find_by!(iid: iid)
     end
     # rubocop: enable CodeReuse/ActiveRecord
@@ -730,6 +767,28 @@ module API
       present_carrierwave_file!(file, **args)
     end
 
+    # When a response body is delegated to Workhorse the Rails body is `''`.
+    # Rack::ETag then digests that empty body and emits the same weak ETag
+    # for every response, which combined with Rack::ConditionalGet causes
+    # spurious 304s (gitlab-org/gitlab#371991). Callers that can derive a
+    # content-based ETag should pass one via the `etag:` kwarg; otherwise we
+    # suppress Rack::ETag's default by setting Last-Modified, matching the
+    # approach used for streaming responses in ApplicationController.
+    #
+    # Gated by the `workhorse_download_etag_caching` feature flag so the change
+    # in response headers can be de-risked on GitLab.com. Uses `@project` (set
+    # by `user_project` / `find_project!` on project-scoped endpoints) as the
+    # actor; project-less endpoints fall back to nil, the global gate.
+    def apply_etag_or_suppress_rack_etag!(etag)
+      return unless Feature.enabled?(:workhorse_download_etag_caching, @project) # rubocop:disable Gitlab/ModuleWithInstanceVariables -- @project is the conventional memoized project for API endpoints
+
+      if etag
+        header 'ETag', etag
+      elsif !headers['Last-Modified']
+        header 'Last-Modified', '0'
+      end
+    end
+
     # Return back the given file depending on the object storage configuration.
     # For disabled mode, the disk file is returned.
     # For enabled mode, the response depends on the direct download support:
@@ -743,8 +802,11 @@ module API
     # @content_type controls the Content-Type response header. By default, it will rely on the 'application/octet-stream' value or the content type detected by carrierwave.
     # @extra_response_headers. Set additional response headers. Not used in the direct download supported case.
     # @extra_send_url_params. Additional parameters to send to workhorse send_url call. See Gitlab::Workhorse.send_url for more information
-    def present_carrierwave_file!(file, supports_direct_download: true, content_disposition: nil, content_type: nil, extra_response_headers: {}, extra_send_url_params: {})
+    # @etag. Optional content-derived ETag string (e.g. %("<sha256>")). When nil, Rack::ETag's default empty-body ETag is suppressed instead.
+    def present_carrierwave_file!(file, supports_direct_download: true, content_disposition: nil, content_type: nil, extra_response_headers: {}, extra_send_url_params: {}, etag: nil)
       return not_found! unless file&.exists?
+
+      apply_etag_or_suppress_rack_etag!(etag)
 
       if content_disposition
         response_disposition = ActionDispatch::Http::ContentDisposition.format(disposition: content_disposition, filename: file.filename)
@@ -878,7 +940,7 @@ module API
       return unless token_info
       return unless TOKEN_SCOPES_TO_AUDIT.intersect?(Array.wrap(token_info[:token_scopes]))
 
-      request_author = Gitlab::Auth::Identity.invert_composite_identity(user)
+      request_author = Gitlab::Auth::Identity.resolve_composite_identity_actor(user)
       context = {
         name: 'api_request_access_with_scope',
         author: request_author,
@@ -984,14 +1046,34 @@ module API
       body ''
     end
 
+    # Respond to HEAD requests for archive endpoints without generating the archive.
+    # Sets appropriate Content-Type and Content-Disposition headers.
+    # Raises an exception if the ref is not found, matching send_git_archive behavior.
+    def send_git_archive_head(repository, ref:, format:, append_sha:, path: nil)
+      builder = Gitlab::Repositories::ArchiveHeaderBuilder.new(
+        repository,
+        ref: ref,
+        format: format,
+        append_sha: append_sha,
+        path: path
+      )
+
+      content_type builder.content_type
+      header 'Content-Disposition', builder.content_disposition
+
+      body ''
+    end
+
     # Deprecated. Use `send_artifacts_entry` instead.
-    def legacy_send_artifacts_entry(file, entry)
+    def legacy_send_artifacts_entry(file, entry, etag: nil)
+      apply_etag_or_suppress_rack_etag!(etag)
       header(*Gitlab::Workhorse.send_artifacts_entry(file, entry))
 
       body ''
     end
 
-    def send_artifacts_entry(file, entry)
+    def send_artifacts_entry(file, entry, etag: nil)
+      apply_etag_or_suppress_rack_etag!(etag)
       header(*Gitlab::Workhorse.send_artifacts_entry(file, entry))
       header(*Gitlab::Workhorse.detect_content_type)
 
@@ -1113,7 +1195,7 @@ module API
     end
 
     def authorize_granular_token?
-      access_token.try(:granular?) && !authorization_settings[:skip_granular_token_authorization]
+      access_token.respond_to?(:granular?) && !authorization_settings[:skip_granular_token_authorization]
     end
 
     def permissions_for_endpoint

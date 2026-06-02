@@ -1,10 +1,18 @@
 <script>
-import { GlBadge, GlButton, GlIcon, GlModalDirective } from '@gitlab/ui';
+import {
+  GlBadge,
+  GlBreadcrumb,
+  GlButton,
+  GlIcon,
+  GlModalDirective,
+  GlTooltipDirective,
+} from '@gitlab/ui';
 import { __, s__ } from '~/locale';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import BrandLogo from 'jh_else_ce/super_sidebar/components/brand_logo.vue';
 import { parseBoolean } from '~/lib/utils/common_utils';
 import { EVENT_OPEN_GLOBAL_SEARCH } from '~/vue_shared/global_search/constants';
+import { staticBreadcrumbs } from '~/lib/utils/breadcrumbs_state';
 import SuperSidebarToggle from './super_sidebar_toggle.vue';
 import CreateMenu from './create_menu.vue';
 import UserMenu from './user_menu.vue';
@@ -17,9 +25,11 @@ export default {
   /* eslint-disable-next-line @gitlab/require-i18n-strings */
   NEXT_LABEL: 'Next',
   SEARCH_MODAL_ID,
+  staticBreadcrumbs,
   components: {
     GlBadge,
     GlButton,
+    GlBreadcrumb,
     GlIcon,
     BrandLogo,
     SuperSidebarToggle,
@@ -36,12 +46,14 @@ export default {
   },
   directives: {
     GlModal: GlModalDirective,
+    GlTooltip: GlTooltipDirective,
   },
   mixins: [glFeatureFlagsMixin()],
   i18n: {
     skipToMainContent: __('Skip to main content'),
     adminArea: s__('Navigation|Admin'),
     searchBtnText: __('Search or go to…'),
+    analyticsDashboardsBtnText: s__('AnalyticsDashboards|View analytics dashboards'),
     menuLabel: __('Open navigation menu'),
   },
   inject: ['isSaas'],
@@ -67,6 +79,7 @@ export default {
     shouldShowOrganizationSwitcher() {
       return (
         this.glFeatures.uiForOrganizations &&
+        this.glFeatures.organizationSwitching &&
         this.isLoggedIn &&
         window.gon.current_organization &&
         this.sidebarData.has_multiple_organizations
@@ -95,7 +108,7 @@ export default {
 
 <template>
   <header
-    class="super-topbar js-super-topbar gl-grid gl-grid-cols-[1fr_auto_1fr] gl-items-center gl-outline-none forced-colors:gl-outline-0"
+    class="super-topbar js-super-topbar gl-grid gl-grid-cols-[1fr_1fr] gl-items-center gl-gap-x-5 gl-outline-none sm:gl-grid-cols-[1fr_auto_1fr] forced-colors:gl-outline-0"
     tabindex="0"
     autofocus
   >
@@ -136,6 +149,24 @@ export default {
       />
 
       <organization-switcher v-if="shouldShowOrganizationSwitcher" class="gl-hidden md:gl-block" />
+
+      <div
+        v-if="glFeatures.pageBreadcrumbsInTopBar"
+        id="js-vue-page-breadcrumbs-wrapper"
+        class="gl-ml-3 gl-grow"
+        data-testid="breadcrumb-links"
+      >
+        <gl-breadcrumb
+          v-if="!$options.staticBreadcrumbs.hasInjectedBreadcrumbs"
+          class="gl-grow"
+          :items="$options.staticBreadcrumbs.items"
+        />
+
+        <div
+          id="js-super-topbar-breadcrumbs-slot"
+          :class="{ 'gl-grow': $options.staticBreadcrumbs.hasInjectedBreadcrumbs }"
+        ></div>
+      </div>
     </div>
 
     <gl-button
@@ -143,20 +174,42 @@ export default {
       v-gl-modal="$options.SEARCH_MODAL_ID"
       button-text-classes="gl-flex gl-items-center"
       category="tertiary"
-      class="topbar-search-button !gl-rounded-[.75rem] !gl-bg-default !gl-pl-3 hover:!gl-border-alpha-dark-40 md:!gl-pr-2 dark:!gl-bg-alpha-light-8 dark:hover:!gl-border-alpha-light-36"
+      class="topbar-search-button !gl-hidden !gl-rounded-[.75rem] !gl-bg-default !gl-pl-3 hover:!gl-border-alpha-dark-40 sm:!gl-flex md:!gl-pr-2 dark:!gl-bg-alpha-light-8 dark:hover:!gl-border-alpha-light-36"
       data-testid="super-topbar-search-button"
       @drop.prevent="onSearchButtonDrop"
       @dragover.prevent
     >
       <gl-icon name="search" class="gl-shrink-0" />
-      <span class="topbar-search-button-placeholder gl-min-w-[20vw] gl-truncate gl-text-left">{{
+      <span class="topbar-search-button-placeholder !gl-min-w-[20vw] gl-truncate gl-text-left">{{
         $options.i18n.searchBtnText
       }}</span>
       <kbd class="gl-mr-1 gl-hidden gl-shrink-0 gl-rounded-base gl-shadow-none md:gl-block">/</kbd>
     </gl-button>
 
     <div class="gl-flex gl-justify-end gl-gap-3">
+      <gl-button
+        v-gl-modal="$options.SEARCH_MODAL_ID"
+        v-gl-tooltip.bottom="$options.i18n.searchBtnText"
+        icon="search"
+        size="small"
+        class="gl-self-center sm:!gl-hidden"
+        :aria-label="$options.i18n.searchBtnText"
+        data-testid="super-topbar-search-button-xs"
+        @drop.prevent="onSearchButtonDrop"
+        @dragover.prevent
+      />
       <template v-if="isLoggedIn">
+        <gl-button
+          v-if="glFeatures.exploreAnalyticsDashboards"
+          v-gl-tooltip.bottom="$options.i18n.analyticsDashboardsBtnText"
+          :href="sidebarData.explore_analytics_dashboards_path"
+          :aria-label="$options.i18n.analyticsDashboardsBtnText"
+          category="tertiary"
+          icon="chart"
+          size="small"
+          class="gl-self-center"
+          data-testid="topbar-analytics-dashboards-button"
+        />
         <create-menu
           v-if="isLoggedIn && sidebarData.create_new_menu_groups.length > 0"
           :groups="sidebarData.create_new_menu_groups"

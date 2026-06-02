@@ -15,7 +15,7 @@ RSpec.describe 'admin/sessions/new.html.haml', feature_category: :system_access 
     allow(view).to receive(:current_user).and_return(user)
   end
 
-  context 'internal admin user' do
+  context 'with internal admin user' do
     before do
       allow(view).to receive(:allow_admin_mode_password_authentication_for_web?).and_return(true)
     end
@@ -36,7 +36,7 @@ RSpec.describe 'admin/sessions/new.html.haml', feature_category: :system_access 
     end
   end
 
-  context 'omniauth authentication enabled' do
+  context 'when omniauth authentication is enabled' do
     before do
       allow(view).to receive(:omniauth_enabled?).and_return(true)
       allow(view).to receive(:password_authentication_enabled_for_web?).and_return(true)
@@ -59,21 +59,10 @@ RSpec.describe 'admin/sessions/new.html.haml', feature_category: :system_access 
     end
 
     context 'when step-up auth config is set' do
-      let(:oidc_step_up_auth_options) do
-        GitlabSettings::Options.new(
-          name: "openid_connect",
-          step_up_auth: {
-            admin_mode: {
-              params: {
-                claims: { acr_values: 'gold' }
-              }
-            }
-          }
-        )
-      end
+      let(:oidc_step_up_auth_options) { build(:omniauth_provider_config) }
 
       let(:oidc_step_up_auth_options_without_params) do
-        GitlabSettings::Options.new(name: "openid_connect", step_up_auth: { admin_mode: {} })
+        build(:omniauth_provider_config, step_up_auth_params: nil)
       end
 
       before do
@@ -107,7 +96,7 @@ RSpec.describe 'admin/sessions/new.html.haml', feature_category: :system_access 
     end
   end
 
-  context 'ldap authentication' do
+  context 'with ldap authentication' do
     let(:user) { create(:omniauth_user, :admin, extern_uid: 'my-uid', provider: 'ldapmain') }
     let(:server) { { provider_name: 'ldapmain', label: 'LDAP' }.with_indifferent_access }
 

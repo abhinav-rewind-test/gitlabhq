@@ -61,16 +61,82 @@ RSpec.describe Import::Offline::Exports::CreateService, :aggregate_failures, fea
 
     it_behaves_like 'a success response'
 
+    it 'creates self-relation exports for all groups and projects', :aggregate_failures do
+      expect { result }.to change { BulkImports::Export.count }.by(4)
+
+      offline_export = result.payload
+      relation_exports = offline_export.bulk_import_exports
+
+      expect(relation_exports).to all(have_attributes(
+        user_id: current_user.id,
+        relation: BulkImports::FileTransfer::BaseConfig::SELF_RELATION,
+        status: BulkImports::Export::PENDING
+      ))
+
+      expect(relation_exports.pluck(:group_id)).to match_array([groups[0].id, groups[1].id, nil, nil])
+      expect(relation_exports.pluck(:project_id)).to match_array([projects[0].id, projects[1].id, nil, nil])
+    end
+
+    it 'sets the organization_id on the offline export' do
+      expect(result.payload).to have_attributes(organization_id: organization.id)
+    end
+
+    context 'when GitLab URL contains embedded credentials' do
+      let(:source_hostname) { 'https://gitlab.example.com' }
+
+      before do
+        allow(Settings.gitlab).to receive(:url).and_return('https://user:secret@gitlab.example.com')
+      end
+
+      it_behaves_like 'a success response'
+
+      it 'persists the sanitized source hostname' do
+        expect(result.payload.reload.source_hostname).to eq(source_hostname)
+      end
+    end
+
+    it 'enqueues the export worker' do
+      expect(Import::Offline::ExportWorker).to receive(:perform_async).with(Integer)
+
+      result
+    end
+
     context 'when only groups are exported' do
       let(:portable_params) { [{ type: 'group', full_path: groups[0].full_path }] }
 
       it_behaves_like 'a success response'
+
+      it 'creates self-relation exports only for groups' do
+        expect { result }.to change { BulkImports::Export.count }.by(1)
+
+        offline_export = result.payload
+
+        expect(offline_export.bulk_import_exports).to all(have_attributes(
+          group_id: groups[0].id,
+          user_id: current_user.id,
+          relation: BulkImports::FileTransfer::BaseConfig::SELF_RELATION,
+          status: BulkImports::Export::PENDING
+        ))
+      end
     end
 
     context 'when only projects are exported' do
       let(:portable_params) { [{ type: 'project', full_path: projects[0].full_path }] }
 
       it_behaves_like 'a success response'
+
+      it 'creates self-relation exports only for projects' do
+        expect { result }.to change { BulkImports::Export.count }.by(1)
+
+        offline_export = result.payload
+
+        expect(offline_export.bulk_import_exports).to all(have_attributes(
+          project_id: projects[0].id,
+          user_id: current_user.id,
+          relation: BulkImports::FileTransfer::BaseConfig::SELF_RELATION,
+          status: BulkImports::Export::PENDING
+        ))
+      end
     end
 
     context 'when portables contain duplicate paths' do
@@ -86,6 +152,22 @@ RSpec.describe Import::Offline::Exports::CreateService, :aggregate_failures, fea
       end
 
       it_behaves_like 'a success response'
+
+      it 'does not create duplicate self relation exports' do
+        expect { result }.to change { BulkImports::Export.count }.by(4)
+      end
+    end
+
+    context 'when portables have descendants' do
+      let_it_be(:subgroup) { create(:group, parent: groups[0]) }
+      let_it_be(:child_project) { create(:project, group: groups[0]) }
+
+      it 'does not create self relation exports for descendants' do
+        result
+
+        expect(BulkImports::Export.where(group_id: subgroup.id)).to be_empty
+        expect(BulkImports::Export.where(project_id: child_project.id)).to be_empty
+      end
     end
 
     context 'when portables are invalid' do
@@ -140,6 +222,58 @@ RSpec.describe Import::Offline::Exports::CreateService, :aggregate_failures, fea
       it_behaves_like 'an error response', error: 'Entity full paths must be provided'
     end
 
+    context 'when provider is s3_compatible with a blocked endpoint' do
+      let(:storage_config) do
+        {
+          provider: :s3_compatible,
+          bucket: 'gitlab-exports',
+          credentials: {
+            aws_access_key_id: 'minio-user-access-key',
+            aws_secret_access_key: 'minio-secret-access-key',
+            region: 'gdk',
+            endpoint: 'https://minio.example.com',
+            path_style: true
+          }
+        }
+      end
+
+      before do
+        stub_application_setting(
+          allow_s3_compatible_storage_for_offline_transfer: true,
+          deny_all_requests_except_allowed?: true
+        )
+      end
+
+      it_behaves_like 'an error response', error: 'Requests to hosts and IP addresses not on the Allow List are denied'
+
+      it 'does not attempt to connect to object storage' do
+        client_double = instance_double(Import::Clients::ObjectStorage)
+        allow(Import::Clients::ObjectStorage).to receive(:new).and_return(client_double)
+
+        expect(client_double).not_to receive(:test_connection!)
+
+        result
+      end
+    end
+
+    context 'when provider is s3_compatible and object_storage_credentials is nil' do
+      let(:storage_config) do
+        {
+          provider: :s3_compatible,
+          bucket: 'gitlab-exports',
+          credentials: nil
+        }
+      end
+
+      before do
+        stub_application_setting(allow_s3_compatible_storage_for_offline_transfer: true)
+      end
+
+      it 'does not raise a NoMethodError' do
+        expect { result }.not_to raise_error
+      end
+    end
+
     context 'when bucket cannot be reached' do
       before do
         allow_next_instance_of(Fog::Storage) do |storage|
@@ -151,32 +285,14 @@ RSpec.describe Import::Offline::Exports::CreateService, :aggregate_failures, fea
     end
 
     context 'when an unexpected error is raised' do
-      let(:raise_error_with_cause_proc) do
-        proc do
-          raise original_error
-        rescue StandardError
-          raise NoMethodError, 'undefined method caused by a connection error'
-        end
-      end
-
       before do
         allow_next_instance_of(Fog::Storage) do |storage|
-          allow(storage).to receive(:head_bucket).and_invoke(raise_error_with_cause_proc)
+          allow(storage).to receive(:head_bucket).and_raise(StandardError, 'unexpected')
         end
       end
 
-      context 'and the error was caused by an expected error when testing connection to the bucket' do
-        let(:original_error) { Excon::Error::BadRequest.new('Bad request') }
-
-        it_behaves_like 'an error response', error: 'Unable to access object storage bucket.'
-      end
-
-      context 'and the error is not caused by an expected error' do
-        let(:original_error) { StandardError.new('unexpected') }
-
-        it 'does not catch the error' do
-          expect { result }.to raise_error(NoMethodError)
-        end
+      it 'does not catch the error' do
+        expect { result }.to raise_error(StandardError, 'unexpected')
       end
     end
 

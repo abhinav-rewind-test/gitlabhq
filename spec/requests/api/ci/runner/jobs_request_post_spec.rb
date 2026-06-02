@@ -271,8 +271,8 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
               'sha' => job.sha,
               'before_sha' => job.before_sha,
               'ref_type' => 'branch',
-              'refspecs' => ["+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
-                             "+refs/heads/#{job.ref}:refs/remotes/origin/#{job.ref}"],
+              'refspecs' => ["+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
+                "+refs/heads/#{job.ref}:refs/remotes/origin/#{job.ref}"],
               'depth' => project.ci_default_git_depth,
               'repo_object_format' => 'sha1',
               'protected' => job.protected }
@@ -284,11 +284,11 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
                'timeout' => job.timeout_value,
                'when' => 'on_success',
                'allow_failure' => false },
-             { 'name' => 'after_script',
-               'script' => %w[ls date],
-               'timeout' => job.timeout_value,
-               'when' => 'always',
-               'allow_failure' => true }]
+              { 'name' => 'after_script',
+                'script' => %w[ls date],
+                'timeout' => job.timeout_value,
+                'when' => 'always',
+                'allow_failure' => true }]
           end
 
           let(:expected_hooks) do
@@ -297,8 +297,8 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
           let(:expected_variables) do
             [{ 'key' => 'CI_JOB_NAME', 'value' => 'spinach', 'public' => true, 'masked' => false },
-             { 'key' => 'CI_JOB_STAGE', 'value' => 'test', 'public' => true, 'masked' => false },
-             { 'key' => 'DB_NAME', 'value' => 'postgres', 'public' => true, 'masked' => false }]
+              { 'key' => 'CI_JOB_STAGE', 'value' => 'test', 'public' => true, 'masked' => false },
+              { 'key' => 'DB_NAME', 'value' => 'postgres', 'public' => true, 'masked' => false }]
           end
 
           let(:expected_artifacts) do
@@ -360,7 +360,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
             expect(json_response['artifacts']).to eq(expected_artifacts)
             expect(json_response['cache']).to match(expected_cache)
             expect(json_response['variables']).to include(*expected_variables)
-            expect(json_response['features']).to match(expected_features)
+            expect(json_response['features']).to match(a_hash_including(expected_features))
           end
 
           it 'creates persistent ref' do
@@ -438,7 +438,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
                 expect(response).to have_gitlab_http_status(:created)
                 expect(json_response['git_info']['refspecs']).to contain_exactly(
-                  "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
+                  "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
                   '+refs/tags/*:refs/tags/*',
                   '+refs/heads/*:refs/remotes/origin/*'
                 )
@@ -480,7 +480,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
                 expect(response).to have_gitlab_http_status(:created)
                 expect(json_response['git_info']['refspecs']).to contain_exactly(
-                  "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
+                  "+#{pipeline.sha}:#{pipeline.persistent_ref.path}",
                   '+refs/tags/*:refs/tags/*',
                   '+refs/heads/*:refs/remotes/origin/*'
                 )
@@ -582,9 +582,9 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
           end
 
           context 'with run keyword' do
-            let(:execution_config) { create(:ci_builds_execution_configs, :with_step_and_script) }
+            let(:job_definition) { create(:ci_job_definition, :with_step_and_script) }
 
-            context 'when job has execution_config with run_steps' do
+            context 'when job has run_steps' do
               let(:job) do
                 create(
                   :ci_build,
@@ -594,7 +594,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
                   name: 'spinach',
                   stage: 'test',
                   stage_idx: 0,
-                  execution_config: execution_config
+                  temp_job_definition: job_definition
                 )
               end
 
@@ -602,7 +602,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
                 request_job
 
                 expect(response).to have_gitlab_http_status(:created)
-                expect(json_response['run']).to eq(execution_config.run_steps.to_json)
+                expect(json_response['run']).to eq(job_definition.config[:run_steps].to_json)
               end
 
               it 'returns nil for the steps' do
@@ -769,7 +769,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
               end
 
               it 'queries the ci_builds table five times' do
-                expect { request_job }.not_to exceed_all_query_limit(5).for_model(::Ci::Build)
+                expect { request_job }.not_to exceed_all_query_limit(6).for_model(::Ci::Build)
               end
             end
           end
@@ -920,11 +920,11 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
           context 'when triggered job is available' do
             let(:expected_variables) do
               [{ 'key' => 'CI_JOB_NAME', 'value' => 'spinach', 'public' => true, 'masked' => false },
-               { 'key' => 'CI_JOB_STAGE', 'value' => 'test', 'public' => true, 'masked' => false },
-               { 'key' => 'CI_PIPELINE_TRIGGERED', 'value' => 'true', 'public' => true, 'masked' => false },
-               { 'key' => 'DB_NAME', 'value' => 'postgres', 'public' => true, 'masked' => false },
-               { 'key' => 'SECRET_KEY', 'value' => 'secret_value', 'public' => false, 'masked' => false },
-               { 'key' => 'TRIGGER_KEY_1', 'value' => 'TRIGGER_VALUE_1', 'public' => false, 'masked' => false }]
+                { 'key' => 'CI_JOB_STAGE', 'value' => 'test', 'public' => true, 'masked' => false },
+                { 'key' => 'CI_PIPELINE_TRIGGERED', 'value' => 'true', 'public' => true, 'masked' => false },
+                { 'key' => 'DB_NAME', 'value' => 'postgres', 'public' => true, 'masked' => false },
+                { 'key' => 'SECRET_KEY', 'value' => 'secret_value', 'public' => false, 'masked' => false },
+                { 'key' => 'TRIGGER_KEY_1', 'value' => 'TRIGGER_VALUE_1', 'public' => false, 'masked' => false }]
             end
 
             let(:trigger) { create(:ci_trigger, project: project) }
@@ -1356,7 +1356,13 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
           context 'when the runner is of project type' do
             it_behaves_like 'storing arguments in the application context for the API' do
-              let(:expected_params) { { project: project.full_path, client_id: "runner/#{runner.id}" } }
+              let(:expected_params) do
+                {
+                  project: project.full_path,
+                  client_id: "runner/#{runner.id}",
+                  organization_id: project.organization_id
+                }
+              end
             end
 
             it_behaves_like 'not executing any extra queries for the application context', 3 do
@@ -1370,7 +1376,13 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
             let_it_be(:runner) { create(:ci_runner, :group, groups: [group]) }
 
             it_behaves_like 'storing arguments in the application context for the API' do
-              let(:expected_params) { { root_namespace: group.full_path_components.first, client_id: "runner/#{runner.id}" } }
+              let(:expected_params) do
+                {
+                  root_namespace: group.full_path_components.first,
+                  client_id: "runner/#{runner.id}",
+                  organization_id: group.organization_id
+                }
+              end
             end
 
             it_behaves_like 'not executing any extra queries for the application context', 3 do
@@ -1418,6 +1430,59 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
         def request_job(token = runner.token, **params)
           new_params = params.merge(token: token, last_update: last_update)
           post api('/jobs/request'), params: new_params.to_json, headers: { 'User-Agent' => user_agent, 'Content-Type': 'application/json' }
+        end
+      end
+
+      describe 'routing via environment_key', feature_category: :runner_core do
+        let_it_be(:resume_project) { create(:project, :repository, shared_runners_enabled: false) }
+        let(:resume_pipeline) { create(:ci_pipeline, project: resume_project) }
+        let(:correct_runner)  { create(:ci_runner, :project, projects: [resume_project]) }
+        let(:wrong_runner)    { create(:ci_runner, :project, projects: [resume_project]) }
+
+        let(:system_xid) { 's_testmachine01' }
+        let(:env_key)    { "#{correct_runner.id}/#{system_xid}/executor-specific-data" }
+
+        let!(:resume_job) do
+          create(:ci_build, :pending, :queued, pipeline: resume_pipeline,
+            options: { suspend_options: { environment_key: env_key } })
+        end
+
+        before do
+          create(:ci_runner_machine, runner: correct_runner, system_xid: system_xid)
+          create(:ci_runner_machine, runner: wrong_runner,   system_xid: 's_othermachine')
+        end
+
+        context 'when the correct runner requests the job' do
+          it 'picks the job' do
+            request_job(correct_runner.token, system_id: system_xid)
+
+            expect(response).to have_gitlab_http_status(:created)
+            expect(json_response['id']).to eq(resume_job.id)
+          end
+        end
+
+        context 'when a different runner requests the job' do
+          it 'does not pick the job' do
+            request_job(wrong_runner.token, system_id: 's_othermachine')
+
+            expect(response).to have_gitlab_http_status(:no_content)
+          end
+        end
+
+        context 'when the correct runner sends a mismatched system_id' do
+          it 'does not pick the job' do
+            request_job(correct_runner.token, system_id: 's_othermachine')
+
+            expect(response).to have_gitlab_http_status(:no_content)
+          end
+        end
+
+        context 'when a different runner sends the same system_id as correct runner' do
+          it 'does not pick the job' do
+            request_job(wrong_runner.token, system_id: system_xid)
+
+            expect(response).to have_gitlab_http_status(:no_content)
+          end
         end
       end
 

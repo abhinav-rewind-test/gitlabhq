@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Product Planning
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Manage and visualize group epics in GitLab with Epic Boards. Create, organize, filter, and track progress using labels and weights.
 title: Epic boards
 ---
@@ -24,7 +24,7 @@ Epic boards build on the existing [epic tracking functionality](_index.md) and
 [labels](../../project/labels.md). Your epics appear as cards in vertical lists, organized by their assigned
 labels.
 
-On the top of each list, you can see the number of epics in the list ({{< icon name="epic" >}}) and the total weight of all its epics ({{< icon name="weight" >}}).
+On the top of each list, you can see the number of epics in the list ({{< icon name="work-item-epic" >}}) and the total weight of all its epics ({{< icon name="weight" >}}).
 
 <div class="video-fallback">
   See the video: <a href="https://www.youtube.com/watch?v=eQUnHwbKEkY">Epics and Issue Boards - Project Management</a>.
@@ -35,21 +35,21 @@ On the top of each list, you can see the number of epics in the list ({{< icon n
 
 To view an epic board:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epic boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Epic boards**.
 
-![GitLab epic board - Premium](img/epic_board_v15_10.png)
+![An epic board displaying epics in lists.](img/epic_board_v15_10.png)
 
 ## Create an epic board
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To create a new epic board:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epic boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Epic boards**.
 1. In the upper-left corner, select the dropdown list with the current board name.
 1. Select **Create new board**.
 1. Enter the new board's title.
@@ -67,7 +67,7 @@ To change these options later, [edit the board](#edit-the-scope-of-an-epic-board
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 - A minimum of two boards present in a group.
 
 To delete the active epic board:
@@ -97,18 +97,18 @@ To delete the active epic board:
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To create a new list:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Plan** > **Epic boards**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Plan** > **Epic boards**.
 1. In the upper-right corner, select **New list**.
 1. Hover or move keyboard focus between two lists.
 1. Select **New list**.
    The new list panel opens.
 
-   ![creating a new list between two lists in an issue board](img/issue_board_add_list_between_lists_v17_6.png)
+   ![The new list panel inserted between two existing lists.](img/issue_board_add_list_between_lists_v17_6.png)
 1. In the **New list** column expand the **Select a label** dropdown list and select the label to use as
    list scope.
 1. Select **Add to board**.
@@ -127,7 +127,7 @@ list view that's removed. You can always create it again later if you need.
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To remove a list from an epic board:
 
@@ -140,7 +140,7 @@ To remove a list from an epic board:
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 - You must have [created a list](#create-a-new-list) first.
 
 To create an epic from a list in epic board:
@@ -149,7 +149,7 @@ To create an epic from a list in epic board:
 1. Enter the new epic's title.
 1. Select **Create epic**.
 
-![Create a GitLab epic from an epic board](img/epic_board_epic_create_v15_10.png)
+![The inline form used to create a new epic on a board list.](img/epic_board_epic_create_v15_10.png)
 
 ### Edit an epic
 
@@ -167,11 +167,11 @@ You can filter by the following:
 - Author
 - Label
 
-### View count of issues, weight, and progress of an epic
+### View count of work items, weight, and progress of an epic
 
-Epics on an epic board show a summary of their issues, weight, and progress.
-To see the number of open and closed issues and the completed and incomplete
-weight, hover over the issues icon {{< icon name="issues" >}}, weight icon {{< icon name="weight" >}}, or
+Epics on an epic board show a summary of their work items, weight, and progress.
+To see the number of open and closed work items and the completed and incomplete
+weight, hover over the work items icon {{< icon name="work-items" >}}, weight icon {{< icon name="weight" >}}, or
 progress icon {{< icon name="progress" >}}.
 
 ### Move epics and lists
@@ -180,7 +180,7 @@ You can move epics and lists by dragging them.
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To move an epic, select the epic card and drag it to another position in its current list or
 into another list. Learn about possible effects in [Dragging epics between lists](#dragging-epics-between-lists).
@@ -247,7 +247,7 @@ and the target list.
 
 Prerequisites:
 
-- You must have at least the Planner role for a group.
+- You must have the Planner, Reporter, Developer, Maintainer, or Owner role for a group.
 
 To edit the scope of an epic board:
 

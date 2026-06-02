@@ -1,7 +1,8 @@
 ---
 stage: Security Risk Management
 group: Security Insights
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Use the Dependency List Export API to generate and download export files of project or group dependencies.
 title: Dependency list export API
 ---
 
@@ -24,12 +25,12 @@ Every call to this API requires authentication.
 
 {{< /history >}}
 
-Create a new CycloneDX JSON export for all the project dependencies detected in a pipeline.
+Creates a CycloneDX JSON export for all the project dependencies detected in a pipeline.
 
 If an authenticated user does not have the [read_dependency](../user/custom_roles/abilities.md#vulnerability-management)
 permission, this request returns a `403 Forbidden` status code.
 
-SBOM exports can be only accessed by the export's author.
+SBOM exports can only be accessed by the export's author.
 
 ```plaintext
 POST /projects/:id/dependency_list_exports
@@ -79,9 +80,9 @@ Exports can be requested in different file formats. Some formats are only availa
 | `json_array` | A flat JSON array that contains component objects. | Groups |
 | `csv` | A comma-separated values (CSV) document. | Projects, Groups |
 
-## Get single dependency list export
+## Retrieve a single dependency list export
 
-Get a single dependency list export.
+Retrieves a dependency list export.
 
 ```plaintext
 GET /dependency_list_exports/:id
@@ -112,7 +113,7 @@ Example response:
 
 ## Download dependency list export
 
-Download a single dependency list export.
+Downloads a single dependency list export.
 
 ```plaintext
 GET /dependency_list_exports/:id/download

@@ -10,6 +10,7 @@ module Types
       connection_type_class Types::CountableConnectionType
 
       authorize :read_pipeline
+      authorize_granular_token permissions: :read_pipeline, boundary: :project, boundary_type: :project
       present_using ::Ci::PipelinePresenter
 
       def self.authorization_scopes
@@ -23,14 +24,16 @@ module Types
         scopes: [:api, :read_api, :ai_workflows]
 
       field :iid, GraphQL::Types::String, null: false,
-        description: 'Internal ID of the pipeline.'
+        description: 'Internal ID of the pipeline.',
+        scopes: [:api, :read_api, :ai_workflows]
 
       field :name, GraphQL::Types::String, null: true,
         description: 'Name of the pipeline.',
         scopes: [:api, :read_api, :ai_workflows]
 
       field :sha, GraphQL::Types::String, null: true,
-        description: "SHA of the pipeline's commit." do
+        description: "SHA of the pipeline's commit.",
+        scopes: [:api, :read_api, :ai_workflows] do
         argument :format,
           type: Types::ShaFormatEnum,
           required: false,
@@ -45,7 +48,8 @@ module Types
         description: 'Indicates if a pipeline is complete.'
 
       field :status, PipelineStatusEnum, null: false,
-        description: "Status of the pipeline (#{::Ci::Pipeline.all_state_names.compact.join(', ').upcase})"
+        description: "Status of the pipeline (#{::Ci::Pipeline.all_state_names.compact.join(', ').upcase})",
+        scopes: [:api, :read_api, :ai_workflows]
 
       field :warnings, GraphQL::Types::Boolean, null: false, method: :has_warnings?,
         description: "Indicates if a pipeline has warnings."
@@ -96,7 +100,6 @@ module Types
 
       field :retryable, GraphQL::Types::Boolean,
         description: 'Specifies if a pipeline\'s jobs can be retried.',
-        method: :retryable?,
         null: false
 
       field :cancelable, GraphQL::Types::Boolean,
@@ -178,7 +181,8 @@ module Types
         resolver: Resolvers::Ci::TestSuiteResolver
 
       field :ref, GraphQL::Types::String, null: true,
-        description: 'Reference to the branch from which the pipeline was triggered.'
+        description: 'Reference to the branch from which the pipeline was triggered.',
+        scopes: [:api, :read_api, :ai_workflows]
 
       field :ref_path, GraphQL::Types::String, null: true,
         description: 'Reference path to the branch from which the pipeline was triggered.',
@@ -213,7 +217,7 @@ module Types
 
       field :merge_request, Types::MergeRequestType, null: true, description: "MR which the Pipeline is attached to."
 
-      field :stuck, GraphQL::Types::Boolean, method: :stuck?, null: false, description: "If the pipeline is stuck."
+      field :stuck, GraphQL::Types::Boolean, null: false, description: "If the pipeline is stuck."
 
       field :yaml_errors, GraphQL::Types::Boolean, method: :yaml_errors?, null: false, description: "If the pipeline has YAML errors."
 
@@ -232,6 +236,11 @@ module Types
         null: false,
         resolver_method: :has_scheduled_actions?,
         description: 'Indicates if the pipeline has scheduled actions.'
+
+      field :pipeline_schedule, Types::Ci::PipelineScheduleType,
+        null: true,
+        authorize: :read_pipeline_schedule,
+        description: 'Pipeline schedule that triggered the pipeline.'
 
       def commit
         BatchLoader::GraphQL.wrap(object.commit)
@@ -304,7 +313,50 @@ module Types
         end
       end
 
+      def retryable
+        return false if object.archived?
+
+        BatchLoader::GraphQL.for([object.id, object.partition_id]).batch(default_value: false, key: :pipeline_retryable_builds) do |items, loader|
+          keys = ::Ci::Build.retryable_pipeline_keys(items)
+          items.each { |key| loader.call(key, keys.include?(key)) }
+        end
+      end
+
+      def stuck
+        BatchLoader::GraphQL.for([object.id, object.partition_id]).batch(default_value: false, key: :pipeline_stuck_builds) do |items, loader|
+          pending_builds_by_pipeline = pending_builds_grouped_by_pipeline(items)
+
+          items.each do |key|
+            loader.call(key, ::Ci::Build.any_stuck?(pending_builds_by_pipeline[key] || []))
+          end
+        end
+      end
+
+      # This duplicates the logic in Ci::Pipeline#type (app/models/ci/pipeline.rb) for
+      # performance reasons, avoiding N+1 queries by using pre-loaded GraphQL data.
+      def type
+        return 'merge_train' if object.merge_train_pipeline?
+        return 'merged_result' if object.merge_request_id? && object.target_sha.present?
+        return 'merge_request' if object.merge_request_id?
+        return 'tag' if object.tag?
+
+        'branch'
+      end
+
       alias_method :pipeline, :object
+
+      private
+
+      # rubocop: disable CodeReuse/ActiveRecord -- batch loading across multiple pipelines for performance
+      def pending_builds_grouped_by_pipeline(items)
+        ::Ci::Build
+          .where([:commit_id, :partition_id] => items)
+          .pending
+          .eager_load_tags
+          .select(:id, :commit_id, :partition_id, :project_id, :status, :protected)
+          .group_by { |b| [b.commit_id, b.partition_id] }
+      end
+      # rubocop: enable CodeReuse/ActiveRecord
     end
   end
 end

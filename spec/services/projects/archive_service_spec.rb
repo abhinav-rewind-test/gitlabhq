@@ -4,8 +4,8 @@ require 'spec_helper'
 
 RSpec.describe Projects::ArchiveService, feature_category: :groups_and_projects do
   let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group) }
-  let_it_be_with_reload(:project) { create(:project, namespace: group) }
+  let_it_be(:group, freeze: false) { create(:group) }
+  let_it_be_with_refind(:project) { create(:project, namespace: group) }
 
   subject(:service) { described_class.new(project: project, current_user: user) }
 
@@ -25,7 +25,7 @@ RSpec.describe Projects::ArchiveService, feature_category: :groups_and_projects 
 
     context 'when user is authorized to archive project' do
       before_all do
-        project.add_owner(user)
+        group.add_owner(user)
       end
 
       context 'when project is already archived' do
@@ -79,25 +79,58 @@ RSpec.describe Projects::ArchiveService, feature_category: :groups_and_projects 
       end
 
       context 'when project ancestors are not archived' do
-        context 'when archiving project fails' do
+        context 'when archiving project fails with project errors' do
           before do
-            allow(project).to receive(:update).with(archived: true).and_return(false)
-            allow(project).to receive_message_chain(:errors, :full_messages, :to_sentence)
-                                .and_return('Validation failed')
+            allow(project).to receive(:archive) do
+              project.errors.add(:base, 'Project state is invalid')
+              false
+            end
           end
 
           it 'returns error with validation messages' do
             result = service.execute
 
             expect(result).to be_error
-            expect(result.message).to eq('Validation failed')
+            expect(result.message).to eq('Project state is invalid')
+          end
+        end
+
+        context 'when archiving project fails with namespace errors' do
+          before do
+            allow(project).to receive(:archive) do
+              project.project_namespace.errors.add(:state, 'cannot transition via "archive"')
+              false
+            end
+          end
+
+          it 'returns error with namespace error messages' do
+            result = service.execute
+
+            expect(result).to be_error
+            expect(result.message).to eq('State cannot transition via "archive"')
+          end
+        end
+
+        context 'when both project and namespace have errors' do
+          before do
+            allow(project).to receive(:archive) do
+              project.errors.add(:base, 'Project error')
+              project.project_namespace.errors.add(:state, 'Namespace error')
+              false
+            end
+          end
+
+          it 'returns combined error messages' do
+            result = service.execute
+
+            expect(result).to be_error
+            expect(result.message).to eq('Project error and State Namespace error')
           end
         end
 
         context 'when archiving project fails without specific error messages' do
           before do
-            allow(project).to receive(:update).with(archived: true).and_return(false)
-            allow(project).to receive_message_chain(:errors, :full_messages, :to_sentence).and_return('')
+            allow(project).to receive(:archive).and_return(false)
           end
 
           it 'returns generic archiving failed error' do
@@ -120,7 +153,7 @@ RSpec.describe Projects::ArchiveService, feature_category: :groups_and_projects 
 
           it 'updates the project_namespace state' do
             expect { service.execute }.to change { project.project_namespace.state }
-              .from(Namespaces::Stateful::STATES[:ancestor_inherited]).to(Namespaces::Stateful::STATES[:archived])
+              .from('ancestor_inherited').to('archived')
           end
 
           it 'updates the project archived status to true' do

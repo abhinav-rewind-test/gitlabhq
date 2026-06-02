@@ -74,6 +74,7 @@ module Types
     mount_mutation Mutations::Import::SourceUsers::UndoKeepAsPlaceholder, experiment: { milestone: '18.4' }
     mount_mutation Mutations::Import::SourceUsers::Reassign, experiment: { milestone: '17.2' }
     mount_mutation Mutations::Import::SourceUsers::ResendNotification, experiment: { milestone: '17.2' }
+    mount_mutation Mutations::Import::SourceUsers::RetryFailedReassignment, experiment: { milestone: '18.11' }
     mount_mutation Mutations::IncidentManagement::TimelineEvent::Create, experiment: { milestone: '15.6' }
     mount_mutation Mutations::IncidentManagement::TimelineEvent::PromoteFromNote
     mount_mutation Mutations::IncidentManagement::TimelineEvent::Update
@@ -120,6 +121,7 @@ module Types
     }
     mount_mutation Mutations::Notes::Create::Note, calls_gitaly: true, scopes: [:api, :ai_workflows]
     mount_mutation Mutations::Notes::Create::DiffNote, calls_gitaly: true
+    mount_mutation Mutations::Notes::Create::LatestDiffNote, calls_gitaly: true, experiment: { milestone: '18.10' }
     mount_mutation Mutations::Notes::Create::ImageDiffNote, calls_gitaly: true
     mount_mutation Mutations::Notes::Create::Discussion, calls_gitaly: true
     mount_mutation Mutations::Notes::Update::Note, scopes: [:api, :ai_workflows]
@@ -148,6 +150,8 @@ module Types
     mount_mutation Mutations::Terraform::State::Delete
     mount_mutation Mutations::Terraform::State::Lock
     mount_mutation Mutations::Terraform::State::Unlock
+    mount_mutation Mutations::Terraform::StateProtectionRule::Delete, experiment: { milestone: '19.1' }
+    mount_mutation Mutations::Terraform::StateProtectionRule::Update, experiment: { milestone: '18.11' }
     mount_mutation Mutations::Timelogs::Create
     mount_mutation Mutations::Timelogs::Delete
     mount_mutation Mutations::Todos::Create
@@ -271,6 +275,7 @@ module Types
     mount_mutation Mutations::Pages::MarkOnboardingComplete
     mount_mutation Mutations::Pages::SetPagesForceHttps
     mount_mutation Mutations::Pages::SetPagesUseUniqueDomain
+    mount_mutation Mutations::Uploads::Create, experiment: { milestone: '19.0' }
     mount_mutation Mutations::Uploads::Delete
     mount_mutation Mutations::Users::SetNamespaceCommitEmail
     mount_mutation Mutations::WorkItems::Subscribe, experiment: { milestone: '16.3' }

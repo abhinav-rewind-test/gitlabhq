@@ -13,7 +13,7 @@ import createNoteMutation from '~/work_items/graphql/notes/create_work_item_note
 import { TRACKING_CATEGORY_SHOW } from '~/work_items/constants';
 import workItemByIidQuery from '~/work_items/graphql/work_item_by_iid.query.graphql';
 import DiscussionReplyPlaceholder from '~/notes/components/discussion_reply_placeholder.vue';
-import ResolveDiscussionButton from '~/notes/components/discussion_resolve_button.vue';
+import ResolveDiscussionButton from '~/notes/components/resolve_discussion_button.vue';
 import {
   createWorkItemNoteResponse,
   workItemByIidResponseFactory,
@@ -149,6 +149,7 @@ describe('Work item add note', () => {
           category: TRACKING_CATEGORY_SHOW,
           label: 'item_comment',
           property: 'type_Task',
+          extra: { viewContext: 'full_screen' },
         });
       });
 

@@ -1,12 +1,14 @@
 ---
 stage: Analytics
 group: Analytics Instrumentation
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Quick start for Internal Event Tracking
 ---
 
 In an effort to provide a more efficient, scalable, and unified tracking API, GitLab is deprecating existing RedisHLL and Snowplow tracking. Instead, we're implementing a new `track_event` (Backend) and `trackEvent`(Frontend) method.
 With this approach, we can update both RedisHLL counters and send Snowplow events without worrying about the underlying implementation.
+
+**Important**: Starting with GitLab 18.0, event data is collected from Self-Managed instances, providing more detailed insights than the aggregated metrics collected in previous versions.
 
 In order to instrument your code with Internal Events Tracking you need to do three things:
 
@@ -16,13 +18,14 @@ In order to instrument your code with Internal Events Tracking you need to do th
 
 ## Defining event and metrics
 
-To create event and/or metric definitions, use the `internal_events` generator from the `gitlab` directory:
+To create event and/or metric definitions, use the [gitlab_internal_events_cli gem](https://gitlab.com/gitlab-org/analytics-section/product-analytics/analytics-cli#installation).
 
 ```shell
-scripts/internal_events/cli.rb
+> gem install gitlab_internal_events_cli
+> gem exec gitlab_internal_events_cli
 ```
 
-This CLI will help you create the correct definition files based on your specific use-case, then provide code examples for instrumentation and testing.
+This CLI gem will help you create the correct definition files based on your specific use-case, then provide code examples for instrumentation and testing.
 
 Events should be named in the format of `<action>_<target_of_action>_<where/when>`, valid examples are `create_ci_build` or `click_previous_blame_on_blob_page`.
 
@@ -52,7 +55,7 @@ track_internal_event(
 )
 ```
 
-This method automatically increments all RedisHLL metrics relating to the event `create_ci_build`, and sends a corresponding Snowplow event with all named arguments and standard context (SaaS only).
+This method automatically increments all RedisHLL metrics relating to the event `create_ci_build`, and sends a corresponding Snowplow event with all named arguments and standard context (GitLab.com only).
 In addition, the name of the class triggering the event is saved in the `category` property of the Snowplow event.
 
 If you have defined a metric with a `unique` property such as `unique: project.id` it is required that you provide the `project` argument.
@@ -63,7 +66,7 @@ If a `project` but no `namespace` is provided, the `project.namespace` is used a
 
 In some cases you might want to specify the `category` manually or provide none at all. To do that, you can call the `InternalEvents.track_event` method directly instead of using the module.
 
-In case when a feature is enabled through multiple namespaces and its required to track why the feature is enabled, it is
+In case when a feature is enabled through multiple namespaces and it's required to track why the feature is enabled, it is
 possible to pass an optional `feature_enabled_by_namespace_ids` parameter with an array of namespace ids.
 
 ```ruby
@@ -157,6 +160,109 @@ track_event(
   namespace_id: namespace_id,
   project_id: project_id
 )
+```
+
+#### Service helpers
+
+For service objects, the `Gitlab::InternalEvents::ServiceTracking` concern provides a declarative `track_internal_event` helper.
+It wraps the `execute` method and fires tracking calls automatically based on the return value.
+
+```ruby
+class Labels::CreateService < Labels::BaseService
+  include Gitlab::InternalEvents::ServiceTracking
+
+  track_internal_event 'label_created', on: :success
+
+  def execute(target_params)
+    # ... returns an ActiveRecord model or ServiceResponse
+  end
+end
+```
+
+The helper intercepts the return value of `execute` and determines whether the result is a success or error:
+
+- `ServiceResponse`: checks `result.success?`.
+- ActiveRecord objects: checks `result.persisted?`.
+- Other values: checks `result.present?`.
+
+##### `track_internal_event` options
+
+| Parameter | Type | Description |
+|---|---|---|
+| `on` | Symbol, Proc | When to fire: `:success` (default), `:error`, `:always`, a Proc that receives the result, or a Symbol naming an instance method. |
+| `conditions` | Symbol, Proc, Array | Additional guard conditions. All must return truthy for the event to fire. |
+| `additional_properties` | Hash, Proc | Extra properties for the event. A Proc receives the result and returns a Hash. |
+
+You can register multiple events on the same service:
+
+```ruby
+track_internal_event 'thing_created', on: :success
+track_internal_event 'thing_creation_failed', on: :error
+```
+
+##### Default tracking sources
+
+The concern provides default implementations that extract `user`, `project`, and `namespace` automatically:
+
+- **User**: Uses `current_user` if the service responds to it.
+- **Project**: Iterates `ServiceResponse` payload values and returns the first object that responds to `project`.
+- **Namespace**: Iterates payload values and returns the first object that responds to `namespace` or `group`.
+
+> [!note]
+> The defaults require either a `Hash` payload (for example, `payload: { board: board }`) or a plain object returned directly from `execute`.
+> A `ServiceResponse` with a non-Hash payload silently yields `nil` sources; either wrap the payload in a `Hash` or override the source methods.
+
+To customize tracking sources, override the private methods:
+
+```ruby
+private
+
+def tracking_user_source
+  actor
+end
+
+def tracking_project_source(result)
+  result&.payload&.dig(:board)&.project
+end
+
+def tracking_namespace_source(result)
+  result&.payload&.dig(:board)&.group
+end
+```
+
+##### Conditions and additional properties
+
+Use `conditions:` to guard event firing with one or more checks.
+The `:symbol` form names an instance method on the service:
+
+```ruby
+class Labels::CreateService < Labels::BaseService
+  include Gitlab::InternalEvents::ServiceTracking
+
+  track_internal_event 'label_created', on: :success, conditions: :not_template?
+
+  def execute(target_params)
+    # ... returns the created Label
+  end
+
+  private
+
+  def not_template?
+    !params[:template]
+  end
+end
+```
+
+Use `additional_properties:` to attach extra event data.
+A `Hash` is passed through as-is; a `Proc` receives the `execute` result:
+
+```ruby
+track_internal_event 'integration_configured', on: :success,
+  additional_properties: { label: 'static_label' }
+
+# Proc form - receives the result of execute (e.g., a ServiceResponse):
+track_internal_event 'integration_configured', on: :success,
+  additional_properties: ->(result) { { label: result.payload[:type] } }
 ```
 
 #### Batching

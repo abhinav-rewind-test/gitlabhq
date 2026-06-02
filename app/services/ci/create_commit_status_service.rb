@@ -57,6 +57,10 @@ module Ci
 
       return not_found("Pipeline for pipeline_id, sha and ref") unless first_matching_pipeline
 
+      if first_matching_pipeline.config_error?
+        return bad_request("Cannot add status to pipeline with configuration errors")
+      end
+
       return if can_append_jobs_to_existing_pipeline?
 
       error("The number of jobs has exceeded the limit", :unprocessable_entity)
@@ -75,6 +79,7 @@ module Ci
 
     def find_or_create_pipeline
       return create_pipeline unless first_matching_pipeline
+      return create_pipeline if first_matching_pipeline.config_error?
       return first_matching_pipeline if can_append_jobs_to_existing_pipeline?
 
       create_log_entry
@@ -92,7 +97,7 @@ module Ci
     def first_matching_pipeline
       limit = params[:pipeline_id] ? nil : DEFAULT_LIMIT_PIPELINES
       pipelines = project.ci_pipelines.newest_first(sha: sha, limit: limit)
-      pipelines = pipelines.not_archived
+      pipelines = pipelines.not_archived if ::Feature.enabled?(:ci_pipeline_archival_setting, project)
       pipelines = pipelines.for_ref(params[:ref]) if params[:ref]
       pipelines = pipelines.id_in(params[:pipeline_id]) if params[:pipeline_id]
       pipelines.first
@@ -116,7 +121,8 @@ module Ci
         sha: sha,
         ref: ref,
         user: current_user,
-        protected: project.protected_for?(ref)
+        protected: project.protected_for?(ref),
+        tag: repository.tag_exists?(ref)
       ).tap do |new_pipeline|
         new_pipeline.ensure_project_iid!
         new_pipeline.save!

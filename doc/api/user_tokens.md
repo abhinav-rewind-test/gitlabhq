@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: User tokens API
 ---
 
@@ -102,7 +102,7 @@ Supported attributes:
 | `name`       | string | yes      | Name of personal access token. |
 | `description`| string | no       | Description of personal access token. Maximum: 255 characters. |
 | `scopes`     | array  | yes      | Array of approved scopes. Only accepts `k8s_proxy` and `self_rotate`. |
-| `expires_at` | array  | no       | Expiration date of the access token in ISO format (`YYYY-MM-DD`). If undefined, the date is set to the [maximum allowable lifetime limit](../user/profile/personal_access_tokens.md#access-token-expiration). |
+| `expires_at` | date  | no       | Expiration date of the access token in ISO format (`YYYY-MM-DD`). If undefined, the date is set to the [maximum allowable lifetime limit](../user/profile/personal_access_tokens.md#access-token-expiration). |
 
 Example request:
 

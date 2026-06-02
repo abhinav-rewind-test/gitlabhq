@@ -1,15 +1,15 @@
 <script>
-import { GlAvatarLink, GlAvatar } from '@gitlab/ui';
-import axios from '~/lib/utils/axios_utils';
+import { GlAvatarLink, GlAvatar, GlSprintf, GlLink } from '@gitlab/ui';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { createAlert } from '~/alert';
-import { HTTP_STATUS_GONE } from '~/lib/utils/http_status';
 import { ignoreWhilePending } from '~/lib/utils/ignore_while_pending';
 import { __, sprintf } from '~/locale';
 import { detectAndConfirmSensitiveTokens } from '~/lib/utils/secret_detection';
 import { isCurrentUser } from '~/lib/utils/common_utils';
 import { UPDATE_COMMENT_FORM } from '~/notes/i18n';
+import { updateNoteErrorMessage } from '~/notes/utils';
+import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import NoteActions from './note_actions.vue';
 import NoteBody from './note_body.vue';
 import NoteHeader from './note_header.vue';
@@ -24,9 +24,15 @@ export default {
     NoteBody,
     GlAvatarLink,
     GlAvatar,
+    GlSprintf,
+    GlLink,
     TimelineEntryItem,
+    TimeAgoTooltip,
   },
   inject: {
+    store: {
+      type: Object,
+    },
     endpoints: {
       type: Object,
     },
@@ -61,6 +67,21 @@ export default {
       required: false,
       default: false,
     },
+    canResolve: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isResolved: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isResolving: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   data() {
     return {
@@ -81,20 +102,30 @@ export default {
     commentType() {
       return this.note.internal ? __('internal note') : __('comment');
     },
+    isDraft() {
+      return Boolean(this.note.isDraft);
+    },
     canAwardEmoji() {
+      if (this.isDraft) return false;
       return this.note.current_user?.can_award_emoji ?? false;
     },
     canEdit() {
       return this.note.current_user?.can_edit ?? false;
     },
     canReportAsAbuse() {
+      if (this.isDraft) return false;
       return Boolean(this.endpoints.reportAbuse) && !isCurrentUser(this.authorId);
+    },
+    resolvedText() {
+      return this.note.resolved_by_push
+        ? __('Automatically resolved %{timeago} by %{author}')
+        : __('Resolved %{timeago} by %{author}');
     },
   },
   watch: {
     isEditing: {
       handler(isEditing) {
-        if (isEditing) this.$nextTick(() => this.$el.scrollIntoView());
+        if (isEditing) this.$nextTick(() => this.$el.scrollIntoView({ block: 'nearest' }));
       },
       immediate: true,
     },
@@ -114,8 +145,7 @@ export default {
       this.isDeleting = true;
 
       try {
-        await axios.delete(this.note.path);
-        this.$emit('noteDeleted');
+        await this.store.destroyNote(this.note);
       } catch (error) {
         createAlert({
           message: __('Something went wrong while deleting your note. Please try again.'),
@@ -132,21 +162,13 @@ export default {
       this.isSaving = true;
 
       try {
-        const {
-          data: { note: updatedNote },
-        } = await axios.put(this.note.path, {
-          rapid_diffs: true,
-          target_id: this.note.noteable_id,
-          note: { note: noteText },
-        });
+        await this.store.saveNote(this.note, noteText);
         this.$emit('cancelEditing');
-        this.$emit('noteUpdated', updatedNote);
       } catch (error) {
-        if (error.response && error.response.status === HTTP_STATUS_GONE) {
-          this.$emit('noteDeleted');
-        } else {
-          throw error;
-        }
+        createAlert({
+          message: updateNoteErrorMessage(error),
+          parent: this.$el,
+        });
       } finally {
         this.isSaving = false;
       }
@@ -169,8 +191,7 @@ export default {
     }),
     async toggleAward(name) {
       try {
-        await axios.post(this.note.toggle_award_path, { name });
-        this.$emit('toggleAward', name);
+        await this.store.toggleAwardOnNote(this.note, name);
       } catch (error) {
         createAlert({
           message: __('Failed to set a reaction. Please try again.'),
@@ -190,6 +211,7 @@ export default {
     :class="{
       'gl-pointer-events-none gl-opacity-5': isSaving || isDeleting,
       'gl-bg-[var(--note-background)]': !timelineLayout,
+      '[--note-background:var(--timeline-entry-draft-note-background-color)]': isDraft,
     }"
     class="[--note-background:initial] target:[--note-background:var(--timeline-entry-target-background-color)]"
     data-testid="noteable-note-container"
@@ -220,6 +242,12 @@ export default {
         }"
       >
         <div
+          v-if="$scopedSlots.headline"
+          class="gl-border-b gl-border-section gl-px-4 gl-py-3 gl-text-subtle"
+        >
+          <slot name="headline"></slot>
+        </div>
+        <div
           class="gl-flex gl-flex-wrap gl-items-start gl-justify-between gl-gap-2 gl-px-4 gl-pt-2"
         >
           <note-header
@@ -236,6 +264,7 @@ export default {
             </template>
           </note-header>
           <note-actions
+            class="gl-pt-1"
             :author-id="authorId"
             :note-url="note.noteable_note_url"
             :access-level="note.human_access"
@@ -248,6 +277,10 @@ export default {
             :can-award-emoji="canAwardEmoji"
             :can-delete="canEdit"
             :can-report-as-abuse="canReportAsAbuse"
+            :can-resolve="canResolve"
+            :is-resolved="isResolved"
+            :is-resolving="isResolving"
+            @resolve="$emit('resolve')"
             @delete="onDelete"
             @startEditing="$emit('startEditing')"
             @startReplying="$emit('startReplying')"
@@ -255,6 +288,22 @@ export default {
           />
         </div>
         <div class="gl-pb-4 gl-pr-4" :class="timelineLayout ? 'gl-pl-4' : 'gl-ml-2 gl-pl-8'">
+          <div v-if="isResolved" class="-gl-mt-2 gl-mb-3 gl-text-sm gl-text-subtle">
+            <gl-sprintf :message="resolvedText">
+              <template #timeago>
+                <time-ago-tooltip :time="note.resolved_at" tooltip-placement="bottom" />
+              </template>
+              <template #author>
+                <gl-link
+                  :href="note.resolved_by.path"
+                  :data-user-id="note.resolved_by.id"
+                  class="js-user-link gl-break-words"
+                >
+                  {{ note.resolved_by.name }}
+                </gl-link>
+              </template>
+            </gl-sprintf>
+          </div>
           <note-body
             :note="note"
             :can-edit="canEdit"

@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Backup::Manager, feature_category: :backup_restore do
   include StubENV
 
-  let_it_be(:progress) { StringIO.new }
+  let_it_be(:progress, freeze: false) { StringIO.new }
   let(:logger) { subject.logger }
   let(:backup_tasks) { nil }
   let(:options) { build(:backup_options, :skip_none) }
@@ -515,6 +515,29 @@ RSpec.describe Backup::Manager, feature_category: :backup_restore do
             expect(progress.string).to include(message)
           end
         end
+
+        context 'when keep_time is shorter than the backup creation duration' do
+          let(:backup_time) { Time.zone.parse('2025-12-31') }
+          let(:current_time) { Time.zone.parse('2026-1-1') }
+          let(:new_backup_file) { "#{backup_time.to_i}_2025_12_31_#{Gitlab::VERSION}_gitlab_backup.tar" }
+
+          before do
+            allow(Gitlab.config.backup).to receive(:keep_time).and_return(3600)
+
+            allow(Time).to receive(:current).and_return(backup_time, current_time)
+
+            subject.create # rubocop:disable Rails/SaveBang
+          end
+
+          it 'does not remove the newly created backup file' do
+            expect(FileUtils).not_to have_received(:rm).with(new_backup_file)
+          end
+
+          it 'still removes other old backup files' do
+            expect(FileUtils).to have_received(:rm).with(files[1])
+            expect(FileUtils).to have_received(:rm).with(files[5])
+          end
+        end
       end
 
       describe 'cloud storage' do
@@ -569,7 +592,7 @@ RSpec.describe Backup::Manager, feature_category: :backup_restore do
         context 'target path' do
           it 'uses the tar filename by default' do
             expect_any_instance_of(Fog::Collection).to receive(:create)
-              .with(hash_including(key: backup_filename, public: false))
+              .with(hash_including(key: backup_filename))
               .and_call_original
 
             subject.create # rubocop:disable Rails/SaveBang
@@ -579,7 +602,7 @@ RSpec.describe Backup::Manager, feature_category: :backup_restore do
             stub_env('DIRECTORY', 'daily')
 
             expect_any_instance_of(Fog::Collection).to receive(:create)
-              .with(hash_including(key: "daily/#{backup_filename}", public: false))
+              .with(hash_including(key: "daily/#{backup_filename}"))
               .and_call_original
 
             subject.create # rubocop:disable Rails/SaveBang
@@ -750,36 +773,6 @@ RSpec.describe Backup::Manager, feature_category: :backup_restore do
 
               subject.create # rubocop:disable Rails/SaveBang
             end
-          end
-        end
-
-        context 'with Google provider' do
-          before do
-            stub_backup_setting(
-              upload: {
-                connection: {
-                  provider: 'Google',
-                  google_storage_access_key_id: 'test-access-id',
-                  google_storage_secret_access_key: 'secret'
-                },
-                remote_directory: 'directory',
-                multipart_chunk_size: Gitlab.config.backup.upload.multipart_chunk_size,
-                encryption: nil,
-                encryption_key: nil,
-                storage_class: nil
-              }
-            )
-
-            connection = ::Fog::Storage.new(Gitlab.config.backup.upload.connection.symbolize_keys)
-            connection.directories.create(key: Gitlab.config.backup.upload.remote_directory) # rubocop:disable Rails/SaveBang
-          end
-
-          it 'does not attempt to set ACL' do
-            expect_any_instance_of(Fog::Collection).to receive(:create)
-              .with(hash_excluding(public: false))
-              .and_call_original
-
-            subject.create # rubocop:disable Rails/SaveBang
           end
         end
 

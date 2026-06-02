@@ -16,14 +16,14 @@ module API
           extend ActiveSupport::Concern
 
           PACKAGE_REQUIREMENTS = {
-            package_name: API::NO_SLASH_URL_PART_REGEX,
-            package_version: API::NO_SLASH_URL_PART_REGEX,
-            package_username: API::NO_SLASH_URL_PART_REGEX,
-            package_channel: API::NO_SLASH_URL_PART_REGEX
+            package_name: ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX,
+            package_version: ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX,
+            package_username: ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX,
+            package_channel: ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX
           }.freeze
 
           FILE_NAME_REQUIREMENTS = {
-            file_name: API::NO_SLASH_URL_PART_REGEX
+            file_name: ::Gitlab::Regex::NO_SLASH_URL_PART_REGEX
           }.freeze
 
           PACKAGE_COMPONENT_REGEX = Gitlab::Regex.conan_recipe_component_regex
@@ -37,6 +37,7 @@ module API
 
             helpers ::API::Helpers::PackagesManagerClientsHelpers
             helpers ::API::Helpers::Packages::Conan::ApiHelpers
+            helpers ::API::Helpers::Packages::Conan::ApiErrorFormatter
             helpers ::API::Helpers::RelatedResourcesHelpers
 
             rescue_from ActiveRecord::RecordInvalid do |e|
@@ -54,8 +55,8 @@ module API
                 authenticate!
               end
 
-              format :txt
               content_type :txt, 'text/plain'
+              format :txt
 
               desc 'Authenticate user against conan CLI' do
                 detail 'This feature was introduced in GitLab 12.2'
@@ -69,8 +70,7 @@ module API
 
               route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true
               route_setting :authorization, skip_job_token_policies: true,
-                permissions: :authenticate_conan_package,
-                boundaries: [{ boundary_type: :project }, { boundary_type: :instance }]
+                permissions: :authenticate_conan_package, **authorization_boundary_options
 
               get 'authenticate', urgency: :low do
                 unauthorized! unless token
@@ -90,8 +90,7 @@ module API
 
               route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true
               route_setting :authorization, skip_job_token_policies: true,
-                permissions: :authenticate_conan_package,
-                boundaries: [{ boundary_type: :project }, { boundary_type: :instance }]
+                permissions: :authenticate_conan_package, **authorization_boundary_options
 
               get 'check_credentials', urgency: :default do
                 :ok
@@ -113,13 +112,12 @@ module API
                 requires :q, type: String, desc: 'Search query', documentation: { example: 'Hello*' }
                 optional :ignorecase, type: ::Grape::API::Boolean,
                   desc: 'Ignore case when searching (case-insensitive search)',
-                  documentation: { example: 'False' }
+                  documentation: { example: false }
               end
 
               route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true
               route_setting :authorization, skip_job_token_policies: true,
-                permissions: :search_conan_package,
-                boundaries: [{ boundary_type: :project }, { boundary_type: :instance }]
+                permissions: :search_conan_package, **authorization_boundary_options
 
               get 'search', urgency: :low do
                 response = ::Packages::Conan::SearchService.new(

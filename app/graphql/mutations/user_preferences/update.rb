@@ -5,13 +5,18 @@ module Mutations
     class Update < BaseMutation
       graphql_name 'UserPreferencesUpdate'
 
+      authorize_granular_token permissions: :update_user_preference,
+        boundary: :user,
+        boundary_type: :user
+
       NON_NULLABLE_ARGS = [
         :extensions_marketplace_opt_in_status,
         :organization_groups_projects_display,
         :visibility_pipeline_id_type,
         :use_work_items_view,
         :merge_request_dashboard_list_type,
-        :merge_request_dashboard_show_drafts
+        :merge_request_dashboard_show_drafts,
+        :wiki_use_auto_commit_message
       ].freeze
 
       argument :extensions_marketplace_opt_in_status, Types::ExtensionsMarketplaceOptInStatusEnum,
@@ -56,6 +61,19 @@ module Mutations
         required: false,
         experiment: { milestone: '18.1' }
 
+      argument :orbit_settings,
+        type: GraphQL::Types::JSON,
+        description: 'Orbit agent settings, e.g.: "{ enabled: false }".',
+        required: false,
+        experiment: { milestone: '19.0' }
+
+      argument :wiki_use_auto_commit_message,
+        GraphQL::Types::Boolean,
+        required: false,
+        description: 'Whether to skip the commit message modal and use the auto-generated commit message when saving ' \
+          'changes to a wiki document.',
+        experiment: { milestone: '18.10' }
+
       field :user_preferences,
         Types::UserPreferencesType,
         null: true,
@@ -74,6 +92,11 @@ module Mutations
           existing_settings = user_preferences.work_items_display_settings
           attributes[:work_items_display_settings] =
             existing_settings.merge(attributes[:work_items_display_settings])
+        end
+
+        if attributes[:orbit_settings].present?
+          existing_orbit = user_preferences.orbit_settings
+          attributes[:orbit_settings] = existing_orbit.merge(attributes[:orbit_settings])
         end
 
         user_preferences.update(attributes)

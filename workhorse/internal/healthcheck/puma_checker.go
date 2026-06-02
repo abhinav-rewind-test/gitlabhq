@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/puma"
@@ -23,6 +24,7 @@ type PumaReadinessChecker struct {
 	logger         *logrus.Logger
 	successChecker OptimizedReadinessChecker // Interface for both recording and checking success
 	skipInterval   time.Duration             // Duration to skip checks if recent success
+	probeDuration  *prometheus.HistogramVec  // Histogram of readiness probe HTTP response times; nil if not configured
 }
 
 // PumaReadinessResponse represents the JSON response from Puma's readiness endpoint
@@ -44,6 +46,13 @@ func WithSuccessChecker(successChecker OptimizedReadinessChecker) PumaReadinessC
 func WithSkipInterval(interval time.Duration) PumaReadinessCheckerOption {
 	return func(p *PumaReadinessChecker) {
 		p.skipInterval = interval
+	}
+}
+
+// WithProbeDurationHistogram configures a histogram for recording readiness probe HTTP response times
+func WithProbeDurationHistogram(h *prometheus.HistogramVec) PumaReadinessCheckerOption {
+	return func(p *PumaReadinessChecker) {
+		p.probeDuration = h
 	}
 }
 
@@ -83,18 +92,7 @@ func (p *PumaReadinessChecker) Check(ctx context.Context) CheckResult {
 
 	// Check Puma control server if configured
 	if p.controlURL != "" {
-		controlHealthy, controlDuration, controlErr := p.checkControlServer(ctx)
-		result.Details["control_server"] = controlHealthy
-		result.Details["control_duration_s"] = controlDuration.Seconds()
-		result.Details["control_server_last_scrape_time"] = time.Now().UTC().Format(time.RFC3339)
-
-		if controlErr != nil && result.Error == nil {
-			result.Error = controlErr
-		}
-
-		if !controlHealthy {
-			result.Healthy = false
-		}
+		p.checkControlServerHealth(ctx, &result)
 	}
 
 	// Assume readiness endpoint is not available if control server is not healthy
@@ -106,29 +104,75 @@ func (p *PumaReadinessChecker) Check(ctx context.Context) CheckResult {
 	}
 
 	// Check if we should skip the Puma readiness endpoint due to recent successful requests
-	if p.successChecker != nil && p.skipInterval > 0 {
-		if p.successChecker.HasRecentSuccess(p.skipInterval) {
-			result.Details["skipped_due_to_recent_success"] = true
-			result.Details["skip_interval_s"] = p.skipInterval.Seconds()
-			result.Details["readiness_endpoint"] = true
-			result.Details["readiness_duration_s"] = 0
-
-			p.logger.WithFields(logrus.Fields{
-				"skip_interval_s": p.skipInterval.Seconds(),
-			}).Debug("Skipping Puma readiness check due to recent successful request")
-
-			return result
-		}
+	if p.applySkipReadinessCheck(&result) {
+		return result
 	}
 
 	// Initialize skipped_due_to_recent_success to false if we reach here
 	result.Details["skipped_due_to_recent_success"] = false
 
-	// Check Puma readiness endpoint
+	p.checkReadinessEndpointHealth(ctx, &result)
+
+	return result
+}
+
+// checkControlServerHealth checks the control server and updates the result
+func (p *PumaReadinessChecker) checkControlServerHealth(ctx context.Context, result *CheckResult) {
+	controlHealthy, controlDuration, controlErr := p.checkControlServer(ctx)
+	result.Details["control_server"] = controlHealthy
+	result.Details["control_duration_s"] = controlDuration.Seconds()
+	result.Details["control_server_last_scrape_time"] = time.Now().UTC().Format(time.RFC3339)
+
+	if controlErr != nil && result.Error == nil {
+		result.Error = controlErr
+	}
+
+	if !controlHealthy {
+		result.Healthy = false
+	}
+}
+
+// applySkipReadinessCheck checks if the readiness check should be skipped due to recent
+// successful requests. If skipping, it populates result.Details with skip-related information
+// and logs the skip. Returns true if the check should be skipped.
+func (p *PumaReadinessChecker) applySkipReadinessCheck(result *CheckResult) bool {
+	if p.successChecker == nil || p.skipInterval <= 0 {
+		return false
+	}
+
+	if !p.successChecker.HasRecentSuccess(p.skipInterval) {
+		return false
+	}
+
+	result.Details["skipped_due_to_recent_success"] = true
+	result.Details["skip_interval_s"] = p.skipInterval.Seconds()
+	result.Details["readiness_endpoint"] = true
+	result.Details["readiness_duration_s"] = 0
+
+	p.logger.WithFields(logrus.Fields{
+		"skip_interval_s": p.skipInterval.Seconds(),
+	}).Debug("Skipping Puma readiness check due to recent successful request")
+
+	return true
+}
+
+// checkReadinessEndpointHealth checks the readiness endpoint and updates the result.
+// Note: Unlike checkControlServerHealth which preserves prior errors, this method
+// unconditionally sets result.Error because the readiness endpoint error takes
+// precedence - it's the final determination of whether the service is ready.
+func (p *PumaReadinessChecker) checkReadinessEndpointHealth(ctx context.Context, result *CheckResult) {
 	readinessHealthy, readinessDuration, readinessErr := p.checkReadinessEndpoint(ctx)
 	result.Details["readiness_endpoint"] = readinessHealthy
 	result.Details["readiness_duration_s"] = readinessDuration.Seconds()
 	result.Details["readiness_last_scrape_time"] = time.Now().UTC().Format(time.RFC3339)
+
+	if p.probeDuration != nil {
+		resultLabel := "ok"
+		if !readinessHealthy || readinessErr != nil {
+			resultLabel = "error"
+		}
+		p.probeDuration.WithLabelValues(resultLabel).Observe(readinessDuration.Seconds())
+	}
 
 	if readinessErr != nil {
 		result.Error = readinessErr
@@ -140,8 +184,6 @@ func (p *PumaReadinessChecker) Check(ctx context.Context) CheckResult {
 			result.Error = fmt.Errorf("puma readiness endpoint returned non-200 status or invalid response")
 		}
 	}
-
-	return result
 }
 
 // httpCheckResult represents the result of an HTTP check

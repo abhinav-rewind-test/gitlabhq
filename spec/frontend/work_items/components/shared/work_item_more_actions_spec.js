@@ -3,7 +3,7 @@ import { nextTick } from 'vue';
 import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
-
+import { WORKITEM_TREE_METADATA_LOCALSTORAGEKEY } from '~/work_items/constants';
 import WorkItemMoreActions from '~/work_items/components/shared/work_item_more_actions.vue';
 
 describe('WorkItemMoreActions', () => {
@@ -23,16 +23,17 @@ describe('WorkItemMoreActions', () => {
   const createComponent = ({
     workItemType = 'Task',
     showViewRoadmapAction = true,
-    showLabels = true,
     workItemTypeConfiguration = { supportsRoadmapView: null },
+    hiddenMetadataKeys = [],
   } = {}) => {
     wrapper = mountExtended(WorkItemMoreActions, {
       propsData: {
         workItemIid: '2',
         fullPath: 'project/group',
         workItemType,
-        showLabels,
+        hiddenMetadataKeys,
         showViewRoadmapAction,
+        metadataLocalStorageKey: WORKITEM_TREE_METADATA_LOCALSTORAGEKEY,
       },
       provide: {
         getWorkItemTypeConfiguration: () => workItemTypeConfiguration,
@@ -48,7 +49,7 @@ describe('WorkItemMoreActions', () => {
   });
 
   it('contains the correct tooltip text', () => {
-    expect(findTooltip().value).toBe('More actions');
+    expect(findTooltip().value).toBe('Display options');
   });
 
   it('does not render the tooltip when the dropdown is shown', async () => {
@@ -59,12 +60,15 @@ describe('WorkItemMoreActions', () => {
     expect(findTooltip().value).toBe('');
   });
 
-  it('does not contain a roadmap page link when the work item type is not an Epic', () => {
+  it('does not contain a roadmap page link when supportsRoadmapView is not set', () => {
     expect(findViewRoadmapLink().exists()).toBe(false);
   });
 
-  it('contains a link to the roadmap page when the work item type is an Epic', () => {
-    createComponent({ workItemType: 'Epic' });
+  it('contains a link to the roadmap page when supportsRoadmapView is true', () => {
+    createComponent({
+      workItemType: 'Epic',
+      workItemTypeConfiguration: { supportsRoadmapView: true },
+    });
 
     const link = findViewRoadmapLink();
 
@@ -80,16 +84,12 @@ describe('WorkItemMoreActions', () => {
       showViewRoadmapAction | supportsRoadmapView | workItemType | expected | description
       ${true}               | ${true}             | ${'Task'}    | ${true}  | ${'when supportsRoadmapView is true'}
       ${true}               | ${true}             | ${'Epic'}    | ${true}  | ${'when supportsRoadmapView is true'}
-      ${false}              | ${true}             | ${'Task'}    | ${false} | ${'when supportsRoadmapView is true'}
-      ${false}              | ${true}             | ${'Epic'}    | ${false} | ${'when supportsRoadmapView is true'}
+      ${false}              | ${true}             | ${'Task'}    | ${false} | ${'when showViewRoadmapAction is false'}
+      ${false}              | ${true}             | ${'Epic'}    | ${false} | ${'when showViewRoadmapAction is false'}
       ${true}               | ${false}            | ${'Task'}    | ${false} | ${'when supportsRoadmapView is false'}
-      ${true}               | ${false}            | ${'Epic'}    | ${true}  | ${'when supportsRoadmapView is false'}
-      ${false}              | ${false}            | ${'Task'}    | ${false} | ${'when supportsRoadmapView is false'}
-      ${false}              | ${false}            | ${'Epic'}    | ${false} | ${'when supportsRoadmapView is false'}
-      ${true}               | ${null}             | ${'Epic'}    | ${true}  | ${'when supportsRoadmapView is null and workItemType is "Epic" (fallback)'}
-      ${false}              | ${null}             | ${'Epic'}    | ${false} | ${'when supportsRoadmapView is null and workItemType is "Epic" (fallback)'}
-      ${true}               | ${null}             | ${'Task'}    | ${false} | ${'when supportsRoadmapView is null and workItemType is not "Epic" (fallback)'}
-      ${false}              | ${null}             | ${'Task'}    | ${false} | ${'when supportsRoadmapView is null and workItemType is not "Epic" (fallback)'}
+      ${true}               | ${false}            | ${'Epic'}    | ${false} | ${'when supportsRoadmapView is false'}
+      ${true}               | ${null}             | ${'Epic'}    | ${false} | ${'when supportsRoadmapView is null'}
+      ${true}               | ${null}             | ${'Task'}    | ${false} | ${'when supportsRoadmapView is null'}
     `('$description', ({ showViewRoadmapAction, supportsRoadmapView, workItemType, expected }) => {
       const workItemTypeConfiguration = { supportsRoadmapView };
       createComponent({ showViewRoadmapAction, workItemType, workItemTypeConfiguration });
@@ -98,38 +98,67 @@ describe('WorkItemMoreActions', () => {
     });
   });
 
-  it('renders the show labels toggle', () => {
-    expect(findToggle(0).props('label')).toBe('Show labels');
-  });
-
   it('renders the show closed toggle', () => {
-    expect(findToggle(1).props('label')).toBe('Show closed items');
+    expect(findToggle(0).props('label')).toBe('Show closed items');
   });
 
-  it('show labels toggle emits event when clicked on the dropdown item', () => {
+  it('renders status toggle', () => {
+    expect(findToggle(1).props('label')).toBe('Status');
+  });
+
+  it('show closed toggle emits event when clicked on the dropdown item', () => {
     findToggleDropdownItem(0).vm.$emit('action');
-    expect(wrapper.emitted('toggle-show-labels')).toStrictEqual([[]]);
+    expect(wrapper.emitted('toggle-show-closed')).toStrictEqual([[]]);
   });
 
   describe('tracking', () => {
     const { bindInternalEventDocument } = useMockInternalEventsTracking();
 
     beforeEach(() => {
-      createComponent({ workItemType: 'Epic' });
+      createComponent({
+        workItemType: 'Epic',
+        workItemTypeConfiguration: { supportsRoadmapView: true },
+      });
     });
 
     it('View on roadmap button should have tracking', async () => {
       const { trackEventSpy } = bindInternalEventDocument(findDropdownItems().at(2).element);
 
-      findDropdownItems().at(2).vm.$emit('action');
+      findDropdownItems().at(1).vm.$emit('action');
       await nextTick();
 
       expect(trackEventSpy).toHaveBeenCalledWith('view_epic_on_roadmap', {}, undefined);
     });
   });
 
-  it('show closed toggle emits event when clicked on the dropdown item', () => {
-    findToggleDropdownItem(1).vm.$emit('action');
-    expect(wrapper.emitted('toggle-show-closed')).toStrictEqual([[]]);
+  describe('metadata visibility functionality', () => {
+    it('emits update-hidden-metadata-keys events correctly when hiding metadata', () => {
+      findToggleDropdownItem(1).vm.$emit('action');
+
+      expect(wrapper.emitted('update-hidden-metadata-keys')).toBeDefined();
+      expect(wrapper.emitted('update-hidden-metadata-keys')[0][0]).toContain('status');
+    });
+
+    it('emits update-hidden-metadata-keys events correctly when showing metadata', () => {
+      createComponent({ hiddenMetadataKeys: ['status'] });
+
+      findToggleDropdownItem(1).vm.$emit('action');
+
+      expect(wrapper.emitted('update-hidden-metadata-keys')).toBeDefined();
+      expect(wrapper.emitted('update-hidden-metadata-keys')[0][0]).not.toContain('status');
+    });
+
+    describe('dropdown visibility', () => {
+      it('shows tooltip when dropdown is closed', () => {
+        expect(findTooltip().value).toBe('Display options');
+      });
+
+      it('hides tooltip when dropdown is open', async () => {
+        await findDropdownButton().trigger('click');
+        await nextTick();
+
+        expect(findTooltip().value).toBe('');
+      });
+    });
   });
 });

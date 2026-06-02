@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: AI Framework
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Gateway between GitLab and large language models.
 title: Install the GitLab AI Gateway
 ---
@@ -25,14 +25,23 @@ Prerequisites:
   a minimum of 512 MB of RAM.
 - Ensure the container has access to at least two CPUs for
   the `ai_gateway` and `duo-workflow-service` services.
-- Generate a JWT signing key for GitLab Duo Agent Platform functionality:
+- Generate JWT signing keys:
+  - For the GitLab Duo Agent Platform:
 
-  ```shell
-  openssl genrsa -out duo_workflow_jwt.key 2048
-  ```
+    ```shell
+    openssl genrsa -out duo_workflow_jwt.key 2048
+    openssl genrsa -out duo_workflow_validation.key 2048
+    ```
+
+  - For the AI Gateway (required for features like Duo Chat):
+
+    ```shell
+    openssl genrsa -out aigw_signing.key 2048
+    openssl genrsa -out aigw_validation.key 2048
+    ```
 
   > [!warning]
-  > Keep the `duo_workflow_jwt.key` file secure and do not share it publicly. This key is used for signing JWT tokens and must be treated as a sensitive credential.
+  > Keep all generated key files secure and do not share them publicly. These keys are used for signing JWTs and must be treated as sensitive credentials.
 
 To ensure better performance, especially under heavy usage, consider allocating
 more disk space, memory, and resources than the minimum requirements.
@@ -40,29 +49,49 @@ Higher RAM and disk capacity can enhance the AI Gateway's efficiency during peak
 
 A GPU is not needed for the GitLab AI Gateway.
 
-### Find the AI Gateway image
+### AI Gateway images
 
-The GitLab official Docker image is available:
+#### Standard images
 
-- In the container registry:
-  - [Stable](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/container_registry/3809284?orderBy=PUBLISHED_AT&search%5B%5D=self-hosted)
-  - [Nightly](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/container_registry/8086262)
-- On DockerHub:
-  - [Stable](https://hub.docker.com/r/gitlab/model-gateway/tags)
-  - [Nightly](https://hub.docker.com/r/gitlab/model-gateway-self-hosted/tags)
+Standard AI Gateway images are available in the following locations:
 
-[View the release process for the self-hosted AI Gateway](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/main/docs/release.md).
+- The container registry: [Stable](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/container_registry/3809284?orderBy=PUBLISHED_AT&search%5B%5D=self-hosted)
+- DockerHub: [Stable](https://hub.docker.com/r/gitlab/model-gateway/tags)
 
-If your GitLab version is `vX.Y.*-ee`, use the AI Gateway Docker image with the latest `self-hosted-vX.Y.*-ee` tag. For example, if GitLab is on version `v18.2.1-ee`, and the AI Gateway Docker image has:
+If your GitLab version is `vX.Y.*-ee`, use the AI Gateway image with the latest `self-hosted-vX.Y.*-ee` tag.
+For example:
 
-- Versions `self-hosted-v18.2.0-ee`, `self-hosted-v18.2.1-ee`, and `self-hosted-v18.2.2-ee`, use `self-hosted-v18.2.2-ee`.
-- Versions `self-hosted-v18.2.0-ee` and `self-hosted-v18.2.1-ee`, use `self-hosted-v18.2.1-ee`.
-- Only one version, `self-hosted-v18.2.0-ee`, use `self-hosted-v18.2.0-ee`.
+- If GitLab is on `v18.2.1-ee` and the AI Gateway image has
+  versions `self-hosted-v18.2.0-ee`, `self-hosted-v18.2.1-ee`, and `self-hosted-v18.2.2-ee`, use `self-hosted-v18.2.2-ee`.
+- If GitLab is on `v18.2.1-ee` and the AI Gateway image has
+  version `self-hosted-v18.2.0-ee` only, use `self-hosted-v18.2.0-ee`.
 
-Newer features are available from nightly builds, but backwards compatibility is not guaranteed.
+For more information, see the [release process for self-hosted AI Gateway](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/-/blob/main/docs/delivery/release.md).
 
 > [!note]
-> Using the nightly version is **not recommended** because it can cause incompatibility if your GitLab version is behind or ahead of the AI Gateway release. Always use an explicit version tag.
+> Backward compatibility is not guaranteed with nightly builds.
+> Always use stable releases with an explicit version tag.
+
+#### FIPS-validated images
+
+For environments that require FIPS 140-3 validated cryptography,
+use a FIPS-validated AI Gateway image.
+This image is built on Red Hat UBI 9 and uses the CMVP-validated
+[Red Hat OpenSSL FIPS provider](https://access.redhat.com/compliance/fips).
+
+FIPS-validated AI Gateway images are available in the following locations:
+
+- The container registry: [Stable](https://gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/container_registry/9518478)
+- DockerHub: [Stable](https://hub.docker.com/r/gitlab/model-gateway-self-hosted-fips/tags)
+
+Use the same version tag format as the standard image (`self-hosted-vX.Y.Z-ee`).
+
+To start the FIPS-validated container, replace the image reference in the
+[Docker run command](#start-a-container-from-the-image) with the FIPS image:
+
+```shell
+registry.gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/model-gateway/self-hosted-fips:<ai-gateway-tag>
+```
 
 ### Start a container from the image
 
@@ -71,15 +100,18 @@ Newer features are available from nightly builds, but backwards compatibility is
    ```shell
    docker run -d -p 5052:5052 -p 50052:50052 \
     -e AIGW_GITLAB_URL=<your_gitlab_instance> \
-    -e AIGW_GITLAB_API_URL=https://<your_gitlab_domain>/api/v4/ \
+    -e AIGW_GITLAB_API_URL=<your_gitlab_instance>/api/v4/ \
+    -e AIGW_SELF_SIGNED_JWT__SIGNING_KEY="$(cat aigw_signing.key)" \
+    -e AIGW_SELF_SIGNED_JWT__VALIDATION_KEY="$(cat aigw_validation.key)" \
+    -e DUO_WORKFLOW_AUTH__ENABLED="true" \
     -e DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY="$(cat duo_workflow_jwt.key)" \
+    -e DUO_WORKFLOW_SELF_SIGNED_JWT__VALIDATION_KEY="$(cat duo_workflow_validation.key)" \
     registry.gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/model-gateway:<ai-gateway-tag>
    ```
 
    Replace the following placeholders:
 
    - `<your_gitlab_instance>`: Your GitLab instance URL (for example, `https://gitlab.example.com`).
-   - `<your_gitlab_domain>`: Your domain (for example, `gitlab.example.com`).
    - `<ai-gateway-tag>`: Version matching your GitLab instance. If your GitLab version is `vX.Y.0`, use `self-hosted-vX.Y.0-ee`.
 
    From the container host, accessing `http://localhost:5052` should return `{"error":"No authorization header presented"}`.
@@ -88,19 +120,37 @@ Newer features are available from nightly builds, but backwards compatibility is
    Port `5052` handles HTTP communication for the AI Gateway. Port `50052` handles gRPC
    communication for the GitLab Duo Agent Platform Service.
 1. For GitLab instances that use an offline license, in the AIGW container,
-   set `-e DUO_WORKFLOW_AUTH__OIDC_CUSTOMER_PORTAL_URL=` (empty string).
+   set `-e DUO_WORKFLOW_AUTH__OIDC_CUSTOMER_PORTAL_URL=<your_gitlab_instance>` and `-e AIGW_CUSTOMER_PORTAL_URL=<your_gitlab_instance>`.
    This configuration:
    - Forces the GitLab Duo Workflow Service to authenticate
      exclusively against the local GitLab instance.
    - Eliminates the 20-second delay caused by unreachable CustomersDot calls.
 1. Configure the [AI gateway URL](../administration/gitlab_duo_self_hosted/configure_duo_features.md#configure-access-to-the-local-ai-gateway) and the [GitLab Duo Agent Platform service URL](../administration/gitlab_duo_self_hosted/configure_duo_features.md#configure-access-to-the-gitlab-duo-agent-platform).
-1. Configure the `DUO_AGENT_PLATFORM_SERVICE_SECURE` environment variable based on your model setup:
-   - If you are using a self-hosted model without TLS, set the `DUO_AGENT_PLATFORM_SERVICE_SECURE` environment variable to `false` in your GitLab instance:
+1. Optional. If your local GitLab Duo Agent Platform endpoint uses TLS:
+   1. In the upper-right corner, select **Admin**.
+   1. Select **GitLab Duo** > **Change configuration**.
+   1. Select the **Use TLS for the GitLab Duo Agent Platform service** checkbox.
 
-     - For Linux package installations: In `gitlab_rails['env']`, set `'DUO_AGENT_PLATFORM_SERVICE_SECURE' => false`.
-     - For self-compiled installations: In `/etc/default/gitlab`, set `export DUO_AGENT_PLATFORM_SERVICE_SECURE=false`.
+### Restrict network access
 
-   - If you are using a [GitLab AI vendor model](../administration/gitlab_duo_self_hosted/supported_models_and_hardware_requirements.md#gitlab-ai-vendor-models), do not set the `DUO_AGENT_PLATFORM_SERVICE_SECURE` environment variable.
+To harden your system, make the following network configurations:
+
+- Restrict the AI Gateway container's outbound network access.
+- Block all other outbound traffic from the container.
+
+The AI Gateway requires outbound access to the following. Ensure that you include these as exceptions to your network restrictions:
+
+- Your GitLab instance (`AIGW_GITLAB_URL`).
+- Your configured AI model provider endpoints (for example, Anthropic, Google Vertex AI,
+  or Azure OpenAI).
+- `customers.gitlab.com` for license validation, unless you use an offline license.
+
+> [!warning]
+> Test firewall rules in a non-production environment before applying them.
+> Overly restrictive rules can break AI Gateway functionality.
+
+To restrict outbound access on Linux hosts, use `iptables` rules in the `DOCKER-USER` chain.
+For more information, see [Docker packet filtering and firewalls](https://docs.docker.com/engine/network/packet-filtering-firewalls/).
 
 ## Set up Docker with NGINX and SSL
 
@@ -253,10 +303,13 @@ To set up an SSL certificate:
 
 ### Create an environment file
 
-Create a `.env` file to store the JWT signing key:
+Create a `.env` file to store the JWT signing and validation keys:
 
 ```shell
-echo "DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY=\"$(cat duo_workflow_jwt.key)\"" > .env
+echo "AIGW_SELF_SIGNED_JWT__SIGNING_KEY=\"$(cat aigw_signing.key)\"" > .env
+echo "AIGW_SELF_SIGNED_JWT__VALIDATION_KEY=\"$(cat aigw_validation.key)\"" >> .env
+echo "DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY=\"$(cat duo_workflow_jwt.key)\"" >> .env
+echo "DUO_WORKFLOW_SELF_SIGNED_JWT__VALIDATION_KEY=\"$(cat duo_workflow_validation.key)\"" >> .env
 ```
 
 ### Create a Docker Compose file
@@ -326,9 +379,7 @@ To deploy and validate the solution:
    ```
 
 1. Configure your [GitLab instance to access the AI Gateway](../administration/gitlab_duo_self_hosted/configure_duo_features.md#configure-access-to-the-local-ai-gateway).
-
 1. Configure your GitLab instance to access the URL for the [GitLab Duo Agent Platform service](../administration/gitlab_duo_self_hosted/configure_duo_features.md#configure-access-to-the-gitlab-duo-agent-platform).
-
 1. Perform the health check and confirm that the AI Gateway and Agent Platform are both accessible.
 
 ## Install by using Helm chart
@@ -368,7 +419,6 @@ https://gitlab.com/api/v4/projects/gitlab-org%2fcharts%2fai-gateway-helm-chart/p
    ```
 
 1. Get version number of the latest package in the [chart's Package Registry](https://gitlab.com/gitlab-org/charts/ai-gateway-helm-chart/-/packages).
-
 1. For the AI Gateway to access the API, it must know where the GitLab instance
    is located. To do this, set the `gitlab.url` and `gitlab.apiUrl` together with
    the `ingress.hosts` and `ingress.tls` values as follows:
@@ -392,8 +442,16 @@ https://gitlab.com/api/v4/projects/gitlab-org%2fcharts%2fai-gateway-helm-chart/p
      --set "ingress.tls[0].secretName=ai-gateway-tls" \
      --set "ingress.tls[0].hosts[0]=<your_gateway_domain>" \
      --set="ingress.className=nginx" \
-     --set "extraEnvironmentVariables[0].name=DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY" \
-     --set "extraEnvironmentVariables[0].value=$(cat duo_workflow_jwt.key)" \
+     --set "extraEnvironmentVariables[0].name=AIGW_SELF_SIGNED_JWT__SIGNING_KEY" \
+     --set "extraEnvironmentVariables[0].value=$(cat aigw_signing.key)" \
+     --set "extraEnvironmentVariables[1].name=AIGW_SELF_SIGNED_JWT__VALIDATION_KEY" \
+     --set "extraEnvironmentVariables[1].value=$(cat aigw_validation.key)" \
+     --set "extraEnvironmentVariables[2].name=DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY" \
+     --set "extraEnvironmentVariables[2].value=$(cat duo_workflow_jwt.key)" \
+     --set "extraEnvironmentVariables[3].name=DUO_WORKFLOW_SELF_SIGNED_JWT__VALIDATION_KEY" \
+     --set "extraEnvironmentVariables[3].value=$(cat duo_workflow_validation.key)" \
+     --set "extraEnvironmentVariables[4].name=DUO_WORKFLOW_AUTH__ENABLED" \
+     --set "extraEnvironmentVariables[4].value={{ true | quote }}" \
      --timeout=300s --wait --wait-for-jobs
    ```
 
@@ -525,12 +583,7 @@ To upgrade the AI Gateway, download the newest Docker image tag.
    ```
 
 1. Pull and [run the new image](#start-a-container-from-the-image).
-
 1. Ensure that the environment variables are all set correctly.
-
-## Extra installation steps for GitLab Dedicated instances
-
-To access a Self-hosted AI Gateway, see [Self-hosted AI Gateway for GitLab Dedicated instances](../administration/dedicated/configure_instance/_index.md#self-hosted-ai-gateway-for-gitlab-dedicated-instances).
 
 ## Security updates and image verification
 
@@ -598,6 +651,9 @@ docker run -d -p 5052:5052 -p 50052:50052 \
  -e AIGW_GITLAB_URL=<your_gitlab_instance> \
  -e AIGW_GITLAB_API_URL=https://<your_gitlab_domain>/api/v4/ \
  -e DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY="$(cat duo_workflow_jwt.key)" \
+ -e DUO_WORKFLOW_SELF_SIGNED_JWT__VALIDATION_KEY="$(cat duo_workflow_validation.key)" \
+ -e AIGW_SELF_SIGNED_JWT__SIGNING_KEY="$(cat aigw_signing.key)" \
+ -e AIGW_SELF_SIGNED_JWT__VALIDATION_KEY="$(cat aigw_validation.key)" \
  registry.gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/model-gateway:self-hosted-v18.2.1-ee@sha256:abc123...
 ```
 
@@ -623,7 +679,7 @@ If access issues persist, check that authentication is correctly configured, and
 
 In case of persistent issues, the error message may suggest bypassing authentication with `AIGW_AUTH__BYPASS_EXTERNAL=true`, but only do this for troubleshooting.
 
-You can also run a [health check](../administration/gitlab_duo/configure/gitlab_self_managed.md#run-a-health-check-for-gitlab-duo) by going to **Admin** > **GitLab Duo**.
+You can also run a [health check](../administration/gitlab_duo/configure/_index.md#run-a-health-check-for-gitlab-duo) by going to **Admin** > **GitLab Duo**.
 
 These tests are performed for offline environments:
 
@@ -742,7 +798,7 @@ Autoscaling is not mandatory but is recommended for environments with variable w
   - Enterprises with over 200 users and variable, high-concurrency workloads.
   - Use HPA to scale pods based on real-time demand, combined with node autoscaling for cluster-wide resource adjustments.
 
-## What specs does the AI Gateway container have access to, and how does resource allocation affect performance?
+## AI Gateway container specs and resource allocation
 
 The AI Gateway operates effectively under the following resource allocations:
 
@@ -863,12 +919,78 @@ You can configure this in either of the following ways:
 
 This configuration ensures the AI Gateway can properly cache HuggingFace models while respecting the OpenShift security constraints. The exact directory you choose may depend on your specific OpenShift configuration and security policies.
 
+### Tokenizer cache shadowed by a volume mount
+
+The precached tokenizer files in the AI Gateway image
+might be shadowed by a volume mount if:
+
+- Code completion requests return a `500` error.
+- AI Gateway logs show an `OSError` from `transformers/utils/hub.py`
+  attempting to download `Salesforce/codegen2-16B` from `huggingface.co`.
+
+The self-hosted AI Gateway image (`self-hosted-vX.Y.Z-ee`) sets
+`HF_HUB_OFFLINE=true` and precaches the tokenizer at build time,
+so no network access to `huggingface.co` should occur at runtime.
+If network access occurs, an empty directory in your Helm values
+might be mounted over `/home/aigateway/.hf`, overwriting the cached files.
+
+Do not try to resolve this issue by granting egress access to `huggingface.co`.
+Instead, to diagnose the issue, run the following in the AI Gateway pod:
+
+```shell
+ls -la /home/aigateway/.hf/hub/ 2>/dev/null || echo "NO_CACHE_DIR"
+env | grep -E '^(HF_|TRANSFORMERS_)'
+```
+
+If the cache directory is missing or empty, do the following:
+
+1. Check your `values.yaml` for any `volumeMounts` that targets
+   `/home/aigateway/.hf` or the path set by `HF_HOME`.
+1. Remove or remap the mount to a directory that does not overlap
+   with the image's built-in cache.
+
 ### Self-signed certificate error
 
 A `[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain` error is logged by the AI Gateway
 when the AI Gateway tries to connect to a GitLab instance or model endpoint using either a certificate signed by a custom certificate authority (CA), or a self-signed certificate.
 
 To resolve this, see [Connect to a GitLab instance or model endpoint with a self-signed SSL certificate](#connect-to-a-gitlab-instance-or-model-endpoint-with-a-self-signed-ssl-certificate).
+
+### Token creation failed
+
+If you encounter a `Token creation failed` error when you use features like Duo Chat,
+the `AIGW_SELF_SIGNED_JWT__SIGNING_KEY` and `AIGW_SELF_SIGNED_JWT__VALIDATION_KEY`
+environment variables might not be set on the AI Gateway.
+
+These keys are required for the AI Gateway to issue short-lived user JWTs.
+Without these keys, the AI Gateway cannot sign tokens, which causes a JWK
+deserialization failure.
+
+To resolve this issue:
+
+1. Generate the required keys:
+
+   ```shell
+   openssl genrsa -out aigw_signing.key 2048
+   openssl genrsa -out aigw_validation.key 2048
+   ```
+
+1. Add the keys to your AI Gateway container by passing them as environment variables:
+
+   ```shell
+   -e AIGW_SELF_SIGNED_JWT__SIGNING_KEY="$(cat aigw_signing.key)" \
+   -e AIGW_SELF_SIGNED_JWT__VALIDATION_KEY="$(cat aigw_validation.key)"
+   ```
+
+1. Restart the AI Gateway container.
+
+> [!note]
+> `AIGW_SELF_SIGNED_JWT__SIGNING_KEY` is used by the AI Gateway to sign user JWTs.
+> `AIGW_SELF_SIGNED_JWT__VALIDATION_KEY` is a secondary key used for token validation
+> during key rotation to ensure previously issued tokens remain valid.
+> Both keys must use RSA 2048-bit private keys in PEM format.
+> These keys are separate from `DUO_WORKFLOW_SELF_SIGNED_JWT__SIGNING_KEY`,
+> which is used by the GitLab Duo Agent Platform.
 
 ### SSL certificate errors when loading PEM files
 

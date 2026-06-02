@@ -1,7 +1,7 @@
 ---
 stage: Package
 group: Container Registry
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Container virtual registry
 description: Use the container virtual registry to cache container images from upstream registries.
 ---
@@ -10,13 +10,15 @@ description: Use the container virtual registry to cache container images from u
 
 - Tier: Premium, Ultimate
 - Offering: GitLab.com, GitLab Self-Managed
-- Status: Experiment
+- Status: Beta
 
 {{< /details >}}
 
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/548794) in GitLab 18.5 [with a flag](../../../../administration/feature_flags/_index.md) named `container_virtual_registries`. Disabled by default.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/589631) from experiment to beta in GitLab 18.9.
+- [Enabled on GitLab.com, GitLab Self-Managed, and GitLab Dedicated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/224250) in GitLab 18.10.
 
 {{< /history >}}
 
@@ -33,18 +35,89 @@ to reduce bandwidth usage and improve build performance.
 Before you can use the container virtual registry:
 
 - Review the [prerequisites](../_index.md#prerequisites) to use the virtual registry.
+- Configure authentication to the virtual registry. For more information, see [Authenticate to the virtual registry](../_index.md#authenticate-to-the-virtual-registry).
 
 When using the container virtual registry, remember the following restrictions:
 
 - You can create up to `5` container virtual registries per top-level group.
 - You can set only `5` upstreams to a given container virtual registry.
-- For technical reasons, the `proxy_download` setting is force enabled, no matter what the value in the [object storage configuration](../../../../administration/object_storage.md#proxy-download) is configured to.
 - Geo support is not implemented.
 
 ## Manage virtual registries
 
-To create, edit, or delete a container virtual registry, see the
-[Container virtual registry API](../../../../api/container_virtual_registries.md).
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/work_items/19283) in GitLab 18.10 [with a flag](../../../../administration/feature_flags/_index.md) named `ui_for_container_virtual_registries`.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/582167) in GitLab 18.11 to a flag named `container_virtual_registries`. Feature flag `ui_for_container_virtual_registries` removed.
+
+{{< /history >}}
+
+Manage container virtual registries for your group.
+
+You can also [use the API](../../../../api/container_virtual_registries.md).
+
+### Create a container virtual registry
+
+To create a container virtual registry:
+
+1. In the top bar, select **Search or go to** and find your group. This group must be at the top level.
+1. Select **Deploy** > **Virtual registry**.
+1. If you:
+   - Have an existing registry, select **Create registry**. From the dropdown list, select **Container**.
+   - Do not have an existing registry, from the dropdown list, select **Container**. Then, select **Create registry**.
+1. Enter a **Name** and optional **Description**.
+1. Select **Create registry**.
+
+## Manage upstream registries
+
+Manage upstream container registries in a virtual registry.
+
+### Create a container upstream registry
+
+Create a container upstream registry to connect to the virtual registry.
+
+Prerequisites:
+
+- You must have a container virtual registry. For more information, see [Create a virtual registry](#create-a-container-virtual-registry).
+
+To create a container upstream registry:
+
+1. In the top bar, select **Search or go to** and find your group. This group must be at the top level.
+1. Select **Deploy** > **Virtual registry**.
+1. Under **Registry types**, select **View registries**.
+1. Under the **Registries** tab, select a registry.
+1. Select **Add upstream**. If the virtual registry has existing upstreams, from the dropdown list, select either:
+   - **Create new upstream** to configure the upstream.
+   - **Link existing upstream** > **Select existing upstream**.
+     1. From the dropdown list, select an upstream.
+     1. Optional. Select **Test upstream** to test the upstream connection before you create it.
+     1. Select **Add upstream**.
+1. Complete the fields.
+   - Include both a **username** and **password**, or neither. If not set, a public (anonymous) request is used to access the upstream.
+   - If you want to connect the upstream to Docker Hardened Images, use the following as the **Upstream URL**:
+
+      ```plaintext
+      https://dhi.io
+      ```
+
+   - If you want to connect the upstream to Docker Hub, use the following as the **Upstream URL**:
+
+      ```plaintext
+      https://registry-1.docker.io
+      ```
+
+      The Docker Hub registry API is hosted at `registry-1.docker.io`, not `docker.io`.
+      Most container tools rewrite `docker.io` automatically, but the virtual registry
+      proxies to the URL you provide.
+
+      If you use `https://docker.io`, the registry returns HTML instead of OCI responses.
+
+   - **Artifact caching period** defaults to 24 hours. Set to `0` to disable cache entry checks.
+   - If you want to test the upstream connection before you create it, select **Test upstream**.
+
+1. Select **Create upstream**.
+
+For more information about cache validity settings, see [Set the cache validity period](../_index.md#set-the-cache-validity-period).
 
 ## Authenticate with the container virtual registry
 
@@ -174,7 +247,7 @@ Make sure you are using the expected authentication mechanism.
 
 Errors like these might indicate that:
 
-- The user running the job does not have at least the Guest role for the group that owns the virtual registry.
+- The user running the job does not have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role, or a custom role with minimal access that has the `read_virtual_registry` ability, for the group that owns the virtual registry.
 - The virtual registry ID in the URL is incorrect.
 - The upstream registry does not contain the requested image.
 - The virtual registry has no upstreams configured.
@@ -192,7 +265,92 @@ Error response from daemon: error parsing HTTP 404 response body: unexpected end
 
 To resolve these errors:
 
-1. Verify you have at least the Guest role for the group.
+1. Verify you have the Guest, Planner, Reporter, Developer, Maintainer, or Owner role, or a custom role with minimal access that has the `read_virtual_registry` ability, for the group.
 1. Confirm the virtual registry ID is correct.
 1. Check that the virtual registry has at least one upstream configured.
 1. Verify the image exists in the upstream registry.
+
+### Error: `unexpected EOF` when the S3 bucket has Object Lock enabled
+
+When the object storage bucket for the Dependency Proxy has S3 Object Lock
+enabled, container image pulls might fail with `unexpected EOF` partway through
+a layer.
+
+Example error from the Docker client:
+
+```plaintext
+sha256:9db411d588e2: Downloading [==================================================>]  12.18MB/12.18MB
+unexpected EOF
+```
+
+The GitLab Workhorse log shows a `400` response from the upstream S3
+`PutObject` call:
+
+```plaintext
+operation error S3: PutObject, https response error StatusCode: 400, ...
+InvalidRequest: Content-MD5 OR x-amz-checksum- HTTP header is required for
+Put Object requests with Object Lock parameters
+```
+
+When a bucket has Object Lock configured, S3 requires every `PutObject`
+request to include an integrity header. By default, the AWS SDK used by
+Workhorse does not send these headers. The upload fails, which truncates the
+response Workhorse is streaming to the Docker client.
+
+To verify the cause:
+
+1. Check whether the Dependency Proxy bucket has Object Lock enabled:
+
+   ```shell
+   aws s3api get-object-lock-configuration --bucket DEPENDENCY_PROXY_BUCKET
+   ```
+
+   If Object Lock is enabled, the response contains
+   `"ObjectLockEnabled": "Enabled"`.
+1. Inspect the Workhorse log during a failing pull. The
+   `InvalidRequest: Content-MD5 OR x-amz-checksum-` message confirms the cause.
+
+To resolve the issue:
+
+1. Configure the AWS SDK in Workhorse to send checksum headers. Set both of the following environment variables on the Workhorse container:
+
+   - `AWS_REQUEST_CHECKSUM_CALCULATION=when_supported`
+   - `AWS_RESPONSE_CHECKSUM_VALIDATION=when_supported`
+
+1. For:
+   - GitLab installed with the Helm chart, add the variables to your
+`values.yaml`:
+
+   ```yaml
+   gitlab:
+     webservice:
+       extraEnv:
+         AWS_REQUEST_CHECKSUM_CALCULATION: when_supported
+         AWS_RESPONSE_CHECKSUM_VALIDATION: when_supported
+   ```
+
+   Then, apply the values:
+
+   ```shell
+   helm upgrade gitlab gitlab/gitlab -f values.yaml
+   ```
+
+   - GitLab installed with the Linux package, add the variables to
+`/etc/gitlab/gitlab.rb`:
+
+   ```ruby
+   gitlab_workhorse['env'] = {
+     'AWS_REQUEST_CHECKSUM_CALCULATION' => 'when_supported',
+     'AWS_RESPONSE_CHECKSUM_VALIDATION' => 'when_supported'
+   }
+   ```
+
+   Then, reconfigure:
+
+   ```shell
+   sudo gitlab-ctl reconfigure
+   ```
+
+After Workhorse restarts with the new environment variables, retry the pull.
+The next request stores the blob in S3 and returns the full layer to the
+Docker client.

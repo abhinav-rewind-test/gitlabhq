@@ -26,7 +26,7 @@ This checklist encourages us to confirm any changes have been analyzed to reduce
   - [ ] [severity label] and [bug subtype] labels (if applicable)
   - [ ] If this MR fixes a bug that affects customers, the ~"customer" label has been applied.
 - [ ] This MR has been approved by a maintainer (only one approval is required).
-- [ ] Ensure the `e2e:test-on-omnibus-ee` job has succeeded, or if it has failed, [investigate the failures](https://handbook.gitlab.com/handbook/engineering/testing/guide-to-e2e-test-failure-issues/). If you determine the failures are unrelated, you may proceed. If you need assistance investigating, reach out to a Software Engineer in Test in #s_developer_experience.
+- [ ] Ensure the `e2e:test-on-omnibus-ee` job has succeeded, or if it has failed, [investigate the failures](https://handbook.gitlab.com/handbook/engineering/testing/guide-to-e2e-test-failure-issues/). If you determine the failures are unrelated, you may proceed. If you need assistance investigating, request help in the #s_developer_experience Slack channel to confirm the failures are unrelated to the merge request.
 
 ### Note to the merge request author and maintainer
 
@@ -37,7 +37,7 @@ If you have questions about the patch release process, please:
 - Once the backport has been merged, the commit changes will be automatically deployed to a release environment that 
 can be used for manual validation. See [after merging runbook] for details.
 
-[severity label]: https://handbook.gitlab.com/handbook/engineering/infrastructure/engineering-productivity/issue-triage/#severity
+[severity label]: https://handbook.gitlab.com/handbook/product-development/how-we-work/issue-triage/#severity
 [patch release runbook for engineers and maintainers]: https://gitlab.com/gitlab-org/release/docs/-/blob/master/general/patch/engineers.md
 [`#releases`]: https://gitlab.slack.com/archives/C0XM5UU6B
 [bug subtype]: https://handbook.gitlab.com/handbook/product/groups/product-analysis/engineering/metrics/#work-type-classification

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: FIPS 140-2 and 140-3
 ---
 
@@ -103,6 +103,16 @@ As stated above, GitLab follows FedRAMP guidance and, as such, we strive to incl
 includes FIPS-approved algorithms (CMVP-approved security functions). GitLab favors security over compliance in situations where it is not possible to achieve
 both with respect to FIPS 140-2.
 
+### AI Gateway
+
+A FIPS-validated AI Gateway Docker image is available for
+GitLab Duo Self-Hosted deployments.
+The image is built on Red Hat UBI 9 and uses
+the CMVP-validated OpenSSL FIPS provider.
+
+For installation instructions, see
+[FIPS-validated images](../install/install_ai_gateway.md#fips-validated-images).
+
 ### Unsupported features in FIPS mode
 
 Some GitLab features may not work when FIPS mode is enabled. The following features
@@ -160,7 +170,6 @@ Here are some guidelines for developing GitLab FIPS-approved software:
 - There may be instances where a non-approved cryptographic algorithm can be used for non-cryptographic purposes. For example, SHA1 is not a FIPS 140-3
   algorithm, but because Git uses it for non-cryptographic purposes, we can use it. In these cases, we must document why it's not being used for
   cryptographic purposes, or disable the feature outright.
-
 - Backwards compatibility. There may be some features where switching algorithms would break existing functionality. For example, the database stores
   passwords encrypted with bcrypt, and these passwords cannot be re-encrypted without user help.
 
@@ -176,7 +185,7 @@ a hybrid deployment using elements from both Omnibus and our Cloud Native GitLab
 
 - Amazon Web Services account. Our first target environment is running on AWS, and uses other FIPS Compliant AWS resources. For many AWS resources, you must use a [FIPS specific endpoint](https://aws.amazon.com/compliance/fips/).
 - Ability to run Ubuntu 20.04 machines for GitLab. Our first target environment uses the hybrid architecture.
-- Advanced Search: GitLab does not provide a packaged Elastic or OpenSearch deployment. You must use a FIPS-compliant service or disable Advanced Search.
+- Advanced search: GitLab does not provide a packaged Elastic or OpenSearch deployment. You must use a FIPS-compliant service or disable advanced search.
 
 ### Set up a FIPS-enabled cluster
 
@@ -407,10 +416,17 @@ end
 ## Omnibus FIPS packages
 
 GitLab has a dedicated repository
-([`gitlab/gitlab-fips`](https://packages.gitlab.com/gitlab/gitlab-fips))
+([`gitlab/gitlab-fips`](https://packages.gitlab.com/ui/browse/gitlab/gitlab-fips))
 for builds of the Omnibus GitLab which are built with FIPS compliance.
-These GitLab builds are compiled to use the system OpenSSL, instead of
-the Omnibus-embedded version of OpenSSL. These packages are built for:
+
+These GitLab builds are compiled to use the following:
+
+- In GitLab 19.0 and later, the system OpenSSL and Curl
+  instead of the Omnibus-embedded version of OpenSSL and Curl.
+- In GitLab 18.11 and earlier, the system OpenSSL
+  instead of the Omnibus-embedded version of OpenSSL.
+
+These packages are built for:
 
 - RHEL 8 and 9 (and compatible)
 - AmazonLinux 2 and 2023
@@ -439,7 +455,7 @@ system for which FIPS Linux packages are available.
 
 ### Nightly Omnibus FIPS builds
 
-The Distribution team has created [nightly FIPS Omnibus builds](https://packages.gitlab.com/gitlab/nightly-fips-builds),
+The Distribution team has created [nightly FIPS Omnibus builds](https://packages.gitlab.com/ui/browse/gitlab/nightly-fips-builds),
 which can be used for testing purposes. These should never be used for production environments.
 
 ## Runner
@@ -527,11 +543,14 @@ standardized on using `FIPS_MODE=1 make` to build FIPS binaries locally.
 
 ### Omnibus
 
-The Omnibus FIPS builds are triggered with the `USE_SYSTEM_SSL`
-environment variable set to `true`. When this environment variable is
-set, the Omnibus recipes dependencies such as `curl`, NGINX, and libgit2
-will link against the system OpenSSL. OpenSSL will NOT be included in
-the Omnibus build.
+The Omnibus FIPS builds are compiled to use the following:
+
+- In GitLab 19.0 and later, the system OpenSSL and Curl.
+  Omnibus dependencies such as NGINX and `libgit2` link against the system OpenSSL and Curl.
+  OpenSSL and Curl are not included in the Omnibus build.
+- In GitLab 18.11 and earlier, the system OpenSSL.
+  Omnibus dependencies such as NGINX and `libgit2` link against the system OpenSSL.
+  OpenSSL is not included in the Omnibus build.
 
 The Omnibus builds are created using container images [that use the `golang-fips` compiler](https://gitlab.com/gitlab-org/gitlab-omnibus-builder/-/blob/master/docker/snippets/go_fips). For
 example, [this job](https://gitlab.com/gitlab-org/gitlab-omnibus-builder/-/jobs/2363742108) created

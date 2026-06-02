@@ -29,9 +29,11 @@ class Namespace < ApplicationRecord
 
   cells_claims_attribute :id, type: CLAIMS_BUCKET_TYPE::NAMESPACE_IDS, feature_flag: :cells_claims_namespaces
 
-  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::NAMESPACE, subject_key: :id
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::ORGANIZATION, subject_key: :organization_id
 
-  ignore_columns :description, :description_html, :cached_markdown_version, remove_with: '18.3', remove_after: '2025-07-17'
+  ignore_column :file_template_project_id, remove_with: '19.2', remove_after: '2026-06-18'
+  ignore_column :custom_project_templates_group_id, remove_with: '19.2', remove_after: '2026-06-18'
+  ignore_column :push_rule_id, remove_with: '19.2', remove_after: '2026-06-18'
 
   columns_changing_default :organization_id
 
@@ -180,8 +182,19 @@ class Namespace < ApplicationRecord
     :npm_package_requests_forwarding,
     to: :package_settings
 
-  delegate :creator, :creator=, :description, :description=, :description_html,
-    :state_metadata, :state_metadata=,
+  delegate :creator,
+    :creator=,
+    :deletion_error,
+    :deletion_error=,
+    :description,
+    :description=,
+    :description_html,
+    :last_error,
+    :last_error=,
+    :state_metadata,
+    :state_metadata=,
+    :deletion_scheduled_at,
+    :deletion_scheduled_at=,
     to: :namespace_details, allow_nil: true
 
   with_options to: :namespace_settings do
@@ -207,6 +220,7 @@ class Namespace < ApplicationRecord
       delegate :emails_enabled, :emails_enabled=
       delegate :web_based_commit_signing_enabled?, :lock_web_based_commit_signing_enabled?
       delegate :web_based_commit_signing_enabled, :lock_web_based_commit_signing_enabled
+      delegate :granular_tokens_enforced?
     end
   end
 
@@ -220,6 +234,11 @@ class Namespace < ApplicationRecord
 
   after_sync_traversal_ids :schedule_sync_event_worker # custom callback defined in Namespaces::Traversal::Linear
 
+  scope :id_after, ->(id) { where(arel_table[:id].gt(id)) }
+
+  def self.ordered_ids_after(cursor, limit:)
+    id_after(cursor).order(:id).limit(limit).ids
+  end
   scope :user_namespaces, -> { where(type: Namespaces::UserNamespace.sti_name) }
   scope :group_namespaces, -> { where(type: Group.sti_name) }
   scope :project_namespaces, -> { where(type: Namespaces::ProjectNamespace.sti_name) }
@@ -237,6 +256,7 @@ class Namespace < ApplicationRecord
   scope :with_project_statistics, -> { includes(projects: :statistics) }
   scope :with_visibility_level_greater_than, ->(level) { where("visibility_level > ?", level) }
   scope :with_namespace_details, -> { preload(:namespace_details) }
+  scope :with_namespace_settings, -> { preload(:namespace_settings) }
 
   scope :archived, -> { self_or_ancestors_archived }
   scope :self_or_ancestors_archived, -> { where(self_or_ancestors_archived_setting_subquery.exists) }
@@ -423,6 +443,20 @@ class Namespace < ApplicationRecord
         )
         .where(namespace_setting_table[:archived].eq(true))
     end
+
+    # namespaces.traversal_ids could be either an integer[] or a bigint[]
+    # this utility method exists to help cast arguments when writing raw queries
+    def traversal_ids_type
+      type_name = Gitlab::Database.column_type(connection, Namespace.table_name, 'traversal_ids')
+      case type_name
+      when '_int4'
+        'integer[]'
+      when '_int8'
+        'bigint[]'
+      else
+        raise ArgumentError, %(unrecognized column type: #{type_name} id should be either an _int4 or _int8)
+      end
+    end
   end
 
   def archived?
@@ -444,6 +478,18 @@ class Namespace < ApplicationRecord
 
   def ancestors_archived?
     ancestors.archived.exists?
+  end
+
+  def self_or_ancestors_transfer_scheduled?
+    return transfer_scheduled? if parent_id.nil?
+
+    self_and_ancestors(skope: Namespace).transfer_scheduled.exists?
+  end
+
+  def self_or_ancestors_transfer_in_progress?
+    return transfer_in_progress? if parent_id.nil?
+
+    self_and_ancestors(skope: Namespace).transfer_in_progress.exists?
   end
 
   def to_reference_base(from = nil, full: false, absolute_path: false)
@@ -511,6 +557,12 @@ class Namespace < ApplicationRecord
     type == Group.sti_name
   end
 
+  def work_item_positioning_root
+    return self if parent&.user_namespace?
+
+    root_ancestor
+  end
+
   def project_namespace?
     type == Namespaces::ProjectNamespace.sti_name
   end
@@ -558,6 +610,14 @@ class Namespace < ApplicationRecord
 
   def default_branch_protected?
     Gitlab::Access::DefaultBranchProtection.new(default_branch_protection_settings).any?
+  end
+
+  def can_push_initial_commit?(user)
+    return true if user.can_admin_all_resources?
+
+    branch_protection = Gitlab::Access::DefaultBranchProtection.new(default_branch_protection_settings)
+    member_access = max_member_access_for_user(user)
+    branch_protection.can_initial_push?(member_access)
   end
 
   def emails_enabled?
@@ -865,16 +925,16 @@ class Namespace < ApplicationRecord
   end
 
   def allowed_work_item_types
-    ::WorkItems::TypesFilter.new(container: self).allowed_types
+    ::WorkItems::TypesFramework::Provider.new(self).allowed_types.map(&:base_type)
   end
   strong_memoize_attr :allowed_work_item_types
 
   def allowed_work_item_type?(type)
     type = type.to_s
 
-    unless ::WorkItems::TypesFilter.base_types.include?(type)
+    unless ::WorkItems::TypesFramework::Provider.unfiltered_base_types.map(&:to_s).include?(type)
       raise ArgumentError,
-        %("#{type}" is not a valid WorkItems::Type.base_types)
+        %("#{type}" is not a valid Work Item Type)
     end
 
     allowed_work_item_types.include?(type)

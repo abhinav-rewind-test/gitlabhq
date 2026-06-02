@@ -143,7 +143,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#find_project!' do
-    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:project, freeze: false) { create(:project, :public) }
     let_it_be(:user) { create(:user) }
 
     shared_examples 'private project without access' do
@@ -215,7 +215,6 @@ RSpec.describe API::Helpers, feature_category: :api do
         context 'and user does not have permissions to read project' do
           before do
             allow(helper).to receive(:can?).with(user, :read_project, outside_project).and_return(false)
-            allow(helper).to receive(:can?).with(user, :build_read_project, outside_project).and_return(false)
           end
 
           context 'with job token' do
@@ -328,7 +327,7 @@ RSpec.describe API::Helpers, feature_category: :api do
           end
 
           context 'when the project feature is publicly accessible' do
-            let_it_be(:project) { create(:project, :public, :builds_enabled) }
+            let_it_be(:project, freeze: false) { create(:project, :public, :builds_enabled) }
 
             before do
               allow(helper).to receive(:route_setting).with(:authorization).and_return(allow_public_access_for_enabled_project_features: :builds)
@@ -380,7 +379,7 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
 
     context 'support for IDs and paths as argument' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
 
       let(:user) { project.first_owner }
 
@@ -479,7 +478,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#find_pipeline!' do
-    let_it_be(:project) { create(:project, :public) }
+    let_it_be(:project, freeze: false) { create(:project, :public) }
     let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
     let_it_be(:user) { create(:user) }
 
@@ -549,7 +548,7 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
 
     context 'support for IDs and paths as argument' do
-      let_it_be(:project) { create(:project) }
+      let_it_be(:project, freeze: false) { create(:project) }
       let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
 
       let(:user) { project.first_owner }
@@ -659,7 +658,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#find_group!' do
-    let_it_be(:group) { create(:group, :public) }
+    let_it_be(:group, freeze: false) { create(:group, :public) }
     let_it_be(:user) { create(:user) }
 
     shared_examples 'private group without access' do
@@ -710,7 +709,7 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
 
     context 'with support for IDs and paths as arguments' do
-      let_it_be(:group) { create(:group) }
+      let_it_be(:group, freeze: false) { create(:group) }
 
       let(:user) { group.first_owner }
 
@@ -758,7 +757,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   context 'with support for organization as an argument' do
-    let_it_be(:group) { create(:group) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let_it_be(:organization) { create(:organization) }
 
     before do
@@ -786,7 +785,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#find_group_by_full_path!' do
-    let_it_be(:group) { create(:group, :public) }
+    let_it_be(:group, freeze: false) { create(:group, :public) }
     let_it_be(:user) { create(:user) }
 
     shared_examples 'private group without access' do
@@ -886,11 +885,53 @@ RSpec.describe API::Helpers, feature_category: :api do
       it_behaves_like 'namespace finder'
     end
 
+    context 'when namespace is a project namespace' do
+      let_it_be(:project, freeze: false) { create(:project) }
+
+      it 'returns nil by id by default' do
+        expect(helper.find_namespace(project.project_namespace.id)).to be_nil
+      end
+
+      it 'returns nil by full path by default' do
+        expect(helper.find_namespace(project.full_path)).to be_nil
+      end
+
+      context 'when project namespaces are allowed' do
+        it 'returns the project namespace by id' do
+          expect(helper.find_namespace(project.project_namespace.id, allow_project_namespaces: true)).to eq(project.project_namespace)
+        end
+
+        it 'returns the project namespace by full path' do
+          expect(helper.find_namespace(project.full_path, allow_project_namespaces: true)).to eq(project.project_namespace)
+        end
+      end
+    end
+
     context 'when ID is a negative number' do
       let(:existing_id) { namespace.id }
       let(:non_existing_id) { -1 }
 
       it_behaves_like 'namespace finder'
+    end
+  end
+
+  describe '#find_namespace_by_path' do
+    context 'when project namespaces are allowed' do
+      let_it_be(:project, freeze: false) { create(:project, :private) }
+
+      it 'falls back to the project namespace when not found via namespace lookup' do
+        expect(::Namespace).to receive(:find_by_full_path).with(project.full_path).and_return(nil)
+        expect(::Project).to receive(:find_by_full_path).with(project.full_path).and_call_original
+
+        expect(helper.find_namespace_by_path(project.full_path, allow_project_namespaces: true))
+          .to eq(project.project_namespace)
+      end
+
+      it 'returns nil when no namespace or project matches the path' do
+        path = "nonexistent/#{non_existing_record_id}"
+
+        expect(helper.find_namespace_by_path(path, allow_project_namespaces: true)).to be_nil
+      end
     end
   end
 
@@ -952,10 +993,130 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
 
     it_behaves_like 'user namespace finder'
+
+    context 'when namespace is a project namespace' do
+      let_it_be(:project, freeze: false) { create(:project, :private) }
+      let(:current_user) { project.first_owner }
+
+      before do
+        allow(helper).to receive(:initial_current_user).and_return(current_user)
+        allow(helper).to receive(:current_user).and_return(current_user)
+      end
+
+      it 'renders namespace not found by default' do
+        expect(helper).to receive(:not_found!).with('Namespace').and_return(nil)
+
+        helper.find_namespace!(project.project_namespace.id)
+      end
+
+      context 'when project namespaces are allowed' do
+        context 'when user has project access' do
+          let_it_be(:developer_user) { create(:user) }
+          let(:current_user) { developer_user }
+
+          before do
+            project.add_developer(current_user)
+          end
+
+          it 'returns the project namespace' do
+            expect(helper.find_namespace!(project.project_namespace.id, allow_project_namespaces: true))
+              .to eq(project.project_namespace)
+          end
+        end
+
+        context 'when user lacks project access' do
+          let_it_be(:non_member_user) { create(:user) }
+          let(:current_user) { non_member_user }
+
+          it 'renders project not found' do
+            allow(helper).to receive(:authenticate_non_public?).and_return(false)
+            expect(helper).to receive(:not_found!).with('Project').and_return(nil)
+
+            helper.find_namespace!(project.project_namespace.id, allow_project_namespaces: true)
+          end
+
+          it 'renders unauthorized when non-public authentication is required' do
+            allow(helper).to receive(:authenticate_non_public?).and_return(true)
+            expect(helper).to receive(:unauthorized!).and_return(nil)
+
+            helper.find_namespace!(project.project_namespace.id, allow_project_namespaces: true)
+          end
+        end
+      end
+
+      context 'when project namespaces are not allowed' do
+        it 'renders namespace not found' do
+          expect(helper).to receive(:not_found!).with('Namespace').and_return(nil)
+
+          helper.find_namespace!(project.project_namespace.id, allow_project_namespaces: false)
+        end
+      end
+    end
+  end
+
+  describe '#find_namespace_by_path!' do
+    context 'when namespace is a project namespace' do
+      let_it_be(:project, freeze: false) { create(:project, :private) }
+      let(:current_user) { project.first_owner }
+
+      before do
+        allow(helper).to receive(:initial_current_user).and_return(current_user)
+        allow(helper).to receive(:current_user).and_return(current_user)
+      end
+
+      it 'renders namespace not found by default' do
+        expect(helper).to receive(:not_found!).with('Namespace').and_return(nil)
+
+        helper.find_namespace_by_path!(project.full_path)
+      end
+
+      context 'when project namespaces are allowed' do
+        context 'when user has project access' do
+          let_it_be(:developer_user) { create(:user) }
+          let(:current_user) { developer_user }
+
+          before do
+            project.add_developer(current_user)
+          end
+
+          it 'returns the project namespace' do
+            expect(helper.find_namespace_by_path!(project.full_path, allow_project_namespaces: true))
+              .to eq(project.project_namespace)
+          end
+        end
+
+        context 'when user lacks project access' do
+          let_it_be(:non_member_user) { create(:user) }
+          let(:current_user) { non_member_user }
+
+          it 'renders project not found' do
+            allow(helper).to receive(:authenticate_non_public?).and_return(false)
+            expect(helper).to receive(:not_found!).with('Project').and_return(nil)
+
+            helper.find_namespace_by_path!(project.full_path, allow_project_namespaces: true)
+          end
+
+          it 'renders unauthorized when non-public authentication is required' do
+            allow(helper).to receive(:authenticate_non_public?).and_return(true)
+            expect(helper).to receive(:unauthorized!).and_return(nil)
+
+            helper.find_namespace_by_path!(project.full_path, allow_project_namespaces: true)
+          end
+        end
+      end
+
+      context 'when project namespaces are not allowed' do
+        it 'renders namespace not found' do
+          expect(helper).to receive(:not_found!).with('Namespace').and_return(nil)
+
+          helper.find_namespace_by_path!(project.full_path, allow_project_namespaces: false)
+        end
+      end
+    end
   end
 
   describe '#authorized_project_scope?' do
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let_it_be(:other_project) { create(:project) }
     let_it_be(:job) { create(:ci_build) }
 
@@ -1059,7 +1220,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   describe '#track_event' do
     let_it_be(:user) { create(:user) }
     let_it_be(:namespace) { create(:namespace) }
-    let_it_be(:project) { create(:project) }
+    let_it_be(:project, freeze: false) { create(:project) }
     let(:event_name) { 'i_compliance_dashboard' }
     let(:unknown_event) { 'unknown' }
 
@@ -1242,7 +1403,7 @@ RSpec.describe API::Helpers, feature_category: :api do
         allow(helper).to receive(:body).with(false)
         expect(project).to receive(:destroy).and_call_original
 
-        expect { helper.destroy_conditionally!(project) }.to change(Project, :count).by(-1)
+        expect { helper.destroy_conditionally!(project) }.to change { Project.count }.by(-1)
       end
     end
 
@@ -1316,7 +1477,7 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#present_disk_file!' do
-    let_it_be(:dummy_class) do
+    let_it_be(:dummy_class, freeze: false) do
       Class.new do
         attr_reader :headers
         alias_method :header, :headers
@@ -1373,12 +1534,73 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
   end
 
+  describe '#apply_etag_or_suppress_rack_etag!' do
+    let(:response_headers) { {} }
+
+    before do
+      allow(helper).to receive(:headers).and_return(response_headers)
+      allow(helper).to receive(:header) { |key, value| response_headers[key] = value }
+    end
+
+    context 'when workhorse_download_etag_caching is enabled' do
+      context 'when an etag is provided' do
+        it 'sets the ETag header to the provided value' do
+          helper.apply_etag_or_suppress_rack_etag!(%("digest"))
+
+          expect(response_headers).to eq('ETag' => %("digest"))
+        end
+      end
+
+      context 'when no etag is provided and Last-Modified is not set' do
+        it 'sets Last-Modified to 0 to suppress Rack::ETag' do
+          helper.apply_etag_or_suppress_rack_etag!(nil)
+
+          expect(response_headers).to eq('Last-Modified' => '0')
+        end
+      end
+
+      context 'when no etag is provided and Last-Modified is already set' do
+        let(:response_headers) { { 'Last-Modified' => 'Wed, 21 Oct 2015 07:28:00 GMT' } }
+
+        it 'leaves Last-Modified unchanged' do
+          helper.apply_etag_or_suppress_rack_etag!(nil)
+
+          expect(response_headers).to eq('Last-Modified' => 'Wed, 21 Oct 2015 07:28:00 GMT')
+        end
+      end
+    end
+
+    context 'when workhorse_download_etag_caching is disabled' do
+      before do
+        stub_feature_flags(workhorse_download_etag_caching: false)
+      end
+
+      it 'does not set ETag even when one is provided' do
+        helper.apply_etag_or_suppress_rack_etag!(%("digest"))
+
+        expect(response_headers).to be_empty
+      end
+
+      it 'does not set Last-Modified when no etag is provided' do
+        helper.apply_etag_or_suppress_rack_etag!(nil)
+
+        expect(response_headers).to be_empty
+      end
+    end
+  end
+
   describe '#present_carrierwave_file!' do
     let(:supports_direct_download) { false }
     let(:content_type) { nil }
     let(:content_disposition) { nil }
     let(:extra_response_headers) { {} }
     let(:extra_send_url_params) { {} }
+    let(:etag) { nil }
+
+    before do
+      allow(helper).to receive(:headers).and_return({})
+      allow(helper).to receive(:header)
+    end
 
     subject do
       helper.present_carrierwave_file!(
@@ -1387,7 +1609,8 @@ RSpec.describe API::Helpers, feature_category: :api do
         content_disposition:,
         content_type:,
         extra_response_headers:,
-        extra_send_url_params:
+        extra_send_url_params:,
+        etag:
       )
     end
 
@@ -1400,7 +1623,7 @@ RSpec.describe API::Helpers, feature_category: :api do
         subject
       end
 
-      context 'with an overriden content type' do
+      context 'with an overridden content type' do
         let(:content_type) { 'application/zip' }
 
         it 'calls present_disk_file! with the correct content type' do
@@ -1440,7 +1663,7 @@ RSpec.describe API::Helpers, feature_category: :api do
           subject
         end
 
-        context 'with an overriden content type' do
+        context 'with an overridden content type' do
           let(:content_type) { 'application/zip' }
           let(:content_disposition) { :inline }
 
@@ -1477,15 +1700,14 @@ RSpec.describe API::Helpers, feature_category: :api do
           subject
         end
 
-        context 'with an overriden content type' do
+        context 'with an overridden content type' do
           let(:content_type) { 'application/zip' }
           let(:content_disposition) { :inline }
 
           it 'sends a workhorse header with the correct content type' do
             expect(helper).to receive(:status).with(:ok)
             expect(helper).to receive(:body).with('')
-            expect(helper).to receive(:header) do |name, value|
-              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+            expect(helper).to receive(:header).with(Gitlab::Workhorse::SEND_DATA_HEADER, anything) do |_name, value|
               command, encoded_params = value.split(":")
               params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
 
@@ -1503,8 +1725,7 @@ RSpec.describe API::Helpers, feature_category: :api do
           it 'sends a workhorse header with the response headers' do
             expect(helper).to receive(:status).with(:ok)
             expect(helper).to receive(:body).with('')
-            expect(helper).to receive(:header) do |name, value|
-              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+            expect(helper).to receive(:header).with(Gitlab::Workhorse::SEND_DATA_HEADER, anything) do |_name, value|
               command, encoded_params = value.split(":")
               params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
 
@@ -1522,8 +1743,7 @@ RSpec.describe API::Helpers, feature_category: :api do
           it 'sends a workhorse header with checksum headers' do
             expect(helper).to receive(:status).with(:ok)
             expect(helper).to receive(:body).with('')
-            expect(helper).to receive(:header) do |name, value|
-              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+            expect(helper).to receive(:header).with(Gitlab::Workhorse::SEND_DATA_HEADER, anything) do |_name, value|
               command, encoded_params = value.split(':')
               params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
 
@@ -1541,8 +1761,7 @@ RSpec.describe API::Helpers, feature_category: :api do
           it 'sends a workhorse header with the response headers' do
             expect(helper).to receive(:status).with(:ok)
             expect(helper).to receive(:body).with('')
-            expect(helper).to receive(:header) do |name, value|
-              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+            expect(helper).to receive(:header).with(Gitlab::Workhorse::SEND_DATA_HEADER, anything) do |_name, value|
               command, encoded_params = value.split(":")
               params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
 
@@ -1551,6 +1770,28 @@ RSpec.describe API::Helpers, feature_category: :api do
               expect(restrict_forwarded_response_headers_params['Enabled']).to be_truthy
               expect(restrict_forwarded_response_headers_params['AllowList']).to contain_exactly('x-optional-header')
             end
+
+            subject
+          end
+        end
+
+        context 'when an etag is provided' do
+          let(:etag) { %("digest-abc") }
+
+          it 'sets the ETag header before delegating to Workhorse' do
+            allow(helper).to receive(:status)
+            allow(helper).to receive(:body)
+            expect(helper).to receive(:header).with('ETag', %("digest-abc"))
+
+            subject
+          end
+        end
+
+        context 'when no etag is provided' do
+          it 'sets Last-Modified: 0 to suppress Rack::ETag default' do
+            allow(helper).to receive(:status)
+            allow(helper).to receive(:body)
+            expect(helper).to receive(:header).with('Last-Modified', '0')
 
             subject
           end
@@ -1569,6 +1810,8 @@ RSpec.describe API::Helpers, feature_category: :api do
       before do
         allow(helper).to receive(:env).and_return({})
         allow(helper).to receive(:request).and_return(instance_double(Rack::Request, head?: is_head_request))
+        allow(helper).to receive(:headers).and_return({})
+        allow(helper).to receive(:header)
         stub_artifacts_object_storage(enabled: true)
       end
 
@@ -1857,8 +2100,8 @@ RSpec.describe API::Helpers, feature_category: :api do
   end
 
   describe '#boundaries_for_endpoint' do
-    let_it_be(:project) { create(:project) }
-    let_it_be(:group) { create(:group) }
+    let_it_be(:project, freeze: false) { create(:project) }
+    let_it_be(:group, freeze: false) { create(:group) }
     let(:access_token) { instance_double(PersonalAccessToken, granular?: true) }
 
     before do
@@ -2048,20 +2291,38 @@ RSpec.describe API::Helpers, feature_category: :api do
     end
 
     context 'when access token is not granular' do
-      before do
-        allow(token).to receive(:granular?).and_return(false)
+      context 'when token responds to granularity (legacy personal access token)' do
+        before do
+          allow(token).to receive(:granular?).and_return(false)
+        end
+
+        it 'returns true' do
+          expect(helper.send(:authorize_granular_token?)).to be(true)
+        end
+
+        it 'authorizes granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).to receive(:new).and_call_original
+
+          helper.current_user
+        end
       end
 
-      it 'returns false' do
-        allow(helper).to receive(:authorization_settings).and_return({})
+      context 'when token does not respond to granularity (OAuth token)' do
+        before do
+          allow(token).to receive(:respond_to?).with(:granular?).and_return(false)
+        end
 
-        expect(helper.send(:authorize_granular_token?)).to be(false)
-      end
+        it 'returns false' do
+          allow(helper).to receive(:authorization_settings).and_return({})
 
-      it 'does not authorize granular tokens' do
-        expect(Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+          expect(helper.send(:authorize_granular_token?)).to be(false)
+        end
 
-        helper.current_user
+        it 'does not authorize granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+          helper.current_user
+        end
       end
     end
 
@@ -2105,6 +2366,23 @@ RSpec.describe API::Helpers, feature_category: :api do
       context 'when skip_granular_token_authorization is true' do
         before do
           allow(helper).to receive(:authorization_settings).and_return(skip_granular_token_authorization: true)
+        end
+
+        it 'returns false' do
+          expect(helper.send(:authorize_granular_token?)).to be(false)
+        end
+
+        it 'does not authorize granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+          helper.current_user
+        end
+      end
+
+      context 'when skip_granular_token_authorization is a reason symbol' do
+        before do
+          allow(helper).to receive(:authorization_settings)
+            .and_return(skip_granular_token_authorization: :job_token_auth)
         end
 
         it 'returns false' do

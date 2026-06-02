@@ -1,7 +1,7 @@
 ---
 stage: Tenant Scale
 group: Organizations
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: REST API to create, retrieve, update, delete, and manage projects and project features.
 title: Projects API
 ---
@@ -30,7 +30,7 @@ The Projects API contains endpoints that:
 ## Prerequisites
 
 - Any [default role](../user/permissions.md#roles) on a project to read the project's properties.
-- The Owner or Maintainer role on a project to edit the project's properties.
+- The Maintainer or Owner role on a project to edit the project's properties.
 
 ## Project visibility level
 
@@ -113,6 +113,13 @@ Use the alternative attributes instead.
 
 ## Retrieve a project
 
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
 Retrieves the specified project. This endpoint can be accessed without authentication if
 the project is publicly accessible.
 
@@ -131,9 +138,6 @@ Supported attributes:
 
 If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
 following response attributes:
-
-<!-- markdownlint-disable MD055 -->
-<!-- markdownlint-disable MD056 -->
 
 | Attribute                | Type              | Description |
 |:-------------------------|:------------------|:------------|
@@ -284,6 +288,7 @@ following response attributes:
 | `enforce_auth_checks_on_uploads` | boolean | Whether authentication checks are enforced on uploads. |
 | `suggestion_commit_message` | string | Custom commit message for suggestions. |
 | `merge_commit_template` | string | Template for merge commit messages. |
+| `mr_default_title_template` | string | Template for merge request titles. |
 | `squash_commit_template` | string | Template for squash commit messages. |
 | `issue_branch_template` | string | Template for branch names created from issues. |
 | `warn_about_potentially_unwanted_characters` | boolean | Whether to warn about potentially unwanted characters. |
@@ -304,12 +309,14 @@ following response attributes:
 | `merge_pipelines_enabled` | boolean | Indicates if merge pipelines are enabled. |
 | `merge_trains_enabled` | boolean | Indicates if merge trains are enabled. |
 | `merge_trains_skip_train_allowed` | boolean | Indicates if skipping the merge train is allowed. |
+| `max_pipelines_per_merge_train` | integer | Maximum number of parallel pipelines per merge train. |
 | `only_allow_merge_if_all_status_checks_passed` | boolean | Whether merges are allowed only if all status checks have passed. Ultimate only. |
 | `allow_pipeline_trigger_approve_deployment` | boolean | Whether pipeline triggers can approve deployments. |
 | `prevent_merge_without_jira_issue` | boolean | Indicates if merges require an associated Jira issue. |
 | `duo_remote_flows_enabled` | boolean | Indicates if GitLab Duo remote flows are enabled. |
 | `duo_foundational_flows_enabled` | boolean | Indicates if GitLab Duo foundational flows are enabled. |
 | `duo_sast_fp_detection_enabled` | boolean | Indicates if GitLab Duo SAST false positive detection is enabled. |
+| `duo_sast_vr_workflow_enabled` | boolean | Indicates if GitLab Duo SAST vulnerability resolution workflow is enabled. |
 | `web_based_commit_signing_enabled` | boolean | Indicates if web-based commit signing is enabled. |
 | `spp_repository_pipeline_access` | boolean | Repository pipeline access for security policies. Only visible if the security orchestration policies feature is available. |
 | `permissions` | object | User permissions for the project. |
@@ -343,9 +350,8 @@ following response attributes:
 | `statistics.container_registry_size` | integer | Container registry storage size in bytes. <sup>1</sup> |
 | `forked_from_project` | object | The upstream project this project was forked from. If the upstream project is private, an authentication token is required to view this field. |
 | `mr_default_target_self` | boolean | Whether merge requests target this project by default. If `false`, merge requests target the upstream project. Appears only if the project is a fork. |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
 {.condensed}
-<!-- markdownlint-enable MD055 -->
-<!-- markdownlint-enable MD056 -->
 
 Example request:
 
@@ -457,6 +463,8 @@ Example response:
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [
     {
@@ -500,6 +508,7 @@ Example response:
   "suggestion_commit_message": null,
   "enforce_auth_checks_on_uploads": true,
   "merge_commit_template": null,
+  "mr_default_title_template": null,
   "squash_commit_template": null,
   "issue_branch_template": "gitlab/%{id}-%{title}",
   "marked_for_deletion_at": "2020-04-03", // Deprecated in favor of marked_for_deletion_on. Planned for removal in a future version of the REST API.
@@ -544,6 +553,8 @@ List projects and project attributes.
 {{< history >}}
 
 - `web_based_commit_signing_enabled` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/194650) in GitLab 18.2 [with a flag](../administration/feature_flags/_index.md) named `use_web_based_commit_signing_enabled`. Disabled by default.
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
 
 {{< /history >}}
 
@@ -568,8 +579,6 @@ GET /projects
 ```
 
 Supported attributes:
-<!-- markdownlint-disable MD055 -->
-<!-- markdownlint-disable MD056 -->
 
 | Attribute                     | Type     | Required | Description |
 |:------------------------------|:---------|:---------|:------------|
@@ -582,14 +591,14 @@ Supported attributes:
 | `last_activity_after`         | datetime | No       | Limit results to projects with last activity after specified time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) |
 | `last_activity_before`        | datetime | No       | Limit results to projects with last activity before specified time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) |
 | `membership`                  | boolean  | No       | Limit by projects that the current user is a member of. |
-| `min_access_level`            | integer  | No       | Limit to projects where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `min_access_level`            | integer  | No       | Limit to projects where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
 | `order_by`                    | string   | No       | Return projects ordered by `id`, `name`, `path`, `created_at`, `updated_at`, `star_count`, `last_activity_at`, or `similarity` fields. `repository_size`, `storage_size`, `packages_size` or `wiki_size` fields are only allowed for administrators. `similarity` is only available when searching and is limited to projects that the current user is a member of. Default is `created_at`. |
 | `owned`                       | boolean  | No       | Limit by projects explicitly owned by the current user. |
 | `repository_checksum_failed`  | boolean  | No       | Limit projects where the repository checksum calculation has failed. Premium and Ultimate only. |
 | `repository_storage`          | string   | No       | Limit results to projects stored on `repository_storage`. _(administrators only)_ |
 | `search_namespaces`           | boolean  | No       | Include ancestor namespaces when matching search criteria. Default is `false`. |
 | `search`                      | string   | No       | Return list of projects with a `path`, `name`, or `description` matching the search criteria (case-insensitive, substring match). Multiple terms can be provided, separated by an escaped space, either `+` or `%20`, and will be ANDed together. Example: `one+two` will match substrings `one` and `two` (in any order). |
-| `simple`                      | boolean  | No       | If set to `true`, return only limited fields for each project. Unauthenticated requests return only public projects with limited fields, even if `simple` is not set. |
+| `simple`                      | boolean  | No       | If `true`, return only limited fields for each project. Unauthenticated requests return only public projects with limited fields, even if `simple` is not set. |
 | `sort`                        | string   | No       | Return projects sorted in `asc` or `desc` order. Default is `desc`. |
 | `starred`                     | boolean  | No       | Limit by projects starred by the current user. |
 | `statistics`                  | boolean  | No       | Include project statistics. Available only to users with the Reporter, Developer, Maintainer, or Owner role. |
@@ -605,15 +614,11 @@ Supported attributes:
 | `with_programming_language`   | string   | No       | Limit by projects which use the given programming language. |
 | `marked_for_deletion_on`      | date     | No       | Filter by date when project was marked for deletion. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/463939) in GitLab 17.1. Premium and Ultimate only. |
 | `active`                      | boolean  | No       | Limit by projects that are not archived and not marked for deletion. |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
 {.condensed}
-<!-- markdownlint-enable MD055 -->
-<!-- markdownlint-enable MD056 -->
 
 If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
 following response attributes:
-
-<!-- markdownlint-disable MD055 -->
-<!-- markdownlint-disable MD056 -->
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -723,6 +728,7 @@ following response attributes:
 | `enforce_auth_checks_on_uploads` | boolean | Whether authentication checks are enforced on uploads. |
 | `suggestion_commit_message` | string | Custom commit message for suggestions. |
 | `merge_commit_template` | string | Template for merge commit messages. |
+| `mr_default_title_template` | string | Template for merge request titles. |
 | `squash_commit_template` | string | Template for squash commit messages. |
 | `issue_branch_template` | string | Template for branch names created from issues. |
 | `warn_about_potentially_unwanted_characters` | boolean | Whether to warn about potentially unwanted characters. |
@@ -740,26 +746,27 @@ following response attributes:
 | `merge_pipelines_enabled` | boolean | Indicates if merge pipelines are enabled. |
 | `merge_trains_enabled` | boolean | Indicates if merge trains are enabled. |
 | `merge_trains_skip_train_allowed` | boolean | Indicates if skipping the merge train is allowed. |
+| `max_pipelines_per_merge_train` | integer | Maximum number of parallel pipelines per merge train. |
 | `only_allow_merge_if_all_status_checks_passed` | boolean | Whether merges are allowed only if all status checks have passed. Ultimate only. |
 | `allow_pipeline_trigger_approve_deployment` | boolean | Whether pipeline triggers can approve deployments. |
 | `prevent_merge_without_jira_issue` | boolean | Indicates if merges require an associated Jira issue. |
 | `duo_remote_flows_enabled` | boolean | Indicates if GitLab Duo remote flows are enabled. |
 | `duo_foundational_flows_enabled` | boolean | Indicates if GitLab Duo foundational flows are enabled. |
 | `duo_sast_fp_detection_enabled` | boolean | Indicates if GitLab Duo SAST false positive detection is enabled. |
+| `duo_sast_vr_workflow_enabled` | boolean | Indicates if GitLab Duo SAST vulnerability resolution workflow is enabled. |
 | `spp_repository_pipeline_access` | boolean | Repository pipeline access for security policies. Only visible if the security orchestration policies feature is available. |
 | `permissions` | object | User permissions for the project. |
 | `permissions.project_access` | object | Project access permissions for the user. |
 | `permissions.group_access` | object | Group access permissions for the user. |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
 {.condensed}
-<!-- markdownlint-enable MD055 -->
-<!-- markdownlint-enable MD056 -->
 
 Example request:
 
 ```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" \
      --header "Accept: application/json" \
-     --url "https://gitlab.example.com/api/v4/projects
+     --url "https://gitlab.example.com/api/v4/projects"
 ```
 
 Example response:
@@ -869,6 +876,8 @@ Example response:
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "build_timeout": 3600,
     "auto_cancel_pending_pipelines": "enabled",
@@ -887,6 +896,7 @@ Example response:
     "enforce_auth_checks_on_uploads": true,
     "suggestion_commit_message": null,
     "merge_commit_template": null,
+    "mr_default_title_template": null,
     "squash_commit_template": null,
     "issue_branch_template": "gitlab/%{id}-%{title}",
     "auto_devops_enabled": false,
@@ -921,6 +931,13 @@ Example response:
 
 ### List all personal projects for a user
 
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
 Lists all personal projects for a specified user. The following restrictions apply:
 
 - Returns only projects in the user's personal namespace, not group or subgroup projects.
@@ -947,7 +964,7 @@ Supported attributes:
 | `id_after`                    | integer  | No       | Limit results to projects with IDs greater than the specified ID. |
 | `id_before`                   | integer  | No       | Limit results to projects with IDs less than the specified ID. |
 | `membership`                  | boolean  | No       | Limit by projects that the current user is a member of. |
-| `min_access_level`            | integer  | No       | Limit to projects where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `min_access_level`            | integer  | No       | Limit to projects where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
 | `order_by`                    | string   | No       | Return projects ordered by `id`, `name`, `path`, `created_at`, `updated_at`, `star_count`, or `last_activity_at` fields. Default is `created_at`. |
 | `owned`                       | boolean  | No       | Limit by projects explicitly owned by the current user. |
 | `search`                      | string   | No       | Return list of projects matching the search criteria. |
@@ -965,9 +982,6 @@ Supported attributes:
 
 If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
 following response attributes:
-
-<!-- markdownlint-disable MD055 -->
-<!-- markdownlint-disable MD056 -->
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -1092,6 +1106,7 @@ following response attributes:
 | `enforce_auth_checks_on_uploads` | boolean | Whether authentication checks are enforced on uploads. |
 | `suggestion_commit_message` | string | Custom commit message for suggestions. |
 | `merge_commit_template` | string | Template for merge commit messages. |
+| `mr_default_title_template` | string | Template for merge request titles. |
 | `squash_commit_template` | string | Template for squash commit messages. |
 | `issue_branch_template` | string | Template for branch names created from issues. |
 | `warn_about_potentially_unwanted_characters` | boolean | Whether to warn about potentially unwanted characters. |
@@ -1109,19 +1124,20 @@ following response attributes:
 | `merge_pipelines_enabled` | boolean | Indicates if merge pipelines are enabled. |
 | `merge_trains_enabled` | boolean | Indicates if merge trains are enabled. |
 | `merge_trains_skip_train_allowed` | boolean | Indicates if skipping the merge train is allowed. |
+| `max_pipelines_per_merge_train` | integer | Maximum number of parallel pipelines per merge train. |
 | `only_allow_merge_if_all_status_checks_passed` | boolean | Whether merges are allowed only if all status checks have passed. Ultimate only. |
 | `allow_pipeline_trigger_approve_deployment` | boolean | Whether pipeline triggers can approve deployments. |
 | `prevent_merge_without_jira_issue` | boolean | Indicates if merges require an associated Jira issue. |
 | `duo_remote_flows_enabled` | boolean | Indicates if GitLab Duo remote flows are enabled. |
 | `duo_foundational_flows_enabled` | boolean | Indicates if GitLab Duo foundational flows are enabled. |
 | `duo_sast_fp_detection_enabled` | boolean | Indicates if GitLab Duo SAST false positive detection is enabled. |
+| `duo_sast_vr_workflow_enabled` | boolean | Indicates if GitLab Duo SAST vulnerability resolution workflow is enabled. |
 | `spp_repository_pipeline_access` | boolean | Repository pipeline access for security policies. Only visible if the security orchestration policies feature is available. |
 | `permissions` | object | User permissions for the project. |
 | `permissions.project_access` | object | Project access permissions for the user. |
 | `permissions.group_access` | object | Group access permissions for the user. |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
 {.condensed}
-<!-- markdownlint-enable MD055 -->
-<!-- markdownlint-enable MD056 -->
 
 Example request:
 
@@ -1205,6 +1221,8 @@ Example response:
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "shared_with_groups": [],
     "only_allow_merge_if_pipeline_succeeds": false,
@@ -1220,6 +1238,7 @@ Example response:
     "enforce_auth_checks_on_uploads": true,
     "suggestion_commit_message": null,
     "merge_commit_template": null,
+    "mr_default_title_template": null,
     "squash_commit_template": null,
     "secret_push_protection_enabled": false,
     "issue_branch_template": "gitlab/%{id}-%{title}",
@@ -1331,6 +1350,8 @@ Example response:
     "ci_restrict_pipeline_cancellation_role": "developer",
     "ci_pipeline_variables_minimum_override_role": "maintainer",
     "ci_push_repository_for_job_token_allowed": false,
+    "ci_display_pipeline_variables": false,
+    "protect_merge_request_pipelines": true,
     "public_jobs": true,
     "shared_with_groups": [],
     "only_allow_merge_if_pipeline_succeeds": false,
@@ -1361,6 +1382,7 @@ Example response:
     "enforce_auth_checks_on_uploads": true,
     "suggestion_commit_message": null,
     "merge_commit_template": null,
+    "mr_default_title_template": null,
     "squash_commit_template": null,
     "secret_push_protection_enabled": false,
     "issue_branch_template": "gitlab/%{id}-%{title}",
@@ -1392,9 +1414,18 @@ Example response:
 ]
 ```
 
-### List projects a user has contributed to
+### List all projects contributions for a user
 
-Returns a list of visible projects a given user has contributed to within the past year. For more information about what counts as a contribution, [view projects you have contributed to](../user/project/working_with_projects.md#view-projects-you-work-with).
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
+Lists all contributions to visible projects for a specified user. Returns only contributions in
+the past year. For more information about what counts as a contribution, see
+[View projects you work with](../user/project/working_with_projects.md#view-projects-you-work-with).
 
 ```plaintext
 GET /users/:user_id/contributed_projects
@@ -1406,8 +1437,167 @@ Supported attributes:
 |:-----------|:--------|:---------|:------------|
 | `user_id`  | string  | Yes      | The ID or username of the user. |
 | `order_by` | string  | No       | Return projects ordered by `id`, `name`, `path`, `created_at`, `updated_at`, `star_count`, or `last_activity_at` fields. Default is `created_at`. |
-| `simple`   | boolean | No       | Return only limited fields for each project. Without authentication, this operation is a no-op; only simple fields are returned. |
+| `simple`   | boolean | No       | If `true`, return only limited fields for each project. Unauthenticated requests return only public projects with limited fields, even if `simple` is not set. |
 | `sort`     | string  | No       | Return projects sorted in `asc` or `desc` order. Default is `desc`. |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
+following response attributes:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | ID of the project. |
+| `description` | string | Description of the project. |
+| `name` | string | Name of the project. |
+| `name_with_namespace` | string | Name of the project with its namespace. |
+| `path` | string | Path of the project. |
+| `path_with_namespace` | string | Path of the project with its namespace. |
+| `created_at` | datetime | Timestamp when the project was created. |
+| `default_branch` | string | Default branch of the project. |
+| `tag_list` | array of strings | Deprecated. Use `topics` instead. List of tags for the project. |
+| `topics` | array of strings | List of topics for the project. |
+| `ssh_url_to_repo` | string | SSH URL to clone the repository. |
+| `http_url_to_repo` | string | HTTP URL to clone the repository. |
+| `web_url` | string | URL to access the project in a browser. |
+| `readme_url` | string | URL to the project's README file. |
+| `forks_count` | integer | Number of forks of the project. |
+| `avatar_url` | string | URL to the project's avatar image. |
+| `star_count` | integer | Number of stars the project has received. |
+| `last_activity_at` | datetime | Timestamp of the last activity in the project. |
+| `visibility` | string | Visibility level of the project. Possible values: `private`, `internal`, or `public`. |
+| `namespace` | object | Namespace information for the project. |
+| `namespace.id` | integer | ID of the namespace. |
+| `namespace.name` | string | Name of the namespace. |
+| `namespace.path` | string | Path of the namespace. |
+| `namespace.kind` | string | Type of namespace. Possible values: `user` or `group`. |
+| `namespace.full_path` | string | Full path of the namespace. |
+| `namespace.parent_id` | integer | ID of the parent namespace, if applicable. |
+| `namespace.avatar_url` | string | URL to the namespace's avatar image. |
+| `namespace.web_url` | string | URL to access the namespace in a browser. |
+| `container_registry_image_prefix` | string | Prefix for container registry images. |
+| `_links` | object | Collection of API endpoint links related to the project. |
+| `_links.self` | string | URL to the project resource. |
+| `_links.issues` | string | URL to the project's issues. |
+| `_links.merge_requests` | string | URL to the project's merge requests. |
+| `_links.repo_branches` | string | URL to the project's repository branches. |
+| `_links.labels` | string | URL to the project's labels. |
+| `_links.events` | string | URL to the project's events. |
+| `_links.members` | string | URL to the project's members. |
+| `_links.cluster_agents` | string | URL to the project's cluster agents. |
+| `marked_for_deletion_at` | date | Deprecated. Use `marked_for_deletion_on` instead. Date when the project is scheduled for deletion. |
+| `marked_for_deletion_on` | date | Date when the project is scheduled for deletion. |
+| `packages_enabled` | boolean | Whether the package registry is enabled for the project. |
+| `empty_repo` | boolean | Whether the repository is empty. |
+| `archived` | boolean | Whether the project is archived. |
+| `resolve_outdated_diff_discussions` | boolean | Whether outdated diff discussions are automatically resolved. |
+| `container_expiration_policy` | object | Settings for container image expiration policy. |
+| `container_expiration_policy.cadence` | string | How often the container expiration policy runs. |
+| `container_expiration_policy.enabled` | boolean | Whether the container expiration policy is enabled. |
+| `container_expiration_policy.keep_n` | integer | Number of container images to keep. |
+| `container_expiration_policy.older_than` | string | Remove container images older than this value. |
+| `container_expiration_policy.name_regex` | string | Deprecated. Use `name_regex_delete` instead. Regular expression to match container image names. |
+| `container_expiration_policy.name_regex_keep` | string | Regular expression to match container image names to keep. |
+| `container_expiration_policy.next_run_at` | datetime | Timestamp for the next scheduled policy run. |
+| `repository_object_format` | string | Object format used by the repository (sha1 or sha256). |
+| `issues_enabled` | boolean | Whether issues are enabled for the project. |
+| `merge_requests_enabled` | boolean | Whether merge requests are enabled for the project. |
+| `wiki_enabled` | boolean | Whether the wiki is enabled for the project. |
+| `jobs_enabled` | boolean | Whether jobs are enabled for the project. |
+| `snippets_enabled` | boolean | Whether snippets are enabled for the project. |
+| `container_registry_enabled` | boolean | Deprecated. Use `container_registry_access_level` instead. Whether the container registry is enabled. |
+| `service_desk_enabled` | boolean | Whether Service Desk is enabled for the project. |
+| `can_create_merge_request_in` | boolean | Whether the current user can create merge requests in the project. |
+| `issues_access_level` | string | Access level for the issues feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `repository_access_level` | string | Access level for the repository feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `merge_requests_access_level` | string | Access level for the merge requests feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `forking_access_level` | string | Access level for forking the project. Possible values: `disabled`, `private`, or `enabled`. |
+| `wiki_access_level` | string | Access level for the wiki feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `builds_access_level` | string | Access level for the CI/CD builds feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `snippets_access_level` | string | Access level for the snippets feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `pages_access_level` | string | Access level for GitLab Pages. Possible values: `disabled`, `private`, `enabled`, or `public`. |
+| `analytics_access_level` | string | Access level for analytics features. Possible values: `disabled`, `private`, or `enabled`. |
+| `container_registry_access_level` | string | Access level for the container registry. Possible values: `disabled`, `private`, or `enabled`. |
+| `security_and_compliance_access_level` | string | Access level for security and compliance features. Possible values: `disabled`, `private`, or `enabled`. |
+| `releases_access_level` | string | Access level for the releases feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `environments_access_level` | string | Access level for the environments feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `feature_flags_access_level` | string | Access level for the feature flags feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `infrastructure_access_level` | string | Access level for the infrastructure feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `monitor_access_level` | string | Access level for the monitor feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `model_experiments_access_level` | string | Access level for the model experiments feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `model_registry_access_level` | string | Access level for the model registry feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `package_registry_access_level` | string | Access level for the package registry feature. Possible values: `disabled`, `private`, or `enabled`. |
+| `emails_disabled` | boolean | Indicates if emails are disabled for the project. |
+| `emails_enabled` | boolean | Indicates if emails are enabled for the project. |
+| `show_diff_preview_in_email` | boolean | Indicates if diff previews are shown in email notifications. |
+| `shared_runners_enabled` | boolean | Whether shared runners are enabled for the project. |
+| `lfs_enabled` | boolean | Indicates if Git LFS is enabled for the project. |
+| `creator_id` | integer | ID of the user who created the project. |
+| `import_status` | string | Status of the project import. |
+| `open_issues_count` | integer | Number of open issues. |
+| `description_html` | string | Description of the project in HTML format. |
+| `updated_at` | datetime | Timestamp when the project was last updated. |
+| `ci_default_git_depth` | integer | Default Git depth for CI/CD pipelines. Only visible if you have administrator access or the Owner role for the project. |
+| `ci_forward_deployment_enabled` | boolean | Whether forward deployment is enabled. Only visible if you have administrator access or the Owner role for the project. |
+| `ci_job_token_scope_enabled` | boolean | Indicates if CI/CD job token scope is enabled. Only visible if you have administrator access or the Owner role for the project. |
+| `ci_separated_caches` | boolean | Whether CI/CD caches are separated by branch. Only visible if you have administrator access or the Owner role for the project. |
+| `ci_allow_fork_pipelines_to_run_in_parent_project` | boolean | Whether fork pipelines can run in the parent project. Only visible if you have administrator access or the Owner role for the project. |
+| `build_git_strategy` | string | Git strategy used for CI/CD builds (fetch or clone). Only visible if you have administrator access or the Owner role for the project. |
+| `keep_latest_artifact` | boolean | Indicates if the latest artifact is kept when a new one is created. Only visible if you have administrator access or the Owner role for the project. |
+| `restrict_user_defined_variables` | boolean | Whether user-defined variables are restricted. Only visible if you have administrator access or the Owner role for the project. |
+| `runners_token` | string | Token for registering runners with the project. Only visible if you have administrator access or the Owner role for the project. |
+| `runner_token_expiration_interval` | integer | Expiration interval in seconds for runner tokens. Only visible if you have administrator access or the Owner role for the project. |
+| `group_runners_enabled` | boolean | Whether group runners are enabled for the project. Only visible if you have administrator access or the Owner role for the project. |
+| `auto_cancel_pending_pipelines` | string | Setting for automatically canceling pending pipelines. Only visible if you have administrator access or the Owner role for the project. |
+| `build_timeout` | integer | Timeout in seconds for CI/CD jobs. Only visible if you have administrator access or the Owner role for the project. |
+| `auto_devops_enabled` | boolean | Whether Auto DevOps is enabled for the project. Only visible if you have administrator access or the Owner role for the project. |
+| `auto_devops_deploy_strategy` | string | Deployment strategy for Auto DevOps. Only visible if you have administrator access or the Owner role for the project. |
+| `ci_config_path` | string | Path to the CI/CD configuration file. |
+| `public_jobs` | boolean | Whether job logs are publicly accessible. |
+| `shared_with_groups` | array of objects | List of groups the project is shared with. |
+| `only_allow_merge_if_pipeline_succeeds` | boolean | Whether merges are allowed only if the pipeline succeeds. |
+| `allow_merge_on_skipped_pipeline` | boolean | Whether merges are allowed when the pipeline is skipped. |
+| `request_access_enabled` | boolean | Whether users can request access to the project. |
+| `only_allow_merge_if_all_discussions_are_resolved` | boolean | Whether merges are allowed only if all discussions are resolved. |
+| `remove_source_branch_after_merge` | boolean | Whether the source branch is automatically removed after merge. |
+| `printing_merge_request_link_enabled` | boolean | Indicates if merge request links are printed after pushing. |
+| `merge_method` | string | Merge method used for the project. Possible values: `merge`, `rebase_merge`, or `ff`. |
+| `merge_request_title_regex` | string | Regex pattern for validating merge request titles. |
+| `merge_request_title_regex_description` | string | Description of the merge request title regex validation. |
+| `squash_option` | string | Squash option for merge requests. |
+| `enforce_auth_checks_on_uploads` | boolean | Whether authentication checks are enforced on uploads. |
+| `suggestion_commit_message` | string | Custom commit message for suggestions. |
+| `merge_commit_template` | string | Template for merge commit messages. |
+| `mr_default_title_template` | string | Template for merge request titles. |
+| `squash_commit_template` | string | Template for squash commit messages. |
+| `issue_branch_template` | string | Template for branch names created from issues. |
+| `warn_about_potentially_unwanted_characters` | boolean | Whether to warn about potentially unwanted characters. |
+| `autoclose_referenced_issues` | boolean | Whether referenced issues are automatically closed. |
+| `max_artifacts_size` | integer | Maximum size in MB for CI/CD artifacts. |
+| `approvals_before_merge` | integer | Deprecated. Use merge request approvals API instead. Number of approvals required before merge. |
+| `mirror` | boolean | Whether the project is a mirror. |
+| `external_authorization_classification_label` | string | External authorization classification label. |
+| `requirements_enabled` | boolean | Indicates if requirements management is enabled. |
+| `requirements_access_level` | string | Access level for the requirements feature. |
+| `security_and_compliance_enabled` | boolean | Indicates if security and compliance features are enabled. |
+| `compliance_frameworks` | array of strings | Compliance frameworks applied to the project. |
+| `issues_template` | string | Default description for issues. Description is parsed with GitLab Flavored Markdown. Premium and Ultimate only. |
+| `merge_requests_template` | string | Template for merge request descriptions. Premium and Ultimate only. |
+| `merge_pipelines_enabled` | boolean | Indicates if merge pipelines are enabled. |
+| `merge_trains_enabled` | boolean | Indicates if merge trains are enabled. |
+| `merge_trains_skip_train_allowed` | boolean | Indicates if skipping the merge train is allowed. |
+| `max_pipelines_per_merge_train` | integer | Maximum number of parallel pipelines per merge train. |
+| `only_allow_merge_if_all_status_checks_passed` | boolean | Whether merges are allowed only if all status checks have passed. Ultimate only. |
+| `allow_pipeline_trigger_approve_deployment` | boolean | Whether pipeline triggers can approve deployments. |
+| `prevent_merge_without_jira_issue` | boolean | Indicates if merges require an associated Jira issue. |
+| `duo_remote_flows_enabled` | boolean | Indicates if GitLab Duo remote flows are enabled. |
+| `duo_foundational_flows_enabled` | boolean | Indicates if GitLab Duo foundational flows are enabled. |
+| `duo_sast_fp_detection_enabled` | boolean | Indicates if GitLab Duo SAST false positive detection is enabled. |
+| `duo_sast_vr_workflow_enabled` | boolean | Indicates if GitLab Duo SAST vulnerability resolution workflow is enabled. |
+| `spp_repository_pipeline_access` | boolean | Repository pipeline access for security policies. Only visible if the security orchestration policies feature is available. |
+| `permissions` | object | User permissions for the project. |
+| `permissions.project_access` | object | Project access permissions for the user. |
+| `permissions.group_access` | object | Group access permissions for the user. |
+<!-- markdownlint-disable-next-line MD055 MD056 -->
+{.condensed}
 
 Example request:
 
@@ -1492,6 +1682,7 @@ Example response:
     "enforce_auth_checks_on_uploads": true,
     "suggestion_commit_message": null,
     "merge_commit_template": null,
+    "mr_default_title_template": null,
     "squash_commit_template": null,
     "secret_push_protection_enabled": false,
     "issue_branch_template": "gitlab/%{id}-%{title}",
@@ -1617,6 +1808,7 @@ Example response:
     "enforce_auth_checks_on_uploads": true,
     "suggestion_commit_message": null,
     "merge_commit_template": null,
+    "mr_default_title_template": null,
     "squash_commit_template": null,
     "secret_push_protection_enabled": false,
     "issue_branch_template": "gitlab/%{id}-%{title}",
@@ -1647,37 +1839,13 @@ Example response:
 ]
 ```
 
-### Search for projects by name
-
-Search for projects by name that are accessible to the authenticated user. If this endpoint is accessed without
-authentication, it lists projects that are publicly accessible.
-
-```plaintext
-GET /projects
-```
-
-Example attributes:
-
-| Attribute  | Type   | Required | Description |
-|:-----------|:-------|:---------|:------------|
-| `search`   | string | Yes      | A string contained in the project name. |
-| `order_by` | string | No       | Return requests ordered by `id`, `name`, `created_at`, `star_count`, or `last_activity_at` fields. |
-| `sort`     | string | No       | Return requests sorted in `asc` or `desc` order. |
-
-Example request:
-
-```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" \
-  --url "https://gitlab.example.com/api/v4/projects?search=test"
-```
-
 ## List attributes
 
 List attributes of a project.
 
-### List users
+### List all members of a project
 
-Get the users list of a project.
+Lists all members with access to a specified project.
 
 ```plaintext
 GET /projects/:id/users
@@ -1688,8 +1856,27 @@ Supported attributes:
 | Attribute    | Type              | Required | Description |
 |:-------------|:------------------|:---------|:------------|
 | `id`         | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
-| `search`     | string            | No       | Search for specific users. |
-| `skip_users` | integer array     | No       | Filter out users with the specified IDs. |
+| `search`     | string            | No       | Search for a specific member by their `username` or `name`. |
+| `skip_users` | integer array     | No       | Filter out members with the specified IDs. |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
+following response attributes:
+
+| Attribute | Type | Description |
+|:----------|:-----|:------------|
+| `id` | integer | ID of the user. |
+| `username` | string | Username of the user. |
+| `name` | string | Full name of the user. |
+| `state` | string | State of the user account. Possible values: `active` or `blocked`. |
+| `avatar_url` | string | URL of the user's avatar image. |
+| `web_url` | string | URL to access the user's profile in a browser. |
+
+Example request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.com/api/v4/projects/<project_id>/users" \
+```
 
 Example response:
 
@@ -1714,9 +1901,9 @@ Example response:
 ]
 ```
 
-### List groups
+### List all ancestor groups
 
-Get a list of ancestor groups for this project.
+Lists all ancestor groups for a specified project.
 
 ```plaintext
 GET /projects/:id/groups
@@ -1727,11 +1914,30 @@ Supported attributes:
 | Attribute                 | Type              | Required | Description |
 |:--------------------------|:------------------|:---------|:------------|
 | `id`                      | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
-| `search`                  | string            | No       | Search for specific groups. |
-| `shared_min_access_level` | integer           | No       | Limit to shared groups with at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
-| `shared_visible_only`     | boolean           | No       | Limit to shared groups user has access to. |
+| `search`                  | string            | No       | Search for specific groups by group ID. |
+| `shared_min_access_level` | integer           | No       | Limit to shared groups with at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `shared_visible_only`     | boolean           | No       | If `true`, returns only shared groups the authenticated user can access. |
 | `skip_groups`             | array of integers | No       | Skip the group IDs passed. |
 | `with_shared`             | boolean           | No       | Include projects shared with this group. Default is `false`. |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
+following response attributes:
+
+| Attribute | Type | Description |
+|:----------|:-----|:------------|
+| `id` | integer | ID of the group. |
+| `name` | string | Name of the group. |
+| `avatar_url` | string | URL of the group's avatar image. |
+| `web_url` | string | URL to access the group in a browser. |
+| `full_name` | string | Full name of the group. |
+| `full_path` | string | Full path of the group. |
+
+Example request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/groups"
+```
 
 Example response:
 
@@ -1756,9 +1962,9 @@ Example response:
 ]
 ```
 
-### List shareable groups
+### List all groups available to invite to a project
 
-Get a list of groups that can be shared with a project
+Lists all groups that can be invited to a project.
 
 ```plaintext
 GET /projects/:id/share_locations
@@ -1769,7 +1975,26 @@ Supported attributes:
 | Attribute | Type              | Required | Description |
 |:----------|:------------------|:---------|:------------|
 | `id`      | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
-| `search`  | string            | No       | Search for specific groups. |
+| `search`  | string            | No       | Search for specific groups by group ID. |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
+following response attributes:
+
+| Attribute | Type | Description |
+|:----------|:-----|:------------|
+| `id` | integer | ID of the group. |
+| `web_url` | string | URL to access the group in a browser. |
+| `name` | string | Name of the group. |
+| `avatar_url` | string | URL of the group's avatar image. |
+| `full_name` | string | Full name of the group. |
+| `full_path` | string | Full path of the group. |
+
+Example request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/share_locations"
+```
 
 Example response:
 
@@ -1794,15 +2019,20 @@ Example response:
 ]
 ```
 
-### List a project's invited groups
+### List all invited groups in a project
 
-Get a list of invited groups in a project. When accessed without authentication, only public invited groups are returned.
+Lists all invited groups in a project. When accessed without authentication, returns only public invited groups.
 This endpoint is rate-limited to 60 requests per minute per:
 
-- User for authenticated users.
-- IP address for unauthenticated users.
+- User for authenticated users
+- IP address for unauthenticated users
 
-By default, this request returns 20 results at a time because the API results [are paginated](rest/_index.md#pagination).
+This endpoint supports pagination:
+
+- Use offset-based pagination to access up to 50,000 projects.
+- Use keyset-based pagination to list more than 50,000 projects.
+
+For more information, see [Pagination](rest/_index.md#pagination).
 
 ```plaintext
 GET /projects/:id/invited_groups
@@ -1812,11 +2042,30 @@ Supported attributes:
 
 | Attribute                | Type             | Required | Description |
 |:-------------------------|:-----------------|:---------|:------------|
-| `id`                     | integer or string   | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
-| `search`                 | string           | no       | Return the list of authorized groups matching the search criteria |
-| `min_access_level`       | integer          | no       | Limit to groups where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
-| `relation`               | array of strings | no       | Filter the groups by relation (direct or inherited) |
-| `with_custom_attributes` | boolean          | no       | Include [custom attributes](custom_attributes.md) in response (administrators only) |
+| `id`                     | integer or string   | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group. |
+| `search`                 | string           | no       | Return the list of authorized groups matching the search criteria. |
+| `min_access_level`       | integer          | no       | Limit to groups where the current user has at least the specified access level. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `relation`               | array of strings | no       | Filter the groups by relation. Possible values: `direct` or `inherited`. |
+| `with_custom_attributes` | boolean          | no       | If `true`, returns [custom attributes](custom_attributes.md) in response. Requires administrator access. |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and the
+following response attributes:
+
+| Attribute | Type | Description |
+|:----------|:-----|:------------|
+| `id` | integer | ID of the group. |
+| `web_url` | string | URL to access the group in a browser. |
+| `name` | string | Name of the group. |
+| `avatar_url` | string | URL of the group's avatar image. |
+| `full_name` | string | Full name of the group. |
+| `full_path` | string | Full path of the group. |
+
+Example request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --url "https://gitlab.example.com/api/v4/projects/<project_id>/invited_groups"
+```
 
 Example response:
 
@@ -1833,9 +2082,9 @@ Example response:
 ]
 ```
 
-### List programming languages used
+### Retrieve programming language usage information
 
-Get the list and usage percentage of programming languages used in a project.
+Retrieves information about all programming languages used in a specified project.
 
 ```plaintext
 GET /projects/:id/languages
@@ -1846,6 +2095,9 @@ Supported attributes:
 | Attribute | Type              | Required | Description |
 |:----------|:------------------|:---------|:------------|
 | `id`      | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
+
+If successful, returns [`200 OK`](rest/troubleshooting.md#status-codes) and
+a list of programming languages and usage percentages.
 
 Example request:
 
@@ -1880,7 +2132,7 @@ Manage a project, including creation, deletion, and archival.
 
 {{< /history >}}
 
-Creates a new project owned by the authenticated user.
+Creates a project owned by the authenticated user.
 
 If your HTTP repository isn't publicly accessible, add authentication information to the URL
 `https://username:password@gitlab.company.com/group/project.git`, where `password` is a public access key with the `api`
@@ -1925,6 +2177,7 @@ Supported general project attributes:
 | `merge_requests_enabled`                           | boolean | No                             | _(Deprecated)_ Enable merge requests for this project. Use `merge_requests_access_level` instead. |
 | `merge_trains_enabled`                             | boolean | No                             | Enable or disable merge trains. |
 | `merge_trains_skip_train_allowed`                  | boolean | No                             | Allows merge train merge requests to be merged without waiting for pipelines to finish. |
+| `max_pipelines_per_merge_train`                    | integer | No                             | Maximum number of parallel pipelines per merge train. |
 | `mirror_trigger_builds`                            | boolean | No                             | Pull mirroring triggers builds. Premium and Ultimate only. |
 | `mirror`                                           | boolean | No                             | Enables pull mirroring in a project. Premium and Ultimate only. |
 | `namespace_id`                                     | integer | No                             | Namespace for the new project. Specify a group ID or subgroup ID. If not provided, defaults to the current user's personal namespace. |
@@ -1975,10 +2228,12 @@ see [Project feature visibility level](#project-feature-visibility-level).
 - `model_registry_access_level` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/412734) in GitLab 16.7.
 - `packages_enabled` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/454759) in GitLab 17.10.
 - `package_registry_access_level` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/454759) in GitLab 18.5.
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
 
 {{< /history >}}
 
-Create a project for a user.
+Creates a project for a user.
 
 Prerequisites:
 
@@ -2026,6 +2281,7 @@ Supported general project attributes:
 | `merge_commit_template`                            | string  | No       | [Template](../user/project/merge_requests/commit_templates.md) used to create merge commit message in merge requests. |
 | `merge_method`                                     | string  | No       | Set the project's [merge method](../user/project/merge_requests/methods/_index.md). Can be `merge` (merge commit), `rebase_merge` (merge commit with semi-linear history), or `ff` (fast-forward merge). |
 | `merge_requests_enabled`                           | boolean | No       | _(Deprecated)_ Enable merge requests for this project. Use `merge_requests_access_level` instead. |
+| `mr_default_title_template`                        | string  | No       | [Template](../user/project/merge_requests/title_templates.md) used to set default merge request title. |
 | `mirror_trigger_builds`                            | boolean | No       | Pull mirroring triggers builds. Premium and Ultimate only. |
 | `mirror`                                           | boolean | No       | Enables pull mirroring in a project. Premium and Ultimate only. |
 | `namespace_id`                                     | integer | No       | Namespace for the new project (defaults to the current user's namespace). |
@@ -2060,7 +2316,7 @@ Supported general project attributes:
 To set the visibility level of individual project features,
 see [Project feature visibility level](#project-feature-visibility-level).
 
-### Edit a project
+### Update a project
 
 {{< history >}}
 
@@ -2068,10 +2324,13 @@ see [Project feature visibility level](#project-feature-visibility-level).
 - `model_registry_access_level` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/412734) in GitLab 16.7.
 - `packages_enabled` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/454759) in GitLab 17.10.
 - `package_registry_access_level` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/454759) in GitLab 18.5.
+- `protect_merge_request_pipelines` and `ci_display_pipeline_variables` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/584488) in GitLab 18.10.
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
 
 {{< /history >}}
 
-Update an existing project.
+Updates an existing project.
 
 If your HTTP repository isn't publicly accessible, add authentication information
 to the URL `https://username:password@gitlab.company.com/group/project.git`,
@@ -2101,10 +2360,11 @@ Supported general project attributes:
 | `ci_config_path`                                   | string            | No       | The path to CI configuration file. |
 | `ci_default_git_depth`                             | integer           | No       | Default number of revisions for [shallow cloning](../ci/pipelines/settings.md#limit-the-number-of-changes-fetched-during-clone). |
 | `ci_delete_pipelines_in_seconds`                   | integer           | No       | Pipelines older than the configured time are deleted. |
+| `ci_display_pipeline_variables`                    | boolean           | No       | Display all manually-defined variables in the pipeline details page after running a pipeline manually. |
 | `ci_forward_deployment_enabled`                    | boolean           | No       | Enable or disable [prevent outdated deployment jobs](../ci/pipelines/settings.md#prevent-outdated-deployment-jobs). |
 | `ci_forward_deployment_rollback_allowed`           | boolean           | No       | Enable or disable [allow job retries for rollback deployments](../ci/pipelines/settings.md#prevent-outdated-deployment-jobs). |
 | `ci_allow_fork_pipelines_to_run_in_parent_project` | boolean           | No       | Enable or disable [running pipelines in the parent project for merge requests from forks](../ci/pipelines/merge_request_pipelines.md#run-pipelines-in-the-parent-project). _([Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/325189) in GitLab 15.3.)_ |
-| `ci_id_token_sub_claim_components`                 | array             | No       | Fields included in the `sub` claim of the [ID Token](../ci/secrets/id_token_authentication.md). Accepts an array starting with `project_path`. The array might also include `ref_type`, `ref`, `environment_protected`, and `deployment_tier`. Defaults to `["project_path", "ref_type", "ref"]`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/477260) in GitLab 17.10. Support for `environment_protected` and `deployment_tier` introduced in GitLab 18.7. |
+| `ci_id_token_sub_claim_components`                 | array             | No       | Fields included in the `sub` claim of the [ID Token](../ci/secrets/id_token_authentication.md). Accepts an array starting with `project_path`. The array might also include `ref_type`, `ref`, `ref_protected`, `environment_protected`, and `deployment_tier`. Defaults to `["project_path", "ref_type", "ref"]`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/477260) in GitLab 17.10. Support for `environment_protected` and `deployment_tier` introduced in GitLab 18.7. |
 | `ci_separated_caches`                              | boolean           | No       | Set whether or not caches should be [separated](../ci/caching/_index.md#cache-key-names) by branch protection status. |
 | `ci_restrict_pipeline_cancellation_role`           | string            | No       | Set the [role required to cancel a pipeline or job](../ci/pipelines/settings.md#restrict-roles-that-can-cancel-pipelines-or-jobs). One of `developer`, `maintainer`, or `no_one`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/429921) in GitLab 16.8. Premium and Ultimate only. |
 | `ci_pipeline_variables_minimum_override_role`      | string            | No       | You can specify which role can override variables. One of `owner`, `maintainer`, `developer` or `no_one_allowed`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/440338) in GitLab 17.1. In GitLab 17.1 to 17.7, `restrict_user_defined_variables` must be enabled. |
@@ -2114,6 +2374,8 @@ Supported general project attributes:
 | `default_branch`                                   | string            | No       | The [default branch](../user/project/repository/branches/default.md) name. |
 | `description`                                      | string            | No       | Short project description. |
 | `duo_remote_flows_enabled`                         | boolean           | No       | Determine whether or not [flows](../user/duo_agent_platform/flows/_index.md) can run in your project. |
+| `duo_sast_fp_detection_enabled` | boolean | No | Enable or disable SAST false positive detection. See [turn on SAST false positive detection](../user/application_security/vulnerabilities/false_positive_detection.md#turn-on-for-a-project). |
+| `duo_sast_vr_workflow_enabled` | boolean | No | Enable or disable SAST vulnerability resolution workflow. See [turn on SAST vulnerability resolution workflow](../user/application_security/vulnerabilities/agentic_vulnerability_resolution.md#turn-on-for-a-project). |
 | `emails_disabled`                                  | boolean           | No       | _(Deprecated)_ Disable email notifications. Use `emails_enabled` instead |
 | `emails_enabled`                                   | boolean           | No       | Enable email notifications. |
 | `enforce_auth_checks_on_uploads`                   | boolean           | No       | Enforce [auth checks](../security/user_file_uploads.md#enable-authorization-checks-for-all-media-files) on uploads. |
@@ -2131,8 +2393,10 @@ Supported general project attributes:
 | `merge_method`                                     | string            | No       | Set the project's [merge method](../user/project/merge_requests/methods/_index.md). Can be `merge` (merge commit), `rebase_merge` (merge commit with semi-linear history), or `ff` (fast-forward merge). |
 | `merge_pipelines_enabled`                          | boolean           | No       | Enable or disable merged results pipelines. |
 | `merge_requests_enabled`                           | boolean           | No       | _(Deprecated)_ Enable merge requests for this project. Use `merge_requests_access_level` instead. |
+| `mr_default_title_template`                        | string            | No       | [Template](../user/project/merge_requests/title_templates.md) used to set default merge request title. |
 | `merge_trains_enabled`                             | boolean           | No       | Enable or disable merge trains. |
 | `merge_trains_skip_train_allowed`                  | boolean           | No       | Allows merge train merge requests to be merged without waiting for pipelines to finish. |
+| `max_pipelines_per_merge_train`                    | integer           | No       | Maximum number of parallel pipelines per merge train. |
 | `mirror_overwrites_diverged_branches`              | boolean           | No       | Pull mirror overwrites diverged branches. Premium and Ultimate only. |
 | `mirror_trigger_builds`                            | boolean           | No       | Pull mirroring triggers builds. Premium and Ultimate only. |
 | `mirror_user_id`                                   | integer           | No       | User responsible for all the activity surrounding a pull mirror event. _(administrators only)_ Premium and Ultimate only. |
@@ -2147,6 +2411,7 @@ Supported general project attributes:
 | `path`                                             | string            | No       | Custom repository name for the project. By default generated based on name. |
 | `prevent_merge_without_jira_issue`                 | boolean           | No       | Set whether merge requests require an associated issue from Jira. Ultimate only. |
 | `printing_merge_request_link_enabled`              | boolean           | No       | Show link to create/view merge request when pushing from the command line. |
+| `protect_merge_request_pipelines`                  | boolean           | No       | Enable or disable [control access to protected variables and runners](../ci/pipelines/merge_request_pipelines.md#control-access-to-protected-variables-and-runners). |
 | `public_builds`                                    | boolean           | No       | _(Deprecated)_ If `true`, jobs can be viewed by non-project members. Use `public_jobs` instead. |
 | `public_jobs`                                      | boolean           | No       | If `true`, jobs can be viewed by non-project members. |
 | `remove_source_branch_after_merge`                 | boolean           | No       | Enable `Delete source branch` option by default for all new merge requests. |
@@ -2168,7 +2433,7 @@ Supported general project attributes:
 | `visibility`                                       | string            | No       | See [project visibility level](#project-visibility-level). |
 | `warn_about_potentially_unwanted_characters`       | boolean           | No       | Enable warnings about usage of potentially unwanted characters in this project. |
 | `wiki_enabled`                                     | boolean           | No       | _(Deprecated)_ Enable wiki for this project. Use `wiki_access_level` instead. |
-| `web_based_commit_signing_enabled`                 | boolean           | No       | Enables web-based commit signing for commits created from the GitLab UI. Available only on GitLab SaaS. |
+| `web_based_commit_signing_enabled`                 | boolean           | No       | Enables web-based commit signing for commits created from the GitLab UI. Available only on GitLab.com. |
 
 For example, to toggle the setting for [instance runners on a GitLab.com project](../ci/runners/_index.md):
 
@@ -2183,7 +2448,7 @@ see [Project feature visibility level](#project-feature-visibility-level).
 
 ### Import members
 
-Import members from another project.
+Imports members from another project.
 
 If the importing member's role for the target project is:
 
@@ -2244,7 +2509,14 @@ Example responses:
 
 ### Archive a project
 
-Archive a project.
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
+Archives the specified project.
 
 Prerequisites:
 
@@ -2359,6 +2631,8 @@ Example response:
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [],
   "only_allow_merge_if_pipeline_succeeds": false,
@@ -2374,6 +2648,7 @@ Example response:
   "enforce_auth_checks_on_uploads": true,
   "suggestion_commit_message": null,
   "merge_commit_template": null,
+  "mr_default_title_template": null,
   "secret_push_protection_enabled": false,
   "container_registry_image_prefix": "registry.example.com/diaspora/diaspora-project-site",
   "_links": {
@@ -2391,7 +2666,14 @@ Example response:
 
 ### Unarchive a project
 
-Unarchive a project.
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
+Unarchives the specified project.
 
 Prerequisites:
 
@@ -2506,6 +2788,8 @@ Example response:
   "ci_restrict_pipeline_cancellation_role": "developer",
   "ci_pipeline_variables_minimum_override_role": "maintainer",
   "ci_push_repository_for_job_token_allowed": false,
+  "ci_display_pipeline_variables": false,
+  "protect_merge_request_pipelines": true,
   "public_jobs": true,
   "shared_with_groups": [],
   "only_allow_merge_if_pipeline_succeeds": false,
@@ -2521,6 +2805,7 @@ Example response:
   "enforce_auth_checks_on_uploads": true,
   "suggestion_commit_message": null,
   "merge_commit_template": null,
+  "mr_default_title_template": null,
   "container_registry_image_prefix": "registry.example.com/diaspora/diaspora-project-site",
   "secret_push_protection_enabled": false,
   "_links": {
@@ -2540,13 +2825,8 @@ Example response:
 
 {{< history >}}
 
-- Immediately deleting projects was [enabled on GitLab.com and GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/issues/396500) in GitLab 15.11.
-- [Marking project for deletion was moved](https://gitlab.com/groups/gitlab-org/-/epics/17208) from GitLab Premium to GitLab Free in 18.0.
-- Since GitLab 18.5, `permanently_remove` is [not permitted](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/205572)
-  when the permanent deletion
-  [instance setting](../administration/settings/visibility_and_access_controls.md#permanent-deletion)
-  is disabled (behind [a feature flag](../administration/feature_flags/_index.md) named `allow_immediate_namespaces_deletion`).
-  The setting is enabled by default on self-managed, but disabled on GitLab.com and Dedicated.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/389557) in GitLab 16.0. Premium and Ultimate only.
+- [Moved](https://gitlab.com/groups/gitlab-org/-/epics/17208) from GitLab Premium to GitLab Free in GitLab 18.0.
 
 {{< /history >}}
 
@@ -2564,7 +2844,7 @@ This endpoint can also immediately delete a project that was previously marked f
 
 > [!warning]
 > On GitLab.com, after a project is deleted, its data is retained for 30 days, and permanent deletion is not available.
-> If you really need to delete a project immediately on GitLab.com, you can open a [support ticket](https://about.gitlab.com/support/).
+> If you really need to delete a project immediately on GitLab.com, you can open a [support ticket](https://support.gitlab.com/).
 
 ```plaintext
 DELETE /projects/:id
@@ -2580,7 +2860,7 @@ Supported attributes:
 
 ### Restore a project marked for deletion
 
-Restore a project that is marked for deletion.
+Restores a specified project that was marked for deletion.
 
 ```plaintext
 POST /projects/:id/restore
@@ -2594,7 +2874,14 @@ Supported attributes:
 
 ### Transfer a project to a new namespace
 
-Transfer a project to a new namespace.
+{{< history >}}
+
+- `mr_default_title_template` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/228442) in GitLab 18.11 [with a feature flag](../administration/feature_flags/_index.md) named `mr_default_title_template`. Disabled by default.
+- Feature flag `mr_default_title_template` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/235642) in GitLab 19.0.
+
+{{< /history >}}
+
+Transfers a project to a new namespace.
 
 For information on prerequisites for transferring a project, see
 [Transfer a project to another namespace](../user/project/working_with_projects.md#transfer-a-project).
@@ -2723,6 +3010,7 @@ Example response:
   "squash_option": "default_on",
   "suggestion_commit_message": null,
   "merge_commit_template": null,
+  "mr_default_title_template": null,
   "auto_devops_enabled": true,
   "auto_devops_deploy_strategy": "continuous",
   "autoclose_referenced_issues": true,
@@ -2780,7 +3068,7 @@ Example response:
 
 ### Upload a project avatar
 
-Upload an avatar to the specified project.
+Uploads an avatar to the specified project.
 
 ```plaintext
 PUT /projects/:id
@@ -2835,7 +3123,7 @@ Example response:
 
 {{< /history >}}
 
-Download a project avatar. You can access this endpoint without authentication if the project is publicly accessible.
+Downloads a project avatar. You can access this endpoint without authentication if the project is publicly accessible.
 
 ```plaintext
 GET /projects/:id/avatar
@@ -2873,7 +3161,7 @@ For more information, see [Invite a group to a project](../user/project/members/
 
 ### Share a project with a group
 
-Share a project with a group.
+Shares a specified project with a group.
 
 ```plaintext
 POST /projects/:id/share
@@ -2883,14 +3171,14 @@ Supported attributes:
 
 | Attribute      | Type              | Required | Description |
 |:---------------|:------------------|:---------|:------------|
-| `group_access` | integer           | Yes      | The access level to grant to the group. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
+| `group_access` | integer           | Yes      | The access level to grant to the group. Possible values: `5` (Minimal access), `10` (Guest), `15` (Planner), `20` (Reporter), `25` (Security Manager), `30` (Developer), `40` (Maintainer), or `50` (Owner). |
 | `group_id`     | integer           | Yes      | The ID of the group to share with. |
 | `id`           | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `expires_at`   | string            | No       | Share expiration date in ISO 8601 format. For example, `2016-09-26`. |
 
 ### Delete a shared project link in a group
 
-Unshare the project from the group. Returns `204` and no content on success.
+Unshares a project from a specified group. Returns `204` and no content on success.
 
 ```plaintext
 DELETE /projects/:id/share/:group_id
@@ -2913,7 +3201,7 @@ curl --request DELETE \
 
 ## Start the housekeeping task for a project
 
-Start the [housekeeping task](../administration/housekeeping.md) for a project.
+Starts the [housekeeping task](../administration/housekeeping.md) for a project.
 
 ```plaintext
 POST /projects/:id/housekeeping
@@ -2991,7 +3279,7 @@ Example response:
 
 This endpoint may only be accessed by an administrative user.
 
-Download a snapshot of the project (or wiki, if requested) Git repository. This
+Downloads a snapshot of the project (or wiki, if requested) Git repository. This
 snapshot is always in uncompressed [tar](https://en.wikipedia.org/wiki/Tar_(computing))
 format.
 
@@ -3009,9 +3297,9 @@ Supported attributes:
 | `id`      | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `wiki`    | boolean           | No       | Whether to download the wiki, rather than project, repository. |
 
-## Get the path to repository storage
+## Retrieve the path to repository storage
 
-Get the path to repository storage for the specified project. If you're using Gitaly Cluster (Praefect), see [Praefect-generated replica paths](../administration/gitaly/praefect/_index.md#praefect-generated-replica-paths) instead.
+Retrieves the path to repository storage for the specified project. If you're using Gitaly Cluster (Praefect), see [Praefect-generated replica paths](../administration/gitaly/praefect/_index.md#praefect-generated-replica-paths) instead.
 
 Available for administrators only.
 
@@ -3051,7 +3339,7 @@ Supported attributes:
 
 {{< /history >}}
 
-If you have the Developer, Maintainer, or Owner role, the following requests could also return the `secret_push_protection_enabled` value.
+If you have the Security Manager, Developer, Maintainer, or Owner role, the following requests could also return the `secret_push_protection_enabled` value.
 Some of these requests have stricter requirements about roles. Refer to the endpoints previously mentioned for clarification.
 Use this information to determine whether secret push protection is enabled for a project.
 To modify the `secret_push_protection_enabled` value, use the [Project Security Settings API](project_security_settings.md).

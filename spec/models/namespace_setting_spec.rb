@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
   using RSpec::Parameterized::TableSyntax
 
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group, freeze: false) { create(:group) }
   let_it_be_with_reload(:subgroup) { create(:group, parent: group) }
   let(:namespace_settings) { group.namespace_settings }
 
@@ -37,8 +37,8 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
     describe '.for_namespaces' do
       let(:setting_1) { create(:namespace_settings, namespace: namespace_1) }
       let(:setting_2) { create(:namespace_settings, namespace: namespace_2) }
-      let_it_be(:namespace_1) { create(:namespace) }
-      let_it_be(:namespace_2) { create(:namespace) }
+      let_it_be(:namespace_1, freeze: false) { create(:namespace) }
+      let_it_be(:namespace_2, freeze: false) { create(:namespace) }
 
       it 'returns namespace setting for the given projects' do
         expect(described_class.for_namespaces(namespace_1)).to contain_exactly(setting_1)
@@ -137,10 +137,10 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
       end
 
       context 'with separate namespace hierarchies' do
-        let_it_be(:other_root) { create(:group) }
-        let_it_be(:other_child) { create(:group, parent: other_root) }
-        let_it_be(:other_root_settings) { other_root.namespace_settings }
-        let_it_be(:other_child_settings) { other_child.namespace_settings }
+        let_it_be(:other_root, freeze: false) { create(:group) }
+        let_it_be(:other_child, freeze: false) { create(:group, parent: other_root) }
+        let_it_be(:other_root_settings, freeze: false) { other_root.namespace_settings }
+        let_it_be(:other_child_settings, freeze: false) { other_child.namespace_settings }
 
         before do
           root_settings.update!(archived: true)
@@ -157,6 +157,20 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
           expect(results[other_root.id].archived).to be false
           expect(results[other_child.id].archived).to be false
         end
+      end
+    end
+
+    describe '.next_namespace_ids' do
+      let_it_be(:namespace_1, freeze: false) { create(:namespace, :with_namespace_settings) }
+      let_it_be(:namespace_2, freeze: false) { create(:namespace, :with_namespace_settings) }
+      let_it_be(:namespace_3, freeze: false) { create(:namespace, :with_namespace_settings) }
+
+      let(:namespace_ids) { [namespace_1.id, namespace_2.id, namespace_3.id].sort }
+
+      it 'returns namespace ids after the cursor up to the limit in ascending order' do
+        cursor = namespace_ids.first
+
+        expect(described_class.next_namespace_ids(cursor: cursor, limit: 2)).to eq(namespace_ids.drop(1).first(2))
       end
     end
   end
@@ -240,6 +254,60 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
       it { is_expected.to allow_value('').for(:enterprise_bypass_expires_at) }
       it { is_expected.to allow_value(1.day.ago).for(:enterprise_bypass_expires_at) }
       it { is_expected.to allow_value(Time.current).for(:enterprise_bypass_expires_at) }
+    end
+
+    describe 'for personal_access_token_settings' do
+      subject(:namespace_settings) { build(:namespace_settings) }
+
+      it 'allows enforce_granular_tokens with true' do
+        is_expected.to allow_value({ enforce_granular_tokens: true })
+          .for(:personal_access_token_settings)
+      end
+
+      it 'allows enforce_granular_tokens with false' do
+        is_expected.to allow_value({ enforce_granular_tokens: false })
+          .for(:personal_access_token_settings)
+      end
+
+      it 'allows granular_tokens_enforced_after with nil when enforce_granular_tokens is false' do
+        is_expected.to allow_value({ granular_tokens_enforced_after: nil })
+          .for(:personal_access_token_settings)
+      end
+
+      context 'when enforce_granular_tokens is true' do
+        before do
+          namespace_settings.enforce_granular_tokens = true
+        end
+
+        it 'requires granular_tokens_enforced_after' do
+          is_expected.not_to allow_value(nil)
+            .for(:granular_tokens_enforced_after)
+            .with_message("can't be blank")
+        end
+
+        it 'allows granular_tokens_enforced_after with a future date' do
+          is_expected.to allow_value(1.day.from_now.to_date)
+            .for(:granular_tokens_enforced_after)
+        end
+
+        it 'allows granular_tokens_enforced_after with the current date' do
+          is_expected.to allow_value(Date.current)
+            .for(:granular_tokens_enforced_after)
+        end
+
+        it 'does not allow granular_tokens_enforced_after with a past date' do
+          is_expected.not_to allow_value(1.day.ago.to_date)
+            .for(:granular_tokens_enforced_after)
+            .with_message('cannot be a date in the past')
+        end
+
+        it 'allows granular_tokens_enforced_after with a past date when unchanged' do
+          allow(namespace_settings).to receive(:granular_tokens_enforced_after_changed?).and_return(false)
+
+          is_expected.to allow_value(1.day.ago.to_date)
+            .for(:granular_tokens_enforced_after)
+        end
+      end
     end
   end
 
@@ -372,8 +440,8 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
     end
 
     context 'when a group has parent groups' do
-      let_it_be(:grandparent) { create(:group) }
-      let_it_be(:parent) { create(:group, parent: grandparent) }
+      let_it_be(:grandparent, freeze: false) { create(:group) }
+      let_it_be(:parent, freeze: false) { create(:group, parent: grandparent) }
       let_it_be_with_refind(:group) { create(:group, parent: parent) }
 
       it 'returns true when no parent has disabled emails' do
@@ -413,9 +481,9 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
       end
 
       context 'when there are parents' do
-        let_it_be(:grandparent) { create(:group) }
-        let_it_be(:parent)      { create(:group, parent: grandparent) }
-        let_it_be(:group)       { create(:group, parent: parent) }
+        let_it_be(:grandparent, freeze: false) { create(:group) }
+        let_it_be(:parent, freeze: false)      { create(:group, parent: grandparent) }
+        let_it_be(:group, freeze: false)       { create(:group, parent: parent) }
 
         before do
           grandparent.update!(runner_registration_enabled: grandparent_runner_registration_enabled)
@@ -438,8 +506,8 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
     describe '#runner_registration_enabled?' do
       subject(:group_setting) { group.runner_registration_enabled? }
 
-      let_it_be(:settings) { create(:namespace_settings) }
-      let_it_be(:group) { create(:group, namespace_settings: settings) }
+      let_it_be(:settings, freeze: false) { create(:namespace_settings) }
+      let_it_be(:group, freeze: false) { create(:group, namespace_settings: settings) }
 
       before do
         group.update!(runner_registration_enabled: group_runner_registration_enabled)
@@ -483,8 +551,8 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
     subject(:group_setting) { group.allow_runner_registration_token? }
 
     context 'when a top-level group' do
-      let_it_be(:settings) { create(:namespace_settings) }
-      let_it_be(:group) { create(:group, namespace_settings: settings) }
+      let_it_be(:settings, freeze: false) { create(:namespace_settings) }
+      let_it_be(:group, freeze: false) { create(:group, namespace_settings: settings) }
 
       before do
         group.update!(allow_runner_registration_token: allow_runner_registration_token)
@@ -672,48 +740,6 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
     end
   end
 
-  describe 'descendants cache invalidation' do
-    context 'when cached record is present' do
-      let_it_be_with_reload(:cache) { create(:namespace_descendants, namespace: group) }
-
-      it 'invalidates the cache when archived changes to true' do
-        expect { namespace_settings.update!(archived: true) }.to change { cache.reload.outdated_at }.from(nil)
-      end
-
-      it 'invalidates the cache when archived changes to false' do
-        namespace_settings.update!(archived: true)
-        cache.update!(outdated_at: nil) # reset cache to be valid again
-
-        expect { namespace_settings.update!(archived: false) }.to change { cache.reload.outdated_at }.from(nil)
-      end
-
-      it 'does not invalidate cache when other attributes change' do
-        expect { namespace_settings.update!(emails_enabled: true) }.not_to change { cache.reload.outdated_at }
-      end
-    end
-
-    context 'when namespace is UserNamespace' do
-      let(:user_namespace) { create(:user_namespace) }
-      let!(:namespace_settings) { create(:namespace_settings, namespace: user_namespace) }
-      let!(:cache) { create(:namespace_descendants, namespace: user_namespace) }
-
-      it 'does not invalidate cache' do
-        expect { user_namespace.namespace_settings.update!(archived: true) }.not_to change { cache.reload.outdated_at }
-      end
-    end
-
-    context 'when parent group has cached record' do
-      let(:parent_group) { create(:group) }
-      let(:child_group) { create(:group, parent: parent_group) }
-      let!(:parent_cache) { create(:namespace_descendants, namespace: parent_group) }
-
-      it 'invalidates the parent cache when child is archived' do
-        expect { child_group.namespace_settings.update!(archived: true) }
-          .to change { parent_cache.reload.outdated_at }.from(nil)
-      end
-    end
-  end
-
   describe '#step_up_auth_required_oauth_provider' do
     subject { namespace_settings }
 
@@ -896,6 +922,86 @@ RSpec.describe NamespaceSetting, feature_category: :groups_and_projects do
         subject { test_group.namespace_settings&.step_up_auth_required_oauth_provider_from_self_or_inherited }
 
         it { is_expected.to eq expected_provider_from_self_or_inherited }
+      end
+    end
+  end
+
+  describe '#granular_tokens_enforced?' do
+    let_it_be(:namespace_settings, freeze: false) { build(:namespace_settings) }
+    let(:enforced_after) { Date.current }
+
+    subject(:granular_tokens_enforced?) { namespace_settings.granular_tokens_enforced? }
+
+    before do
+      namespace_settings.assign_attributes(
+        enforce_granular_tokens: true,
+        granular_tokens_enforced_after: enforced_after
+      )
+    end
+
+    context 'when `granular_personal_access_tokens_enforcement_saas` feature flag is disabled' do
+      before do
+        stub_feature_flags(granular_personal_access_tokens_enforcement_saas: false)
+      end
+
+      it { is_expected.to be false }
+    end
+
+    context 'when `granular_personal_access_tokens_enforcement_saas` is enabled for a different namespace' do
+      before do
+        stub_feature_flags(granular_personal_access_tokens_enforcement_saas: create(:namespace))
+      end
+
+      it { is_expected.to be false }
+    end
+
+    context 'when `granular_personal_access_tokens_enforcement_saas` feature flag is enabled' do
+      before do
+        stub_feature_flags(granular_personal_access_tokens_enforcement_saas: namespace_settings.namespace.root_ancestor)
+      end
+
+      context 'when enforce_granular_tokens is false' do
+        before do
+          namespace_settings.enforce_granular_tokens = false
+        end
+
+        it { is_expected.to be false }
+      end
+
+      context 'when granular_tokens_enforced_after is in the future' do
+        let(:enforced_after) { 1.day.from_now.to_date }
+
+        it { is_expected.to be false }
+      end
+
+      context 'when granular_tokens_enforced_after is today' do
+        it { is_expected.to be true }
+      end
+
+      context 'when granular_tokens_enforced_after is in the past' do
+        let(:enforced_after) { 1.day.ago.to_date }
+
+        it { is_expected.to be true }
+      end
+    end
+  end
+
+  describe '#clear_granular_tokens_enforced_after' do
+    before do
+      namespace_settings.update!(
+        enforce_granular_tokens: true,
+        granular_tokens_enforced_after: Date.current
+      )
+    end
+
+    context 'when enforce_granular_tokens is set to `false`' do
+      before do
+        namespace_settings.enforce_granular_tokens = false
+      end
+
+      it 'clears the `granular_tokens_enforced_after` date' do
+        expect { namespace_settings.save! }
+          .to change { namespace_settings.granular_tokens_enforced_after }.to(nil)
       end
     end
   end

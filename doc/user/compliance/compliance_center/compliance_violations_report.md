@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Compliance
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Compliance violations report
 ---
 
@@ -53,12 +53,12 @@ For more information about compliance controls, see [Compliance frameworks](../c
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the project or group.
+- You must be an administrator or have the Security Manager or Owner role for the project or group.
 
 To view the compliance violations report:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 
 The compliance violations report displays:
 
@@ -82,6 +82,7 @@ In the report, you can:
 {{< history >}}
 
 - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/555541) in GitLab 18.7.
+- **Detected before** and **Detected after** filters [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/582497) in GitLab 19.1.
 
 {{< /history >}}
 
@@ -92,6 +93,10 @@ You can filter the compliance violations report to focus on specific violations:
    - **Status**: Filter by violation status (Detected, Dismissed, In Review, or Resolved).
    - **Project**: Filter by specific projects in your group.
    - **Control**: Filter by compliance control.
+   - **Detected before**: Show violations detected before a specific date.
+   - **Detected after**: Show violations detected on or after a specific date.
+
+Combine **Detected before** and **Detected after** to limit the report to a date range.
 
 The report updates automatically to show only violations matching your selected filters.
 
@@ -178,12 +183,12 @@ Reports:
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To export a compliance violations report:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. In the upper-right corner, select **Export**.
 1. Select **Export violations report**.
 
@@ -218,12 +223,12 @@ When you select a row in the static compliance violations report, a drawer appea
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the project or group.
+- You must be an administrator or have the Security Manager or Owner role for the project or group.
 
 To view the static compliance violations report:
 
-1. On the top bar, select **Search or go to** and find your project or group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 
 You can sort the compliance report on:
 
@@ -289,12 +294,12 @@ Export a report of merge request compliance violations on merge requests belongi
 
 Prerequisites:
 
-- You must be an administrator or have the Owner role for the group.
+- You must be an administrator or have the Security Manager or Owner role for the group.
 
 To export a report of merge request compliance violations for projects in a group:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Secure** > **Compliance center**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Compliance center**.
 1. In the upper-right corner, select **Export**.
 1. Select **Export violations report**.
 

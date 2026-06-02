@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: Pipeline editor
 ---
 
@@ -49,7 +49,7 @@ due to a Git push event, and can help troubleshoot logic issues, including incor
 `rules` and `needs` job dependencies:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Pipeline editor**.
+1. In the left sidebar, select **Build** > **Pipeline editor**.
 1. Select the **Validate** tab.
 1. Optional. Select a different branch to use for the simulated push event by using
    the **Pipeline run source** dropdown list.
@@ -187,7 +187,7 @@ a branch. The branch field defaults to your project's default branch.
 If you enter a new branch name, the **Start a new merge request with these changes**
 checkbox appears. Select it to start a new merge request after you commit the changes.
 
-![The commit form, showing a commit message, branch, and merge request checkmark.](img/pipeline_editor_commit_v13_8.png)
+![The commit form, showing a commit message, branch, and merge request checkmark.](img/pipeline_editor_commit_v18_8.png)
 
 ## Editor accessibility options
 

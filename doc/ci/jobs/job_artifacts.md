@@ -1,7 +1,8 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+description: Create, download, browse, and manage job artifacts in GitLab CI/CD.
 title: Job artifacts
 ---
 
@@ -265,7 +266,9 @@ build_submodule:
   stage: test
   script:
     - apt update && apt install -y unzip
-    - curl --location --output artifacts.zip "https://gitlab.example.com/api/v4/projects/1/jobs/artifacts/main/download?job=test&job_token=$CI_JOB_TOKEN"
+    - |
+      curl --location --output artifacts.zip \
+        --url "https://gitlab.example.com/api/v4/projects/1/jobs/artifacts/main/download?job=test&job_token=$CI_JOB_TOKEN"
     - unzip artifacts.zip
 ```
 
@@ -320,6 +323,29 @@ https://gitlab.com/<full-project-path>/-/jobs/artifacts/main/browse?job=build
 
 Replace `<full-project-path>` with a valid project path, you can find it in the URL for your project.
 
+## Set the maximum artifacts size
+
+Set size limits for job artifacts to control storage use.
+Each artifact file in a job has a default maximum size of 100 MB.
+
+> [!note]
+> This setting applies to the size of the final archive file, not individual files in a job.
+
+You can configure artifact size limits for:
+
+- [An instance](../../administration/cicd/limits.md#maximum-artifacts-size):
+  The base setting that applies to all projects and groups.
+- A group: Overrides the instance setting for all projects in the group.
+- A project: Overrides both instance and group settings for a specific project.
+
+To change the maximum artifact size for a group or project:
+
+1. In the top bar, select **Search or go to** and find your project or group.
+1. In the left sidebar, select **Settings** > **CI/CD**.
+1. Expand **General pipelines**.
+1. Change the value of **Maximum artifacts size** (in MB).
+1. Select **Save changes**.
+
 ## Delete job log and artifacts
 
 > [!warning]
@@ -352,7 +378,7 @@ You can also delete individual artifacts from the **Artifacts** page.
 You can delete multiple artifacts at the same time:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Build** > **Artifacts**.
+1. In the left sidebar, select **Build** > **Artifacts**.
 1. Select the checkboxes next to the artifacts you want to delete. You can select up to 100 artifacts.
 1. Select **Delete selected**.
 
@@ -400,7 +426,7 @@ with a lot of jobs or large artifacts. If the latest artifacts are not needed in
 a project, you can disable this behavior to save space:
 
 1. In the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **CI/CD**.
+1. In the left sidebar, select **Settings** > **CI/CD**.
 1. Expand **Artifacts**.
 1. Clear the **Keep artifacts from most recent successful jobs** checkbox.
 
@@ -413,3 +439,7 @@ You can disable this behavior for all projects on GitLab Self-Managed with the
 
 You can disable this behavior for all projects on GitLab Self-Managed in the
 [instance's CI/CD settings](../../administration/settings/continuous_integration.md#keep-artifacts-from-latest-successful-pipelines).
+
+## Related topics
+
+- [Pass environment variables between jobs with dotenv report artifacts](../variables/dotenv_variables.md)

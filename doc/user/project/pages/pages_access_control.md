@@ -1,7 +1,7 @@
 ---
 stage: Plan
 group: Knowledge
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: GitLab Pages access control
 ---
 
@@ -29,8 +29,8 @@ on your GitLab instance. When enabled, only authenticated
 <i class="fa-youtube-play" aria-hidden="true"></i>
 For a demonstration, see [Pages access controls](https://www.youtube.com/watch?v=tSPAr5mQYc8).
 
-1. On the top bar, select **Search or go to** and find your project.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. To enable the access control, toggle **Pages**. If you don't see the toggle button,
    that means it isn't enabled. Ask your administrator to [enable it](../../../administration/pages/_index.md#access-control).
@@ -84,8 +84,8 @@ Prerequisites
 
 To do this:
 
-1. On the top bar, select **Search or go to** and find your group.
-1. Select **Settings** > **General**.
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Settings** > **General**.
 1. Expand **Permissions and group features**.
 1. Under **Pages public access**, select the **Remove public access** checkbox.
 1. Select **Save changes**.
@@ -125,6 +125,6 @@ for GitLab Pages:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. Select **Applications**.
+1. In the left sidebar, select **Access** > **Applications**.
 1. In the **Authorized applications** section, find the **GitLab Pages**
    entry, and select **Revoke**.

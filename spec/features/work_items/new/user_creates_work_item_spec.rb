@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe 'User creates work items', :js, feature_category: :team_planning do
   include WorkItemsHelpers
+  include ListboxHelpers
 
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group, :public) }
@@ -55,7 +56,7 @@ RSpec.describe 'User creates work items', :js, feature_category: :team_planning 
         first(:link, 'New item').click
       end
 
-      it_behaves_like 'creates work item with widgets from a modal', 'issue', %w[
+      it_behaves_like 'creates work item with widgets from a modal', 'Issue', %w[
         work-item-title-input
         work-item-description-wrapper
         work-item-assignees
@@ -76,7 +77,7 @@ RSpec.describe 'User creates work items', :js, feature_category: :team_planning 
 
         set_work_item_milestone(milestone.title)
 
-        create_work_item_with_type('issue')
+        create_work_item_with_type('Issue')
 
         wait_for_all_requests
 
@@ -89,23 +90,42 @@ RSpec.describe 'User creates work items', :js, feature_category: :team_planning 
     end
   end
 
-  context 'when projects with issues disabled' do
-    describe 'create issue dropdown' do
-      let_it_be(:user_in_group) { create(:group_member, :maintainer, user: create(:user), group: group).user }
-      let_it_be(:project_with_issues_disabled) { create(:project, :issues_disabled, group: group) }
+  context 'when opening modal from super sidebar' do
+    using RSpec::Parameterized::TableSyntax
 
-      before do
-        stub_feature_flags(work_item_planning_view: false)
-        [project, project_with_issues_disabled].each { |project| project.add_maintainer(user_in_group) }
-        sign_in(user_in_group)
-        visit issues_group_path(group)
-      end
+    before do
+      visit project_path(project)
+      find_by_testid('new-menu-toggle').click
+      find_by_testid('new-work-item-trigger').click
+      wait_for_all_requests
+    end
 
-      it 'shows projects only with issues feature enabled', :js do
-        click_button 'Toggle project select', match: :first
+    where(:type, :widgets) do
+      'Issue'    | %w[work-item-title-input work-item-description-wrapper work-item-assignees
+        work-item-labels work-item-milestone work-item-due-dates]
+      'Incident' | %w[work-item-title-input work-item-description-wrapper work-item-assignees
+        work-item-labels work-item-milestone]
+      'Task'     | %w[work-item-title-input work-item-description-wrapper work-item-assignees
+        work-item-labels work-item-milestone work-item-due-dates work-item-parent]
+    end
 
-        expect(page).to have_button project.full_name
-        expect(page).not_to have_button project_with_issues_disabled.full_name
+    with_them do
+      it 'creates a work item with expected widgets', :aggregate_failures do
+        select_work_item_type(type)
+
+        expect_work_item_widgets(widgets)
+
+        fill_work_item_title("#{type} from sidebar")
+        fill_work_item_description("#{type} description from sidebar")
+
+        expect do
+          create_work_item_with_type(type)
+          wait_for_all_requests
+        end.to change { project.work_items.count }.by(1)
+
+        created_work_item = project.work_items.last
+        expect(created_work_item.title).to eq("#{type} from sidebar")
+        expect(created_work_item.description).to eq("#{type} description from sidebar")
       end
     end
   end

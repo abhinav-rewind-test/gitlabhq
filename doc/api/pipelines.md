@@ -1,7 +1,7 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: REST API to create, manage, and monitor CI/CD pipelines.
 title: Pipelines API
 ---
@@ -39,26 +39,28 @@ GET /projects/:id/pipelines
 Use the `page` and `per_page` [pagination](rest/_index.md#offset-based-pagination) parameters to
 control the pagination of results.
 
-| Attribute        | Type           | Required | Description |
-|------------------|----------------|----------|-------------|
-| `id`             | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
-| `name`           | string         | No       | Return pipelines with the specified name. |
-| `order_by`       | string         | No       | Order pipelines by `id`, `status`, `ref`, `updated_at` or `user_id` (default: `id`) |
-| `ref`            | string         | No       | The ref of pipelines |
-| `scope`          | string         | No       | The scope of pipelines, one of: `running`, `pending`, `finished`, `branches`, `tags` |
-| `sha`            | string         | No       | The SHA of pipelines |
-| `sort`           | string         | No       | Sort pipelines in `asc` or `desc` order (default: `desc`) |
-| `source`         | string         | No       | The [pipeline source](../ci/jobs/job_rules.md#ci_pipeline_source-predefined-variable). |
-| `status`         | string         | No       | The status of pipelines, one of: `created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `success`, `failed`, `canceled`, `skipped`, `manual`, `scheduled` |
-| `updated_after`  | datetime       | No       | Return pipelines updated after the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
-| `updated_before` | datetime       | No       | Return pipelines updated before the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
-| `created_after`  | datetime       | No       | Return pipelines created after the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
-| `created_before` | datetime       | No       | Return pipelines created before the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
-| `username`       | string         | No       | The username of the user who triggered pipelines |
-| `yaml_errors`    | boolean        | No       | Returns pipelines with invalid configurations |
+| Attribute        | Type              | Required | Description |
+|------------------|-------------------|----------|-------------|
+| `id`             | integer or string | Yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
+| `name`           | string            | No       | Return pipelines with the specified name. |
+| `order_by`       | string            | No       | The field to order pipelines by: `id`, `status`, `ref`, `updated_at`, or `user_id` (default: `id`). |
+| `ref`            | string            | No       | Return pipelines for the specified branch or tag. |
+| `scope`          | string            | No       | Return pipelines in the specified scope: `running`, `pending`, `finished`, `branches`, or `tags`. |
+| `sha`            | string            | No       | Return pipelines for the specified commit SHA. |
+| `sort`           | string            | No       | The sort order: `asc` or `desc` (default: `desc`). |
+| `source`         | string            | No       | Return pipelines with the specified [source](../ci/jobs/job_rules.md#ci_pipeline_source-predefined-variable). |
+| `status`         | string            | No       | Return pipelines with the specified status: `created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `success`, `failed`, `canceled`, `skipped`, `manual`, or `scheduled`. |
+| `updated_after`  | datetime          | No       | Return pipelines updated after the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
+| `updated_before` | datetime          | No       | Return pipelines updated before the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
+| `created_after`  | datetime          | No       | Return pipelines created after the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
+| `created_before` | datetime          | No       | Return pipelines created before the specified date. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). |
+| `username`       | string            | No       | Return pipelines triggered by the specified username. |
+| `yaml_errors`    | boolean           | No       | Return pipelines with invalid configurations. |
+
+When `scope` is set to `branches` or `tags`, the API returns only the latest pipeline for each branch or tag ref.
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines"
 ```
@@ -122,7 +124,7 @@ control the pagination of results.
 | `pipeline_id` | integer        | Yes      | The ID of a pipeline |
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46"
 ```
@@ -197,7 +199,7 @@ control the pagination of results.
 | `ref`     | string | No       | The branch or tag to check for the latest pipeline. Defaults to the default branch when not specified. |
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines/latest"
 ```
@@ -266,7 +268,7 @@ control the pagination of results.
 | `pipeline_id` | integer        | Yes      | The ID of a pipeline |
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46/variables"
 ```
@@ -307,7 +309,7 @@ control the pagination of results.
 Sample request:
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46/test_report"
 ```
@@ -366,7 +368,7 @@ control the pagination of results.
 Sample request:
 
 ```shell
-curl \
+curl --request GET \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46/test_report_summary"
 ```
@@ -437,8 +439,8 @@ Example request with [inputs](../ci/inputs/_index.md):
 curl --request POST \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --header "Content-Type: application/json" \
-  --data '{"inputs": {"environment": "environment", "scan_security": false, "level": 3}}' \
-  --url "https://gitlab.example.com/api/v4/projects/1/pipeline?ref=main"
+  --url "https://gitlab.example.com/api/v4/projects/1/pipeline?ref=main" \
+  --data '{"inputs": {"environment": "environment", "scan_security": false, "level": 3}}'
 ```
 
 Example of response
@@ -635,8 +637,8 @@ Sample request:
 curl --request PUT \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --header "Content-Type: application/json" \
-  --data '{"name": "Some new pipeline name"}' \
-  --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46/metadata"
+  --url "https://gitlab.example.com/api/v4/projects/1/pipelines/46/metadata" \
+  --data '{"name": "Some new pipeline name"}'
 ```
 
 Sample response:

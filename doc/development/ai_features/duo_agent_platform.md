@@ -1,7 +1,7 @@
 ---
 stage: AI-powered
 group: Agent Foundations
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: GitLab Duo Agent Platform
 ---
 
@@ -222,7 +222,8 @@ scope :automate do
 end
 ```
 
-**Note**: Use plural form for the route name (e.g., `automate_your_features`) to match the existing pattern and ensure the Rails path helper is generated correctly.
+> [!note]
+> Use plural form for the route name (e.g., `automate_your_features`) to match the existing pattern and ensure the Rails path helper is generated correctly.
 
 #### Step 4: Add Sidebar Menu Item
 

@@ -1,7 +1,7 @@
 ---
 stage: Create
 group: Source Code
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Secure your repository with branch protection, approval rules, and access controls.
 title: Protect your repository
 ---
@@ -92,7 +92,7 @@ To address specific security requirements:
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the project or Owner role for the group.
+- You must have the Maintainer or Owner role for the project, or the Owner role for the group.
 - Identify which branches need protection.
 - Determine your compliance and security requirements.
 

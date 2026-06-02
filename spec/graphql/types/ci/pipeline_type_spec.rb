@@ -73,6 +73,7 @@ RSpec.describe Types::Ci::PipelineType, feature_category: :continuous_integratio
       manual_variables
       has_manual_actions
       has_scheduled_actions
+      pipeline_schedule
     ]
 
     if Gitlab.ee?
@@ -100,13 +101,91 @@ RSpec.describe Types::Ci::PipelineType, feature_category: :continuous_integratio
   end
 
   describe 'field scopes' do
-    {
+    fields_with_scopes = {
       'id' => %i[api read_api ai_workflows],
+      'iid' => %i[api read_api ai_workflows],
+      'sha' => %i[api read_api ai_workflows],
+      'status' => %i[api read_api ai_workflows],
+      'ref' => %i[api read_api ai_workflows],
       'name' => %i[api read_api ai_workflows],
       'createdAt' => %i[api read_api ai_workflows]
-    }.each do |field, scopes|
+    }
+
+    if Gitlab.ee?
+      fields_with_scopes.merge!(
+        'securityReportFindings' => %i[api read_api ai_workflows],
+        'securityReportFinding' => %i[api read_api ai_workflows]
+      )
+    end
+
+    fields_with_scopes.each do |field, scopes|
       it "includes the correct scopes for #{field}" do
         expect(described_class.fields[field].instance_variable_get(:@scopes)).to include(*scopes)
+      end
+    end
+  end
+
+  describe 'type' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project, :repository) }
+
+    let(:query) do
+      %(
+        {
+          project(fullPath: "#{project.full_path}") {
+            pipeline(iid: "#{pipeline.iid}") {
+              type
+            }
+          }
+        }
+      )
+    end
+
+    let(:pipeline_type) do
+      GitlabSchema.execute(query, context: { current_user: user })
+                  .as_json
+                  .dig('data', 'project', 'pipeline', 'type')
+    end
+
+    before_all do
+      project.add_developer(user)
+    end
+
+    context 'when pipeline is a branch pipeline' do
+      let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
+
+      it 'returns branch' do
+        expect(pipeline_type).to eq('branch')
+      end
+    end
+
+    context 'when pipeline is a tag pipeline' do
+      let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, :tag, project: project) }
+
+      it 'returns tag' do
+        expect(pipeline_type).to eq('tag')
+      end
+    end
+
+    context 'when pipeline is a merge request pipeline' do
+      let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+      let_it_be(:pipeline, freeze: false) do
+        create(:ci_pipeline, :detached_merge_request_pipeline, merge_request: merge_request)
+      end
+
+      it 'returns merge_request' do
+        expect(pipeline_type).to eq('merge_request')
+      end
+    end
+
+    context 'when pipeline is a merged result pipeline' do
+      let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+      let_it_be(:pipeline, freeze: false) do
+        create(:ci_pipeline, :merged_result_pipeline, merge_request: merge_request)
+      end
+
+      it 'returns merged_result' do
+        expect(pipeline_type).to eq('merged_result')
       end
     end
   end
@@ -114,7 +193,7 @@ RSpec.describe Types::Ci::PipelineType, feature_category: :continuous_integratio
   describe 'manual_variables' do
     let_it_be(:user) { create(:user) }
     let_it_be(:project) { create(:project, :repository) }
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
 
     let(:query) do
       %(
@@ -173,7 +252,7 @@ RSpec.describe Types::Ci::PipelineType, feature_category: :continuous_integratio
   describe 'failed_jobs_count' do
     let_it_be(:user) { create(:user) }
     let_it_be(:project) { create(:project, :repository) }
-    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
     let(:query) do
       %(
         {
@@ -227,6 +306,310 @@ RSpec.describe Types::Ci::PipelineType, feature_category: :continuous_integratio
 
       it 'returns the limited count' do
         expect(failed_jobs_count).to eq(3)
+      end
+    end
+  end
+
+  describe 'retryable' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
+
+    let(:query) do
+      %(
+        {
+          project(fullPath: "#{project.full_path}") {
+            pipeline(iid: "#{pipeline.iid}") {
+              retryable
+            }
+          }
+        }
+      )
+    end
+
+    let(:retryable) { data.dig('data', 'project', 'pipeline', 'retryable') }
+
+    subject(:data) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    before_all do
+      project.add_developer(user)
+    end
+
+    context 'when pipeline is archived' do
+      before do
+        pipeline.update_column(:created_at, 1.year.ago)
+        stub_application_setting(archive_builds_in_seconds: 3600)
+      end
+
+      it 'returns false without querying builds' do
+        expect(::Ci::Build).not_to receive(:retryable_pipeline_keys)
+        expect(retryable).to eq(false)
+      end
+    end
+
+    context 'when pipeline has no failed or canceled jobs' do
+      before do
+        create(:ci_build, :success, pipeline: pipeline)
+      end
+
+      it 'returns false' do
+        expect(retryable).to eq(false)
+      end
+    end
+
+    context 'when pipeline has failed jobs' do
+      before do
+        create(:ci_build, :failed, pipeline: pipeline)
+      end
+
+      it 'returns true' do
+        expect(retryable).to eq(true)
+      end
+    end
+
+    context 'when pipeline has canceled jobs' do
+      before do
+        create(:ci_build, :canceled, pipeline: pipeline)
+      end
+
+      it 'returns true' do
+        expect(retryable).to eq(true)
+      end
+    end
+
+    context 'when querying retryable across multiple pipelines' do
+      let_it_be(:second_user) { create(:user) }
+
+      let(:multi_pipeline_query) do
+        %(
+          {
+            project(fullPath: "#{project.full_path}") {
+              pipelines {
+                nodes {
+                  retryable
+                }
+              }
+            }
+          }
+        )
+      end
+
+      before_all do
+        project.add_developer(second_user)
+      end
+
+      it 'does not issue N+1 queries' do
+        pipeline_2 = create(:ci_pipeline, project: project)
+        create(:ci_build, :failed, pipeline: pipeline)
+        create(:ci_build, :failed, pipeline: pipeline_2)
+
+        control = ActiveRecord::QueryRecorder.new do
+          GitlabSchema.execute(multi_pipeline_query, context: { current_user: user })
+        end
+
+        pipeline_3 = create(:ci_pipeline, project: project)
+        create(:ci_build, :failed, pipeline: pipeline_3)
+
+        expect do
+          GitlabSchema.execute(multi_pipeline_query, context: { current_user: second_user })
+        end.not_to exceed_query_limit(control)
+      end
+    end
+  end
+
+  describe 'pipeline_schedule' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project, :repository, public_builds: false) }
+    let_it_be(:schedule) { create(:ci_pipeline_schedule, project: project) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project, pipeline_schedule: schedule) }
+
+    let(:query) do
+      %(
+        {
+          project(fullPath: "#{project.full_path}") {
+            pipeline(iid: "#{pipeline.iid}") {
+              pipelineSchedule {
+                id
+              }
+            }
+          }
+        }
+      )
+    end
+
+    let(:pipeline_schedule) { data.dig('data', 'project', 'pipeline', 'pipelineSchedule') }
+
+    subject(:data) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    before do
+      project.add_role(user, user_access_level) # rubocop:disable RSpec/BeforeAllRoleAssignment -- need dynamic settings `user_access_level`
+    end
+
+    context 'when the pipeline was triggered by a schedule' do
+      context 'when the user has permission to read the pipeline schedule' do
+        let(:user_access_level) { :owner }
+
+        it 'returns the pipeline schedule' do
+          expect(pipeline_schedule).not_to be_nil
+          expect(pipeline_schedule['id']).to eq(schedule.to_global_id.to_s)
+        end
+      end
+
+      context 'when the user does not have permission to read the pipeline schedule' do
+        let(:user_access_level) { :guest }
+
+        it 'returns nil' do
+          expect(pipeline_schedule).to be_nil
+        end
+      end
+    end
+
+    context 'when the pipeline was not triggered by a schedule' do
+      let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
+      let(:user_access_level) { :developer }
+
+      it 'returns nil' do
+        expect(pipeline_schedule).to be_nil
+      end
+    end
+  end
+
+  describe 'stuck' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:pipeline, freeze: false) { create(:ci_pipeline, project: project) }
+
+    let(:query) do
+      %(
+        {
+          project(fullPath: "#{project.full_path}") {
+            pipeline(iid: "#{pipeline.iid}") {
+              stuck
+            }
+          }
+        }
+      )
+    end
+
+    let(:stuck) { data.dig('data', 'project', 'pipeline', 'stuck') }
+
+    subject(:data) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    before_all do
+      project.add_developer(user)
+    end
+
+    context 'when pipeline has no pending jobs' do
+      before do
+        create(:ci_build, :running, pipeline: pipeline)
+      end
+
+      it 'returns false' do
+        expect(stuck).to eq(false)
+      end
+    end
+
+    context 'when pipeline has a pending job and no runners are available' do
+      before do
+        create(:ci_build, :pending, pipeline: pipeline)
+      end
+
+      it 'returns true' do
+        expect(stuck).to eq(true)
+      end
+    end
+
+    context 'when project has a matching online runner' do
+      let_it_be(:runner) { create(:ci_runner, :project, projects: [project], contacted_at: 1.second.ago) }
+
+      before do
+        create(:ci_build, :pending, pipeline: pipeline)
+      end
+
+      it 'returns false' do
+        expect(stuck).to eq(false)
+      end
+    end
+
+    context 'when project has a runner but it does not match the build tags' do
+      let_it_be(:runner) do
+        create(:ci_runner, :project, projects: [project], contacted_at: 1.second.ago, tag_list: ['windows'])
+      end
+
+      before do
+        create(:ci_build, :pending, pipeline: pipeline, tag_list: ['linux'])
+      end
+
+      it 'returns true' do
+        expect(stuck).to eq(true)
+      end
+    end
+
+    context 'when multiple pipelines are queried' do
+      let_it_be(:pipeline2) { create(:ci_pipeline, project: project) }
+
+      let(:query) do
+        %(
+          {
+            project(fullPath: "#{project.full_path}") {
+              pipeline1: pipeline(iid: "#{pipeline.iid}") { stuck }
+              pipeline2: pipeline(iid: "#{pipeline2.iid}") { stuck }
+            }
+          }
+        )
+      end
+
+      before do
+        create(:ci_build, :pending, pipeline: pipeline)
+        create(:ci_build, :pending, pipeline: pipeline2)
+      end
+
+      it 'does not scale queries with the number of pipelines' do
+        baseline = ActiveRecord::QueryRecorder.new do
+          GitlabSchema.execute(query, context: { current_user: user }).as_json
+        end
+
+        pipeline3 = create(:ci_pipeline, project: project)
+        create(:ci_build, :pending, pipeline: pipeline3)
+
+        three_pipeline_query = %(
+          {
+            project(fullPath: "#{project.full_path}") {
+              pipeline1: pipeline(iid: "#{pipeline.iid}") { stuck }
+              pipeline2: pipeline(iid: "#{pipeline2.iid}") { stuck }
+              pipeline3: pipeline(iid: "#{pipeline3.iid}") { stuck }
+            }
+          }
+        )
+
+        expect { GitlabSchema.execute(three_pipeline_query, context: { current_user: user }).as_json }
+          .not_to exceed_query_limit(baseline)
+      end
+
+      context 'when builds have persisted tags and a matching online runner' do
+        let_it_be(:runner) do
+          create(:ci_runner, :project, projects: [project], contacted_at: 1.second.ago,
+            run_untagged: true)
+        end
+
+        it 'does not issue extra queries per build when loading tags' do
+          create(:ci_build, :pending, pipeline: pipeline)
+          create(:ci_build, :pending, pipeline: pipeline2)
+
+          baseline = ActiveRecord::QueryRecorder.new do
+            GitlabSchema.execute(query, context: { current_user: user }).as_json
+          end
+
+          Gitlab::SafeRequestStore.clear!
+          Ci::ApplicationRecord.connection.clear_query_cache
+          BatchLoader::Executor.clear_current
+
+          2.times { create(:ci_build, :pending, pipeline: pipeline) }
+          2.times { create(:ci_build, :pending, pipeline: pipeline2) }
+
+          expect { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+            .not_to exceed_query_limit(baseline).with_threshold(4)
+        end
       end
     end
   end

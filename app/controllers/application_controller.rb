@@ -217,8 +217,14 @@ class ApplicationController < BaseActionController
     redirect_location || root_path
   end
 
-  def after_sign_out_path_for(resource)
-    Gitlab::CurrentSettings.after_sign_out_path.presence || new_user_session_path
+  def after_sign_out_path_for(_resource)
+    path = Gitlab::CurrentSettings.after_sign_out_path.presence || new_user_session_path
+
+    if Gitlab::Auth.omniauth_enabled? && Gitlab.config.omniauth.auto_sign_in_with_provider.present?
+      path = Gitlab::Utils.add_url_parameters(path, auto_sign_in: 'false')
+    end
+
+    path
   end
 
   def can?(user, action, subject = :global)
@@ -267,7 +273,10 @@ class ApplicationController < BaseActionController
 
   def render_503(message = nil)
     respond_to do |format|
-      format.html { render template: "errors/service_unavailable", formats: :html, layout: "errors", status: :service_unavailable, locals: { message: message } }
+      format.html do
+        render template: "errors/service_unavailable", formats: :html, layout: "errors", status: :service_unavailable,
+          locals: { message: message }
+      end
       format.any { head :service_unavailable }
     end
   end
@@ -451,7 +460,7 @@ class ApplicationController < BaseActionController
     Gitlab::CurrentSettings.import_sources.include?('manifest')
   end
 
-  def set_current_context(&block)
+  def set_current_context
     # even though feature_category is pre-populated by
     # Gitlab::Middleware::ActionControllerStaticContext
     # using the static annotation on controllers, the

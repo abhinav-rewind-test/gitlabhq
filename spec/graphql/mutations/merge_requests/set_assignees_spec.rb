@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Mutations::MergeRequests::SetAssignees, feature_category: :api do
   include GraphqlHelpers
   context 'when the user does not have permissions' do
-    let_it_be(:merge_request) { create(:merge_request) }
+    let_it_be(:merge_request, freeze: false) { create(:merge_request) }
     let_it_be(:user) { create(:user) }
     let_it_be(:assignee) { create(:user) }
     let(:query) { GraphQL::Query.new(empty_schema, document: nil, context: {}, variables: {}) }
@@ -28,6 +28,6 @@ RSpec.describe Mutations::MergeRequests::SetAssignees, feature_category: :api do
   end
 
   it_behaves_like 'an assignable resource' do
-    let_it_be(:resource, reload: true) { create(:merge_request) }
+    let_it_be_with_reload(:resource) { create(:merge_request) }
   end
 end

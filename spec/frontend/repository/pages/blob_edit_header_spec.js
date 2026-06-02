@@ -18,9 +18,10 @@ import * as redirectUtils from '~/repository/utils/blob_edit_redirect_utils';
 
 jest.mock('~/alert');
 jest.mock('~/lib/utils/local_storage_alert');
-jest.mock('lodash/uniqueId', () => {
-  return jest.fn((input) => `${input}1`);
-});
+jest.mock('lodash-es', () => ({
+  ...jest.requireActual('lodash-es'),
+  uniqueId: (input) => `${input}1`,
+}));
 jest.mock('~/repository/utils/blob_edit_redirect_utils', () => ({
   ...jest.requireActual('~/repository/utils/blob_edit_redirect_utils'),
   redirectToExistingMergeRequest: jest.fn(),
@@ -147,6 +148,26 @@ describe('BlobEditHeader', () => {
   });
 
   describe('for edit blob', () => {
+    it('cancel button has cancelPath as href if user did not came from MR page', () => {
+      expect(findCancelButton().attributes('href')).toBe('/cancel');
+    });
+
+    it('cancel button has href to the MR if user came from MR page', () => {
+      const originalLocation = window.location;
+      delete window.location;
+      window.location = new URL(
+        'http://test.host/gitlab-org/gitlab/-/edit/main/test.js?from_merge_request_iid=19',
+      );
+      createWrapper();
+
+      expect(findCancelButton().attributes('href')).toBe(
+        'http://test.host/gitlab-org/gitlab/-/merge_requests/19',
+      );
+
+      // Restore original location
+      window.location = originalLocation;
+    });
+
     describe('when blobEditRefactor is enabled', () => {
       beforeEach(() => {
         clickCommitChangesButton();
@@ -224,6 +245,8 @@ describe('BlobEditHeader', () => {
         window.location = new URL(
           'http://test.host/gitlab-org/gitlab/-/edit/main/test.js?from_merge_request_iid=19',
         );
+
+        createWrapper();
 
         clickCommitChangesButton();
 
@@ -460,7 +483,14 @@ describe('BlobEditHeader', () => {
             file_path: 'test.js',
           });
 
-          await submitForm();
+          const formData = new FormData();
+          formData.append('commit_message', 'Test commit');
+          formData.append('branch_name', 'patch-1');
+          formData.append('original_branch', 'main');
+          formData.append('create_merge_request', '1');
+
+          findCommitChangesModal().vm.$emit('submit-form', formData);
+          await axios.waitForAll();
         });
 
         it('on submit, redirects to merge request creation', () => {
@@ -480,6 +510,47 @@ describe('BlobEditHeader', () => {
         });
       });
 
+      describe('when working on a fork and user deselects "Create a merge request for this change"', () => {
+        beforeEach(async () => {
+          createWrapper({
+            glFeatures: { blobEditRefactor: true },
+            provided: {
+              canPushToBranch: false,
+              targetProjectId: 456,
+              targetProjectPath: 'user/gitlab-fork',
+              nextForkBranchName: 'patch-1',
+            },
+          });
+
+          clickCommitChangesButton();
+          mock.onPut().replyOnce(HTTP_STATUS_OK, {
+            branch: 'patch-1',
+            file_path: 'test.js',
+          });
+
+          // NOT appending create_merge_request - simulates unchecked checkbox
+          await submitForm();
+        });
+
+        it('redirects to blob view with success message instead of MR form', () => {
+          expect(redirectUtils.redirectToBlobWithAlert).toHaveBeenCalledWith({
+            url: window.location.href,
+            resultingBranch: 'patch-1',
+            responseData: { branch: 'patch-1', file_path: 'test.js' },
+            formData: expect.objectContaining({
+              file_path: 'test.js',
+              file: content,
+              branch_name: 'patch-1',
+              original_branch: 'main',
+            }),
+            isNewBranch: true,
+            targetProjectPath: 'user/gitlab-fork',
+            successMessageFn: expect.any(Function),
+          });
+          expect(redirectUtils.redirectToForkMergeRequest).not.toHaveBeenCalled();
+        });
+      });
+
       describe('when renaming a file in fork', () => {
         beforeEach(async () => {
           createWrapper({
@@ -496,7 +567,14 @@ describe('BlobEditHeader', () => {
           clickCommitChangesButton();
           mock.onPost().replyOnce(HTTP_STATUS_OK, {});
 
-          await submitForm();
+          const formData = new FormData();
+          formData.append('commit_message', 'Test commit');
+          formData.append('branch_name', 'patch-1');
+          formData.append('original_branch', 'main');
+          formData.append('create_merge_request', '1');
+
+          findCommitChangesModal().vm.$emit('submit-form', formData);
+          await axios.waitForAll();
         });
 
         afterEach(() => {

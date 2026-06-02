@@ -5,11 +5,12 @@ import {
   EVENT_PLAIN_TEXT,
   EVENT_ERROR,
 } from '@gitlab/cluster-client';
-import { throttle } from 'lodash';
+import { throttle } from 'lodash-es';
 import k8sLogsQuery from '~/environments/graphql/queries/k8s_logs.query.graphql';
 import k8sPodLogsWatcherQuery from '~/environments/graphql/queries/k8s_pod_logs_watcher.query.graphql';
 
 export const buildWatchPath = ({ resource, api = 'api/v1', namespace = '' }) => {
+  // eslint-disable-next-line @gitlab/no-hardcoded-urls -- REST API URL
   return `/${api}/namespaces/${namespace}/pods/${resource}/log`;
 };
 

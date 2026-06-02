@@ -19,12 +19,11 @@ module Terraform
 
     mount_file_store_uploader StateUploader
 
-    delegate :project_id, :uuid, to: :terraform_state, allow_nil: true
+    delegate :project_id, :project, :uuid, to: :terraform_state, allow_nil: true
 
     before_create :set_encrypted_flag
 
     def encryption_enabled?
-      return true unless Feature.enabled?(:skip_encrypting_terraform_state_file, terraform_state.project)
       return true if ApplicationSetting.current&.terraform_state_encryption_enabled.nil?
 
       ApplicationSetting.current.terraform_state_encryption_enabled

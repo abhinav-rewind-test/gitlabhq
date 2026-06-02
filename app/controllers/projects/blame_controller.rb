@@ -4,6 +4,7 @@
 class Projects::BlameController < Projects::ApplicationController
   include ExtractsPath
   include RedirectsForMissingPathOnTree
+  include HandlesGitalyErrors
 
   before_action :require_non_empty_project
   before_action :assign_ref_vars
@@ -16,12 +17,15 @@ class Projects::BlameController < Projects::ApplicationController
 
   def show
     @ref_type = ref_type
+
+    return if Feature.enabled?(:inline_blame, @project)
+
     load_environment
     load_blame
   rescue Gitlab::Git::Blame::IgnoreRevsFormatError
-    redirect_show_with_flash(s_('Malformed .git-blame-ignore-revs'))
+    redirect_show_with_flash(_('Malformed .git-blame-ignore-revs'))
   rescue Gitlab::Git::Blame::IgnoreRevsFileError
-    redirect_show_with_flash(s_('.git-blame-ignore-revs is not a file'))
+    redirect_show_with_flash(_('.git-blame-ignore-revs is not a file'))
   end
 
   def streaming
@@ -95,6 +99,21 @@ class Projects::BlameController < Projects::ApplicationController
   def redirect_show_with_flash(message)
     flash[:notice] = message
     redirect_to project_blame_path(@project, @id, ref_type: ref_type)
+  end
+
+  # Override because #streaming and #page don't have their own templates.
+  # Always render the 'show' template which handles @gitaly_unavailable.
+  #
+  def handle_gitaly_error(exception)
+    Gitlab::ErrorTracking.track_exception(exception)
+
+    @gitaly_unavailable = true
+
+    respond_to do |format|
+      format.html { render action: 'show', status: :service_unavailable }
+      format.json { render json: { error: gitaly_unavailable_message }, status: :service_unavailable }
+      format.any { render plain: gitaly_unavailable_message, status: :service_unavailable }
+    end
   end
 end
 

@@ -1,7 +1,7 @@
 ---
 stage: Software Supply Chain Security
 group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 title: User passwords
 description: Secure user passwords through requirements enforcement and password reset procedures.
 ---
@@ -78,7 +78,11 @@ This password has the following properties:
   [`friendly_token` method](https://github.com/heartcombo/devise/blob/f26e05c20079c9acded3c0ee16da0df435a28997/lib/devise.rb#L492)
 - Unique and secure
 
-You don't need to know or use this password.
+Generally, you don't need to know or use this password. However, you may need to enter it to create a passkey or in other similar situations.
+
+If you need to enter your GitLab password, you can follow the [reset password process](#reset-your-password) to create a new one that you can use.
+
+This does not affect the password for your external identity provider.
 
 ## Change your password
 
@@ -88,7 +92,8 @@ To change your password:
 
 1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Password**.
+1. In the left sidebar, select **Access** > **Password and authentication**.
+1. Select **Change password**.
 1. In the **Current password** text box, enter your current password.
 1. In the **New password** and **Password confirmation** text box, enter your new password.
 1. Select **Save password**.

@@ -15,7 +15,7 @@ module Gitlab
           commit pipelines merge_requests builds
           new environments].freeze
         RESERVED_WORDS = Gitlab::PathRegex::ILLEGAL_PROJECT_PATH_WORDS - USED_IN_ROUTES
-        RESERVED_WORDS_REGEX = Regexp.union(*RESERVED_WORDS.map(&Regexp.method(:escape)))
+        RESERVED_WORDS_REGEX = Regexp.union(*RESERVED_WORDS.map { |word| Regexp.escape(word) })
         RESERVED_WORDS_PREFIX = %(^(?!.*\/(#{RESERVED_WORDS_REGEX})\/).*)
 
         ROUTES = [
@@ -80,9 +80,21 @@ module Gitlab
             :realtime_changes
           ],
           [
+            %r{#{RESERVED_WORDS_PREFIX}/import/bitbucket/realtime_changes\.json\z},
+            'realtime_changes_import_bitbucket',
+            ::Import::BitbucketController,
+            :realtime_changes
+          ],
+          [
             %r{#{RESERVED_WORDS_PREFIX}/import/gitea/realtime_changes\.json\z},
             'realtime_changes_import_gitea',
             ::Import::GiteaController,
+            :realtime_changes
+          ],
+          [
+            %r{#{RESERVED_WORDS_PREFIX}/import/bitbucket_server/realtime_changes\.json\z},
+            'realtime_changes_import_bitbucket_server',
+            ::Import::BitbucketServerController,
             :realtime_changes
           ],
           [

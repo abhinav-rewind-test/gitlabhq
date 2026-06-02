@@ -1,17 +1,22 @@
 ---
 stage: AI-powered
 group: Editor Extensions
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
 description: Connect and use GitLab Duo in Neovim.
 title: GitLab plugin for Neovim - `gitlab.vim`
 ---
 
-The [GitLab plugin](https://gitlab.com/gitlab-org/editor-extensions/gitlab.vim) is a Lua-based plugin
-that integrates GitLab with Neovim. 
+{{< details >}}
 
-The plugin allows you to use [GitLab Duo Code Suggestions](../../user/duo_agent_platform/code_suggestions/_index.md)
-and [GitLab Duo Code Suggestions (Classic)](../../user/project/repository/code_suggestions/_index.md)
-in the command line.
+- Tier: [Free](../../subscriptions/gitlab_credits.md#for-the-free-tier), Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+The [GitLab plugin](https://gitlab.com/gitlab-org/editor-extensions/gitlab.vim) is a Lua-based plugin
+that integrates GitLab with Neovim.
+
+The plugin allows you to use [GitLab Duo Code Suggestions](../../user/project/repository/code_suggestions/_index.md) in the command line.
 
 To install and configure the extension, see [Install and set up](setup.md).
 
@@ -53,6 +58,7 @@ in the `gitlab.vim` repository.
 
 ## Related topics
 
+- [GitLab plugin for Neovim releases](https://gitlab.com/gitlab-org/editor-extensions/gitlab.vim/-/releases)
 - [Security considerations for editor extensions](../security_considerations.md)
 - [Neovim troubleshooting](neovim_troubleshooting.md)
 - [View source code](https://gitlab.com/gitlab-org/editor-extensions/gitlab.vim)

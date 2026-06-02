@@ -2,19 +2,35 @@
 
 module Test
   class MockLlmClass
-    def initialize(contents, unit_primitive:, user:, model:)
+    DEFAULT_DIMENSIONS = 4
+    NIL_CONTENTS_ERROR_MESSAGE = 'The text content is empty.'
+
+    def self.generate_embeddings(contents, model: nil, user: nil, dimensions: nil, abc: nil)
+      new(contents, user: user, model: model, dimensions: dimensions, abc: abc).execute
+    end
+
+    def initialize(contents, user: nil, dimensions: nil, abc: nil)
       @contents = contents
-      @unit_primitive = unit_primitive
       @user = user
-      @model = model
+      @dimensions = dimensions || DEFAULT_DIMENSIONS
+      @abc = abc
     end
 
     def execute
-      [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]
-      ]
+      # simulate error returned by vertex
+      raise nil_contents_error if @contents.any?(&:nil?)
+
+      Array.new(@contents.length, mock_vectors)
+    end
+
+    private
+
+    def mock_vectors
+      (1..@dimensions).map(&:to_f)
+    end
+
+    def nil_contents_error
+      StandardError.new(NIL_CONTENTS_ERROR_MESSAGE)
     end
   end
 end

@@ -1,7 +1,7 @@
 ---
 stage: Data Access
 group: Database Frameworks
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see <https://docs.gitlab.com/development/development_processes/#development-guidelines-review>.
 title: Database Lab access using the `pgai` Ruby gem
 ---
 
@@ -11,8 +11,12 @@ greatly simplifies access to a database clone, with support for:
 - Access to all database clones listed in the [Postgres.ai instances page](https://console.postgres.ai/gitlab/instances);
 - Multiple `psql` sessions on the same clone.
 
-If you have `AllFeaturesUser` [`psql` access](database_lab.md#access-database-lab-engine),
-you can follow the steps below to configure the `pgai` Gem:
+## Prerequisites
+
+- `AllFeaturesUser` [`psql` access](database_lab.md#access-database-lab-engine) to Database Lab.
+- [1Password CLI (`op`)](https://developer.1password.com/docs/cli/get-started/) installed and signed in to your 1Password account.
+
+To configure the `pgai` gem:
 
 1. To get started, you need to gather some values from the [Postgres.ai instances page](https://console.postgres.ai/gitlab/instances):
 
@@ -30,11 +34,13 @@ you can follow the steps below to configure the `pgai` Gem:
       ```
 
 1. To configure `ssh`, follow the instruction at [Access the console with `psql`](database_lab.md#access-the-console-with-psql), replacing `${USER}` with your postgres.ai username.
-
 1. Run the following commands:
 
    ```shell
    gem install pgai
+
+   # Generate an encryption key and store it in 1Password
+   pgai enc keygen
 
    # Before running the following command,
    # grab an access token from https://console.postgres.ai/gitlab/tokens

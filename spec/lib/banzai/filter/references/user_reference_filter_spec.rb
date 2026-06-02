@@ -39,59 +39,15 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
     end
   end
 
-  context 'when `disable_all_mention` FF is enabled' do
-    let(:reference) { User.reference_prefix + 'all' }
-
-    context 'mentioning @all' do
-      before do
-        stub_feature_flags(disable_all_mention: true)
-
-        project.add_developer(project.creator)
-      end
-
-      it 'ignores reference to @all' do
-        doc = reference_filter("Hey #{reference}", author: project.creator)
-
-        expect(doc.css('a').length).to eq 0
-      end
-    end
-  end
-
-  context 'mentioning @all (when `disable_all_mention` FF is disabled)' do
+  context 'mentioning @all' do
     let(:reference) { User.reference_prefix + 'all' }
 
     before do
-      stub_feature_flags(disable_all_mention: false)
-
       project.add_developer(project.creator)
     end
 
-    it_behaves_like 'a reference containing an element node'
-
-    it 'supports a special @all mention' do
-      project.add_developer(user)
-      doc = reference_filter("Hey #{reference}", author: user)
-
-      expect(doc.css('a').length).to eq 1
-      expect(doc.css('a').first.attr('href'))
-        .to eq urls.project_url(project)
-    end
-
-    it 'includes a data-author attribute when there is an author' do
-      project.add_developer(user)
-      doc = reference_filter(reference, author: user)
-
-      expect(doc.css('a').first.attr('data-author')).to eq(user.id.to_s)
-    end
-
-    it 'does not include a data-author attribute when there is no author' do
-      doc = reference_filter(reference)
-
-      expect(doc.css('a').first.has_attribute?('data-author')).to eq(false)
-    end
-
-    it 'ignores reference to all when the user is not a project member' do
-      doc = reference_filter("Hey #{reference}", author: user)
+    it 'ignores reference to @all' do
+      doc = reference_filter("Hey #{reference}", author: project.creator)
 
       expect(doc.css('a').length).to eq 0
     end
@@ -177,15 +133,6 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
 
     before do
       group.add_developer(group_member)
-    end
-
-    it 'supports a special @all mention' do
-      stub_feature_flags(disable_all_mention: false)
-      reference = User.reference_prefix + 'all'
-      doc = reference_filter("Hey #{reference}", context)
-
-      expect(doc.css('a').length).to eq(1)
-      expect(doc.css('a').first.attr('href')).to eq urls.group_url(group)
     end
 
     it 'supports mentioning a single user' do
@@ -307,33 +254,6 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
         expect(doc.css('a').first.attr('href')).to eq urls.user_url(org_user_detail.user)
       end
     end
-
-    context 'when organization_users_internal FF is disabled' do
-      before do
-        stub_feature_flags(organization_users_internal: false)
-      end
-
-      it 'does not support mentioning users aliased within organization' do
-        reference = org_user_detail.to_reference
-        doc = reference_filter("Hey #{reference}", project: project)
-
-        expect(doc.css('a')).to be_empty
-      end
-
-      context 'in group context' do
-        let(:group) { create(:group, developers: [group_member]) }
-        let(:group_member) { create(:user) }
-        let(:org_user_detail) { create(:organization_user_detail, organization: group.organization) }
-        let(:context) { { author: group_member, project: nil, group: group } }
-
-        it 'does not support mentioning a single user' do
-          reference = org_user_detail.to_reference
-          doc = reference_filter("Hey #{reference}", context)
-
-          expect(doc.css('a')).to be_empty
-        end
-      end
-    end
   end
 
   context 'checking N+1' do
@@ -355,6 +275,42 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
       expect do
         reference_filter(markdown)
       end.to issue_same_number_of_queries_as(control_count)
+    end
+  end
+
+  describe 'redaction of link references to private groups' do
+    let(:private_group) { create(:group, :private) }
+    let(:current_user) { create(:user) }
+    let(:group_ref) { private_group.to_reference }
+
+    it 'restores the original link when a reference inside a link href is redacted' do
+      markdown = "[my text](#{group_ref})"
+      doc = reference_pipeline(redact: true, current_user: current_user).to_document(markdown)
+
+      expect(doc.css('a').length).to eq(1)
+      link = doc.css('a').first
+      expect(link.inner_html).to eq('my text')
+      expect(link.attr('href')).to eq(group_ref)
+    end
+
+    it 'replaces a plain text reference with the original text' do
+      markdown = "Hey #{group_ref}"
+      doc = reference_pipeline(redact: true, current_user: current_user).to_document(markdown)
+
+      expect(doc.css('a').length).to eq(0)
+      expect(doc.text).to include(group_ref)
+    end
+  end
+
+  context 'when a user reference with custom link text is cached in the request store', :request_store do
+    it 'does not reuse custom link text for plain-text references' do
+      reference_filter("[target](#{reference})")
+
+      doc = reference_filter("assigned to #{reference}")
+      link = doc.css('a').first
+
+      # Text content should be the reference text, and not "target".
+      expect(link.content).to eq(reference)
     end
   end
 

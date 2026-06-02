@@ -124,13 +124,74 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
         it 'tracks the event' do
           expect { subject }
           .to trigger_internal_events('commit_change_to_ciconfigfile')
-          .with(category: 'Git::BranchHooksService', user: commit_author, project: project)
+          .with(category: 'Git::BranchHooksService', user: commit_author, project: project,
+            additional_properties: { author_source: 'human' })
           .and increment_usage_metrics(
             'redis_hll_counters.pipeline_authoring.o_pipeline_authoring_unique_users_committing_ciconfigfile_weekly',
             'redis_hll_counters.pipeline_authoring.o_pipeline_authoring_unique_users_committing_ciconfigfile_monthly',
             'redis_hll_counters.pipeline_authoring.pipeline_authoring_total_unique_counts_weekly',
             'redis_hll_counters.pipeline_authoring.pipeline_authoring_total_unique_counts_monthly'
           )
+        end
+
+        context 'when the commit has a Duo-Workflow-Definition trailer' do
+          before do
+            allow_next_instance_of(Commit) do |commit|
+              allow(commit).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'ci_expert_agent/v1' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('commit_change_to_ciconfigfile')
+              .with(category: 'Git::BranchHooksService', user: commit_author, project: project,
+                additional_properties: { author_source: 'ci_expert_agent/v1' })
+          end
+        end
+
+        context 'when the commit has a different agent version trailer' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'ci_expert_agent/v2' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('commit_change_to_ciconfigfile')
+              .with(category: 'Git::BranchHooksService', user: commit_author, project: project,
+                additional_properties: { author_source: 'ci_expert_agent/v2' })
+          end
+        end
+
+        context 'when the commit has a different agent type trailer' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'security_agent/v1' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('commit_change_to_ciconfigfile')
+              .with(category: 'Git::BranchHooksService', user: commit_author, project: project,
+                additional_properties: { author_source: 'security_agent/v1' })
+          end
+        end
+
+        context 'when the Duo-Workflow-Definition trailer value is empty' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => '' })
+            end
+          end
+
+          it 'tracks the event with human as author_source' do
+            expect { subject }
+              .to trigger_internal_events('commit_change_to_ciconfigfile')
+              .with(category: 'Git::BranchHooksService', user: commit_author, project: project,
+                additional_properties: { author_source: 'human' })
+          end
         end
 
         context 'when the branch is not the main branch' do
@@ -151,6 +212,186 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
             expect { subject }
             .not_to trigger_internal_events('commit_change_to_ciconfigfile')
           end
+        end
+      end
+
+      context 'with creating CI config' do
+        before do
+          allow_next_instance_of(Gitlab::Git::Diff) do |diff|
+            allow(diff).to receive_messages(new_path: '.gitlab-ci.yml', new_file?: true)
+          end
+        end
+
+        let_it_be(:commit_author) { create(:user, email: sample_commit.author_email) }
+
+        it 'tracks the create_ci_config_file event' do
+          expect { subject }
+            .to trigger_internal_events('create_ci_config_file')
+            .with(user: commit_author, project: project, namespace: project.namespace,
+              additional_properties: { author_source: 'human' })
+        end
+
+        context 'when the commit has a Duo-Workflow-Definition trailer' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'ci_expert_agent/v1' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'ci_expert_agent/v1' })
+          end
+        end
+
+        context 'when the commit has a different agent version trailer' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'ci_expert_agent/v2' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'ci_expert_agent/v2' })
+          end
+        end
+
+        context 'when the commit has a different agent type trailer' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => 'security_agent/v1' })
+            end
+          end
+
+          it 'tracks the event with the trailer value as author_source' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'security_agent/v1' })
+          end
+        end
+
+        context 'when the Duo-Workflow-Definition trailer value is empty' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:trailers).and_return({ 'Duo-Workflow-Definition' => '' })
+            end
+          end
+
+          it 'tracks the event with human as author_source' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'human' })
+          end
+        end
+
+        context 'when the branch is not the main branch' do
+          let(:branch) { 'feature' }
+
+          it 'tracks the event' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'human' })
+          end
+        end
+
+        context 'when the project has a custom CI config path' do
+          before do
+            project.ci_config_path = 'config/ci.yml'
+
+            allow_next_instance_of(Gitlab::Git::Diff) do |diff|
+              allow(diff).to receive_messages(new_path: 'config/ci.yml', new_file?: true)
+            end
+          end
+
+          it 'tracks the event' do
+            expect { subject }
+              .to trigger_internal_events('create_ci_config_file')
+              .with(user: commit_author, project: project, namespace: project.namespace,
+                additional_properties: { author_source: 'human' })
+          end
+        end
+
+        context 'when the CI config file is updated, not created' do
+          before do
+            allow_next_instance_of(Gitlab::Git::Diff) do |diff|
+              allow(diff).to receive_messages(new_path: '.gitlab-ci.yml', new_file?: false)
+            end
+          end
+
+          it 'does not track the event' do
+            expect { subject }
+              .not_to trigger_internal_events('create_ci_config_file')
+          end
+        end
+
+        context 'when a non-CI config file is created' do
+          before do
+            allow_next_instance_of(Gitlab::Git::Diff) do |diff|
+              allow(diff).to receive_messages(new_path: 'README.md', new_file?: true)
+            end
+          end
+
+          it 'does not track the event' do
+            expect { subject }
+              .not_to trigger_internal_events('create_ci_config_file')
+          end
+        end
+
+        context 'when the commit is a merge commit' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:merge_commit?).and_return(true)
+            end
+          end
+
+          it 'does not track the event' do
+            expect { subject }
+              .not_to trigger_internal_events('create_ci_config_file')
+          end
+        end
+
+        context 'when the commit author is nil' do
+          before do
+            allow_next_instance_of(Commit) do |c|
+              allow(c).to receive(:author).and_return(nil)
+            end
+          end
+
+          it 'does not track the event' do
+            expect { subject }
+              .not_to trigger_internal_events('create_ci_config_file')
+          end
+        end
+      end
+
+      context 'with a real commit containing a Duo-Workflow-Definition trailer', :aggregate_failures do
+        let(:commit_author) { create(:user, :with_namespace, email: 'agent@example.com') }
+        let(:agent_commit) do
+          project.repository.create_file(
+            commit_author,
+            '.gitlab-ci.yml',
+            'test: script: echo hello',
+            message: "Update CI config\n\nDuo-Workflow-Definition: ci_expert_agent/v1",
+            branch_name: project.default_branch
+          )
+        end
+
+        let(:oldrev) { project.repository.commit(agent_commit).parent_id }
+        let(:newrev) { agent_commit }
+
+        it 'tracks commit_change_to_ciconfigfile with the trailer value as author_source' do
+          expect { subject }
+            .to trigger_internal_events('commit_change_to_ciconfigfile')
+            .with(user: commit_author, project: project,
+              additional_properties: { author_source: 'ci_expert_agent/v1' })
         end
       end
     end

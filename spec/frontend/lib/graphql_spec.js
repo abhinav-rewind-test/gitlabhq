@@ -55,11 +55,43 @@ describe('stripWhitespaceFromQuery', () => {
     const paramsWithoutQuery = `${defaultPath}&variables=${encodedVariables}`;
     expect(stripWhitespaceFromQuery(paramsWithoutQuery, defaultPath)).toEqual(paramsWithoutQuery);
   });
+
+  it('preserves + in variables (e.g. branch names like release/4.5+5)', () => {
+    const variablesWithPlus = '{"ref":"release/4.5+5"}';
+    const url = `${defaultPath}?query=${encodeURIComponent('query { x }')}&variables=${encodeURIComponent(variablesWithPlus)}`;
+    const processed = stripWhitespaceFromQuery(url, defaultPath);
+    const varsParam = processed.match(/variables=([^&]+)/)?.[1];
+    expect(decodeURIComponent(varsParam)).toBe(variablesWithPlus);
+  });
 });
 
 describe('typePolicies', () => {
   it('includes a policy for Blob', () => {
     expect(typePolicies.Blob).toEqual(expect.objectContaining({ keyFields: ['webPath'] }));
+  });
+
+  it('uses the same combined key even when id is present', () => {
+    const cacheKey = typePolicies.SecurityPolicyType.keyFields({
+      id: 'gid://gitlab/Security::Policy/123',
+      type: 'approval_policy',
+      policyConfigurationId: 'gid://gitlab/Security::OrchestrationPolicyConfiguration/321',
+      name: 'my-policy',
+    });
+
+    expect(cacheKey).toBe(
+      'SecurityPolicyType:gid://gitlab/Security::OrchestrationPolicyConfiguration/321:approval_policy:my-policy',
+    );
+  });
+
+  it('does not normalize SecurityPolicyType when key parts are missing', () => {
+    const cacheKey = typePolicies.SecurityPolicyType.keyFields({
+      id: null,
+      type: 'approval_policy',
+      policyConfigurationId: null,
+      name: 'my-policy',
+    });
+
+    expect(cacheKey).toBe(false);
   });
 });
 
