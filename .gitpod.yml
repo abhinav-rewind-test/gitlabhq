@@ -6,6 +6,7 @@ checkoutLocation: gitlab-development-kit/gitlab
 
 tasks:
 
+
   - name: GDK
     # "command:" emits gitpod-start
     before: |
