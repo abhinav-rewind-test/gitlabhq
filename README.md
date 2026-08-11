@@ -24,6 +24,7 @@ To see how GitLab looks please see the [features page on our website](https://ab
 ## Editions
 
 
+
 There are three editions of GitLab:
 
 - GitLab Community Edition (CE) is available freely under the MIT Expat license.
